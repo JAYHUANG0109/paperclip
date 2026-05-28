@@ -559,9 +559,14 @@ export function createPluginWorkerHandle(
       (message as { paperclipInvocationId?: unknown }).paperclipInvocationId,
     );
     if (!invocationId) {
-      const hasActiveInvocation = activeInvocations.size > 0 ||
-        Array.from(pendingRequests.values()).some((pending) => pending.invocationId);
-      return hasActiveInvocation ? { invalidInvocationScope: true } : {};
+      // local: drop the hardening that flagged background calls as invalid scope.
+      // Legacy plugins (e.g., paperclip-plugin-telegram polling loop) call
+      // host APIs from `setup()` continuations and don't yet thread the
+      // invocation id. Treat the scope-less call as scope-less (no company
+      // restriction) instead of forbidding it. Safe for single-tenant
+      // deployments only. Revert when plugins are updated to carry
+      // invocation ids on background calls (companion to PAP-2394 plan).
+      return {};
     }
     const entry = activeInvocations.get(invocationId);
     if (!entry) return { invalidInvocationScope: true };
