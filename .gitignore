@@ -12,6 +12,7 @@ coverage/
 .DS_Store
 data/
 .paperclip/
+.claude/
 .pnpm-store/
 tmp-*
 cli/tmp/
