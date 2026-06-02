@@ -14,8 +14,7 @@ const TEMPLATE = `<!doctype html>
     <!-- PAPERCLIP_FAVICON_START -->
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
     <!-- PAPERCLIP_FAVICON_END -->
 </head>`;
 
