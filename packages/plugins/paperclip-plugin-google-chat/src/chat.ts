@@ -16,6 +16,18 @@ export interface InboundMessage {
   senderUserName?: string;
   /** Resource name of the message (e.g. spaces/X/messages/Y) — idempotency key. */
   messageName?: string;
+  /** File attachments on the message (uploaded files and/or Drive links). */
+  attachments?: InboundAttachment[];
+}
+
+/** Normalised attachment reference from a Chat message. */
+export interface InboundAttachment {
+  contentName?: string;
+  contentType?: string;
+  /** For uploaded files: the media resource name to download via the Chat API. */
+  resourceName?: string;
+  /** For Drive-shared files: the Drive file id (not downloaded here). */
+  driveFileId?: string;
 }
 
 interface ChatMessage {
@@ -23,6 +35,30 @@ interface ChatMessage {
   text?: string;
   thread?: { name?: string };
   sender?: { displayName?: string; name?: string; email?: string };
+  attachment?: unknown;
+  attachments?: unknown;
+}
+
+/** Normalise the Chat message `attachment`/`attachments` list into our shape. */
+function parseAttachments(message: ChatMessage): InboundAttachment[] {
+  const raw = message.attachment ?? message.attachments;
+  if (!Array.isArray(raw)) return [];
+  const out: InboundAttachment[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const a = item as Record<string, any>;
+    out.push({
+      contentName: typeof a.contentName === "string" ? a.contentName : undefined,
+      contentType: typeof a.contentType === "string" ? a.contentType : undefined,
+      resourceName:
+        typeof a.attachmentDataRef?.resourceName === "string"
+          ? a.attachmentDataRef.resourceName
+          : undefined,
+      driveFileId:
+        typeof a.driveDataRef?.driveFileId === "string" ? a.driveDataRef.driveFileId : undefined
+    });
+  }
+  return out;
 }
 
 /**
@@ -35,51 +71,131 @@ export function extractInboundMessage(body: unknown): InboundMessage | null {
   if (!body || typeof body !== "object") return null;
   const root = body as Record<string, any>;
 
-  // Workspace add-on event format.
+  // Workspace add-on event format. Accept the message if it has text OR an
+  // attachment (an attachment-only upload has no text and must not be dropped).
   const mp = root.chat?.messagePayload;
-  if (mp?.space?.name && typeof mp?.message?.text === "string") {
+  if (mp?.space?.name && mp?.message) {
     const message = mp.message as ChatMessage;
-    return {
-      spaceName: mp.space.name,
-      spaceType: mp.space.type,
-      threadName: message.thread?.name,
-      text: message.text ?? "",
-      senderDisplayName: message.sender?.displayName ?? root.chat?.user?.displayName,
-      senderEmail: message.sender?.email ?? root.chat?.user?.email,
-      senderUserName: message.sender?.name ?? root.chat?.user?.name,
-      messageName: message.name
-    };
+    const attachments = parseAttachments(message);
+    if (typeof message.text === "string" || attachments.length > 0) {
+      return {
+        spaceName: mp.space.name,
+        spaceType: mp.space.type,
+        threadName: message.thread?.name,
+        text: message.text ?? "",
+        senderDisplayName: message.sender?.displayName ?? root.chat?.user?.displayName,
+        senderEmail: message.sender?.email ?? root.chat?.user?.email,
+        senderUserName: message.sender?.name ?? root.chat?.user?.name,
+        messageName: message.name,
+        attachments
+      };
+    }
   }
 
   // Classic Chat event format.
-  if (root.type === "MESSAGE" && root.space?.name && typeof root.message?.text === "string") {
+  if (root.type === "MESSAGE" && root.space?.name && root.message) {
     const message = root.message as ChatMessage;
-    return {
-      spaceName: root.space.name,
-      spaceType: root.space.type,
-      threadName: message.thread?.name,
-      text: message.text ?? "",
-      senderDisplayName: message.sender?.displayName ?? root.user?.displayName,
-      senderEmail: message.sender?.email ?? root.user?.email,
-      senderUserName: message.sender?.name ?? root.user?.name,
-      messageName: message.name
-    };
+    const attachments = parseAttachments(message);
+    if (typeof message.text === "string" || attachments.length > 0) {
+      return {
+        spaceName: root.space.name,
+        spaceType: root.space.type,
+        threadName: message.thread?.name,
+        text: message.text ?? "",
+        senderDisplayName: message.sender?.displayName ?? root.user?.displayName,
+        senderEmail: message.sender?.email ?? root.user?.email,
+        senderUserName: message.sender?.name ?? root.user?.name,
+        messageName: message.name,
+        attachments
+      };
+    }
   }
 
   return null;
 }
 
 /**
- * Post a text message to a Google Chat space via the REST API.
+ * Download an uploaded Chat attachment's bytes via the media endpoint.
+ * `resourceName` comes from `attachment.attachmentDataRef.resourceName`.
+ */
+export async function downloadChatAttachment(
+  fetchImpl: FetchLike,
+  accessToken: string,
+  resourceName: string
+): Promise<Buffer> {
+  const url = `https://chat.googleapis.com/v1/media/${encodeURI(resourceName)}?alt=media`;
+  const res = await fetchImpl(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Chat media download failed (${res.status}): ${detail}`);
+  }
+  const arrayBuf = await res.arrayBuffer();
+  return Buffer.from(arrayBuf);
+}
+
+/**
+ * Pull markdown image syntax (`![alt](https://…)`) out of a reply. Google Chat
+ * can't render markdown images in text, so we surface the FIRST image as a
+ * cardsV2 image widget and strip all image markdown from the remaining text.
+ * Google fetches the imageUrl server-side, so it must be a public https URL.
+ */
+export function splitFirstImage(markdown: string): {
+  text: string;
+  imageUrl?: string;
+  imageAltText?: string;
+} {
+  const re = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+  let first: { url: string; alt: string } | undefined;
+  const stripped = markdown.replace(re, (_m, alt: string, url: string) => {
+    if (!first) first = { url, alt };
+    return "";
+  });
+  if (!first) return { text: markdown };
+  const text = stripped.replace(/\n{3,}/g, "\n\n").trim();
+  return { text, imageUrl: first.url, imageAltText: first.alt || "image" };
+}
+
+/**
+ * Post a message to a Google Chat space via the REST API. Sends `text` and/or a
+ * single `imageUrl` (rendered as a cardsV2 image widget — Google fetches the URL
+ * server-side, so it must be publicly reachable).
  * `spaceName` is the resource name from the inbound event, e.g. "spaces/AAAA".
  */
 export async function sendMessage(
   fetchImpl: FetchLike,
   accessToken: string,
-  params: { spaceName: string; text: string; threadName?: string }
+  params: {
+    spaceName: string;
+    text?: string;
+    threadName?: string;
+    imageUrl?: string;
+    imageAltText?: string;
+  }
 ): Promise<void> {
   const url = `https://chat.googleapis.com/v1/${params.spaceName}/messages`;
-  const body: Record<string, unknown> = { text: params.text };
+  const body: Record<string, unknown> = {};
+  if (params.text && params.text.length > 0) {
+    body.text = params.text;
+  }
+  if (params.imageUrl) {
+    body.cardsV2 = [
+      {
+        cardId: "image",
+        card: {
+          sections: [
+            { widgets: [{ image: { imageUrl: params.imageUrl, altText: params.imageAltText ?? "image" } }] }
+          ]
+        }
+      }
+    ];
+  }
+  // A Chat message must carry content; fall back to (possibly empty) text.
+  if (body.text === undefined && body.cardsV2 === undefined) {
+    body.text = params.text ?? "";
+  }
   if (params.threadName) {
     body.thread = { name: params.threadName };
   }

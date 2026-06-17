@@ -1,12 +1,17 @@
 import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
-import type { PluginContext, PluginWebhookInput, ToolResult } from "@paperclipai/plugin-sdk";
+import type {
+  PluginContext,
+  PluginWebhookInput,
+  PluginWebhookResponse,
+  ToolResult
+} from "@paperclipai/plugin-sdk";
 import { DEFAULT_CONFIG, SEND_DM_TOOL, WEBHOOK_KEY } from "./manifest.js";
 import {
   type AccessToken,
   mintAccessToken,
   parseServiceAccountKey
 } from "./google-auth.js";
-import { extractInboundMessage, type InboundMessage, sendMessage } from "./chat.js";
+import { extractInboundMessage, type InboundMessage, sendMessage, splitFirstImage } from "./chat.js";
 import { rememberDmTarget, resolveDmSpace } from "./dm.js";
 import {
   type AgentAssignment,
@@ -17,12 +22,20 @@ import {
 } from "./assignments.js";
 import { formatForChat } from "./format.js";
 import { commentSignature, orderedForwardable } from "./mirror.js";
+import { listConversationEntries, listSenders, recordConversation } from "./conversations.js";
 import { verifyInboundRequest } from "./verify.js";
 import {
+  appendToConversation,
+  conversationKey,
   dispatchToAgent,
   getChatTarget,
+  getConversationIssue,
+  getLastUserMessage,
+  rememberChatTarget,
+  rememberLastUserMessage,
   resolveAgentId,
-  resolveCompanyId
+  resolveCompanyId,
+  setConversationIssue
 } from "./routing.js";
 
 interface GoogleChatConfig {
@@ -61,19 +74,28 @@ async function getAccessToken(ctx: PluginContext, config: GoogleChatConfig): Pro
   return cachedToken.token;
 }
 
-/** Post a single short text message to a Chat space (acks, errors). */
-async function postToChat(
-  ctx: PluginContext,
-  config: GoogleChatConfig,
-  target: { spaceName: string; threadName?: string },
-  text: string
-): Promise<void> {
-  const token = await getAccessToken(ctx, config);
-  await sendMessage((url, init) => ctx.http.fetch(url, init), token, {
-    spaceName: target.spaceName,
-    threadName: target.threadName,
-    text
-  });
+/**
+ * Build a Google Chat add-on SYNCHRONOUS action response carrying a text reply.
+ * Returned from onWebhook so Chat renders the reply immediately (an instant
+ * acknowledgement) and never shows the "「SeasonartsAI」沒有回應" placeholder.
+ * The slow agent answer still arrives later as a separate async message.
+ */
+function chatTextResponse(text: string): PluginWebhookResponse {
+  return {
+    jsonBody: {
+      hostAppDataAction: {
+        chatDataAction: {
+          createMessageAction: { message: { text } }
+        }
+      }
+    }
+  };
+}
+
+/** One-line, truncated form of the user's question for reply labels. */
+function labelizeQuestion(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
 }
 
 /**
@@ -89,12 +111,81 @@ async function postFormatted(
 ): Promise<void> {
   const token = await getAccessToken(ctx, config);
   const fetchImpl = (url: string, init?: RequestInit) => ctx.http.fetch(url, init);
-  for (const chunk of formatForChat(markdown)) {
+  // Pull any image markdown out first: Chat can't render it as text, so it
+  // goes out as a cardsV2 image widget after the formatted text chunks.
+  const { text: body, imageUrl, imageAltText } = splitFirstImage(markdown);
+  for (const chunk of formatForChat(body)) {
+    if (chunk.trim().length === 0) continue;
     await sendMessage(fetchImpl, token, {
       spaceName: target.spaceName,
       threadName: target.threadName,
       text: chunk
     });
+  }
+  if (imageUrl) {
+    await sendMessage(fetchImpl, token, {
+      spaceName: target.spaceName,
+      threadName: target.threadName,
+      imageUrl,
+      imageAltText
+    });
+  }
+}
+
+/**
+ * Download any files attached to the inbound Chat message and upload them onto
+ * the Paperclip issue. Best-effort per file: a failure to fetch/attach one file
+ * must never block the message from reaching the agent.
+ */
+async function attachInboundFiles(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  issueId: string,
+  companyId: string,
+  inbound: InboundMessage
+): Promise<void> {
+  const atts = inbound.attachments ?? [];
+  if (atts.length === 0) return;
+  let token: string | null = null;
+  for (const att of atts) {
+    try {
+      if (att.resourceName) {
+        token = token ?? (await getAccessToken(ctx, config));
+        // Have the HOST fetch the media bytes: the plugin's own ctx.http.fetch
+        // returns text and corrupts binary, so we pass the URL + auth header and
+        // let the host download the raw bytes and store them.
+        // resourceName is an opaque base64 token (contains / + =) — it must be
+        // percent-encoded as a single path segment, not left raw.
+        const mediaUrl = `https://chat.googleapis.com/v1/media/${encodeURIComponent(att.resourceName)}?alt=media`;
+        await ctx.issues.attachments.create({
+          issueId,
+          companyId,
+          filename: att.contentName || "upload",
+          contentType: att.contentType || "application/octet-stream",
+          fetchUrl: mediaUrl,
+          fetchHeaders: { Authorization: `Bearer ${token}` }
+        });
+        ctx.logger.info("Uploaded Chat attachment to issue", {
+          issueId,
+          filename: att.contentName
+        });
+      } else if (att.driveFileId) {
+        // Drive-shared files need Drive API scope to fetch; note the reference
+        // on the issue instead of downloading bytes.
+        await ctx.issues.createComment(
+          issueId,
+          `📎 Google Drive 檔案：${att.contentName ?? att.driveFileId}`,
+          companyId
+        );
+      }
+    } catch (err) {
+      // Put the reason in the message text — the plugin logger drops unknown
+      // metadata keys, so an `error` field wouldn't show up.
+      ctx.logger.warn(
+        `Failed to attach Chat upload (${att.contentName ?? "file"}): ${err instanceof Error ? err.message : String(err)}`,
+        { issueId }
+      );
+    }
   }
 }
 
@@ -128,18 +219,18 @@ async function saveDelivered(
 }
 
 /**
- * Routing path: hand the message to the agent as a Paperclip issue and post a
- * quick acknowledgement. The agent's actual reply arrives later as an issue
- * comment, delivered by the issue.updated handler registered in setup().
+ * Routing path: hand the message to the agent as a Paperclip issue and return a
+ * quick acknowledgement string (delivered synchronously by onWebhook). The
+ * agent's actual reply arrives later as an issue comment, mirrored to Chat by
+ * the issue.comment.created handler registered in setup().
  */
 async function routeToAgent(
   ctx: PluginContext,
   config: GoogleChatConfig,
   inbound: InboundMessage
-): Promise<void> {
+): Promise<string> {
   if (!inbound.senderEmail) {
-    await postToChat(ctx, config, inbound, "Sorry — I couldn't identify who you are.");
-    return;
+    return "抱歉，我無法辨識您的身分，請稍後再試。";
   }
 
   // Access control: a sender's assignment decides which agent answers them.
@@ -152,27 +243,92 @@ async function routeToAgent(
     companyId = assignment.companyId;
     agentId = assignment.agentId;
   } else if (config.gateUnassigned) {
-    await postToChat(ctx, config, inbound, config.unassignedMessage);
     ctx.logger.info("Turned away unassigned sender", { email: inbound.senderEmail });
-    return;
+    return config.unassignedMessage;
   } else {
     companyId = await resolveCompanyId(ctx, config.companyId);
     agentId = await resolveAgentId(ctx, companyId, config.defaultAgentUrlKey);
   }
+  const target = {
+    spaceName: inbound.spaceName,
+    threadName: inbound.threadName,
+    companyId,
+    senderEmail: inbound.senderEmail
+  };
+  // Each Chat message is its own task (issue) so questions run in PARALLEL and a
+  // long-lived issue never gets stuck "done" and then ignored on re-wake.
+  // Continuity applies only to space THREADS: a reply inside an existing thread
+  // continues that thread's issue. DMs are flat (no per-message threads), so
+  // every DM message starts a fresh task — a new question is simply a new message.
+  const convKey =
+    inbound.spaceType === "DM"
+      ? null
+      : conversationKey({
+          spaceType: inbound.spaceType,
+          spaceName: inbound.spaceName,
+          threadName: inbound.threadName
+        });
+  const existingIssueId = convKey ? await getConversationIssue(ctx, convKey) : null;
+  if (existingIssueId) {
+    try {
+      // Pre-register the user's message as "delivered" BEFORE creating the
+      // comment. Creating the comment fires issue.comment.created synchronously,
+      // and the mirror handler can run before we'd otherwise mark it delivered —
+      // that race is what echoed the user's own message back. Registering the
+      // body signature up front makes the mirror skip it no matter the timing
+      // (and regardless of whether the returned comment id is reliable).
+      const pre = await getDelivered(ctx, existingIssueId);
+      pre.sigs.push(commentSignature(inbound.text));
+      await saveDelivered(ctx, existingIssueId, pre);
+      const commentId = await appendToConversation(ctx, {
+        issueId: existingIssueId,
+        companyId,
+        text: inbound.text
+      });
+      if (commentId) {
+        const delivered = await getDelivered(ctx, existingIssueId);
+        delivered.ids.push(commentId);
+        await saveDelivered(ctx, existingIssueId, delivered);
+      }
+      await rememberLastUserMessage(ctx, existingIssueId, inbound.text);
+      await rememberChatTarget(ctx, existingIssueId, target);
+      try {
+        await recordConversation(ctx, {
+          email: inbound.senderEmail,
+          displayName: inbound.senderDisplayName,
+          issueId: existingIssueId,
+          text: inbound.text,
+          at: new Date().toISOString()
+        });
+      } catch {
+        /* chat-logs index is non-critical */
+      }
+      await attachInboundFiles(ctx, config, existingIssueId, companyId, inbound);
+      ctx.logger.info("Appended follow-up to conversation", { issueId: existingIssueId, convKey });
+      return "⏳ 處理中，請稍候… (Working on it…)";
+    } catch (err) {
+      ctx.logger.warn("Append to conversation failed; starting a new issue", {
+        error: err instanceof Error ? err.message : String(err)
+      });
+      // fall through to a fresh issue
+    }
+  }
+
+  const attachmentCount = inbound.attachments?.length ?? 0;
+  const dispatchText =
+    inbound.text || (attachmentCount > 0 ? `（已上傳 ${attachmentCount} 個檔案）` : "");
   const issueId = await dispatchToAgent(ctx, {
     companyId,
     agentId,
-    text: inbound.text,
+    text: dispatchText,
     senderDisplayName: inbound.senderDisplayName,
-    target: {
-      spaceName: inbound.spaceName,
-      threadName: inbound.threadName,
-      companyId,
-      senderEmail: inbound.senderEmail
-    }
+    target
   });
-  ctx.logger.info("Dispatched Chat message to agent", { issueId, agentId });
-  await postToChat(ctx, config, inbound, "⏳ Working on it…");
+  if (convKey) await setConversationIssue(ctx, convKey, issueId, companyId);
+  await rememberLastUserMessage(ctx, issueId, inbound.text);
+  await attachInboundFiles(ctx, config, issueId, companyId, inbound);
+  ctx.logger.info("Dispatched Chat message to agent", { issueId, agentId, convKey });
+  return "⏳ 處理中，請稍候… (Working on it…)";
 }
 
 const plugin = definePlugin({
@@ -292,6 +448,108 @@ const plugin = definePlugin({
       return { ok: true, assignments: await listAssignments(ctx) };
     });
 
+    // ----- Chat Logs (backs the read-only conversation monitor page) -----
+    //
+    // No `email` param  → "people" mode: the roster of everyone who has chatted,
+    //   enriched with their assigned agent + role, newest activity first.
+    // With `email` param → "transcript" mode: that person's whole conversation as
+    //   an ordered list of {role: user|agent, text, at}, assembled from the
+    //   recorded user turns plus the agent's forwardable (CJK) reply comments.
+    ctx.data.register("chat-logs", async (params) => {
+      const config = await getConfig(ctx);
+      const companyId = await resolveCompanyId(
+        ctx,
+        (typeof params.companyId === "string" && params.companyId) || config.companyId
+      );
+      const email = typeof params.email === "string" ? params.email.trim() : "";
+
+      if (email) {
+        const entries = await listConversationEntries(ctx, email);
+        const messages: Array<{ role: "user" | "agent"; text: string; at: string }> = [];
+        // Cap fan-out: only the most recent turns pull their reply comments.
+        for (const entry of entries.slice(-50)) {
+          messages.push({ role: "user", text: entry.text, at: entry.at });
+          try {
+            const comments = await ctx.issues.listComments(entry.issueId, companyId);
+            for (const c of orderedForwardable(comments)) {
+              const at =
+                c.createdAt instanceof Date
+                  ? c.createdAt.toISOString()
+                  : typeof c.createdAt === "string"
+                    ? c.createdAt
+                    : entry.at;
+              messages.push({ role: "agent", text: c.body ?? "", at });
+            }
+          } catch {
+            /* issue may have been removed; skip its replies */
+          }
+        }
+        // Order is already correct: turns are appended chronologically, and within
+        // each turn the user message precedes its (oldest-first) agent replies. We
+        // deliberately do NOT re-sort by timestamp — the user's turn is stamped at
+        // dispatch and its replies arrive later, so per-turn order is authoritative.
+        return { mode: "transcript", email, messages };
+      }
+
+      const [senders, assignments, agents] = await Promise.all([
+        listSenders(ctx),
+        listAssignments(ctx),
+        ctx.agents.list({ companyId })
+      ]);
+      const agentById = new Map(agents.map((a) => [a.id, a]));
+      const assignByEmail = new Map(assignments.map((a) => [a.email.toLowerCase(), a]));
+
+      const people = new Map<
+        string,
+        {
+          email: string;
+          displayName?: string;
+          agentId?: string;
+          agentName?: string;
+          role?: string;
+          lastAt: string | null;
+          assigned: boolean;
+        }
+      >();
+
+      // Everyone who has chatted (roster), newest first from listSenders().
+      for (const s of senders) {
+        const key = s.email.toLowerCase();
+        const asn = assignByEmail.get(key);
+        const agent = asn ? agentById.get(asn.agentId) : undefined;
+        people.set(key, {
+          email: s.email,
+          displayName: s.displayName,
+          agentId: asn?.agentId,
+          agentName: asn?.agentName ?? agent?.name,
+          role: agent?.title ?? agent?.role,
+          lastAt: s.lastAt,
+          assigned: Boolean(asn)
+        });
+      }
+      // Assigned people who haven't chatted yet still belong in the roster.
+      for (const a of assignments) {
+        const key = a.email.toLowerCase();
+        if (people.has(key)) continue;
+        const agent = agentById.get(a.agentId);
+        people.set(key, {
+          email: a.email,
+          agentId: a.agentId,
+          agentName: a.agentName ?? agent?.name,
+          role: agent?.title ?? agent?.role,
+          lastAt: null,
+          assigned: true
+        });
+      }
+
+      const list = Array.from(people.values()).sort((x, y) => {
+        const tx = x.lastAt ? new Date(x.lastAt).getTime() : 0;
+        const ty = y.lastAt ? new Date(y.lastAt).getTime() : 0;
+        return ty - tx;
+      });
+      return { mode: "people", companyId, gateUnassigned: config.gateUnassigned, people: list };
+    });
+
     // Mirror the agent conversation: forward each NEW agent message on a
     // Chat-originated issue to the originating space, as it's posted. This
     // replaces the old "deliver once when status hits done" logic, which lost
@@ -307,6 +565,10 @@ const plugin = definePlugin({
         const config = await getConfig(ctx);
         const comments = await ctx.issues.listComments(issueId, target.companyId);
         const delivered = await getDelivered(ctx, issueId);
+        // Label the reply with the question it answers, so parallel
+        // conversations are easy to match. Applied once per delivery round.
+        const lastUserMsg = await getLastUserMessage(ctx, issueId);
+        let labeledThisRound = false;
 
         for (const comment of orderedForwardable(comments)) {
           const id = comment.id ?? "";
@@ -316,7 +578,12 @@ const plugin = definePlugin({
             if (id) delivered.ids.push(id); // mark seen, skip the duplicate body
             continue;
           }
-          await postFormatted(ctx, config, target, comment.body ?? "");
+          let body = comment.body ?? "";
+          if (lastUserMsg && !labeledThisRound) {
+            body = `↪︎ 回覆：「${labelizeQuestion(lastUserMsg)}」\n\n${body}`;
+            labeledThisRound = true;
+          }
+          await postFormatted(ctx, config, target, body);
           if (id) delivered.ids.push(id);
           delivered.sigs.push(sig);
           ctx.logger.info("Mirrored agent comment to Chat", { issueId, commentId: id });
@@ -330,7 +597,7 @@ const plugin = definePlugin({
     });
   },
 
-  async onWebhook(input: PluginWebhookInput) {
+  async onWebhook(input: PluginWebhookInput): Promise<void | PluginWebhookResponse> {
     const ctx = currentContext;
     if (!ctx) throw new Error("Plugin context not initialized");
     if (input.endpointKey !== WEBHOOK_KEY) {
@@ -366,6 +633,7 @@ const plugin = definePlugin({
       return;
     }
 
+
     // Idempotency: Google retries webhooks on timeout, and agent runs can be
     // slow. Mark the message seen BEFORE the slow relay so a retry is a no-op.
     if (inbound.messageName) {
@@ -388,25 +656,25 @@ const plugin = definePlugin({
 
     if (config.routingEnabled) {
       try {
-        await routeToAgent(ctx, config, inbound);
+        const ack = await routeToAgent(ctx, config, inbound);
+        return chatTextResponse(ack);
       } catch (err) {
         ctx.logger.warn("Routing failed", {
           requestId: input.requestId,
           error: err instanceof Error ? err.message : String(err)
         });
-        await postToChat(ctx, config, inbound, "Sorry — I couldn't route your message to an agent.");
+        return chatTextResponse("抱歉，目前無法將您的訊息交給代理，請稍後再試。");
       }
-      return;
     }
 
     // Echo fallback (routing disabled).
     const reply = config.echoMode ? `echo: ${inbound.text}` : inbound.text;
-    await postToChat(ctx, config, inbound, reply);
     ctx.logger.info("Echoed Chat message", {
       space: inbound.spaceName,
       sender: inbound.senderDisplayName,
       requestId: input.requestId
     });
+    return chatTextResponse(reply);
   },
 
   async onHealth() {

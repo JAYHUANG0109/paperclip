@@ -65,6 +65,8 @@ const manifest: PaperclipPluginManifestV1 = {
     "issues.update",
     "issues.wakeup",
     "issue.comments.read",
+    "issue.comments.create",
+    "issue.attachments.write",
     "agent.tools.register",
     "instance.settings.register",
     "ui.dashboardWidget.register",
@@ -185,12 +187,24 @@ const manifest: PaperclipPluginManifestV1 = {
         displayName: "Google Chat Health",
         exportName: "DashboardWidget"
       },
+      // Top-level "Chat" nav section (not under Settings). The host renders these
+      // page slots as a dedicated section via ui/src/components/SidebarChat.tsx,
+      // and the catch-all company route mounts them at /:companyPrefix/<routePath>.
       {
-        type: "companySettingsPage",
+        type: "page",
+        id: "chat-logs-page",
+        displayName: "Chat Logs",
+        exportName: "ChatLogsPage",
+        routePath: "chat-logs",
+        order: 1
+      },
+      {
+        type: "page",
         id: "assignments-page",
-        displayName: "Google Chat",
+        displayName: "Assignments",
         exportName: "AssignmentsSettingsPage",
-        routePath: "google-chat"
+        routePath: "chat-assignments",
+        order: 2
       }
     ]
   }

@@ -1,4 +1,5 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
+import { recordConversation } from "./conversations.js";
 
 /**
  * Where to deliver an agent's reply once it's ready. Stored in plugin state
@@ -103,6 +104,19 @@ export async function dispatchToAgent(
   });
   await ctx.issues.update(issue.id, { status: "todo" }, params.companyId);
   await rememberChatTarget(ctx, issue.id, params.target);
+  // Index this turn for the manager-facing Chat Logs view. Best-effort: a state
+  // hiccup here must never block delivering the message to the agent.
+  try {
+    await recordConversation(ctx, {
+      email: params.target.senderEmail,
+      displayName: params.senderDisplayName,
+      issueId: issue.id,
+      text: params.text,
+      at: new Date().toISOString()
+    });
+  } catch {
+    /* logging view is non-critical; ignore */
+  }
   // Best-effort nudge so the agent picks the task up promptly.
   try {
     await ctx.issues.requestWakeup(issue.id, params.companyId);
@@ -110,6 +124,83 @@ export async function dispatchToAgent(
     /* scheduler will still pick up the todo issue */
   }
   return issue.id;
+}
+
+// ---------------------------------------------------------------------------
+// Conversation continuity — map a Chat conversation to ONE ongoing issue so the
+// agent remembers the back-and-forth. A DM is a single continuous conversation
+// (keyed by space); a space groups by THREAD, so each thread is an independent
+// parallel conversation (like having several Claude chats open at once).
+// ---------------------------------------------------------------------------
+
+/** Stable key for the conversation a message belongs to. */
+export function conversationKey(p: {
+  spaceType?: string;
+  spaceName: string;
+  threadName?: string;
+}): string {
+  if (p.spaceType === "DM") return `dm:${p.spaceName}`;
+  return `thread:${p.threadName || p.spaceName}`;
+}
+
+function convStateKey(convKey: string) {
+  return { scopeKind: "instance" as const, stateKey: `conv:${convKey}` };
+}
+
+export async function getConversationIssue(
+  ctx: PluginContext,
+  convKey: string
+): Promise<string | null> {
+  const rec = (await ctx.state.get(convStateKey(convKey))) as { issueId?: string } | null;
+  return rec?.issueId ?? null;
+}
+
+export async function setConversationIssue(
+  ctx: PluginContext,
+  convKey: string,
+  issueId: string,
+  companyId: string
+): Promise<void> {
+  await ctx.state.set(convStateKey(convKey), { issueId, companyId });
+}
+
+function lastMsgKey(issueId: string) {
+  return { scopeKind: "instance" as const, stateKey: `lastmsg:${issueId}` };
+}
+
+/** Remember the latest user message on an issue — used to label the reply. */
+export async function rememberLastUserMessage(
+  ctx: PluginContext,
+  issueId: string,
+  text: string
+): Promise<void> {
+  await ctx.state.set(lastMsgKey(issueId), text);
+}
+
+export async function getLastUserMessage(
+  ctx: PluginContext,
+  issueId: string
+): Promise<string | null> {
+  return (await ctx.state.get(lastMsgKey(issueId))) as string | null;
+}
+
+/**
+ * Append a follow-up message to an existing conversation's issue as a comment,
+ * then re-wake the agent so it responds with full thread context. Returns the
+ * new comment id (so the caller can mark it delivered and avoid echoing it).
+ */
+export async function appendToConversation(
+  ctx: PluginContext,
+  params: { issueId: string; companyId: string; text: string }
+): Promise<string> {
+  const comment = await ctx.issues.createComment(params.issueId, params.text, params.companyId);
+  await ctx.issues.update(params.issueId, { status: "todo" }, params.companyId);
+  try {
+    await ctx.issues.requestWakeup(params.issueId, params.companyId);
+  } catch {
+    /* scheduler will still pick up the todo issue */
+  }
+  return comment.id ?? "";
 }
 
 /** Pick the agent's most recent comment body as the human-facing reply. */

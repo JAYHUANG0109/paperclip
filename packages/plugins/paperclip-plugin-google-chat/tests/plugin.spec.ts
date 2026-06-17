@@ -26,6 +26,12 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/** Pull the text out of a Google Chat add-on synchronous action response. */
+function syncText(resp: unknown): string | undefined {
+  return (resp as { jsonBody?: { hostAppDataAction?: { chatDataAction?: { createMessageAction?: { message?: { text?: string } } } } } })
+    ?.jsonBody?.hostAppDataAction?.chatDataAction?.createMessageAction?.message?.text;
+}
+
 /** Workspace add-on MESSAGE event shape, mirroring a real Google delivery. */
 const ADDON_MESSAGE_EVENT = {
   commonEventObject: { hostApp: "CHAT" },
@@ -76,6 +82,33 @@ describe("chat event parsing", () => {
     expect(extractInboundMessage({ type: "ADDED_TO_SPACE" })).toBeNull();
     expect(extractInboundMessage({ noType: true })).toBeNull();
   });
+
+  it("parses file attachments and keeps caption-less uploads", () => {
+    const inbound = extractInboundMessage({
+      chat: {
+        messagePayload: {
+          space: { name: "spaces/AAAA", type: "DM" },
+          message: {
+            // no text — attachment-only upload must NOT be dropped
+            attachment: [
+              {
+                contentName: "report.pdf",
+                contentType: "application/pdf",
+                attachmentDataRef: { resourceName: "spaces/AAAA/attachments/Z/data" }
+              }
+            ]
+          }
+        }
+      }
+    })!;
+    expect(inbound).not.toBeNull();
+    expect(inbound.attachments).toHaveLength(1);
+    expect(inbound.attachments![0]).toMatchObject({
+      contentName: "report.pdf",
+      contentType: "application/pdf",
+      resourceName: "spaces/AAAA/attachments/Z/data"
+    });
+  });
 });
 
 describe("latestAgentReply", () => {
@@ -116,23 +149,20 @@ describe("google-auth", () => {
 });
 
 describe("worker echo flow", () => {
-  it("mints a token and posts an echo reply to the message's space", async () => {
+  it("returns a synchronous add-on echo response (no async REST post)", async () => {
     const harness = createTestHarness({
       manifest,
       config: { serviceAccountSecretRef: "sa-ref", echoMode: true, verifyInbound: false }
     });
 
     harness.ctx.secrets.resolve = vi.fn(async () => makeServiceAccountJson());
-    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
-      if (url.includes("oauth2.googleapis.com")) {
-        return jsonResponse({ access_token: "ya29.test", expires_in: 3600 });
-      }
-      return jsonResponse({ name: "spaces/AAAA/messages/456" });
-    });
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({ name: "spaces/AAAA/messages/456" })
+    );
     harness.ctx.http.fetch = fetchMock as typeof harness.ctx.http.fetch;
 
     await plugin.definition.setup(harness.ctx);
-    await plugin.definition.onWebhook!({
+    const resp = await plugin.definition.onWebhook!({
       endpointKey: WEBHOOK_KEY,
       headers: { "content-type": "application/json" },
       rawBody: JSON.stringify(ADDON_MESSAGE_EVENT),
@@ -140,14 +170,10 @@ describe("worker echo flow", () => {
       requestId: "req-1"
     });
 
-    const sendCall = fetchMock.mock.calls.find(([u]) => u.includes("chat.googleapis.com"));
-    expect(sendCall).toBeDefined();
-    const [sendUrl, sendInit] = sendCall!;
-    expect(sendUrl).toBe("https://chat.googleapis.com/v1/spaces/AAAA/messages");
-    expect((sendInit?.headers as Record<string, string>).Authorization).toBe("Bearer ya29.test");
-    const sentBody = JSON.parse(String(sendInit?.body));
-    expect(sentBody.text).toBe("echo: hello there");
-    expect(sentBody.thread.name).toBe("spaces/AAAA/threads/T1");
+    // The reply is delivered synchronously in the webhook response body, in the
+    // Google Chat add-on action shape — not via a separate Chat REST call.
+    expect(syncText(resp)).toBe("echo: hello there");
+    expect(fetchMock.mock.calls.some(([u]) => u.includes("chat.googleapis.com"))).toBe(false);
   });
 
   it("routes to an agent as an issue, acks, then delivers the agent comment on done", async () => {
@@ -183,15 +209,18 @@ describe("worker echo flow", () => {
       create: vi.fn(async () => ({ id: "iss1" })),
       update: vi.fn(async () => ({})),
       requestWakeup: vi.fn(async () => ({})),
+      // In production the human's message is the issue DESCRIPTION, not a
+      // comment — listComments returns the agent's notes/answer. An internal
+      // ops note is filtered; the real answer is forwarded.
       listComments: vi.fn(async () => [
-        { authorType: "user", body: "hello there", createdAt: "2026-06-01T00:00:00Z" },
+        { authorType: "agent", body: "Exiting heartbeat — no action needed.", createdAt: "2026-06-01T00:00:00Z" },
         { authorType: "agent", body: "您好，我是您的財務 agent。", createdAt: "2026-06-01T00:00:05Z" }
       ])
     };
     harness.ctx.issues = { ...harness.ctx.issues, ...issues } as unknown as typeof harness.ctx.issues;
 
     await plugin.definition.setup(harness.ctx);
-    await plugin.definition.onWebhook!({
+    const resp = await plugin.definition.onWebhook!({
       endpointKey: WEBHOOK_KEY,
       headers: {},
       rawBody: JSON.stringify(ADDON_MESSAGE_EVENT),
@@ -199,16 +228,18 @@ describe("worker echo flow", () => {
       requestId: "req-route"
     });
 
-    // Dispatched as an issue assigned to the resolved agent, with an ack posted.
+    // Dispatched as an issue assigned to the resolved agent, with a SYNC ack.
     expect(issues.create).toHaveBeenCalledWith(
       expect.objectContaining({ companyId: "co1", assigneeAgentId: "ag1" })
     );
-    expect(chatPosts).toContain("⏳ Working on it…");
+    expect(syncText(resp)).toMatch(/處理中|Working on it/);
 
-    // Agent posts a comment → it's mirrored to Chat (the English line is not).
+    // Agent posts comments → the real answer is mirrored (now labeled with the
+    // question it answers); the ops note is not.
     await harness.emit("issue.comment.created", {}, { entityId: "iss1" });
-    expect(chatPosts).toContain("您好，我是您的財務 agent。");
-    expect(chatPosts).not.toContain("hello there");
+    expect(chatPosts.some((t) => t.includes("您好，我是您的財務 agent。"))).toBe(true);
+    expect(chatPosts.some((t) => t.includes("↪︎ 回覆：「hello there」"))).toBe(true);
+    expect(chatPosts.some((t) => /Exiting heartbeat/.test(t))).toBe(false);
   });
 
   it("ignores a duplicate delivery of the same message id", async () => {
@@ -230,11 +261,12 @@ describe("worker echo flow", () => {
       parsedBody: ADDON_MESSAGE_EVENT,
       requestId: "req-dup"
     };
-    await plugin.definition.onWebhook!(delivery);
-    await plugin.definition.onWebhook!(delivery); // retry of same message.name
+    const first = await plugin.definition.onWebhook!(delivery);
+    const second = await plugin.definition.onWebhook!(delivery); // retry of same message.name
 
-    const sends = fetchMock.mock.calls.filter(([u]) => u.includes("chat.googleapis.com"));
-    expect(sends).toHaveLength(1);
+    // First delivery replies synchronously; the retry is deduped to a no-op.
+    expect(syncText(first)).toBe("echo: hello there");
+    expect(second).toBeUndefined();
   });
 
   it("acknowledges non-message events without calling the Chat API", async () => {
@@ -426,11 +458,12 @@ describe("access gating (assigned users only)", () => {
     });
 
   it("turns away an unassigned sender with the contact-IT message and creates no issue", async () => {
-    const { harness, chatPosts, createIssue } = gatingHarness();
+    const { harness, createIssue } = gatingHarness();
     await plugin.definition.setup(harness.ctx);
-    await deliver();
+    const resp = await deliver();
     expect(createIssue).not.toHaveBeenCalled();
-    expect(chatPosts.some((t) => /資訊部|IT/.test(t))).toBe(true);
+    // The contact-IT message is returned synchronously (no agent run, no REST).
+    expect(/資訊部|IT/.test(syncText(resp) ?? "")).toBe(true);
   });
 
   it("routes an assigned sender to their agent", async () => {
@@ -563,6 +596,26 @@ describe("comment mirroring to Chat", () => {
     expect(chatPosts.filter((t) => t === "歷史銷售結果")).toHaveLength(1);
   });
 
+  it("forwards English answers too, while still filtering English ops notes", async () => {
+    const { chatPosts, fire } = await mirrorHarness([
+      {
+        id: "e1",
+        authorType: "agent",
+        body: "Done — 60 SKUs have available stock. Full list attached.",
+        createdAt: "2026-06-15T00:00:01Z"
+      },
+      {
+        id: "e2",
+        authorType: "agent",
+        body: "Exiting heartbeat. SEAAA-9 stays blocked, no action needed.",
+        createdAt: "2026-06-15T00:00:02Z"
+      }
+    ]);
+    await fire();
+    expect(chatPosts.some((t) => t.includes("60 SKUs have available stock"))).toBe(true);
+    expect(chatPosts.some((t) => /Exiting heartbeat|stays blocked/.test(t))).toBe(false);
+  });
+
   it("renders a markdown table as a monospace code block when mirroring", async () => {
     const body = ["# 結果", "| 單號 | 狀態 |", "| --- | --- |", "| GC/00002 | purchased |"].join("\n");
     const { chatPosts, fire } = await mirrorHarness([
@@ -570,5 +623,129 @@ describe("comment mirroring to Chat", () => {
     ]);
     await fire();
     expect(chatPosts.some((t) => t.includes("```") && t.includes("purchased"))).toBe(true);
+  });
+});
+
+describe("chat logs (read-only monitor)", () => {
+  it("records a routed conversation and serves it as people + transcript", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: {
+        serviceAccountSecretRef: "sa-ref",
+        verifyInbound: false,
+        echoMode: false,
+        routingEnabled: true,
+        gateUnassigned: false,
+        companyId: "co1",
+        defaultAgentUrlKey: "finance"
+      }
+    });
+    harness.ctx.secrets.resolve = vi.fn(async () => makeServiceAccountJson());
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes("oauth2.googleapis.com")
+        ? jsonResponse({ access_token: "ya29.test", expires_in: 3600 })
+        : jsonResponse({ name: "spaces/AAAA/messages/r1" })
+    );
+    harness.ctx.http.fetch = fetchMock as typeof harness.ctx.http.fetch;
+    harness.ctx.agents.list = vi.fn(async () => [
+      { id: "ag1", urlKey: "finance", name: "Finance" }
+    ]) as unknown as typeof harness.ctx.agents.list;
+    harness.ctx.issues = {
+      ...harness.ctx.issues,
+      create: vi.fn(async () => ({ id: "iss1" })),
+      update: vi.fn(async () => ({})),
+      requestWakeup: vi.fn(async () => ({})),
+      listComments: vi.fn(async () => [
+        { id: "u1", authorType: "user", body: "hello there", createdAt: "2026-06-01T00:00:00Z" },
+        { id: "a1", authorType: "agent", body: "您好，我是您的財務 agent。", createdAt: "2026-06-01T00:00:05Z" }
+      ])
+    } as unknown as typeof harness.ctx.issues;
+
+    await plugin.definition.setup(harness.ctx);
+    await plugin.definition.onWebhook!({
+      endpointKey: WEBHOOK_KEY,
+      headers: {},
+      rawBody: JSON.stringify(ADDON_MESSAGE_EVENT),
+      parsedBody: ADDON_MESSAGE_EVENT,
+      requestId: "req-log"
+    });
+
+    // People mode: the sender shows up in the roster with their display name.
+    const people = await harness.getData<{
+      people: Array<{ email: string; displayName?: string }>;
+    }>("chat-logs", { companyId: "co1" });
+    expect(people.people.some((p) => p.email === "jay@example.org")).toBe(true);
+
+    // Transcript mode: user turn first, then the CJK agent reply (English noise filtered).
+    const tx = await harness.getData<{ messages: Array<{ role: string; text: string }> }>(
+      "chat-logs",
+      { companyId: "co1", email: "jay@example.org" }
+    );
+    expect(tx.messages[0]).toMatchObject({ role: "user", text: "hello there" });
+    expect(tx.messages.some((m) => m.role === "agent" && m.text.includes("您好"))).toBe(true);
+  });
+});
+
+describe("conversation continuity", () => {
+  it("treats each DM message as its own parallel task (a new issue, not an append)", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: {
+        serviceAccountSecretRef: "sa-ref",
+        verifyInbound: false,
+        echoMode: false,
+        routingEnabled: true,
+        gateUnassigned: false,
+        companyId: "co1",
+        defaultAgentUrlKey: "finance"
+      }
+    });
+    harness.ctx.secrets.resolve = vi.fn(async () => makeServiceAccountJson());
+    harness.ctx.http.fetch = vi.fn(async (url: string) =>
+      url.includes("oauth2.googleapis.com")
+        ? jsonResponse({ access_token: "ya29.test", expires_in: 3600 })
+        : jsonResponse({ name: "spaces/AAAA/messages/x" })
+    ) as typeof harness.ctx.http.fetch;
+    harness.ctx.agents.list = vi.fn(async () => [
+      { id: "ag1", urlKey: "finance", name: "Finance" }
+    ]) as unknown as typeof harness.ctx.agents.list;
+    const createIssue = vi.fn(async () => ({ id: "iss1" }));
+    const createComment = vi.fn(async () => ({ id: "c-follow" }));
+    harness.ctx.issues = {
+      ...harness.ctx.issues,
+      create: createIssue,
+      createComment,
+      update: vi.fn(async () => ({})),
+      requestWakeup: vi.fn(async () => ({})),
+      listComments: vi.fn(async () => [])
+    } as unknown as typeof harness.ctx.issues;
+
+    const dmEvent = (name: string, text: string) => ({
+      commonEventObject: { hostApp: "CHAT" },
+      chat: {
+        user: { displayName: "唐老師", email: "tang@seasonart.org" },
+        messagePayload: {
+          space: { name: "spaces/AAAA", type: "DM" },
+          message: { name, text, sender: { displayName: "唐老師", email: "tang@seasonart.org" } }
+        }
+      }
+    });
+    const deliver = (name: string, text: string) =>
+      plugin.definition.onWebhook!({
+        endpointKey: WEBHOOK_KEY,
+        headers: {},
+        rawBody: "{}",
+        parsedBody: dmEvent(name, text),
+        requestId: name
+      });
+
+    await plugin.definition.setup(harness.ctx);
+    await deliver("spaces/AAAA/messages/1", "list 員工");
+    await deliver("spaces/AAAA/messages/2", "now only ESL");
+
+    // New protocol: in a DM (flat, no threads) every message is its own task, so
+    // both messages create separate issues and nothing is appended as a comment.
+    expect(createIssue).toHaveBeenCalledTimes(2);
+    expect(createComment).not.toHaveBeenCalled();
   });
 });
