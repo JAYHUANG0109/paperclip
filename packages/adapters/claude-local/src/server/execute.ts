@@ -53,6 +53,7 @@ import {
   extractClaudeRetryNotBefore,
   isClaudeMaxTurnsResult,
   isClaudeTransientUpstreamError,
+  isClaudeUsageLimitError,
   isClaudeUnknownSessionError,
 } from "./parse.js";
 import { prepareClaudeConfigSeed } from "./claude-config.js";
@@ -87,6 +88,17 @@ interface ClaudeRuntimeConfig {
   timeoutSec: number;
   graceSec: number;
   extraArgs: string[];
+}
+
+interface ClaudeAccountConfig {
+  index: number;
+  configDir: string | null;
+  label: string;
+}
+
+interface ClaudeAccountConfigEntry {
+  configDir: string;
+  label: string | null;
 }
 
 export function claudeSessionCwdMatchesExecutionTarget(input: {
@@ -128,6 +140,87 @@ function isBedrockAuth(env: Record<string, string>): boolean {
 function resolveClaudeBillingType(env: Record<string, string>): "api" | "subscription" | "metered_api" {
   if (isBedrockAuth(env)) return "metered_api";
   return hasNonEmptyEnvValue(env, "ANTHROPIC_API_KEY") ? "api" : "subscription";
+}
+
+function expandHomeDir(rawPath: string): string {
+  if (rawPath === "~") return process.env.HOME ?? rawPath;
+  if (rawPath.startsWith("~/")) return path.join(process.env.HOME ?? "~", rawPath.slice(2));
+  return rawPath;
+}
+
+function isDefaultClaudeAccountPath(rawPath: string): boolean {
+  return /^(?:default|builtin|global)$/i.test(rawPath.trim());
+}
+
+function parseClaudeAccountConfigEntry(raw: string): ClaudeAccountConfigEntry | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const separatorIndex = trimmed.indexOf("=");
+  if (separatorIndex > 0) {
+    const label = trimmed.slice(0, separatorIndex).trim();
+      const configDir = trimmed.slice(separatorIndex + 1).trim();
+      if (configDir) return { label: label || null, configDir };
+  }
+  return { label: null, configDir: trimmed };
+}
+
+function readClaudeAccountConfigEntries(config: Record<string, unknown>): ClaudeAccountConfigEntry[] {
+  const raw = config.accountConfigDirs;
+  if (Array.isArray(raw)) {
+    return raw.flatMap((item) => {
+      if (typeof item === "string") {
+        const parsed = parseClaudeAccountConfigEntry(item);
+        return parsed ? [parsed] : [];
+      }
+      if (typeof item !== "object" || item === null) return [];
+      const record = item as Record<string, unknown>;
+      const configDir =
+        asString(record.configDir, "") ||
+        asString(record.dir, "") ||
+        asString(record.path, "");
+      if (!configDir.trim()) return [];
+      const label =
+        asString(record.label, "") ||
+        asString(record.email, "") ||
+        asString(record.name, "");
+      return [{ configDir, label: label.trim() || null }];
+    });
+  }
+
+  return asString(raw, "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .flatMap((item) => {
+      const parsed = parseClaudeAccountConfigEntry(item);
+      return parsed ? [parsed] : [];
+    });
+}
+
+function resolveClaudeAccountConfigs(config: Record<string, unknown>): ClaudeAccountConfig[] {
+  const seen = new Set<string>();
+  const accounts: ClaudeAccountConfig[] = [];
+  for (const entry of readClaudeAccountConfigEntries(config)) {
+    const configDir = isDefaultClaudeAccountPath(entry.configDir)
+      ? null
+      : path.resolve(expandHomeDir(entry.configDir));
+    const key = configDir ?? "__default__";
+    if (seen.has(key)) continue;
+    seen.add(key);
+    accounts.push({
+      index: accounts.length,
+      configDir,
+      label: entry.label ?? (configDir ? path.basename(configDir) || configDir : "default"),
+    });
+  }
+  return accounts;
+}
+
+function findClaudeAccountIndex(accounts: ClaudeAccountConfig[], configDir: string): number {
+  if (isDefaultClaudeAccountPath(configDir)) {
+    return accounts.findIndex((account) => account.configDir === null);
+  }
+  const resolved = path.resolve(configDir);
+  return accounts.findIndex((account) => account.configDir != null && path.resolve(account.configDir) === resolved);
 }
 
 async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<ClaudeRuntimeConfig> {
@@ -378,6 +471,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const maxTurns = asNumber(config.maxTurnsPerRun, 0);
   const dangerouslySkipPermissions = asBoolean(config.dangerouslySkipPermissions, true);
   const configEnv = parseObject(config.env);
+  const accountConfigs = resolveClaudeAccountConfigs(config);
   const workspaceContext = parseObject(context.paperclipWorkspace);
   const workspaceCwd = asString(workspaceContext.cwd, "");
   const workspaceSource = asString(workspaceContext.source, "");
@@ -593,6 +687,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const runtimeSessionParams = parseObject(runtime.sessionParams);
   const runtimeSessionId = asString(runtimeSessionParams.sessionId, runtime.sessionId ?? "");
   const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
+  const runtimeSessionClaudeConfigDir = asString(runtimeSessionParams.claudeConfigDir, "");
   const runtimeRemoteExecution = parseObject(runtimeSessionParams.remoteExecution);
   const runtimePromptBundleKey = asString(runtimeSessionParams.promptBundleKey, "");
   const hasMatchingPromptBundle =
@@ -607,6 +702,23 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     }) &&
     adapterExecutionTargetSessionMatches(runtimeRemoteExecution, runtimeExecutionTarget);
   const sessionId = canResumeSession ? runtimeSessionId : null;
+  const initialAccountIndex =
+    !executionTargetIsRemote && accountConfigs.length > 0 && runtimeSessionClaudeConfigDir
+      ? Math.max(0, findClaudeAccountIndex(accountConfigs, runtimeSessionClaudeConfigDir))
+      : 0;
+  const orderedAccountConfigs =
+    !executionTargetIsRemote && accountConfigs.length > 0
+      ? [
+          ...accountConfigs.slice(initialAccountIndex),
+          ...accountConfigs.slice(0, initialAccountIndex),
+        ]
+      : [];
+  if (executionTargetIsRemote && accountConfigs.length > 0) {
+    await onLog(
+      "stderr",
+      "[paperclip] Claude account auto-switch is configured, but automatic account switching only supports local Claude config directories. Remote execution will use the remote/default Claude auth state.\n",
+    );
+  }
   if (
     executionTargetIsRemote &&
     runtimeSessionId &&
@@ -718,10 +830,26 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       : `Claude exited with code ${proc.exitCode ?? -1}`;
   };
 
-  const runAttempt = async (resumeSessionId: string | null) => {
+  const runAttempt = async (resumeSessionId: string | null, accountConfig: ClaudeAccountConfig | null = null) => {
+    if (accountConfig) {
+      if (accountConfig.configDir) {
+        env.CLAUDE_CONFIG_DIR = accountConfig.configDir;
+        loggedEnv.CLAUDE_CONFIG_DIR = accountConfig.configDir;
+      } else {
+        delete env.CLAUDE_CONFIG_DIR;
+        delete loggedEnv.CLAUDE_CONFIG_DIR;
+      }
+    }
     const attemptInstructionsFilePath = resumeSessionId ? undefined : effectiveInstructionsFilePath;
     const args = buildClaudeArgs(resumeSessionId, attemptInstructionsFilePath);
     const commandNotes: string[] = [];
+    if (accountConfig) {
+      commandNotes.push(
+        accountConfig.configDir
+          ? `Using Claude account config ${accountConfig.label} (${accountConfig.configDir}).`
+          : `Using default Claude account config ${accountConfig.label}.`,
+      );
+    }
     if (!resumeSessionId) {
       commandNotes.push(`Using stable Claude prompt bundle ${promptBundle.bundleKey}.`);
     }
@@ -765,7 +893,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
     const parsedStream = parseClaudeStreamJson(proc.stdout);
     const parsed = parsedStream.resultJson ?? parseJson(proc.stdout);
-    return { proc, parsedStream, parsed };
+    return { proc, parsedStream, parsed, accountConfig };
   };
 
   const toAdapterResult = (
@@ -773,6 +901,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       proc: RunProcessResult;
       parsedStream: ReturnType<typeof parseClaudeStreamJson>;
       parsed: Record<string, unknown> | null;
+      accountConfig?: ClaudeAccountConfig | null;
     },
     opts: { fallbackSessionId: string | null; clearSessionOnMissingSession?: boolean },
   ): AdapterExecutionResult => {
@@ -837,6 +966,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         resultJson: {
           stdout: proc.stdout,
           stderr: proc.stderr,
+          ...(attempt.accountConfig
+            ? {
+                claudeAccountConfigDir: attempt.accountConfig.configDir ?? "default",
+                claudeAccountLabel: attempt.accountConfig.label,
+              }
+            : {}),
           ...(transientUpstream ? { errorFamily: "transient_upstream" } : {}),
           ...(transientRetryNotBefore
             ? { retryNotBefore: transientRetryNotBefore.toISOString() }
@@ -876,6 +1011,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         ...(workspaceId ? { workspaceId } : {}),
         ...(workspaceRepoUrl ? { repoUrl: workspaceRepoUrl } : {}),
         ...(workspaceRepoRef ? { repoRef: workspaceRepoRef } : {}),
+        ...(attempt.accountConfig ? { claudeConfigDir: attempt.accountConfig.configDir ?? "default" } : {}),
       } as Record<string, unknown>)
       : null;
     const clearSessionForMaxTurns = isClaudeMaxTurnsResult(parsed);
@@ -912,6 +1048,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     const mergedResultJson: Record<string, unknown> = {
       ...parsed,
       ...(failed && clearSessionForMaxTurns ? { stopReason: "max_turns_exhausted" } : {}),
+      ...(attempt.accountConfig
+        ? {
+            claudeAccountConfigDir: attempt.accountConfig.configDir ?? "default",
+            claudeAccountLabel: attempt.accountConfig.label,
+          }
+        : {}),
       ...(transientUpstream ? { errorFamily: "transient_upstream" } : {}),
       ...(transientRetryNotBefore ? { retryNotBefore: transientRetryNotBefore.toISOString() } : {}),
       ...(transientRetryNotBefore ? { transientRetryNotBefore: transientRetryNotBefore.toISOString() } : {}),
@@ -942,7 +1084,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   };
 
   try {
-    const initial = await runAttempt(sessionId ?? null);
+    const initialAccount = orderedAccountConfigs[0] ?? null;
+    const initial = await runAttempt(sessionId ?? null, initialAccount);
     if (
       sessionId &&
       !initial.proc.timedOut &&
@@ -954,8 +1097,37 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         "stdout",
         `[paperclip] Claude resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
       );
-      const retry = await runAttempt(null);
+      const retry = await runAttempt(null, initialAccount);
       return toAdapterResult(retry, { fallbackSessionId: null, clearSessionOnMissingSession: true });
+    }
+
+    let latest = initial;
+    if (orderedAccountConfigs.length > 1) {
+      for (const nextAccount of orderedAccountConfigs.slice(1)) {
+        const fallbackErrorMessage = latest.parsed
+          ? describeClaudeFailure(latest.parsed)
+          : parseFallbackErrorMessage(latest.proc);
+        const shouldSwitch =
+          !latest.proc.timedOut &&
+          (latest.proc.exitCode ?? 0) !== 0 &&
+          isClaudeUsageLimitError({
+            parsed: latest.parsed,
+            stdout: latest.proc.stdout,
+            stderr: latest.proc.stderr,
+            errorMessage: fallbackErrorMessage,
+          });
+        if (!shouldSwitch) break;
+
+        await onLog(
+          "stdout",
+          `[paperclip] Claude account "${latest.accountConfig?.label ?? "default"}" hit a usage limit; switching to "${nextAccount.label}".\n`,
+        );
+        latest = await runAttempt(null, nextAccount);
+      }
+    }
+
+    if (latest !== initial) {
+      return toAdapterResult(latest, { fallbackSessionId: null, clearSessionOnMissingSession: true });
     }
 
     return toAdapterResult(initial, { fallbackSessionId: runtimeSessionId || runtime.sessionId });

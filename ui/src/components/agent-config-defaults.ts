@@ -15,6 +15,7 @@ export const defaultCreateValues: CreateConfigValues = {
   command: "",
   args: "",
   extraArgs: "",
+  claudeAccountConfigDirs: "",
   envVars: "",
   envBindings: {},
   url: "",

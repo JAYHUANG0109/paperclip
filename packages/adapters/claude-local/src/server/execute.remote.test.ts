@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   runChildProcess,
@@ -78,9 +78,28 @@ import { execute } from "./execute.js";
 
 describe("claude remote execution", () => {
   const cleanupDirs: string[] = [];
+  const originalPaperclipHome = process.env.PAPERCLIP_HOME;
+  const originalPaperclipInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
+
+  beforeEach(async () => {
+    const homeDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-claude-test-home-"));
+    cleanupDirs.push(homeDir);
+    process.env.PAPERCLIP_HOME = homeDir;
+    process.env.PAPERCLIP_INSTANCE_ID = "test";
+  });
 
   afterEach(async () => {
     vi.clearAllMocks();
+    if (originalPaperclipHome == null) {
+      delete process.env.PAPERCLIP_HOME;
+    } else {
+      process.env.PAPERCLIP_HOME = originalPaperclipHome;
+    }
+    if (originalPaperclipInstanceId == null) {
+      delete process.env.PAPERCLIP_INSTANCE_ID;
+    } else {
+      process.env.PAPERCLIP_INSTANCE_ID = originalPaperclipInstanceId;
+    }
     while (cleanupDirs.length > 0) {
       const dir = cleanupDirs.pop();
       if (!dir) continue;
@@ -326,6 +345,83 @@ describe("claude remote execution", () => {
     const call = runChildProcess.mock.calls[0] as unknown as [string, string, string[]] | undefined;
     expect(call?.[2]).toContain("--resume");
     expect(call?.[2]).toContain("session-123");
+  });
+
+  it("switches local Claude account config dirs after a usage-limit failure", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-claude-switch-"));
+    cleanupDirs.push(rootDir);
+    const workspaceDir = path.join(rootDir, "workspace");
+    const accountB = path.join(rootDir, "account-b");
+    await mkdir(workspaceDir, { recursive: true });
+
+    runChildProcess
+      .mockResolvedValueOnce({
+        exitCode: 1,
+        signal: null,
+        timedOut: false,
+        stdout: "",
+        stderr: "Claude usage limit reached. Try again later.",
+        pid: 111,
+        startedAt: new Date().toISOString(),
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        stdout: [
+          JSON.stringify({ type: "system", subtype: "init", session_id: "claude-session-b", model: "claude-sonnet" }),
+          JSON.stringify({ type: "result", session_id: "claude-session-b", result: "done", usage: { input_tokens: 2, cache_read_input_tokens: 0, output_tokens: 3 } }),
+        ].join("\n"),
+        stderr: "",
+        pid: 112,
+        startedAt: new Date().toISOString(),
+      });
+
+    const logs: string[] = [];
+    const metaEnvs: Array<Record<string, string>> = [];
+    const result = await execute({
+      runId: "run-switch",
+      agent: {
+        id: "agent-1",
+        companyId: "company-1",
+        name: "Claude Coder",
+        adapterType: "claude_local",
+        adapterConfig: {},
+      },
+      runtime: {
+        sessionId: null,
+        sessionParams: null,
+        sessionDisplayId: null,
+        taskKey: null,
+      },
+      config: {
+        command: "claude",
+        cwd: workspaceDir,
+        accountConfigDirs: [
+          "claude_bot_13@seasonart.org=default",
+          `claude_bot_08@seasonart.org=${accountB}`,
+        ],
+      },
+      context: {},
+      onLog: async (_stream, chunk) => {
+        logs.push(chunk);
+      },
+      onMeta: async (meta) => {
+        metaEnvs.push({ ...(meta.env ?? {}) });
+      },
+    });
+
+    expect(runChildProcess).toHaveBeenCalledTimes(2);
+    expect(metaEnvs[0]?.CLAUDE_CONFIG_DIR).toBeUndefined();
+    expect(metaEnvs[1]?.CLAUDE_CONFIG_DIR).toBe(accountB);
+    expect(logs.join("")).toContain('hit a usage limit; switching to "claude_bot_08@seasonart.org"');
+    expect(result.errorCode).toBeNull();
+    expect(result.sessionId).toBe("claude-session-b");
+    expect(result.sessionParams).toMatchObject({ claudeConfigDir: accountB });
+    expect(result.resultJson).toMatchObject({
+      claudeAccountConfigDir: accountB,
+      claudeAccountLabel: "claude_bot_08@seasonart.org",
+    });
   });
 
 });

@@ -15,6 +15,20 @@ const inputClass =
 const instructionsFileHint =
   "Absolute path to a markdown file (e.g. AGENTS.md) that defines this agent's behavior. Injected into the system prompt at runtime.";
 
+function parseAccountConfigDirs(value: string): string[] {
+  return value
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatAccountConfigDirs(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).join("\n");
+  }
+  return typeof value === "string" ? value : "";
+}
+
 export function ClaudeLocalConfigFields({
   mode,
   isCreate,
@@ -132,6 +146,29 @@ export function ClaudeLocalAdvancedFields({
             className={inputClass}
           />
         )}
+      </Field>
+      <Field
+        label="Claude accounts"
+        hint="Optional Claude account profiles, one per line. Use label=default for your normal Claude login or label=/path for a separate config directory. When one account hits a usage limit, Paperclip retries with the next profile."
+      >
+        <textarea
+          className={`${inputClass} min-h-[84px] resize-y`}
+          value={
+            isCreate
+              ? values!.claudeAccountConfigDirs ?? ""
+              : formatAccountConfigDirs(eff("adapterConfig", "accountConfigDirs", config.accountConfigDirs))
+          }
+          onChange={(e) =>
+            isCreate
+              ? set!({ claudeAccountConfigDirs: e.target.value })
+              : mark(
+                  "adapterConfig",
+                  "accountConfigDirs",
+                  e.target.value.trim() ? parseAccountConfigDirs(e.target.value) : null,
+                )
+          }
+          placeholder={"claude_bot_13@seasonart.org=default\nclaude_bot_08@seasonart.org=~/.claude-08"}
+        />
       </Field>
     </>
   );
