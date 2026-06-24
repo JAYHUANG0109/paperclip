@@ -1,5 +1,6 @@
 import {
   Inbox,
+  CalendarDays,
   CircleDot,
   Target,
   LayoutDashboard,
@@ -103,6 +104,7 @@ export function Sidebar() {
 
         <SidebarSection label={t("nav.work", { defaultValue: "Work" })}>
           <SidebarNavItem to="/issues" label={t("nav.issues", { defaultValue: "Issues" })} icon={CircleDot} />
+          <SidebarNavItem to="/calendar" label={t("nav.calendar", { defaultValue: "Calendar" })} icon={CalendarDays} />
           <SidebarNavItem to="/routines" label={t("nav.routines", { defaultValue: "Routines" })} icon={Repeat} />
           <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />
           {showWorkspacesLink ? (

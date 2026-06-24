@@ -1780,6 +1780,24 @@ export function IssueProperties({
           />
         </PropertyRow>
 
+        <PropertyRow label={t("issues.props.field.startDate", { defaultValue: "Start date / 開始日" })}>
+          <input
+            type="date"
+            value={issue.startDate ?? ""}
+            onChange={(e) => onUpdate({ startDate: e.target.value || null })}
+            className="rounded border border-border bg-transparent px-1.5 py-0.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring [color-scheme:light] dark:[color-scheme:dark]"
+          />
+        </PropertyRow>
+
+        <PropertyRow label={t("issues.props.field.dueDate", { defaultValue: "Due date / 截止日" })}>
+          <input
+            type="date"
+            value={issue.dueDate ?? ""}
+            onChange={(e) => onUpdate({ dueDate: e.target.value || null })}
+            className="rounded border border-border bg-transparent px-1.5 py-0.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring [color-scheme:light] dark:[color-scheme:dark]"
+          />
+        </PropertyRow>
+
         <PropertyPicker
           inline={inline}
           label={t("issues.props.field.labels")}
