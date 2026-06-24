@@ -4885,6 +4885,15 @@
       "thu": "Thu",
       "fri": "Fri",
       "sat": "Sat"
-    }
+    },
+    "tab": {
+      "month": "Month",
+      "week": "Week",
+      "list": "List"
+    },
+    "overdue": "Overdue",
+    "todaySection": "Today",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week"
   }
 }

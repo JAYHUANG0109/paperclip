@@ -4885,6 +4885,15 @@
       "thu": "四",
       "fri": "五",
       "sat": "六"
-    }
+    },
+    "tab": {
+      "month": "月",
+      "week": "週",
+      "list": "清單"
+    },
+    "overdue": "逾期",
+    "todaySection": "今天",
+    "prevWeek": "上週",
+    "nextWeek": "下週"
   }
 }
