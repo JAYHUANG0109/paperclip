@@ -463,6 +463,12 @@ export function IssueProperties({
     mutationFn: (name: string) =>
       sectionsApi.create(companyId!, { projectId: issue.projectId!, name }),
     onSuccess: (section) => {
+      // Optimistically add the new section to the cache so its name resolves
+      // immediately in the trigger (otherwise it shows blank until refetch).
+      queryClient.setQueryData<typeof section[]>(
+        ["sections", companyId, issue.projectId],
+        (old) => (old ? [...old, section] : [section]),
+      );
       queryClient.invalidateQueries({ queryKey: ["sections", companyId, issue.projectId] });
       onUpdate({ sectionId: section.id });
       setNewSectionName("");

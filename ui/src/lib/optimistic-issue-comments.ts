@@ -277,6 +277,9 @@ export function applyOptimisticIssueFieldUpdate(
   assign("assigneeAgentId");
   assign("assigneeUserId");
   assign("projectId");
+  assign("sectionId");
+  assign("startDate");
+  assign("dueDate");
   assign("parentId");
   assign("projectWorkspaceId");
   assign("executionWorkspaceId");
