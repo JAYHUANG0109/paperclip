@@ -5020,6 +5020,13 @@ export function issueService(db: Db) {
         .where(and(eq(projectSections.companyId, companyId), eq(projectSections.projectId, projectId)))
         .orderBy(asc(projectSections.position), asc(projectSections.id)),
 
+    listAllSections: (companyId: string) =>
+      db
+        .select()
+        .from(projectSections)
+        .where(eq(projectSections.companyId, companyId))
+        .orderBy(asc(projectSections.projectId), asc(projectSections.position), asc(projectSections.id)),
+
     getSectionById: (id: string) =>
       db
         .select()

@@ -104,7 +104,8 @@
       "project": "Project",
       "workspace": "Workspace",
       "parent": "Parent Issue",
-      "none": "None"
+      "none": "None",
+      "section": "Section"
     },
     "group": {
       "board": "Board",
@@ -113,7 +114,8 @@
       "noProject": "No Project",
       "noParent": "No Parent",
       "unassigned": "Unassigned",
-      "user": "User"
+      "user": "User",
+      "noSection": "No section"
     },
     "filter": {
       "filters": "Filters",
@@ -195,7 +197,8 @@
         "created": "Created",
         "updated": "Updated",
         "startDate": "Start date",
-        "dueDate": "Due date"
+        "dueDate": "Due date",
+        "section": "Section"
       },
       "noLabels": "无标签",
       "noParent": "无父议题",
@@ -269,7 +272,9 @@
       "searchingIssues": "正在搜索议题…",
       "noMatchingIssues": "没有匹配的议题。",
       "viewWorkspace": "查看工作区",
-      "me": "我"
+      "me": "我",
+      "noSection": "No section",
+      "newSection": "+ New section…"
     },
     "actions": {
       "newSubIssue": "新建子议题",

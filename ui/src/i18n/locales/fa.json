@@ -104,7 +104,8 @@
       "project": "Project",
       "workspace": "Workspace",
       "parent": "Parent Issue",
-      "none": "None"
+      "none": "None",
+      "section": "Section"
     },
     "group": {
       "board": "Board",
@@ -113,7 +114,8 @@
       "noProject": "No Project",
       "noParent": "No Parent",
       "unassigned": "Unassigned",
-      "user": "User"
+      "user": "User",
+      "noSection": "No section"
     },
     "filter": {
       "filters": "Filters",
@@ -195,7 +197,8 @@
         "created": "Created",
         "updated": "Updated",
         "startDate": "Start date",
-        "dueDate": "Due date"
+        "dueDate": "Due date",
+        "section": "Section"
       },
       "noLabels": "No labels",
       "noParent": "No parent",
@@ -269,7 +272,9 @@
       "searchingIssues": "Searching issues...",
       "noMatchingIssues": "No matching issues.",
       "viewWorkspace": "View workspace",
-      "me": "Me"
+      "me": "Me",
+      "noSection": "No section",
+      "newSection": "+ New section…"
     },
     "actions": {
       "newSubIssue": "New Sub-issue",

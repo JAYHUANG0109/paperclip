@@ -7,6 +7,7 @@ import { Link } from "@/lib/router";
 import { useTranslation } from "@/i18n";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { issuesApi } from "../api/issues";
+import { sectionsApi } from "../api/sections";
 import { authApi } from "../api/auth";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { queryKeys } from "../lib/queryKeys";
@@ -126,7 +127,7 @@ export type BoardColumnPageSize = KanbanColumnPageSize;
 export type IssueViewState = IssueFilterState & {
   sortField: IssueSortField;
   sortDir: "asc" | "desc";
-  groupBy: "status" | "priority" | "assignee" | "project" | "workspace" | "parent" | "none";
+  groupBy: "status" | "priority" | "assignee" | "project" | "section" | "workspace" | "parent" | "none";
   viewMode: "list" | "board" | "calendar";
   nestingEnabled: boolean;
   collapsedGroups: string[];
@@ -777,6 +778,18 @@ export function IssuesList({
     return map;
   }, [projects]);
 
+  // Phase 3: section id → name, for groupBy "section".
+  const { data: allSections } = useQuery({
+    queryKey: ["sections", "company", selectedCompanyId],
+    queryFn: () => sectionsApi.listForCompany(selectedCompanyId!),
+    enabled: !!selectedCompanyId && viewState.groupBy === "section",
+  });
+  const sectionNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of allSections ?? []) map.set(s.id, s.name);
+    return map;
+  }, [allSections]);
+
   const projectWorkspaceById = useMemo(() => {
     const map = new Map<string, { name: string; projectId: string }>();
     for (const project of projects ?? []) {
@@ -1112,6 +1125,20 @@ export function IssuesList({
           items: groups[key]!,
         }));
     }
+    if (viewState.groupBy === "section") {
+      const groups = groupBy(filtered, (issue) => issue.sectionId ?? "__no_section");
+      return Object.keys(groups)
+        .sort((a, b) => {
+          if (a === "__no_section") return 1;
+          if (b === "__no_section") return -1;
+          return (sectionNameMap.get(a) ?? a).localeCompare(sectionNameMap.get(b) ?? b);
+        })
+        .map((key) => ({
+          key,
+          label: key === "__no_section" ? t("issues.group.noSection", { defaultValue: "No section" }) : (sectionNameMap.get(key) ?? key.slice(0, 8)),
+          items: groups[key]!,
+        }));
+    }
     if (viewState.groupBy === "parent") {
       const groups = groupBy(filtered, (i) => i.parentId ?? "__no_parent");
       return Object.keys(groups)
@@ -1150,6 +1177,7 @@ export function IssuesList({
     agentName,
     currentUserId,
     workspaceNameMap,
+    sectionNameMap,
     issueTitleMap,
     companyUserLabelMap,
     projectById,
@@ -1547,6 +1575,7 @@ export function IssuesList({
                     ["priority", "Priority"],
                     ["assignee", "Assignee"],
                     ["project", "Project"],
+                    ["section", "Section"],
                     ["workspace", "Workspace"],
                     ["parent", "Parent Issue"],
                     ["none", "None"],

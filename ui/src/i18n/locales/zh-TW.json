@@ -104,7 +104,8 @@
       "project": "專案",
       "workspace": "工作區",
       "parent": "父議題",
-      "none": "無"
+      "none": "無",
+      "section": "區段"
     },
     "group": {
       "board": "看板",
@@ -113,7 +114,8 @@
       "noProject": "無專案",
       "noParent": "無父議題",
       "unassigned": "未指派",
-      "user": "使用者"
+      "user": "使用者",
+      "noSection": "無區段"
     },
     "filter": {
       "filters": "篩選",
@@ -195,7 +197,8 @@
         "created": "建立時間",
         "updated": "更新時間",
         "startDate": "開始日",
-        "dueDate": "截止日"
+        "dueDate": "截止日",
+        "section": "區段"
       },
       "noLabels": "無標籤",
       "noParent": "無父議題",
@@ -269,7 +272,9 @@
       "searchingIssues": "正在搜尋議題…",
       "noMatchingIssues": "沒有符合的議題。",
       "viewWorkspace": "檢視工作區",
-      "me": "我"
+      "me": "我",
+      "noSection": "無區段",
+      "newSection": "+ 新增區段…"
     },
     "actions": {
       "newSubIssue": "新增子議題",

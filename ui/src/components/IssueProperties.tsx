@@ -10,6 +10,7 @@ import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
+import { sectionsApi } from "../api/sections";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { buildCompanyUserInlineOptions, buildCompanyUserLabelMap } from "../lib/company-members";
@@ -448,6 +449,25 @@ export function IssueProperties({
     queryKey: queryKeys.issues.labels(companyId!),
     queryFn: () => issuesApi.listLabels(companyId!),
     enabled: !!companyId,
+  });
+
+  // Phase 3: sections belong to the issue's project.
+  const { data: sections } = useQuery({
+    queryKey: ["sections", companyId, issue.projectId],
+    queryFn: () => sectionsApi.list(issue.projectId!, companyId!),
+    enabled: !!companyId && !!issue.projectId,
+  });
+  const [sectionOpen, setSectionOpen] = useState(false);
+  const [newSectionName, setNewSectionName] = useState("");
+  const createSection = useMutation({
+    mutationFn: (name: string) =>
+      sectionsApi.create(companyId!, { projectId: issue.projectId!, name }),
+    onSuccess: (section) => {
+      queryClient.invalidateQueries({ queryKey: ["sections", companyId, issue.projectId] });
+      onUpdate({ sectionId: section.id });
+      setNewSectionName("");
+      setSectionOpen(false);
+    },
   });
 
   const { data: allIssues, isFetching: isFetchingIssuePickerIssues } = useQuery({
@@ -1565,6 +1585,51 @@ export function IssueProperties({
     </>
   );
 
+  const currentSection = (sections ?? []).find((s) => s.id === issue.sectionId) ?? null;
+  const sectionTrigger = (
+    <>
+      <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className={cn("text-sm break-words min-w-0", !currentSection && "text-muted-foreground")}>
+        {currentSection ? currentSection.name : t("issues.props.noSection", { defaultValue: "No section" })}
+      </span>
+    </>
+  );
+  const sectionContent = (
+    <>
+      <div className="max-h-48 overflow-y-auto overscroll-contain">
+        <button
+          className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", !issue.sectionId && "bg-accent")}
+          onClick={() => { onUpdate({ sectionId: null }); setSectionOpen(false); }}
+        >
+          {t("issues.props.noSection", { defaultValue: "No section" })}
+        </button>
+        {(sections ?? []).map((s) => (
+          <button
+            key={s.id}
+            className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50 whitespace-nowrap", s.id === issue.sectionId && "bg-accent")}
+            onClick={() => { onUpdate({ sectionId: s.id }); setSectionOpen(false); }}
+          >
+            <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            {s.name}
+          </button>
+        ))}
+      </div>
+      <div className="mt-1 border-t border-border pt-1">
+        <input
+          className="w-full bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/50"
+          placeholder={t("issues.props.newSection", { defaultValue: "+ New section…" })}
+          value={newSectionName}
+          onChange={(e) => setNewSectionName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && newSectionName.trim() && !createSection.isPending) {
+              createSection.mutate(newSectionName.trim());
+            }
+          }}
+        />
+      </div>
+    </>
+  );
+
   const blockedByIds = issue.blockedBy?.map((relation) => relation.id) ?? [];
   const descendantIssueIds = useMemo(() => {
     if (!allIssues?.length) return new Set<string>();
@@ -1876,6 +1941,20 @@ export function IssueProperties({
         >
           {projectContent}
         </PropertyPicker>
+
+        {issue.projectId ? (
+          <PropertyPicker
+            inline={inline}
+            label={t("issues.props.field.section", { defaultValue: "Section" })}
+            open={sectionOpen}
+            onOpenChange={(open) => { setSectionOpen(open); if (!open) setNewSectionName(""); }}
+            triggerContent={sectionTrigger}
+            triggerClassName="min-w-0 max-w-full"
+            popoverClassName="w-fit min-w-[11rem]"
+          >
+            {sectionContent}
+          </PropertyPicker>
+        ) : null}
 
         <PropertyPicker
           inline={inline}

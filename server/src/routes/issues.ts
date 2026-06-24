@@ -2057,6 +2057,12 @@ export function issueRoutes(
     res.json(await svc.listSections(companyId, projectId));
   });
 
+  router.get("/companies/:companyId/sections", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.listAllSections(companyId));
+  });
+
   router.post("/companies/:companyId/sections", validate(createProjectSectionSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
