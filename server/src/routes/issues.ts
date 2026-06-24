@@ -22,6 +22,8 @@ import {
   createIssueThreadInteractionSchema,
   createIssueWorkProductSchema,
   createIssueLabelSchema,
+  createProjectSectionSchema,
+  updateProjectSectionSchema,
   checkoutIssueSchema,
   createChildIssueSchema,
   createIssueSchema,
@@ -2041,6 +2043,47 @@ export function issueRoutes(
       details: { name: removed.name, color: removed.color },
     });
     res.json(removed);
+  });
+
+  // ---- Project Sections (Phase 3) ----
+  router.get("/projects/:projectId/sections", async (req, res) => {
+    const projectId = req.params.projectId as string;
+    const companyId = readNonEmptyString(req.query.companyId);
+    if (!companyId) {
+      res.status(400).json({ error: "companyId query param is required" });
+      return;
+    }
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.listSections(companyId, projectId));
+  });
+
+  router.post("/companies/:companyId/sections", validate(createProjectSectionSchema), async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const section = await svc.createSection(companyId, req.body);
+    res.status(201).json(section);
+  });
+
+  router.patch("/sections/:sectionId", validate(updateProjectSectionSchema), async (req, res) => {
+    const sectionId = req.params.sectionId as string;
+    const existing = await svc.getSectionById(sectionId);
+    if (!existing) {
+      res.status(404).json({ error: "Section not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+    res.json(await svc.updateSection(sectionId, req.body));
+  });
+
+  router.delete("/sections/:sectionId", async (req, res) => {
+    const sectionId = req.params.sectionId as string;
+    const existing = await svc.getSectionById(sectionId);
+    if (!existing) {
+      res.status(404).json({ error: "Section not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+    res.json(await svc.deleteSection(sectionId));
   });
 
   router.get("/issues/:id/heartbeat-context", async (req, res) => {

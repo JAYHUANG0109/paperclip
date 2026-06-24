@@ -422,6 +422,21 @@ export const createIssueLabelSchema = z.object({
 
 export type CreateIssueLabel = z.infer<typeof createIssueLabelSchema>;
 
+export const createProjectSectionSchema = z.object({
+  projectId: z.string().uuid(),
+  name: z.string().trim().min(1).max(120),
+  position: z.number().int().min(0).optional(),
+});
+
+export type CreateProjectSection = z.infer<typeof createProjectSectionSchema>;
+
+export const updateProjectSectionSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  position: z.number().int().min(0).optional(),
+});
+
+export type UpdateProjectSection = z.infer<typeof updateProjectSectionSchema>;
+
 export const updateIssueSchema = createIssueBaseSchema.partial().extend({
   requestDepth: issueRequestDepthInputSchema.optional(),
   assigneeAgentId: z.string().trim().min(1).optional().nullable(),

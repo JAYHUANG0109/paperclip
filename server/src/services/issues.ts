@@ -25,6 +25,7 @@ import {
   issueThreadInteractions,
   issues,
   labels,
+  projectSections,
   projectWorkspaces,
   projects,
 } from "@paperclipai/db";
@@ -5009,6 +5010,55 @@ export function issueService(db: Db) {
       db
         .delete(labels)
         .where(eq(labels.id, id))
+        .returning()
+        .then((rows) => rows[0] ?? null),
+
+    listSections: (companyId: string, projectId: string) =>
+      db
+        .select()
+        .from(projectSections)
+        .where(and(eq(projectSections.companyId, companyId), eq(projectSections.projectId, projectId)))
+        .orderBy(asc(projectSections.position), asc(projectSections.id)),
+
+    getSectionById: (id: string) =>
+      db
+        .select()
+        .from(projectSections)
+        .where(eq(projectSections.id, id))
+        .then((rows) => rows[0] ?? null),
+
+    createSection: async (
+      companyId: string,
+      data: { projectId: string; name: string; position?: number },
+    ) => {
+      const [created] = await db
+        .insert(projectSections)
+        .values({
+          companyId,
+          projectId: data.projectId,
+          name: data.name.trim(),
+          position: data.position ?? 0,
+        })
+        .returning();
+      return created;
+    },
+
+    updateSection: async (id: string, data: { name?: string; position?: number }) => {
+      const patch: Partial<typeof projectSections.$inferInsert> = { updatedAt: new Date() };
+      if (data.name !== undefined) patch.name = data.name.trim();
+      if (data.position !== undefined) patch.position = data.position;
+      const [updated] = await db
+        .update(projectSections)
+        .set(patch)
+        .where(eq(projectSections.id, id))
+        .returning();
+      return updated ?? null;
+    },
+
+    deleteSection: async (id: string) =>
+      db
+        .delete(projectSections)
+        .where(eq(projectSections.id, id))
         .returning()
         .then((rows) => rows[0] ?? null),
 

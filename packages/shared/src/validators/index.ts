@@ -158,6 +158,8 @@ export {
   createChildIssueSchema,
   resolveCreateIssueStatusDefault,
   createIssueLabelSchema,
+  createProjectSectionSchema,
+  updateProjectSectionSchema,
   issueBlockedInboxAttentionSchema,
   issueBlockedInboxIssueRefSchema,
   issueBlockedInboxReasonSchema,
