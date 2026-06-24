@@ -34,7 +34,8 @@
     "activity": "活動紀錄",
     "settings": "設定",
     "chatLogs": "聊天紀錄",
-    "assignments": "代理指派"
+    "assignments": "代理指派",
+    "calendar": "行事曆"
   },
   "sort": {
     "top": "置頂",
@@ -85,7 +86,8 @@
       "resetDensity": "重設看板密度",
       "chooseColumns": "選擇要顯示的議題欄位",
       "sort": "排序",
-      "group": "分組"
+      "group": "分組",
+      "calendar": "行事曆"
     },
     "sortField": {
       "workflow": "工作流程",
@@ -191,7 +193,9 @@
         "started": "開始時間",
         "completed": "完成時間",
         "created": "建立時間",
-        "updated": "更新時間"
+        "updated": "更新時間",
+        "startDate": "開始日",
+        "dueDate": "截止日"
       },
       "noLabels": "無標籤",
       "noParent": "無父議題",
@@ -4862,5 +4866,25 @@
     "failedToReject": "拒絕失敗",
     "noPending": "目前沒有待核准項目。",
     "noApprovals": "尚無核准記錄。"
+  },
+  "calendar": {
+    "myCalendar": "我的行事曆",
+    "myCalendarHint": "你與你的代理被指派議題的截止日。",
+    "today": "今天",
+    "prevMonth": "上個月",
+    "nextMonth": "下個月",
+    "moreCount": "還有 {{count}} 項",
+    "empty": {
+      "message": "目前沒有議題設定截止日。為議題設定截止日後就會顯示在這裡。"
+    },
+    "weekday": {
+      "sun": "日",
+      "mon": "一",
+      "tue": "二",
+      "wed": "三",
+      "thu": "四",
+      "fri": "五",
+      "sat": "六"
+    }
   }
 }

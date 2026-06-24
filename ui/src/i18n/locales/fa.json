@@ -34,7 +34,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "chatLogs": "Chat Logs",
-    "assignments": "Assignments"
+    "assignments": "Assignments",
+    "calendar": "Calendar"
   },
   "sort": {
     "top": "Top",
@@ -85,7 +86,8 @@
       "resetDensity": "Reset board density",
       "chooseColumns": "Choose which issue columns stay visible",
       "sort": "Sort",
-      "group": "Group"
+      "group": "Group",
+      "calendar": "Calendar"
     },
     "sortField": {
       "workflow": "Workflow",
@@ -191,7 +193,9 @@
         "started": "Started",
         "completed": "Completed",
         "created": "Created",
-        "updated": "Updated"
+        "updated": "Updated",
+        "startDate": "Start date",
+        "dueDate": "Due date"
       },
       "noLabels": "No labels",
       "noParent": "No parent",
@@ -4862,5 +4866,25 @@
     "failedToReject": "Failed to reject",
     "noPending": "No pending approvals.",
     "noApprovals": "No approvals yet."
+  },
+  "calendar": {
+    "myCalendar": "My Calendar",
+    "myCalendarHint": "Deadlines of issues assigned to you and your agents.",
+    "today": "Today",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "moreCount": "+{{count}} more",
+    "empty": {
+      "message": "No issues have a due date yet. Set a due date on an issue to see it here."
+    },
+    "weekday": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    }
   }
 }

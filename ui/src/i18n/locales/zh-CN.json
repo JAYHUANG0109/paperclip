@@ -34,7 +34,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "chatLogs": "聊天记录",
-    "assignments": "代理指派"
+    "assignments": "代理指派",
+    "calendar": "Calendar"
   },
   "sort": {
     "top": "Top",
@@ -85,7 +86,8 @@
       "resetDensity": "Reset board density",
       "chooseColumns": "Choose which issue columns stay visible",
       "sort": "Sort",
-      "group": "Group"
+      "group": "Group",
+      "calendar": "Calendar"
     },
     "sortField": {
       "workflow": "Workflow",
@@ -191,7 +193,9 @@
         "started": "Started",
         "completed": "Completed",
         "created": "Created",
-        "updated": "Updated"
+        "updated": "Updated",
+        "startDate": "Start date",
+        "dueDate": "Due date"
       },
       "noLabels": "无标签",
       "noParent": "无父议题",
@@ -4862,5 +4866,25 @@
     "failedToReject": "拒绝失败",
     "noPending": "目前没有待审批项目。",
     "noApprovals": "尚无审批记录。"
+  },
+  "calendar": {
+    "myCalendar": "My Calendar",
+    "myCalendarHint": "Deadlines of issues assigned to you and your agents.",
+    "today": "Today",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "moreCount": "+{{count}} more",
+    "empty": {
+      "message": "No issues have a due date yet. Set a due date on an issue to see it here."
+    },
+    "weekday": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    }
   }
 }
