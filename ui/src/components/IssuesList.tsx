@@ -61,7 +61,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import { CircleDot, Plus, ArrowUpDown, Layers, Check, ChevronRight, List, ListTree, Columns3, User, Search, CircleSlash2, ChevronsDownUp, PanelTopClose, RotateCcw, ListCollapse } from "lucide-react";
+import { CircleDot, Plus, ArrowUpDown, Layers, Check, ChevronRight, List, ListTree, Columns3, CalendarDays, User, Search, CircleSlash2, ChevronsDownUp, PanelTopClose, RotateCcw, ListCollapse } from "lucide-react";
+import { IssueCalendar } from "./IssueCalendar";
 import {
   KanbanBoard,
   KANBAN_BOARD_HIGH_VOLUME_THRESHOLD,
@@ -126,7 +127,7 @@ export type IssueViewState = IssueFilterState & {
   sortField: IssueSortField;
   sortDir: "asc" | "desc";
   groupBy: "status" | "priority" | "assignee" | "project" | "workspace" | "parent" | "none";
-  viewMode: "list" | "board";
+  viewMode: "list" | "board" | "calendar";
   nestingEnabled: boolean;
   collapsedGroups: string[];
   collapsedParents: string[];
@@ -1365,6 +1366,13 @@ export function IssuesList({
             >
               <Columns3 className="h-3.5 w-3.5" />
             </button>
+            <button
+              className={`p-1.5 transition-colors ${viewState.viewMode === "calendar" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => updateView({ viewMode: "calendar" })}
+              title={t("issues.view.calendar", { defaultValue: "Calendar" })}
+            >
+              <CalendarDays className="h-3.5 w-3.5" />
+            </button>
           </div>
 
           {viewState.viewMode === "list" && (
@@ -1582,7 +1590,11 @@ export function IssuesList({
         />
       )}
 
-      {viewState.viewMode === "board" ? (
+      {viewState.viewMode === "calendar" ? (
+        <div className="mt-2">
+          <IssueCalendar issues={filtered} />
+        </div>
+      ) : viewState.viewMode === "board" ? (
         <KanbanBoard
           issues={filtered}
           agents={agents}
