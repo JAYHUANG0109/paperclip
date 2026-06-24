@@ -1591,6 +1591,7 @@ const issueListSelect = {
   id: issues.id,
   companyId: issues.companyId,
   projectId: issues.projectId,
+  sectionId: issues.sectionId,
   projectWorkspaceId: issues.projectWorkspaceId,
   goalId: issues.goalId,
   parentId: issues.parentId,

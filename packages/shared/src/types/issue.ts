@@ -432,6 +432,7 @@ export interface Issue {
   id: string;
   companyId: string;
   projectId: string | null;
+  sectionId?: string | null;
   projectWorkspaceId: string | null;
   goalId: string | null;
   parentId: string | null;

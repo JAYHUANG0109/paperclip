@@ -370,6 +370,7 @@ function withCreateIssueStatusDefault<T extends z.ZodRawShape>(schema: z.ZodObje
 
 const createIssueBaseSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
+  sectionId: z.string().uuid().optional().nullable(),
   projectWorkspaceId: z.string().uuid().optional().nullable(),
   goalId: z.string().uuid().optional().nullable(),
   parentId: z.string().uuid().optional().nullable(),
