@@ -61,6 +61,7 @@ import { resolveClaudeDesiredSkillNames } from "./skills.js";
 import { isBedrockModelId } from "./models.js";
 import { prepareClaudePromptBundle } from "./prompt-cache.js";
 import { buildClaudeExecutionPermissionArgs } from "./permissions.js";
+import { getQuotaWindowsForEnv } from "./quota.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -221,6 +222,38 @@ function findClaudeAccountIndex(accounts: ClaudeAccountConfig[], configDir: stri
   }
   const resolved = path.resolve(configDir);
   return accounts.findIndex((account) => account.configDir != null && path.resolve(account.configDir) === resolved);
+}
+
+function claudeAccountSessionKey(accountConfig: ClaudeAccountConfig | null): string | null {
+  if (!accountConfig) return null;
+  return accountConfig.configDir ?? "default";
+}
+
+function buildClaudeAccountEnv(input: {
+  baseEnv: Record<string, string>;
+  accountConfig: ClaudeAccountConfig | null;
+}): Record<string, string> {
+  const env = { ...input.baseEnv };
+  if (!input.accountConfig) return env;
+  if (input.accountConfig.configDir) {
+    env.CLAUDE_CONFIG_DIR = input.accountConfig.configDir;
+  } else {
+    delete env.CLAUDE_CONFIG_DIR;
+  }
+  return env;
+}
+
+function maxQuotaUsedPercent(windows: Array<{ usedPercent?: number | null }>): number | null {
+  const values = windows
+    .map((window) => window.usedPercent)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function resolveClaudeQuotaSwitchThreshold(config: Record<string, unknown>): number {
+  const raw = asNumber(config.quotaSwitchThresholdPercent, 95);
+  if (!Number.isFinite(raw) || raw <= 0) return 95;
+  return Math.min(100, Math.max(1, raw));
 }
 
 async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<ClaudeRuntimeConfig> {
@@ -472,6 +505,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const dangerouslySkipPermissions = asBoolean(config.dangerouslySkipPermissions, true);
   const configEnv = parseObject(config.env);
   const accountConfigs = resolveClaudeAccountConfigs(config);
+  const quotaSwitchThresholdPercent = resolveClaudeQuotaSwitchThreshold(config);
   const workspaceContext = parseObject(context.paperclipWorkspace);
   const workspaceCwd = asString(workspaceContext.cwd, "");
   const workspaceSource = asString(workspaceContext.source, "");
@@ -719,6 +753,58 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       "[paperclip] Claude account auto-switch is configured, but automatic account switching only supports local Claude config directories. Remote execution will use the remote/default Claude auth state.\n",
     );
   }
+
+  const selectAccountBelowQuotaThreshold = async (
+    candidates: ClaudeAccountConfig[],
+  ): Promise<{ account: ClaudeAccountConfig | null; skipped: ClaudeAccountConfig[] }> => {
+    if (candidates.length <= 1) {
+      return { account: candidates[0] ?? null, skipped: [] };
+    }
+
+    const skipped: ClaudeAccountConfig[] = [];
+    for (const account of candidates) {
+      try {
+        const quota = await getQuotaWindowsForEnv(buildClaudeAccountEnv({
+          baseEnv: effectiveEnv,
+          accountConfig: account,
+        }));
+        if (!quota.ok) {
+          await onLog(
+            "stderr",
+            `[paperclip] Could not check Claude quota for "${account.label}" before account selection: ${quota.error ?? "unknown error"}. Trying this account normally.\n`,
+          );
+          return { account, skipped };
+        }
+
+        const maxUsed = maxQuotaUsedPercent(quota.windows);
+        if (maxUsed != null && maxUsed >= quotaSwitchThresholdPercent) {
+          skipped.push(account);
+          await onLog(
+            "stdout",
+            `[paperclip] Claude account "${account.label}" is at ${maxUsed}% quota usage (threshold ${quotaSwitchThresholdPercent}%); trying the next account before starting this heartbeat.\n`,
+          );
+          continue;
+        }
+
+        if (maxUsed != null) {
+          await onLog(
+            "stdout",
+            `[paperclip] Claude account "${account.label}" quota usage is ${maxUsed}% (threshold ${quotaSwitchThresholdPercent}%).\n`,
+          );
+        }
+        return { account, skipped };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await onLog(
+          "stderr",
+          `[paperclip] Could not check Claude quota for "${account.label}" before account selection: ${message}. Trying this account normally.\n`,
+        );
+        return { account, skipped };
+      }
+    }
+
+    return { account: candidates[candidates.length - 1] ?? null, skipped };
+  };
   if (
     executionTargetIsRemote &&
     runtimeSessionId &&
@@ -1084,8 +1170,29 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   };
 
   try {
-    const initialAccount = orderedAccountConfigs[0] ?? null;
-    const initial = await runAttempt(sessionId ?? null, initialAccount);
+    const selected = await selectAccountBelowQuotaThreshold(orderedAccountConfigs);
+    const initialAccount = selected.account;
+    const initialAccountIndex = initialAccount
+      ? orderedAccountConfigs.findIndex((account) => account.index === initialAccount.index)
+      : -1;
+    const remainingAccountConfigs = initialAccountIndex >= 0
+      ? orderedAccountConfigs.slice(initialAccountIndex + 1)
+      : orderedAccountConfigs.slice(1);
+    const selectedAccountSessionKey = claudeAccountSessionKey(initialAccount);
+    const canResumeWithSelectedAccount =
+      Boolean(sessionId) &&
+      (
+        runtimeSessionClaudeConfigDir
+          ? selectedAccountSessionKey === runtimeSessionClaudeConfigDir
+          : selectedAccountSessionKey == null || selectedAccountSessionKey === "default"
+      );
+    if (sessionId && !canResumeWithSelectedAccount) {
+      await onLog(
+        "stdout",
+        `[paperclip] Claude session "${sessionId}" belongs to "${runtimeSessionClaudeConfigDir || "default"}" and will not be resumed with "${selectedAccountSessionKey ?? "default"}". Starting a fresh session.\n`,
+      );
+    }
+    const initial = await runAttempt(canResumeWithSelectedAccount ? sessionId : null, initialAccount);
     if (
       sessionId &&
       !initial.proc.timedOut &&
@@ -1102,8 +1209,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     }
 
     let latest = initial;
-    if (orderedAccountConfigs.length > 1) {
-      for (const nextAccount of orderedAccountConfigs.slice(1)) {
+    if (remainingAccountConfigs.length > 0) {
+      for (const nextAccount of remainingAccountConfigs) {
         const fallbackErrorMessage = latest.parsed
           ? describeClaudeFailure(latest.parsed)
           : parseFallbackErrorMessage(latest.proc);

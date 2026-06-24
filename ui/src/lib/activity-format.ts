@@ -15,10 +15,35 @@ type ActivityIssueReference = {
   title?: string | null;
 };
 
+/** Loose i18next translate signature; optional so non-React callers still work. */
+type ActivityTFunction = (key: string, options?: Record<string, unknown>) => string;
+
 interface ActivityFormatOptions {
   agentMap?: Map<string, Agent>;
   userProfileMap?: Map<string, CompanyUserProfile>;
   currentUserId?: string | null;
+  t?: ActivityTFunction;
+}
+
+/**
+ * Translate `key` if a `t` was supplied, otherwise return the English `fallback`
+ * (manually interpolating any {{vars}}). The English fallback is also passed as
+ * i18next `defaultValue` so a missing key degrades gracefully to English.
+ */
+function tr(
+  options: ActivityFormatOptions,
+  key: string,
+  fallback: string,
+  vars?: Record<string, unknown>,
+): string {
+  if (options.t) return options.t(key, { ...(vars ?? {}), defaultValue: fallback });
+  if (vars) return fallback.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ""));
+  return fallback;
+}
+
+/** Map an activity action ("issue.comment_added") to an i18n key segment. */
+function actionKeySegment(action: string): string {
+  return action.replace(/\./g, "_");
 }
 
 const ACTIVITY_ROW_VERBS: Record<string, string> = {
@@ -189,20 +214,20 @@ function formatChangedEntityLabel(
   return `${labels.length} ${plural}`;
 }
 
-function formatIssueUpdatedVerb(details: ActivityDetails): string | null {
+function formatIssueUpdatedVerb(details: ActivityDetails, options: ActivityFormatOptions = {}): string | null {
   if (!details) return null;
   const previous = asRecord(details._previous) ?? {};
   if (details.status !== undefined) {
     const from = previous.status;
     return from
-      ? `changed status from ${humanizeValue(from)} to ${humanizeValue(details.status)} on`
-      : `changed status to ${humanizeValue(details.status)} on`;
+      ? tr(options, "activity.verb.statusFromTo", `changed status from ${humanizeValue(from)} to ${humanizeValue(details.status)} on`, { from: humanizeValue(from), to: humanizeValue(details.status) })
+      : tr(options, "activity.verb.statusTo", `changed status to ${humanizeValue(details.status)} on`, { to: humanizeValue(details.status) });
   }
   if (details.priority !== undefined) {
     const from = previous.priority;
     return from
-      ? `changed priority from ${humanizeValue(from)} to ${humanizeValue(details.priority)} on`
-      : `changed priority to ${humanizeValue(details.priority)} on`;
+      ? tr(options, "activity.verb.priorityFromTo", `changed priority from ${humanizeValue(from)} to ${humanizeValue(details.priority)} on`, { from: humanizeValue(from), to: humanizeValue(details.priority) })
+      : tr(options, "activity.verb.priorityTo", `changed priority to ${humanizeValue(details.priority)} on`, { to: humanizeValue(details.priority) });
   }
   return null;
 }
@@ -229,26 +254,28 @@ function formatIssueUpdatedAction(details: ActivityDetails, options: ActivityFor
     const from = previous.status;
     parts.push(
       from
-        ? `changed the status from ${humanizeValue(from)} to ${humanizeValue(details.status)}`
-        : `changed the status to ${humanizeValue(details.status)}`,
+        ? tr(options, "activity.issueAction.statusFromTo", `changed the status from ${humanizeValue(from)} to ${humanizeValue(details.status)}`, { from: humanizeValue(from), to: humanizeValue(details.status) })
+        : tr(options, "activity.issueAction.statusTo", `changed the status to ${humanizeValue(details.status)}`, { to: humanizeValue(details.status) }),
     );
   }
   if (details.priority !== undefined) {
     const from = previous.priority;
     parts.push(
       from
-        ? `changed the priority from ${humanizeValue(from)} to ${humanizeValue(details.priority)}`
-        : `changed the priority to ${humanizeValue(details.priority)}`,
+        ? tr(options, "activity.issueAction.priorityFromTo", `changed the priority from ${humanizeValue(from)} to ${humanizeValue(details.priority)}`, { from: humanizeValue(from), to: humanizeValue(details.priority) })
+        : tr(options, "activity.issueAction.priorityTo", `changed the priority to ${humanizeValue(details.priority)}`, { to: humanizeValue(details.priority) }),
     );
   }
   if (details.assigneeAgentId !== undefined || details.assigneeUserId !== undefined) {
     const assigneeName = formatAssigneeName(details, options);
-    parts.push(assigneeName ? `assigned the issue to ${assigneeName}` : "unassigned the issue");
+    parts.push(assigneeName
+      ? tr(options, "activity.issueAction.assignedTo", `assigned the issue to ${assigneeName}`, { name: assigneeName })
+      : tr(options, "activity.issueAction.unassigned", "unassigned the issue"));
   }
-  if (details.title !== undefined) parts.push("updated the title");
-  if (details.description !== undefined) parts.push("updated the description");
+  if (details.title !== undefined) parts.push(tr(options, "activity.issueAction.updatedTitle", "updated the title"));
+  if (details.description !== undefined) parts.push(tr(options, "activity.issueAction.updatedDescription", "updated the description"));
 
-  return parts.length > 0 ? parts.join(", ") : null;
+  return parts.length > 0 ? parts.join(tr(options, "activity.issueAction.join", ", ")) : null;
 }
 
 function formatStructuredIssueChange(input: {
@@ -299,7 +326,7 @@ export function formatActivityVerb(
   options: ActivityFormatOptions = {},
 ): string {
   if (action === "issue.updated") {
-    const issueUpdatedVerb = formatIssueUpdatedVerb(details);
+    const issueUpdatedVerb = formatIssueUpdatedVerb(details, options);
     if (issueUpdatedVerb) return issueUpdatedVerb;
   }
 
@@ -311,7 +338,9 @@ export function formatActivityVerb(
   });
   if (structuredChange) return structuredChange;
 
-  return ACTIVITY_ROW_VERBS[action] ?? action.replace(/[._]/g, " ");
+  const verb = ACTIVITY_ROW_VERBS[action];
+  if (verb) return tr(options, `activity.verb.${actionKeySegment(action)}`, verb);
+  return action.replace(/[._]/g, " ");
 }
 
 export function formatIssueActivityAction(
@@ -336,8 +365,11 @@ export function formatIssueActivityAction(
     const serviceName = typeof details.serviceName === "string" && details.serviceName.trim()
       ? details.serviceName.trim()
       : null;
-    const base = ISSUE_ACTIVITY_LABELS[action] ?? action.replace(/[._]/g, " ");
-    return serviceName ? `${base} for ${serviceName}` : base;
+    const mapped = ISSUE_ACTIVITY_LABELS[action];
+    const base = mapped
+      ? tr(options, `activity.issueAction.${actionKeySegment(action)}`, mapped)
+      : action.replace(/[._]/g, " ");
+    return serviceName ? tr(options, "activity.issueAction.forService", `${base} for ${serviceName}`, { base, service: serviceName }) : base;
   }
 
   if (
@@ -352,8 +384,14 @@ export function formatIssueActivityAction(
   ) {
     const key = typeof details.key === "string" ? details.key : "document";
     const title = typeof details.title === "string" && details.title ? ` (${details.title})` : "";
-    return `${ISSUE_ACTIVITY_LABELS[action] ?? action} ${key}${title}`;
+    const mapped = ISSUE_ACTIVITY_LABELS[action] ?? action;
+    const base = ISSUE_ACTIVITY_LABELS[action]
+      ? tr(options, `activity.issueAction.${actionKeySegment(action)}`, mapped)
+      : mapped;
+    return `${base} ${key}${title}`;
   }
 
-  return ISSUE_ACTIVITY_LABELS[action] ?? action.replace(/[._]/g, " ");
+  const label = ISSUE_ACTIVITY_LABELS[action];
+  if (label) return tr(options, `activity.issueAction.${actionKeySegment(action)}`, label);
+  return action.replace(/[._]/g, " ");
 }

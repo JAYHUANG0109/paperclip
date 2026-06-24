@@ -3,6 +3,7 @@ import { Link, Navigate, useParams } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
+import { useTranslation } from "@/i18n";
 import { pluginsApi } from "@/api/plugins";
 import { queryKeys } from "@/lib/queryKeys";
 import {
@@ -13,6 +14,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { NotFoundPage } from "./NotFound";
+
+/** Localize known plugin page titles (Google Chat) so the breadcrumb follows
+ * the app language instead of the plugin's static English manifest name. */
+const ROUTE_TITLE_KEYS: Record<string, string> = {
+  "chat-logs": "nav.chatLogs",
+  "chat-assignments": "nav.assignments",
+};
 
 /**
  * Company-context plugin page. Renders a plugin's `page` slot at
@@ -29,6 +37,7 @@ export function PluginPage() {
     pluginRoutePath?: string;
     "*": string | undefined;
   }>();
+  const { t } = useTranslation();
   const { companyPrefix: routeCompanyPrefix, pluginId, pluginRoutePath } = params;
   const pluginRouteSplat = params["*"];
   const { companies, selectedCompanyId } = useCompany();
@@ -115,14 +124,16 @@ export function PluginPage() {
   useEffect(() => {
     if (!pageSlot) return;
     if (routeSidebarActive) {
-      setBreadcrumbs([{ label: resolveRouteSidebarPageTitle(pageSlot, pluginRouteSplat) }]);
+      const routeKey = ROUTE_TITLE_KEYS[pageSlot.routePath ?? ""];
+      const baseTitle = resolveRouteSidebarPageTitle(pageSlot, pluginRouteSplat);
+      setBreadcrumbs([{ label: routeKey ? t(routeKey, { defaultValue: baseTitle }) : baseTitle }]);
       return;
     }
     setBreadcrumbs([
-      { label: "Plugins", href: "/instance/settings/plugins" },
+      { label: t("settings.plugins.breadcrumbPlugins", { defaultValue: "Plugins" }), href: "/instance/settings/plugins" },
       { label: pageSlot.pluginDisplayName },
     ]);
-  }, [pageSlot, pluginRouteSplat, setBreadcrumbs, routeSidebarActive]);
+  }, [pageSlot, pluginRouteSplat, setBreadcrumbs, routeSidebarActive, t]);
 
   if (!resolvedCompanyId) {
     if (hasInvalidCompanyPrefix) {
@@ -168,7 +179,7 @@ export function PluginPage() {
           <Button variant="ghost" size="sm" asChild>
             <Link to={companyPrefix ? `/${companyPrefix}/dashboard` : "/dashboard"}>
               <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
+              {t("common.back", { defaultValue: "Back" })}
             </Link>
           </Button>
         </div>

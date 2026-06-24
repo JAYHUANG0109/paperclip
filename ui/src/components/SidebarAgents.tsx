@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useLocation } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "@/i18n";
 import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
   MoreHorizontal,
   Loader2,
   LogOut,
@@ -44,12 +48,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { Agent } from "@paperclipai/shared";
 
-const AGENT_SORT_CHOICES: SidebarSectionRadioChoice[] = [
-  { value: "top", label: "Top" },
-  { value: "alphabetical", label: "Alphabetical" },
-  { value: "recent", label: "Recent" },
-];
-
 function agentTimestamp(agent: Agent, field: "lastHeartbeatAt" | "updatedAt" | "createdAt"): number {
   const raw = agent[field];
   if (!raw) return 0;
@@ -79,6 +77,55 @@ function sortAgents(agents: Agent[], sortMode: AgentSidebarSortMode): Agent[] {
   return sorted;
 }
 
+// Phase 1 (fast-start): read an agent's team membership from metadata.
+// Supports Asana-style multi-team: metadata.teams (string[]) — an agent may belong to several
+// teams and appears under each folder. Falls back to metadata.team (string) for convenience.
+// When no agent has any team set, the sidebar renders a flat list (no visual change).
+function agentTeams(agent: Agent): string[] {
+  const md = agent.metadata as Record<string, unknown> | null;
+  if (!md) return [];
+  const out: string[] = [];
+  const raw = md.teams;
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (typeof entry === "string" && entry.trim().length > 0) out.push(entry.trim());
+    }
+  } else if (typeof md.team === "string" && md.team.trim().length > 0) {
+    out.push(md.team.trim());
+  }
+  // De-dupe while preserving order.
+  return Array.from(new Set(out));
+}
+
+const UNGROUPED_TEAM_KEY = "__ungrouped__";
+
+function groupAgentsByTeam(agents: Agent[]): { key: string; team: string | null; agents: Agent[] }[] {
+  const groups = new Map<string, Agent[]>();
+  const order: string[] = [];
+  const push = (key: string, agent: Agent) => {
+    const list = groups.get(key);
+    if (list) list.push(agent);
+    else {
+      groups.set(key, [agent]);
+      order.push(key);
+    }
+  };
+  for (const agent of agents) {
+    const teams = agentTeams(agent);
+    if (teams.length === 0) push(UNGROUPED_TEAM_KEY, agent);
+    else for (const team of teams) push(team, agent); // multi-team: appears in each folder
+  }
+  const result: { key: string; team: string | null; agents: Agent[] }[] = [];
+  for (const key of order) {
+    if (key === UNGROUPED_TEAM_KEY) continue;
+    result.push({ key, team: key, agents: groups.get(key)! });
+  }
+  // Ungrouped bucket always rendered last.
+  const ungrouped = groups.get(UNGROUPED_TEAM_KEY);
+  if (ungrouped) result.push({ key: UNGROUPED_TEAM_KEY, team: null, agents: ungrouped });
+  return result;
+}
+
 function SidebarAgentItem({
   activeAgentId,
   activeTab,
@@ -102,18 +149,19 @@ function SidebarAgentItem({
   runCount: number;
   setSidebarOpen: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const routeRef = agentRouteRef(agent);
   const href = activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent);
   const editHref = `${agentUrl(agent)}/configuration`;
   const isActive = activeAgentId === routeRef;
   const isPaused = agent.status === "paused";
   const isBudgetPaused = isPaused && agent.pauseReason === "budget";
-  const pauseResumeLabel = isPaused ? "Resume agent" : "Pause agent";
+  const pauseResumeLabel = isPaused ? t("sidebarAgents.resumeAgent") : t("sidebarAgents.pauseAgent");
   const pauseResumeDisabled = disabled || agent.status === "pending_approval" || isBudgetPaused;
   const pauseResumeDisabledLabel = disabled
-    ? "Updating..."
+    ? t("sidebarAgents.updating")
     : isBudgetPaused
-      ? "Budget paused"
+      ? t("sidebarAgents.budgetPaused")
       : pauseResumeLabel;
 
   return (
@@ -136,7 +184,7 @@ function SidebarAgentItem({
         {(agent.pauseReason === "budget" || runCount > 0) && (
           <span className="ml-auto flex items-center gap-1.5 shrink-0">
             {agent.pauseReason === "budget" ? (
-              <BudgetSidebarMarker title="Agent paused by budget" />
+              <BudgetSidebarMarker title={t("sidebarAgents.pausedByBudget")} />
             ) : null}
             {runCount > 0 ? (
               <span className="relative flex h-2 w-2">
@@ -146,7 +194,7 @@ function SidebarAgentItem({
             ) : null}
             {runCount > 0 ? (
               <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                {runCount} live
+                {t("sidebarAgents.liveCount", { count: runCount })}
               </span>
             ) : null}
           </span>
@@ -164,7 +212,7 @@ function SidebarAgentItem({
                 ? "opacity-100"
                 : "pointer-events-none opacity-0 group-hover/agent:pointer-events-auto group-hover/agent:opacity-100 group-focus-within/agent:pointer-events-auto group-focus-within/agent:opacity-100",
             )}
-            aria-label={`Open actions for ${agent.name}`}
+            aria-label={t("sidebarAgents.openActions", { name: agent.name })}
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
@@ -178,7 +226,7 @@ function SidebarAgentItem({
               }}
             >
               <Pencil className="size-4" />
-              <span>Edit agent</span>
+              <span>{t("sidebarAgents.editAgent")}</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -188,7 +236,7 @@ function SidebarAgentItem({
               onPauseResume(agent, isPaused ? "resume" : "pause");
             }}
             disabled={pauseResumeDisabled}
-            title={isBudgetPaused ? "Agent was paused by budget limits" : undefined}
+            title={isBudgetPaused ? t("sidebarAgents.pausedByBudgetLimits") : undefined}
           >
             {isPaused ? <PlayCircle className="size-4" /> : <PauseCircle className="size-4" />}
             <span>{pauseResumeDisabledLabel}</span>
@@ -202,7 +250,7 @@ function SidebarAgentItem({
             disabled={leaving}
           >
             {leaving ? <Loader2 className="size-4 motion-safe:animate-spin" /> : <LogOut className="size-4" />}
-            <span>{leaving ? "Leaving..." : "Leave agent"}</span>
+            <span>{leaving ? t("sidebarAgents.leaving") : t("sidebarAgents.leaveAgent")}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -211,6 +259,15 @@ function SidebarAgentItem({
 }
 
 export function SidebarAgents() {
+  const { t } = useTranslation();
+  const sortChoices = useMemo<SidebarSectionRadioChoice[]>(
+    () => [
+      { value: "top", label: t("sort.top", { defaultValue: "Top" }) },
+      { value: "alphabetical", label: t("sort.alphabetical", { defaultValue: "Alphabetical" }) },
+      { value: "recent", label: t("sort.recent", { defaultValue: "Recent" }) },
+    ],
+    [t],
+  );
   const [open, setOpen] = useState(true);
   const [pendingAgentIds, setPendingAgentIds] = useState<Set<string>>(() => new Set());
   const queryClient = useQueryClient();
@@ -276,6 +333,17 @@ export function SidebarAgents() {
     () => sortAgents(orderedAgents, sortMode),
     [orderedAgents, sortMode],
   );
+  const teamGroups = useMemo(() => groupAgentsByTeam(sortedAgents), [sortedAgents]);
+  const hasTeams = useMemo(() => teamGroups.some((g) => g.team !== null), [teamGroups]);
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(() => new Set());
+  const toggleTeam = useCallback((key: string) => {
+    setCollapsedTeams((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const agentMatch = location.pathname.match(/^\/(?:[^/]+\/)?agents\/([^/]+)(?:\/([^/]+))?/);
   const activeAgentId = agentMatch?.[1] ?? null;
@@ -347,14 +415,14 @@ export function SidebarAgents() {
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentRouteRef(agent)) }),
       ]);
       pushToast({
-        title: action === "pause" ? "Agent paused" : "Agent resumed",
+        title: action === "pause" ? t("sidebarAgents.toast.paused") : t("sidebarAgents.toast.resumed"),
         body: agent.name,
         tone: "success",
       });
     },
     onError: (error, { agent, action }) => {
       pushToast({
-        title: action === "pause" ? "Could not pause agent" : "Could not resume agent",
+        title: action === "pause" ? t("sidebarAgents.toast.pauseFailed") : t("sidebarAgents.toast.resumeFailed"),
         body: error instanceof Error ? error.message : agent.name,
         tone: "error",
       });
@@ -387,28 +455,32 @@ export function SidebarAgents() {
 
   return (
     <SidebarSection
-      label="Agents"
+      label={t("nav.agents", { defaultValue: "Agents" })}
       collapsible={{ open, onOpenChange: setOpen }}
       headerAction={{
-        ariaLabel: "New agent",
+        ariaLabel: t("nav.newAgent", { defaultValue: "New agent" }),
         icon: Plus,
         onClick: openNewAgent,
       }}
       menu={{
-        ariaLabel: "Agents section actions",
+        ariaLabel: t("nav.agentsActions", { defaultValue: "Agents section actions" }),
         actions: [
-          { type: "item", label: "Browse agents", icon: Users, href: "/agents/all" },
+          {
+            type: "item",
+            label: t("nav.browseAgents", { defaultValue: "Browse agents" }),
+            icon: Users,
+            href: "/agents/all",
+          },
           { type: "separator" },
         ],
-        radioLabel: "Agent sort",
-        radioChoices: AGENT_SORT_CHOICES,
+        radioLabel: t("nav.agentSort", { defaultValue: "Agent sort" }),
+        radioChoices: sortChoices,
         radioValue: sortMode,
         onRadioValueChange: persistSortMode,
       }}
     >
-      {sortedAgents.map((agent: Agent) => {
-        const runCount = liveCountByAgent.get(agent.id) ?? 0;
-        return (
+      {(() => {
+        const renderAgentItem = (agent: Agent) => (
           <SidebarAgentItem
             key={agent.id}
             activeAgentId={activeAgentId}
@@ -419,11 +491,45 @@ export function SidebarAgents() {
             leaving={agentLeaving(agent)}
             onLeaveAgent={leaveAgent}
             onPauseResume={(targetAgent, action) => pauseResumeAgent.mutate({ agent: targetAgent, action })}
-            runCount={runCount}
+            runCount={liveCountByAgent.get(agent.id) ?? 0}
             setSidebarOpen={setSidebarOpen}
           />
         );
-      })}
+
+        // No teams assigned anywhere → flat list, identical to the original behavior.
+        if (!hasTeams) {
+          return sortedAgents.map(renderAgentItem);
+        }
+
+        // Grouped into collapsible team folders; ungrouped agents fall into a final folder.
+        return teamGroups.map((group) => {
+          const collapsed = collapsedTeams.has(group.key);
+          const label =
+            group.team ?? t("sidebarAgents.ungrouped", { defaultValue: "Ungrouped" });
+          return (
+            <div key={group.key} className="mb-0.5">
+              <button
+                type="button"
+                onClick={() => toggleTeam(group.key)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] font-semibold text-foreground/70 transition-colors hover:text-foreground"
+                aria-expanded={!collapsed}
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <Folder className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate text-left">{label}</span>
+                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
+                  {group.agents.length}
+                </span>
+              </button>
+              {!collapsed && group.agents.map(renderAgentItem)}
+            </div>
+          );
+        });
+      })()}
     </SidebarSection>
   );
 }

@@ -7,6 +7,23 @@ import {
   type PluginWidgetProps
 } from "@paperclipai/plugin-sdk/ui";
 
+// Follow the host app's selected language. Paperclip stores the chosen locale
+// in localStorage (set by ui/src/i18n); fall back to the browser language only
+// if the app hasn't set one. This makes the plugin UI switch with the app's
+// language toggle, not just the browser's default.
+function resolveAppLocale(): string {
+  try {
+    const ls = typeof localStorage !== "undefined" ? localStorage : null;
+    const picked = ls?.getItem("paperclip.locale.override") || ls?.getItem("paperclip.locale.resolved");
+    if (picked) return picked;
+  } catch {
+    /* localStorage may be unavailable */
+  }
+  return typeof navigator !== "undefined" ? navigator.language : "en";
+}
+const isChinese = resolveAppLocale().toLowerCase().startsWith("zh");
+function tx(en: string, zh: string): string { return isChinese ? zh : en; }
+
 type HealthData = {
   status: "ok" | "degraded" | "error";
   checkedAt: string;
@@ -70,8 +87,8 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  if (loading) return <div>Loading assignments…</div>;
-  if (error) return <div>Failed to load: {error.message}</div>;
+  if (loading) return <div>{tx("Loading assignments…", "載入指派中…")}</div>;
+  if (error) return <div>{tx("Failed to load:", "載入失敗：")} {error.message}</div>;
 
   const agents = data?.agents ?? [];
   const assignments = data?.assignments ?? [];
@@ -79,7 +96,7 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
   async function add() {
     setFormError(null);
     if (!email.trim() || !agentId) {
-      setFormError("Enter an email and pick an agent.");
+      setFormError(tx("Enter an email and pick an agent.", "請輸入電子郵件並選擇代理。"));
       return;
     }
     setBusy(true);
@@ -89,7 +106,7 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
         error?: string;
       };
       if (res?.ok === false) {
-        setFormError(res.error ?? "Could not save.");
+        setFormError(res.error ?? tx("Could not save.", "儲存失敗。"));
         return;
       }
       setEmail("");
@@ -113,14 +130,18 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
   return (
     <div style={{ display: "grid", gap: 18, maxWidth: 760 }}>
       <div style={{ display: "grid", gap: 6 }}>
-        <strong style={{ fontSize: 16 }}>Google Chat — agent assignments</strong>
+        <strong style={{ fontSize: 16 }}>{tx("Google Chat — agent assignments", "Google Chat — 代理指派")}</strong>
         <div style={{ fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
-          Only people listed here get a response from the bot. Everyone else is
-          told to contact 資訊部 (IT).{" "}
+          {tx(
+            "Only people listed here get a response from the bot. Everyone else is told to contact 資訊部 (IT).",
+            "只有此列表中的成員會收到機器人回應；其他人會被告知聯絡資訊部（IT）。"
+          )}{" "}
           {data?.gateUnassigned === false && (
             <em>
-              Gating is currently OFF (everyone reaches the default agent) — turn
-              on “Restrict to assigned users” in Configuration.
+              {tx(
+                "Gating is currently OFF (everyone reaches the default agent) — turn on “Restrict to assigned users” in Configuration.",
+                "目前未啟用限制（所有人都會連到預設代理）—— 請在「設定」中開啟「限定已指派的使用者」。"
+              )}
             </em>
           )}
         </div>
@@ -129,8 +150,8 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border, #3a3a3a)" }}>
-            <th style={cell}>Email</th>
-            <th style={cell}>Agent</th>
+            <th style={cell}>{tx("Email", "電子郵件")}</th>
+            <th style={cell}>{tx("Agent", "代理")}</th>
             <th style={cell} />
           </tr>
         </thead>
@@ -138,7 +159,7 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
           {assignments.length === 0 && (
             <tr>
               <td style={{ ...cell, opacity: 0.6 }} colSpan={3}>
-                No assignments yet.
+                {tx("No assignments yet.", "尚無指派。")}
               </td>
             </tr>
           )}
@@ -148,7 +169,7 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
               <td style={cell}>{a.agentName ?? a.agentId}</td>
               <td style={{ ...cell, textAlign: "right" }}>
                 <button style={button} disabled={busy} onClick={() => void remove(a.email)}>
-                  Remove
+                  {tx("Remove", "移除")}
                 </button>
               </td>
             </tr>
@@ -157,7 +178,7 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
       </table>
 
       <div style={{ display: "grid", gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>Add assignment</strong>
+        <strong style={{ fontSize: 13 }}>{tx("Add assignment", "新增指派")}</strong>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input
             type="email"
@@ -171,7 +192,7 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
             onChange={(e) => setAgentId(e.target.value)}
             style={{ ...button, cursor: "pointer", minWidth: 200 }}
           >
-            <option value="">Select agent…</option>
+            <option value="">{tx("Select agent…", "選擇代理…")}</option>
             {agents.map((ag) => (
               <option key={ag.id} value={ag.id}>
                 {ag.name}
@@ -184,7 +205,7 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
             disabled={busy}
             onClick={() => void add()}
           >
-            {busy ? "Saving…" : "Add"}
+            {busy ? tx("Saving…", "儲存中…") : tx("Add", "新增")}
           </button>
         </div>
         {formError && <div style={{ color: "#e06c6c", fontSize: 12 }}>{formError}</div>}

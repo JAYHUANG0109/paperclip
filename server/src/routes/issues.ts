@@ -78,7 +78,13 @@ import {
 } from "../services/index.js";
 import { logger } from "../middleware/logger.js";
 import { conflict, forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import {
+  assertBoard,
+  assertCompanyAccess,
+  getActorInfo,
+  getJoinedAgentIds,
+  isPrivilegedMemberViewer,
+} from "./authz.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
   collectIssueWorkspaceCommandPaths,
@@ -843,8 +849,10 @@ export function issueRoutes(
     searchService?: CompanySearchService;
     searchRateLimiter?: CompanySearchRateLimiter;
     pluginWorkerManager?: PluginWorkerManager;
+    restrictVisibility?: boolean;
   } = {},
 ) {
+  const restrictVisibility = opts.restrictVisibility ?? false;
   const router = Router();
   const svc = issueService(db);
   const access = accessService(db);
@@ -1850,8 +1858,8 @@ export function issueRoutes(
     }
     const offset = parsedOffset ?? 0;
 
-    const result = await svc.list(companyId, {
-      attention: attention === "blocked" ? "blocked" : undefined,
+    const listFilters = {
+      attention: attention === "blocked" ? ("blocked" as const) : undefined,
       status: req.query.status as string | undefined,
       assigneeAgentId: req.query.assigneeAgentId as string | undefined,
       participantAgentId: req.query.participantAgentId as string | undefined,
@@ -1878,11 +1886,43 @@ export function issueRoutes(
       includeBlockedInboxAttention:
         req.query.includeBlockedInboxAttention === "true" || req.query.includeBlockedInboxAttention === "1",
       q: req.query.q as string | undefined,
-      limit,
-      offset,
-      sortField: sortField === "updated" ? "updated" : undefined,
-      sortDir: sortDir === "asc" || sortDir === "desc" ? sortDir : undefined,
-    });
+      sortField: sortField === "updated" ? ("updated" as const) : undefined,
+      sortDir: sortDir === "asc" || sortDir === "desc" ? (sortDir as "asc" | "desc") : undefined,
+    };
+
+    // Restricted members (operator/viewer with the flag on) only see issues that
+    // involve their own joined agents, are assigned to them, or were created by
+    // them. We fetch the full candidate set and scope in-process, then paginate,
+    // so they never see other people's/agents' work.
+    let result: Awaited<ReturnType<typeof svc.list>>;
+    if (
+      !isPrivilegedMemberViewer(req, companyId, restrictVisibility) &&
+      req.actor.type === "board" &&
+      req.actor.userId
+    ) {
+      const userId = req.actor.userId;
+      const joined = new Set(await getJoinedAgentIds(db, companyId, userId));
+      const candidates = await svc.list(companyId, {
+        ...listFilters,
+        limit: ISSUE_LIST_MAX_LIMIT,
+        offset: 0,
+      });
+      const visible = candidates.filter((issue) => {
+        const i = issue as {
+          assigneeAgentId?: string | null;
+          assigneeUserId?: string | null;
+          createdByUserId?: string | null;
+        };
+        return (
+          (i.assigneeAgentId != null && joined.has(i.assigneeAgentId)) ||
+          i.assigneeUserId === userId ||
+          i.createdByUserId === userId
+        );
+      });
+      result = visible.slice(offset, offset + limit);
+    } else {
+      result = await svc.list(companyId, { ...listFilters, limit, offset });
+    }
     const issueIds = result.map((issue) => issue.id);
     const [handoffStates, recoveryActionByIssue] = await Promise.all([
       listSuccessfulRunHandoffStates(db, companyId, issueIds),
@@ -5641,7 +5681,15 @@ export function issueRoutes(
     }
     const filename = attachment.originalFilename ?? "attachment";
     const disposition = isInlineAttachmentContentType(responseContentType) ? "inline" : "attachment";
-    res.setHeader("Content-Disposition", `${disposition}; filename=\"${filename.replaceAll("\"", "")}\"`);
+    // HTTP headers must be ASCII, but filenames can contain non-ASCII (e.g. CJK).
+    // Provide an ASCII-only fallback plus an RFC 5987 UTF-8 encoded name; sending
+    // a raw non-ASCII filename throws ERR_INVALID_CHAR and 500s the download.
+    const asciiFallback = filename.replace(/[^\x20-\x7E]/g, "_").replaceAll("\"", "");
+    const encodedName = encodeURIComponent(filename);
+    res.setHeader(
+      "Content-Disposition",
+      `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`,
+    );
 
     object.stream.on("error", (err) => {
       next(err);

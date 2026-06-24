@@ -5,13 +5,130 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { toNodeHandler } from "better-auth/node";
 import type { Db } from "@paperclipai/db";
 import {
+  agentMemberships,
+  agents,
   authAccounts,
   authSessions,
   authUsers,
   authVerifications,
+  companyMemberships,
+  instanceUserRoles,
+  pluginState,
 } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { Config } from "../config.js";
 import { resolvePaperclipInstanceId } from "../home-paths.js";
+
+/**
+ * Auto-provision a newly signed-in user from any agents pre-tagged with their
+ * email (adapterConfig.assignedUserEmail). This makes onboarding self-service:
+ * an admin sets up an agent + tags the person's email; when that person logs in
+ * with their @domain Google account, they automatically get operator access to
+ * exactly their assigned agent — no manual grant per login. Users with no
+ * pre-assigned agent are left ungated-out (they see "No company access").
+ */
+async function autoProvisionAssignedAgents(
+  db: Db,
+  user: { id?: string; email?: string | null },
+  hostedDomain: string,
+): Promise<void> {
+  const userId = user.id;
+  if (!userId) return;
+  // Email may be absent (session hook only has the id) — look it up.
+  let email = user.email?.trim().toLowerCase();
+  if (!email) {
+    const row = (await db.select().from(authUsers).where(eq(authUsers.id, userId)))[0];
+    email = row?.email?.trim().toLowerCase();
+  }
+  if (!email) return;
+  if (hostedDomain && !email.endsWith(`@${hostedDomain.toLowerCase()}`)) return;
+
+  const all = await db.select().from(agents);
+  const wantedAgentIds = new Set<string>();
+  // Source 1: the Google Chat "Assignments" page (email → agent), which is the
+  // single UI control surface — stored in plugin_state under "agent-assignments".
+  try {
+    const rows = await db
+      .select()
+      .from(pluginState)
+      .where(eq(pluginState.stateKey, "agent-assignments"));
+    for (const row of rows) {
+      const map = (row.valueJson as Record<string, { agentId?: string }>) ?? {};
+      const entry = map[email];
+      if (entry?.agentId) wantedAgentIds.add(entry.agentId);
+    }
+  } catch {
+    /* assignments are optional */
+  }
+  // Source 2: an agent tagged directly with this email (prep-agent.ts).
+  for (const a of all) {
+    const cfg = a.adapterConfig as { assignedUserEmail?: string } | null;
+    if (cfg?.assignedUserEmail?.trim().toLowerCase() === email) wantedAgentIds.add(a.id);
+  }
+  const mine = all.filter((a) => wantedAgentIds.has(a.id) && a.status !== "terminated");
+  const VALID_ROLES = new Set(["owner", "admin", "operator", "viewer"]);
+  for (const agent of mine) {
+    const cfg = agent.adapterConfig as { assignedUserRole?: string } | null;
+    // Default to operator; an agent may specify a higher role (e.g. 創辦人_agent
+    // → owner so the founder lands with full visibility automatically).
+    const requested = cfg?.assignedUserRole?.trim().toLowerCase();
+    const role = requested && VALID_ROLES.has(requested) ? requested : "operator";
+    // operator/viewer company membership
+    const existingMem = await db
+      .select()
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.companyId, agent.companyId),
+          eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.principalId, userId),
+        ),
+      );
+    if (existingMem.length === 0) {
+      await db.insert(companyMemberships).values({
+        id: randomUUID(),
+        companyId: agent.companyId,
+        principalType: "user",
+        principalId: userId,
+        membershipRole: role,
+        status: "active",
+      });
+    } else if (existingMem[0].membershipRole !== role && role === "owner") {
+      await db.update(companyMemberships).set({ membershipRole: role, updatedAt: new Date() }).where(eq(companyMemberships.id, existingMem[0].id));
+    }
+    // If the agent requested owner-level access, also grant instance_admin so the
+    // user can access instance settings (same as Jay/創辦人).
+    if (role === "owner") {
+      const existingAdmin = await db.select().from(instanceUserRoles).where(
+        and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")),
+      );
+      if (existingAdmin.length === 0) {
+        await db.insert(instanceUserRoles).values({ id: randomUUID(), userId, role: "instance_admin" });
+      }
+    }
+    // agent_membership(joined) → they see only this agent (with restriction on)
+    const existingJoin = await db
+      .select()
+      .from(agentMemberships)
+      .where(
+        and(
+          eq(agentMemberships.companyId, agent.companyId),
+          eq(agentMemberships.userId, userId),
+          eq(agentMemberships.agentId, agent.id),
+        ),
+      );
+    if (existingJoin.length === 0) {
+      await db.insert(agentMemberships).values({
+        id: randomUUID(),
+        companyId: agent.companyId,
+        userId,
+        agentId: agent.id,
+        state: "joined",
+      });
+    }
+  }
+}
 
 export type BetterAuthSessionUser = {
   id: string;
@@ -130,6 +247,26 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
     publicUrl,
   });
 
+  // Optional Google SSO. Activated only when both client credentials are set,
+  // so the default (email/password) is unchanged until configured. `hd` limits
+  // the Google account chooser to the org's Workspace domain (defaults to
+  // seasonart.org); combined with an "Internal" OAuth consent screen and
+  // Paperclip's invite-only membership, sign-in is restricted to that domain.
+  const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+  const googleHostedDomain =
+    process.env.GOOGLE_WORKSPACE_DOMAIN?.trim() || "seasonart.org";
+  const socialProviders =
+    googleClientId && googleClientSecret
+      ? {
+          google: {
+            clientId: googleClientId,
+            clientSecret: googleClientSecret,
+            hd: googleHostedDomain,
+          },
+        }
+      : undefined;
+
   const authConfig = {
     baseURL: baseUrl,
     secret,
@@ -148,7 +285,36 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
     },
+    ...(socialProviders ? { socialProviders } : {}),
     advanced: buildBetterAuthAdvancedOptions({ disableSecureCookies }),
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (createdUser: { id?: string; email?: string | null }) => {
+            try {
+              await autoProvisionAssignedAgents(db, createdUser, googleHostedDomain);
+            } catch {
+              /* auto-provisioning is best-effort; never block sign-in */
+            }
+          },
+        },
+      },
+      // Also run on every sign-in so someone assigned AFTER their first login
+      // still gets provisioned next time they sign in (idempotent).
+      session: {
+        create: {
+          after: async (session: { userId?: string }) => {
+            try {
+              if (session.userId) {
+                await autoProvisionAssignedAgents(db, { id: session.userId }, googleHostedDomain);
+              }
+            } catch {
+              /* best-effort */
+            }
+          },
+        },
+      },
+    },
   };
 
   if (!baseUrl) {

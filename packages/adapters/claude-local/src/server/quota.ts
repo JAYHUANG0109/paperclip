@@ -21,9 +21,9 @@ function hasNonEmptyProcessEnv(key: string): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function createClaudeQuotaEnv(): Record<string, string> {
+function createClaudeQuotaEnv(baseEnv: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(baseEnv)) {
     if (typeof value !== "string") continue;
     if (key.startsWith("ANTHROPIC_")) continue;
     env[key] = value;
@@ -437,11 +437,11 @@ function buildClaudeCliShellProbeCommand(): string {
   return `${feed} | script -q -e -f -c ${quoteForShell(claudeCommand)} /dev/null`;
 }
 
-export async function captureClaudeCliUsageText(timeoutMs = 12_000): Promise<string> {
+export async function captureClaudeCliUsageText(timeoutMs = 12_000, envOverride?: NodeJS.ProcessEnv): Promise<string> {
   const command = buildClaudeCliShellProbeCommand();
   try {
     const { stdout, stderr } = await execFileAsync("sh", ["-c", command], {
-      env: createClaudeQuotaEnv(),
+      env: createClaudeQuotaEnv(envOverride),
       timeout: timeoutMs,
       maxBuffer: 8 * 1024 * 1024,
     });
@@ -468,8 +468,8 @@ export async function captureClaudeCliUsageText(timeoutMs = 12_000): Promise<str
   }
 }
 
-export async function fetchClaudeCliQuota(): Promise<QuotaWindow[]> {
-  const rawText = await captureClaudeCliUsageText();
+export async function fetchClaudeCliQuota(envOverride?: NodeJS.ProcessEnv): Promise<QuotaWindow[]> {
+  const rawText = await captureClaudeCliUsageText(12_000, envOverride);
   return parseClaudeCliUsageText(rawText);
 }
 
@@ -479,17 +479,21 @@ function formatProviderError(source: string, error: unknown): string {
 }
 
 export async function getQuotaWindows(): Promise<ProviderQuotaResult> {
+  return getQuotaWindowsForEnv(process.env);
+}
+
+export async function getQuotaWindowsForEnv(env: NodeJS.ProcessEnv): Promise<ProviderQuotaResult> {
   if (
-    process.env.CLAUDE_CODE_USE_BEDROCK === "1" ||
-    process.env.CLAUDE_CODE_USE_BEDROCK === "true" ||
-    hasNonEmptyProcessEnv("ANTHROPIC_BEDROCK_BASE_URL")
+    env.CLAUDE_CODE_USE_BEDROCK === "1" ||
+    env.CLAUDE_CODE_USE_BEDROCK === "true" ||
+    (typeof env.ANTHROPIC_BEDROCK_BASE_URL === "string" && env.ANTHROPIC_BEDROCK_BASE_URL.trim().length > 0)
   ) {
     return { provider: "anthropic", source: "bedrock", ok: true, windows: [] };
   }
 
-  const authStatus = await readClaudeAuthStatus();
+  const authStatus = env === process.env ? await readClaudeAuthStatus() : null;
   const authDescription = describeClaudeSubscriptionAuth(authStatus);
-  const token = await readClaudeToken();
+  const token = env === process.env ? await readClaudeToken() : null;
 
   const errors: string[] = [];
 
@@ -503,13 +507,13 @@ export async function getQuotaWindows(): Promise<ProviderQuotaResult> {
   }
 
   try {
-    const windows = await fetchClaudeCliQuota();
+    const windows = await fetchClaudeCliQuota(env);
     return { provider: "anthropic", source: CLAUDE_USAGE_SOURCE_CLI, ok: true, windows };
   } catch (error) {
     errors.push(formatProviderError("Claude CLI /usage", error));
   }
 
-  if (hasNonEmptyProcessEnv("ANTHROPIC_API_KEY") && !authDescription) {
+  if (typeof env.ANTHROPIC_API_KEY === "string" && env.ANTHROPIC_API_KEY.trim().length > 0 && !authDescription) {
     return {
       provider: "anthropic",
       ok: false,

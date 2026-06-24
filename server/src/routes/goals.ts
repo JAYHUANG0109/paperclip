@@ -4,16 +4,18 @@ import { createGoalSchema, updateGoalSchema } from "@paperclipai/shared";
 import { trackGoalCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
 import { goalService, logActivity } from "../services/index.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, assertPrivilegedMemberView, getActorInfo } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
 
-export function goalRoutes(db: Db) {
+export function goalRoutes(db: Db, options: { restrictVisibility?: boolean } = {}) {
+  const restrictVisibility = options.restrictVisibility ?? false;
   const router = Router();
   const svc = goalService(db);
 
   router.get("/companies/:companyId/goals", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    assertPrivilegedMemberView(req, companyId, restrictVisibility);
     const result = await svc.list(companyId);
     res.json(result);
   });

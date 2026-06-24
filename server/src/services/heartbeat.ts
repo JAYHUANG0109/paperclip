@@ -6940,57 +6940,61 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       issueContext = await getIssueExecutionContext(agent.companyId, issueId);
     }
     const wakeCommentId = deriveCommentId(context, null);
-    const wakeCommentContext =
-      issueContext && wakeCommentId
-        ? await db
-            .select({
-              id: issueComments.id,
-              body: issueComments.body,
-              authorType: issueComments.authorType,
-              authorAgentId: issueComments.authorAgentId,
-              authorUserId: issueComments.authorUserId,
-              presentation: issueComments.presentation,
-              metadata: issueComments.metadata,
-            })
-            .from(issueComments)
-            .where(and(
-              eq(issueComments.id, wakeCommentId),
-              eq(issueComments.issueId, issueContext.id),
-              eq(issueComments.companyId, agent.companyId),
-            ))
-            .then((rows) => rows[0] ?? null)
-        : null;
+    // Compute sync values before the parallel fetch block.
     const issueAssigneeOverrides =
       issueContext && issueContext.assigneeAgentId === agent.id
         ? parseIssueAssigneeAdapterOverrides(
             issueContext.assigneeAdapterOverrides,
           )
         : null;
-    const isolatedWorkspacesEnabled = (await instanceSettings.getExperimental()).enableIsolatedWorkspaces;
+    const contextProjectId = readNonEmptyString(context.projectId);
+    const executionProjectId = issueContext?.projectId ?? contextProjectId;
+    // Run independent async fetches in parallel to reduce pre-execution latency.
+    const [wakeCommentContext, projectContext, routineEnvContext, taskSession, isolatedWorkspacesEnabled] =
+      await Promise.all([
+        issueContext && wakeCommentId
+          ? db
+              .select({
+                id: issueComments.id,
+                body: issueComments.body,
+                authorType: issueComments.authorType,
+                authorAgentId: issueComments.authorAgentId,
+                authorUserId: issueComments.authorUserId,
+                presentation: issueComments.presentation,
+                metadata: issueComments.metadata,
+              })
+              .from(issueComments)
+              .where(and(
+                eq(issueComments.id, wakeCommentId),
+                eq(issueComments.issueId, issueContext.id),
+                eq(issueComments.companyId, agent.companyId),
+              ))
+              .then((rows) => rows[0] ?? null)
+          : Promise.resolve(null),
+        executionProjectId
+          ? db
+              .select({
+                id: projects.id,
+                executionWorkspacePolicy: projects.executionWorkspacePolicy,
+                env: projects.env,
+              })
+              .from(projects)
+              .where(and(eq(projects.id, executionProjectId), eq(projects.companyId, agent.companyId)))
+              .then((rows) => rows[0] ?? null)
+          : Promise.resolve(null),
+        getRoutineEnvForExecutionIssue(agent.companyId, issueContext),
+        taskKey
+          ? getTaskSession(agent.companyId, agent.id, agent.adapterType, taskKey)
+          : Promise.resolve(null),
+        instanceSettings.getExperimental().then((exp) => exp.enableIsolatedWorkspaces),
+      ]);
     const issueExecutionWorkspaceSettings = isolatedWorkspacesEnabled
       ? parseIssueExecutionWorkspaceSettings(issueContext?.executionWorkspaceSettings)
       : null;
-    const contextProjectId = readNonEmptyString(context.projectId);
-    const executionProjectId = issueContext?.projectId ?? contextProjectId;
-    const projectContext = executionProjectId
-      ? await db
-          .select({
-            id: projects.id,
-            executionWorkspacePolicy: projects.executionWorkspacePolicy,
-            env: projects.env,
-          })
-          .from(projects)
-          .where(and(eq(projects.id, executionProjectId), eq(projects.companyId, agent.companyId)))
-          .then((rows) => rows[0] ?? null)
-      : null;
-    const routineEnvContext = await getRoutineEnvForExecutionIssue(agent.companyId, issueContext);
     const projectExecutionWorkspacePolicy = gateProjectExecutionWorkspacePolicy(
       parseProjectExecutionWorkspacePolicy(projectContext?.executionWorkspacePolicy),
       isolatedWorkspacesEnabled,
     );
-    const taskSession = taskKey
-      ? await getTaskSession(agent.companyId, agent.id, agent.adapterType, taskKey)
-      : null;
     const resetTaskSession = shouldResetTaskSessionForWake(context);
     const sessionResetReason = describeSessionResetReason(context);
     const taskSessionForRun = resetTaskSession ? null : taskSession;
@@ -7122,6 +7126,25 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       persistedExecutionWorkspaceMode === "agent_default"
         ? persistedExecutionWorkspaceMode
         : requestedExecutionWorkspaceMode;
+    // Auto-route lightweight wake reasons to the "cheap" model profile
+    // (Sonnet 4.6 + effort:low) to cut TTFT and token cost.
+    // issueAssigneeOverrides.modelProfile or an existing context.modelProfile take priority.
+    if (!issueAssigneeOverrides?.modelProfile && !context.modelProfile && paperclipWakePayload) {
+      const autoWakeReason = paperclipWakePayload.reason ?? null;
+      const isMonitorWake =
+        autoWakeReason === "issue_monitor_due" ||
+        autoWakeReason === "issue_monitor_recovery" ||
+        autoWakeReason === "issue_monitor_recovery_issue";
+      const isShortCommentWake =
+        autoWakeReason === "issue_commented" &&
+        existingExecutionWorkspace === null &&
+        (paperclipWakePayload.comments as Array<Record<string, unknown>>).reduce(
+          (n: number, c) => n + (typeof c.body === "string" ? c.body.length : 0), 0,
+        ) < 300;
+      if ((isMonitorWake || isShortCommentWake) && issueRef?.priority !== "critical") {
+        context.modelProfile = "cheap";
+      }
+    }
     const defaultEnvironment = await environmentsSvc.ensureLocalEnvironment(agent.companyId);
     const selectedEnvironmentId = resolveExecutionWorkspaceEnvironmentId({
       projectPolicy: projectExecutionWorkspacePolicy,

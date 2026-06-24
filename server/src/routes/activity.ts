@@ -4,7 +4,7 @@ import type { Db } from "@paperclipai/db";
 import { normalizeIssueIdentifier } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { activityService, normalizeActivityLimit } from "../services/activity.js";
-import { assertAuthenticated, assertBoard, assertCompanyAccess } from "./authz.js";
+import { assertAuthenticated, assertBoard, assertCompanyAccess, assertPrivilegedMemberView } from "./authz.js";
 import { heartbeatService, issueService } from "../services/index.js";
 import { sanitizeRecord } from "../redaction.js";
 
@@ -18,7 +18,8 @@ const createActivitySchema = z.object({
   details: z.record(z.unknown()).optional().nullable(),
 });
 
-export function activityRoutes(db: Db) {
+export function activityRoutes(db: Db, options: { restrictVisibility?: boolean } = {}) {
+  const restrictVisibility = options.restrictVisibility ?? false;
   const router = Router();
   const svc = activityService(db);
   const heartbeat = heartbeatService(db);
@@ -35,6 +36,7 @@ export function activityRoutes(db: Db) {
   router.get("/companies/:companyId/activity", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    assertPrivilegedMemberView(req, companyId, restrictVisibility);
 
     const filters = {
       companyId,

@@ -560,12 +560,13 @@ export function createPluginWorkerHandle(
     );
     if (!invocationId) {
       // local: drop the hardening that flagged background calls as invalid scope.
-      // Legacy plugins (e.g., paperclip-plugin-telegram polling loop) call
-      // host APIs from `setup()` continuations and don't yet thread the
-      // invocation id. Treat the scope-less call as scope-less (no company
-      // restriction) instead of forbidding it. Safe for single-tenant
-      // deployments only. Revert when plugins are updated to carry
-      // invocation ids on background calls (companion to PAP-2394 plan).
+      // Some plugins call host APIs from `setup()` continuations or background
+      // contexts (event handlers, polling loops) that don't thread an invocation
+      // id — e.g. the Google Chat connector mirroring an agent comment back to a
+      // chat space from an `issue.comment.created` handler. Treat the scope-less
+      // call as scope-less (no company restriction) instead of forbidding it.
+      // Safe for single-tenant deployments only. Revert when plugins are updated
+      // to carry invocation ids on background calls (companion to PAP-2394 plan).
       return {};
     }
     const entry = activeInvocations.get(invocationId);

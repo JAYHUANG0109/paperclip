@@ -146,6 +146,19 @@ export interface PluginApiResponse {
   body?: unknown;
 }
 
+/**
+ * Optional synchronous response a webhook handler may return. When present, the
+ * host sends `jsonBody` (with `status`, default 200) as the HTTP response to the
+ * webhook caller instead of the default delivery receipt. This lets a webhook
+ * reply in-band — e.g. a Google Chat add-on returns its synchronous action
+ * response here so Chat renders an immediate reply and never shows the
+ * "app didn't respond" placeholder.
+ */
+export interface PluginWebhookResponse {
+  status?: number;
+  jsonBody?: unknown;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
@@ -232,10 +245,14 @@ export interface PluginDefinition {
    * If not implemented but webhooks are declared in the manifest, the host
    * returns HTTP 501 for webhook deliveries.
    *
+   * May return a {@link PluginWebhookResponse} to reply to the webhook caller
+   * synchronously (e.g. a Google Chat add-on's action response). Returning
+   * nothing keeps the default delivery-receipt response.
+   *
    * @param input - Webhook delivery metadata and payload
    * @see PLUGIN_SPEC.md §13.7 — `handleWebhook`
    */
-  onWebhook?(input: PluginWebhookInput): Promise<void>;
+  onWebhook?(input: PluginWebhookInput): Promise<void | PluginWebhookResponse>;
 
   /**
    * Called for manifest-declared scoped JSON API routes under

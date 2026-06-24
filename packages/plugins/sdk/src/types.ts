@@ -1137,6 +1137,33 @@ export interface PluginIssueDocumentsClient {
   delete(issueId: string, key: string, companyId: string): Promise<void>;
 }
 
+/** `ctx.issues.attachments` — upload binary files onto an issue. */
+export interface PluginIssueAttachmentsClient {
+  /**
+   * Upload a binary file and attach it to an issue. Bytes are base64-encoded.
+   * Requires the `issue.attachments.write` capability.
+   */
+  create(input: {
+    issueId: string;
+    companyId: string;
+    filename: string;
+    contentType: string;
+    /** Inline base64-encoded file bytes (small/already-have-bytes). */
+    dataBase64?: string;
+    /** Or have the host fetch the bytes from this URL (preserves binary). */
+    fetchUrl?: string;
+    /** Headers (e.g. Authorization) for the host-side fetch. */
+    fetchHeaders?: Record<string, string>;
+    issueCommentId?: string;
+  }): Promise<{
+    id: string;
+    originalFilename: string | null;
+    contentType: string;
+    byteSize: number;
+    contentPath: string;
+  }>;
+}
+
 export interface PluginIssueMutationActor {
   /** Agent that initiated the plugin operation, when the plugin is acting from an agent run. */
   actorAgentId?: string | null;
@@ -1456,6 +1483,8 @@ export interface PluginIssuesClient {
   ): Promise<RequestConfirmationInteraction>;
   /** Read and write issue documents. Requires `issue.documents.read` / `issue.documents.write`. */
   documents: PluginIssueDocumentsClient;
+  /** Upload binary file attachments. Requires `issue.attachments.write`. */
+  attachments: PluginIssueAttachmentsClient;
   /** Read and write blocker relationships. */
   relations: PluginIssueRelationsClient;
   /** Read compact orchestration summaries. */

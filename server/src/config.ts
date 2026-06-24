@@ -86,6 +86,8 @@ export interface Config {
   heartbeatSchedulerEnabled: boolean;
   heartbeatSchedulerIntervalMs: number;
   companyDeletionEnabled: boolean;
+  restrictAgentVisibility: boolean;
+  googleAuthEnabled: boolean;
   telemetryEnabled: boolean;
 }
 
@@ -244,6 +246,11 @@ export function loadConfig(): Config {
     companyDeletionEnvRaw !== undefined
       ? companyDeletionEnvRaw === "true"
       : deploymentMode === "local_trusted";
+  const restrictAgentVisibility =
+    process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY === "true";
+  const googleAuthEnabled = Boolean(
+    process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim(),
+  );
   const databaseBackupEnabled =
     process.env.PAPERCLIP_DB_BACKUP_ENABLED !== undefined
       ? process.env.PAPERCLIP_DB_BACKUP_ENABLED === "true"
@@ -332,6 +339,8 @@ export function loadConfig(): Config {
     heartbeatSchedulerEnabled: process.env.HEARTBEAT_SCHEDULER_ENABLED !== "false",
     heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
     companyDeletionEnabled,
+    restrictAgentVisibility,
+    googleAuthEnabled,
     telemetryEnabled: fileConfig?.telemetry?.enabled ?? true,
   };
 }

@@ -1731,6 +1731,24 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
           issueDocuments.delete(`${issueId}|${_key}`);
         },
       },
+      attachments: {
+        async create(input) {
+          requireCapability(manifest, capabilitySet, "issue.attachments.write");
+          const parentIssue = issues.get(input.issueId);
+          if (!isInCompany(parentIssue, input.companyId)) {
+            throw new Error(`Issue not found: ${input.issueId}`);
+          }
+          const id = randomUUID();
+          const byteSize = input.dataBase64 ? Buffer.from(input.dataBase64, "base64").length : 0;
+          return {
+            id,
+            originalFilename: input.filename || null,
+            contentType: input.contentType || "application/octet-stream",
+            byteSize,
+            contentPath: `/api/attachments/${id}/content`,
+          };
+        },
+      },
       relations: {
         async get(issueId, companyId) {
           requireCapability(manifest, capabilitySet, "issue.relations.read");

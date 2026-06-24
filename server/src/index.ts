@@ -647,6 +647,8 @@ export async function startServer(): Promise<StartedServer> {
     bindHost: config.host,
     authReady,
     companyDeletionEnabled: config.companyDeletionEnabled,
+    restrictAgentVisibility: config.restrictAgentVisibility,
+    googleAuthEnabled: config.googleAuthEnabled,
     pluginMigrationDb: pluginMigrationDb as any,
     betterAuthHandler,
     resolveSession,
@@ -687,6 +689,7 @@ export async function startServer(): Promise<StartedServer> {
   
   setupLiveEventsWebSocketServer(server, db as any, {
     deploymentMode: config.deploymentMode,
+    restrictAgentVisibility: config.restrictAgentVisibility,
     resolveSessionFromHeaders,
   });
 

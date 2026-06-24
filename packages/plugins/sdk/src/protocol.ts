@@ -70,6 +70,7 @@ import type {
   PluginHealthDiagnostics,
   PluginApiRequestInput,
   PluginApiResponse,
+  PluginWebhookResponse,
   PluginConfigValidationResult,
   PluginWebhookInput,
 } from "./define-plugin.js";
@@ -586,7 +587,7 @@ export interface HostToWorkerMethods {
   /** @see PLUGIN_SPEC.md §13.6 */
   runJob: [params: RunJobParams, result: void];
   /** @see PLUGIN_SPEC.md §13.7 */
-  handleWebhook: [params: PluginWebhookInput, result: void];
+  handleWebhook: [params: PluginWebhookInput, result: PluginWebhookResponse | void];
   /** Scoped plugin API route dispatch. */
   handleApiRequest: [params: PluginApiRequestInput, result: PluginApiResponse];
   /** @see PLUGIN_SPEC.md §13.8 */
@@ -1139,6 +1140,31 @@ export interface WorkerToHostMethods {
   "issues.documents.delete": [
     params: { issueId: string; key: string; companyId: string },
     result: void,
+  ];
+
+  // Issue Attachments (binary files)
+  "issues.attachments.create": [
+    params: {
+      issueId: string;
+      companyId: string;
+      filename: string;
+      contentType: string;
+      /** Inline base64-encoded file bytes (use for small/already-have-bytes). */
+      dataBase64?: string;
+      /** Or have the HOST fetch the bytes from this URL (preserves binary —
+       *  the plugin's own http.fetch returns text and corrupts binary). */
+      fetchUrl?: string;
+      /** Headers (e.g. Authorization) for the host-side fetch. */
+      fetchHeaders?: Record<string, string>;
+      issueCommentId?: string;
+    },
+    result: {
+      id: string;
+      originalFilename: string | null;
+      contentType: string;
+      byteSize: number;
+      contentPath: string;
+    },
   ];
 
   // Agents (read)

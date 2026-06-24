@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
+import { useTranslation } from "@/i18n";
 import { authApi } from "../api/auth";
 import { queryKeys } from "../lib/queryKeys";
 import { getRememberedInvitePath } from "../lib/invite-memory";
@@ -11,6 +12,7 @@ import { Sparkles } from "lucide-react";
 type AuthMode = "sign_in" | "sign_up";
 
 export function AuthPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -29,6 +31,27 @@ export function AuthPage() {
     queryFn: () => authApi.getSession(),
     retry: false,
   });
+
+  // Whether the server has Google SSO configured — controls showing the button.
+  const { data: googleAuthEnabled } = useQuery({
+    queryKey: ["auth", "google-enabled"],
+    queryFn: async () => {
+      const res = await fetch("/api/health", { headers: { Accept: "application/json" } });
+      const payload = await res.json().catch(() => null);
+      return Boolean((payload as { googleAuthEnabled?: boolean } | null)?.googleAuthEnabled);
+    },
+    retry: false,
+  });
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    try {
+      const { url } = await authApi.signInSocial({ provider: "google", callbackURL: nextPath });
+      window.location.href = url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("auth.googleSignInFailed"));
+    }
+  };
 
   useEffect(() => {
     if (session) {
@@ -55,7 +78,7 @@ export function AuthPage() {
       navigate(nextPath, { replace: true });
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : "Authentication failed");
+      setError(err instanceof Error ? err.message : t("auth.authenticationFailed"));
     },
   });
 
@@ -67,7 +90,7 @@ export function AuthPage() {
   if (isSessionLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
       </div>
     );
   }
@@ -83,23 +106,41 @@ export function AuthPage() {
           </div>
 
           <h1 className="text-xl font-semibold">
-            {mode === "sign_in" ? "Sign in to Paperclip" : "Create your Paperclip account"}
+            {mode === "sign_in" ? t("auth.signInTitle") : t("auth.signUpTitle")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {mode === "sign_in"
-              ? "Use your email and password to access this instance."
-              : "Create an account for this instance. Email confirmation is not required in v1."}
+              ? t("auth.signInSubtitle")
+              : t("auth.signUpSubtitle")}
           </p>
 
+          {googleAuthEnabled && (
+            <div className="mt-6">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleGoogleSignIn}
+              >
+                {t("auth.signInWithGoogle")}
+              </Button>
+              <div className="my-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground">{t("auth.or")}</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            </div>
+          )}
+
           <form
-            className="mt-6 space-y-4"
+            className={googleAuthEnabled ? "space-y-4" : "mt-6 space-y-4"}
             method="post"
             action={mode === "sign_up" ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email"}
             onSubmit={(event) => {
               event.preventDefault();
               if (mutation.isPending) return;
               if (!canSubmit) {
-                setError("Please fill in all required fields.");
+                setError(t("auth.fillAllFields"));
                 return;
               }
               mutation.mutate();
@@ -107,7 +148,7 @@ export function AuthPage() {
           >
             {mode === "sign_up" && (
               <div>
-                <label htmlFor="name" className="text-xs text-muted-foreground mb-1 block">Name</label>
+                <label htmlFor="name" className="text-xs text-muted-foreground mb-1 block">{t("auth.name")}</label>
                 <input
                   id="name"
                   name="name"
@@ -120,7 +161,7 @@ export function AuthPage() {
               </div>
             )}
             <div>
-              <label htmlFor="email" className="text-xs text-muted-foreground mb-1 block">Email</label>
+              <label htmlFor="email" className="text-xs text-muted-foreground mb-1 block">{t("auth.email")}</label>
               <input
                 id="email"
                 name="email"
@@ -133,7 +174,7 @@ export function AuthPage() {
               />
             </div>
             <div>
-              <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
+              <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">{t("auth.password")}</label>
               <input
                 id="password"
                 name="password"
@@ -152,15 +193,15 @@ export function AuthPage() {
               className={`w-full ${!canSubmit && !mutation.isPending ? "opacity-50" : ""}`}
             >
               {mutation.isPending
-                ? "Working…"
+                ? t("auth.working")
                 : mode === "sign_in"
-                  ? "Sign In"
-                  : "Create Account"}
+                  ? t("auth.signIn")
+                  : t("auth.createAccount")}
             </Button>
           </form>
 
           <div className="mt-5 text-sm text-muted-foreground">
-            {mode === "sign_in" ? "Need an account?" : "Already have an account?"}{" "}
+            {mode === "sign_in" ? t("auth.needAccount") : t("auth.haveAccount")}{" "}
             <button
               type="button"
               className="font-medium text-foreground underline underline-offset-2"
@@ -169,7 +210,7 @@ export function AuthPage() {
                 setMode(mode === "sign_in" ? "sign_up" : "sign_in");
               }}
             >
-              {mode === "sign_in" ? "Create one" : "Sign in"}
+              {mode === "sign_in" ? t("auth.createOne") : t("auth.signInLink")}
             </button>
           </div>
         </div>

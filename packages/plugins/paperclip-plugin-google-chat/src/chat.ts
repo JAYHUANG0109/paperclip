@@ -186,7 +186,20 @@ export async function sendMessage(
         cardId: "image",
         card: {
           sections: [
-            { widgets: [{ image: { imageUrl: params.imageUrl, altText: params.imageAltText ?? "image" } }] }
+            {
+              widgets: [
+                {
+                  image: {
+                    imageUrl: params.imageUrl,
+                    altText: params.imageAltText ?? "image",
+                    // Click opens the full-resolution image in a new tab — Chat
+                    // image widgets have no built-in lightbox, so this is how a
+                    // user gets a bigger view.
+                    onClick: { openLink: { url: params.imageUrl } }
+                  }
+                }
+              ]
+            }
           ]
         }
       }

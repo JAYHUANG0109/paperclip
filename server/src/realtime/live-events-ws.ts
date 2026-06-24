@@ -9,6 +9,7 @@ import type { DeploymentMode } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "../middleware/logger.js";
 import { subscribeCompanyLiveEvents } from "../services/live-events.js";
+import { createBoardUserEventFilter } from "./live-event-visibility.js";
 
 interface WsSocket {
   readyState: number;
@@ -44,6 +45,10 @@ interface UpgradeContext {
   companyId: string;
   actorType: "board" | "agent";
   actorId: string;
+  // When true, this board user is restricted to live events for agents they
+  // have joined (operator/viewer under restricted-visibility). Privileged
+  // actors (owner/admin/instance admin/local board) and agent keys are false.
+  restricted: boolean;
 }
 
 interface IncomingMessageWithContext extends IncomingMessage {
@@ -99,6 +104,7 @@ async function authorizeUpgrade(
   url: URL,
   opts: {
     deploymentMode: DeploymentMode;
+    restrictAgentVisibility: boolean;
     resolveSessionFromHeaders?: (headers: Headers) => Promise<BetterAuthSessionResult | null>;
   },
 ): Promise<UpgradeContext | null> {
@@ -113,6 +119,7 @@ async function authorizeUpgrade(
         companyId,
         actorType: "board",
         actorId: "board",
+        restricted: false,
       };
     }
 
@@ -131,7 +138,10 @@ async function authorizeUpgrade(
         .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
         .then((rows) => rows[0] ?? null),
       db
-        .select({ companyId: companyMemberships.companyId })
+        .select({
+          companyId: companyMemberships.companyId,
+          membershipRole: companyMemberships.membershipRole,
+        })
         .from(companyMemberships)
         .where(
           and(
@@ -142,13 +152,23 @@ async function authorizeUpgrade(
         ),
     ]);
 
-    const hasCompanyMembership = memberships.some((row) => row.companyId === companyId);
-    if (!roleRow && !hasCompanyMembership) return null;
+    const membership = memberships.find((row) => row.companyId === companyId);
+    if (!roleRow && !membership) return null;
+
+    // Privileged actors see all company events. A board user is restricted to
+    // their joined agents only when visibility restriction is enabled and they
+    // are neither an instance admin nor a company owner/admin.
+    const isPrivileged =
+      !opts.restrictAgentVisibility ||
+      Boolean(roleRow) ||
+      membership?.membershipRole === "owner" ||
+      membership?.membershipRole === "admin";
 
     return {
       companyId,
       actorType: "board",
       actorId: userId,
+      restricted: !isPrivileged,
     };
   }
 
@@ -172,6 +192,7 @@ async function authorizeUpgrade(
     companyId,
     actorType: "agent",
     actorId: key.agentId,
+    restricted: false,
   };
 }
 
@@ -180,9 +201,11 @@ export function setupLiveEventsWebSocketServer(
   db: Db,
   opts: {
     deploymentMode: DeploymentMode;
+    restrictAgentVisibility?: boolean;
     resolveSessionFromHeaders?: (headers: Headers) => Promise<BetterAuthSessionResult | null>;
   },
 ) {
+  const restrictAgentVisibility = opts.restrictAgentVisibility ?? false;
   const wss = new WebSocketServer({ noServer: true });
   const cleanupByClient = new Map<WsSocket, () => void>();
   const aliveByClient = new Map<WsSocket, boolean>();
@@ -205,9 +228,36 @@ export function setupLiveEventsWebSocketServer(
       return;
     }
 
-    const unsubscribe = subscribeCompanyLiveEvents(context.companyId, (event) => {
+    // Restricted board users only receive events for agents they have joined,
+    // so they cannot observe other members' runs/comments. Privileged actors
+    // and agent keys get the unfiltered company stream.
+    const filter =
+      context.restricted && context.actorType === "board"
+        ? createBoardUserEventFilter(db, context.companyId, context.actorId)
+        : null;
+
+    const forward = (event: ReturnType<typeof JSON.parse>) => {
       if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify(event));
+    };
+
+    const unsubscribe = subscribeCompanyLiveEvents(context.companyId, (event) => {
+      if (!filter) {
+        forward(event);
+        return;
+      }
+      const decision = filter(event);
+      if (typeof decision === "boolean") {
+        if (decision) forward(event);
+        return;
+      }
+      decision
+        .then((ok) => {
+          if (ok) forward(event);
+        })
+        .catch((err) => {
+          logger.warn({ err, companyId: context.companyId }, "live event filter failed; dropping event");
+        });
     });
 
     cleanupByClient.set(socket, unsubscribe);
@@ -248,6 +298,7 @@ export function setupLiveEventsWebSocketServer(
 
     void authorizeUpgrade(db, req, companyId, url, {
       deploymentMode: opts.deploymentMode,
+      restrictAgentVisibility,
       resolveSessionFromHeaders: opts.resolveSessionFromHeaders,
     })
       .then((context) => {

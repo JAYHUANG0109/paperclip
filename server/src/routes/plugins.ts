@@ -2461,13 +2461,13 @@ export function pluginRoutes(
 
     // Step 7: Dispatch to the worker via handleWebhook RPC
     try {
-      await webhookDeps.workerManager.call(plugin.id, "handleWebhook", {
+      const webhookResult = (await webhookDeps.workerManager.call(plugin.id, "handleWebhook", {
         endpointKey,
         headers: req.headers as Record<string, string | string[]>,
         rawBody,
         parsedBody,
         requestId,
-      });
+      })) as { status?: number; jsonBody?: unknown } | null | undefined;
 
       // Step 8: Update delivery record to success
       const finishedAt = new Date();
@@ -2481,10 +2481,21 @@ export function pluginRoutes(
         })
         .where(eq(pluginWebhookDeliveries.id, delivery.id));
 
-      res.status(200).json({
-        deliveryId: delivery.id,
-        status: "success",
-      });
+      // If the plugin returned a synchronous response body (e.g. a Google Chat
+      // add-on action response), send it verbatim so the caller renders it.
+      // Otherwise fall back to the default delivery receipt.
+      if (
+        webhookResult &&
+        typeof webhookResult === "object" &&
+        webhookResult.jsonBody !== undefined
+      ) {
+        res.status(webhookResult.status ?? 200).json(webhookResult.jsonBody);
+      } else {
+        res.status(200).json({
+          deliveryId: delivery.id,
+          status: "success",
+        });
+      }
     } catch (err) {
       // Step 8 (error): Update delivery record to failed
       const finishedAt = new Date();

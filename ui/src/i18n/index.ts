@@ -3,9 +3,21 @@ import { initReactI18next, useTranslation as useReactI18nextTranslation } from "
 
 import { DEFAULT_LOCALE, i18nextResources, supportedLocales } from "./locales";
 
+function readInitialLng(): string {
+  try {
+    const override = localStorage.getItem("paperclip.locale.override");
+    if (override === "en" || override === "zh-TW") return override;
+    const resolved = localStorage.getItem("paperclip.locale.resolved");
+    if (resolved === "en" || resolved === "zh-TW") return resolved;
+  } catch {
+    /* localStorage may be unavailable */
+  }
+  return DEFAULT_LOCALE;
+}
+
 const i18nextOptions: InitOptions = {
   resources: i18nextResources,
-  lng: DEFAULT_LOCALE,
+  lng: readInitialLng(),
   fallbackLng: DEFAULT_LOCALE,
   supportedLngs: supportedLocales,
   defaultNS: "translation",

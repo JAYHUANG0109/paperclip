@@ -58,7 +58,8 @@ describe("sendMessage body", () => {
     expect(body.text).toBe("steps");
     expect(body.cardsV2[0].card.sections[0].widgets[0].image).toEqual({
       imageUrl: "https://host/img.png",
-      altText: "diagram"
+      altText: "diagram",
+      onClick: { openLink: { url: "https://host/img.png" } }
     });
   });
 });

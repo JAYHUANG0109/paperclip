@@ -29,6 +29,7 @@ import type {
 import type { CreateIssueThreadInteraction, InviteJoinType, IssueDocumentSummary, PermissionKey, PrincipalType } from "@paperclipai/shared";
 import { pluginOperationIssueOriginKind } from "@paperclipai/shared";
 import { companyService } from "./companies.js";
+import { normalizeIssueAttachmentMaxBytes } from "../attachment-types.js";
 import { agentService } from "./agents.js";
 import { projectService } from "./projects.js";
 import { executionWorkspaceService } from "./execution-workspaces.js";
@@ -260,7 +261,13 @@ async function executePinnedHttpRequest(
   target: ValidatedFetchTarget,
   init: RequestInit | undefined,
   signal: AbortSignal,
-): Promise<{ status: number; statusText: string; headers: Record<string, string>; body: string }> {
+): Promise<{
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  bodyBuffer: Buffer;
+}> {
   const { options, body } = buildPinnedRequestOptions(target, init);
 
   const response = await new Promise<IncomingMessage>((resolve, reject) => {
@@ -302,11 +309,13 @@ async function executePinnedHttpRequest(
     }
   }
 
+  const bodyBuffer = Buffer.concat(chunks);
   return {
     status: response.statusCode ?? 500,
     statusText: response.statusMessage ?? "",
     headers,
-    body: Buffer.concat(chunks).toString("utf8"),
+    body: bodyBuffer.toString("utf8"),
+    bodyBuffer,
   };
 }
 
@@ -484,7 +493,11 @@ export function buildHostServices(
   pluginKey: string,
   eventBus: PluginEventBus,
   notifyWorker?: (method: string, params: unknown) => void,
-  options: { pluginWorkerManager?: PluginWorkerManager; manifest?: import("@paperclipai/shared").PaperclipPluginManifestV1 } = {},
+  options: {
+    pluginWorkerManager?: PluginWorkerManager;
+    manifest?: import("@paperclipai/shared").PaperclipPluginManifestV1;
+    storageService?: import("../storage/index.js").StorageService;
+  } = {},
 ): HostServices & { dispose(): void } {
   const registry = pluginRegistryService(db);
   const stateStore = pluginStateStore(db);
@@ -1221,7 +1234,12 @@ export function buildHostServices(
 
         try {
           const init = params.init as RequestInit | undefined;
-          return await executePinnedHttpRequest(target, init, controller.signal);
+          const { bodyBuffer: _omit, ...rest } = await executePinnedHttpRequest(
+            target,
+            init,
+            controller.signal,
+          );
+          return rest;
         } finally {
           clearTimeout(timeout);
         }
@@ -2098,6 +2116,90 @@ export function buildHostServices(
             documentKey: params.key,
           },
         });
+      },
+    },
+
+    issueAttachments: {
+      async create(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        if (!options.storageService) {
+          throw new Error("Storage service is not available to plugins on this instance");
+        }
+        // Bytes come either inline (base64) or, for binary downloads, by having
+        // the HOST fetch the URL directly. The host fetch preserves raw bytes —
+        // the plugin's own ctx.http.fetch returns text and would corrupt binary.
+        let bytes: Buffer;
+        if (params.fetchUrl) {
+          const target = await validateAndResolveFetchUrl(params.fetchUrl);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), PLUGIN_FETCH_TIMEOUT_MS);
+          try {
+            const resp = await executePinnedHttpRequest(
+              target,
+              { method: "GET", headers: params.fetchHeaders },
+              controller.signal,
+            );
+            if (resp.status < 200 || resp.status >= 300) {
+              throw new Error(`Attachment download failed (${resp.status})`);
+            }
+            bytes = resp.bodyBuffer;
+          } finally {
+            clearTimeout(timeout);
+          }
+        } else if (params.dataBase64) {
+          bytes = Buffer.from(params.dataBase64, "base64");
+        } else {
+          throw new Error("attachments.create requires fetchUrl or dataBase64");
+        }
+        if (bytes.length <= 0) {
+          throw new Error("Attachment is empty");
+        }
+        const company = await companies.getById(companyId);
+        const maxBytes = normalizeIssueAttachmentMaxBytes(company?.attachmentMaxBytes);
+        if (bytes.length > maxBytes) {
+          throw new Error(`Attachment exceeds the ${maxBytes}-byte limit`);
+        }
+        const stored = await options.storageService.putFile({
+          companyId,
+          namespace: `issues/${params.issueId}`,
+          originalFilename: params.filename || null,
+          contentType: params.contentType || "application/octet-stream",
+          body: bytes,
+        });
+        const attachment = await issues.createAttachment({
+          issueId: params.issueId,
+          issueCommentId: params.issueCommentId ?? null,
+          provider: stored.provider,
+          objectKey: stored.objectKey,
+          contentType: stored.contentType,
+          byteSize: stored.byteSize,
+          sha256: stored.sha256,
+          originalFilename: stored.originalFilename,
+          createdByAgentId: null,
+          createdByUserId: null,
+        });
+        await logPluginActivity({
+          companyId,
+          action: "issue.attachment_added",
+          entityType: "issue",
+          entityId: issue.id,
+          details: {
+            identifier: issue.identifier,
+            attachmentId: attachment.id,
+            originalFilename: attachment.originalFilename,
+            contentType: attachment.contentType,
+            byteSize: attachment.byteSize,
+          },
+        });
+        return {
+          id: attachment.id,
+          originalFilename: attachment.originalFilename ?? null,
+          contentType: attachment.contentType,
+          byteSize: attachment.byteSize,
+          contentPath: `/api/attachments/${attachment.id}/content`,
+        };
       },
     },
 

@@ -70,6 +70,7 @@ vi.mock("@/plugins/slots", () => ({
   PluginSlotOutlet: ({ slotTypes }: { slotTypes: string[] }) => (
     <div data-plugin-slot-types={slotTypes.join(",")}>Plugin slot outlet</div>
   ),
+  usePluginSlots: () => ({ slots: [] }),
 }));
 
 vi.mock("@/plugins/launchers", () => ({

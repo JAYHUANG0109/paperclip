@@ -1,6 +1,11 @@
+import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/i18n";
+import { authApi } from "@/api/auth";
+import { queryKeys } from "@/lib/queryKeys";
+import { applyLocale, resolveLocale } from "@/i18n/resolveLocale";
 import { Layout } from "./components/Layout";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { CloudAccessGate } from "./components/CloudAccessGate";
@@ -274,9 +279,22 @@ function NoCompaniesStartPage() {
   );
 }
 
+function LocaleSync() {
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: authApi.getSession,
+  });
+  const email = session?.user?.email ?? null;
+  useEffect(() => {
+    applyLocale(resolveLocale(email));
+  }, [email]);
+  return null;
+}
+
 export function App() {
   return (
     <>
+      <LocaleSync />
       <Routes>
         <Route path="auth" element={<AuthPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />

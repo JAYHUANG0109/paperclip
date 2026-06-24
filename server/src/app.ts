@@ -141,6 +141,8 @@ export async function createApp(
     bindHost: string;
     authReady: boolean;
     companyDeletionEnabled: boolean;
+    restrictAgentVisibility?: boolean;
+    googleAuthEnabled?: boolean;
     instanceId?: string;
     hostVersion?: string;
     localPluginDir?: string;
@@ -204,27 +206,35 @@ export async function createApp(
       deploymentExposure: opts.deploymentExposure,
       authReady: opts.authReady,
       companyDeletionEnabled: opts.companyDeletionEnabled,
+      googleAuthEnabled: opts.googleAuthEnabled,
     }),
   );
   api.use("/companies", companyRoutes(db, opts.storageService));
   api.use(companySkillRoutes(db));
-  api.use(agentRoutes(db, { pluginWorkerManager: workerManager }));
+  api.use(
+    agentRoutes(db, {
+      pluginWorkerManager: workerManager,
+      restrictAgentVisibility: opts.restrictAgentVisibility,
+    }),
+  );
   api.use(assetRoutes(db, opts.storageService));
   api.use(projectRoutes(db));
+  const restrictVisibility = opts.restrictAgentVisibility;
   api.use(issueRoutes(db, opts.storageService, {
     feedbackExportService: opts.feedbackExportService,
     pluginWorkerManager: workerManager,
+    restrictVisibility,
   }));
   api.use(issueTreeControlRoutes(db));
-  api.use(routineRoutes(db, { pluginWorkerManager: workerManager }));
+  api.use(routineRoutes(db, { pluginWorkerManager: workerManager, restrictVisibility }));
   api.use(environmentRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(executionWorkspaceRoutes(db));
-  api.use(goalRoutes(db));
+  api.use(goalRoutes(db, { restrictVisibility }));
   api.use(approvalRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(secretRoutes(db));
   api.use(costRoutes(db, { pluginWorkerManager: workerManager }));
-  api.use(activityRoutes(db));
-  api.use(dashboardRoutes(db));
+  api.use(activityRoutes(db, { restrictVisibility }));
+  api.use(dashboardRoutes(db, { restrictVisibility }));
   api.use(userProfileRoutes(db));
   api.use(sidebarBadgeRoutes(db));
   api.use(sidebarPreferenceRoutes(db));
@@ -284,6 +294,7 @@ export async function createApp(
         const services = buildHostServices(db, pluginId, manifest.id, eventBus, notifyWorker, {
           pluginWorkerManager: workerManager,
           manifest,
+          storageService: opts.storageService,
         });
         hostServicesDisposers.set(pluginId, () => services.dispose());
         return createHostClientHandlers({

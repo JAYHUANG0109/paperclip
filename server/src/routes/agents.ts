@@ -2,7 +2,13 @@ import { Router, type Request, type Response } from "express";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Db } from "@paperclipai/db";
-import { agents as agentsTable, companies, heartbeatRuns, issues as issuesTable } from "@paperclipai/db";
+import {
+  agentMemberships,
+  agents as agentsTable,
+  companies,
+  heartbeatRuns,
+  issues as issuesTable,
+} from "@paperclipai/db";
 import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import {
   agentSkillSyncSchema,
@@ -49,7 +55,7 @@ import {
   workspaceOperationService,
 } from "../services/index.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
-import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo, getVisibleAgentIds } from "./authz.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
   collectAgentAdapterWorkspaceCommandPaths,
@@ -118,8 +124,16 @@ function readLiveRunsQueryInt(value: unknown, max: number, fallback = 0) {
 
 export function agentRoutes(
   db: Db,
-  options: { pluginWorkerManager?: PluginWorkerManager } = {},
+  options: {
+    pluginWorkerManager?: PluginWorkerManager;
+    /** When true, non-privileged users (operator/viewer) see ONLY the agents
+     *  they've joined (agent_memberships). Off by default so the platform keeps
+     *  its standard behaviour (company members see all agents, redacted). The
+     *  四季 single-company deployment turns this on for strict per-user isolation. */
+    restrictAgentVisibility?: boolean;
+  } = {},
 ) {
+  const restrictAgentVisibility = options.restrictAgentVisibility ?? false;
   // Legacy hardcoded maps — used as fallback when adapter module does not
   // declare capability flags explicitly.
   const DEFAULT_INSTRUCTIONS_PATH_KEYS: Record<string, string> = {
@@ -595,6 +609,46 @@ export function agentRoutes(
       await assertBoardCanManageAgentsForCompany(req, agent.companyId);
     }
     return agent;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Per-user agent visibility. A privileged board actor (the local implicit
+  // board, an instance admin, or a company owner/admin) sees every agent in the
+  // company. A non-privileged board user (operator/viewer) sees ONLY the agents
+  // they have explicitly joined (agent_memberships.state = "joined"). Agent-key
+  // actors are unaffected (their access is already bounded by company match).
+  //
+  // This deliberately only NARROWS access, and only for non-privileged users, so
+  // it is inert in local_trusted mode (the implicit board is privileged) and
+  // takes effect once the instance runs in authenticated mode.
+  function isPrivilegedAgentViewer(req: Request, companyId: string): boolean {
+    if (!restrictAgentVisibility) return true;
+    if (req.actor.type !== "board") return true;
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return true;
+    const role = Array.isArray(req.actor.memberships)
+      ? req.actor.memberships.find((m) => m.companyId === companyId)?.membershipRole
+      : undefined;
+    return role === "owner" || role === "admin";
+  }
+
+  // Agents a user may see under restricted visibility: their joined agents PLUS
+  // every agent transitively reporting to one (hierarchical "manager sees
+  // reports' agents", via authz.getVisibleAgentIds / agents.reportsTo).
+  async function visibleAgentIds(companyId: string, userId: string): Promise<Set<string>> {
+    return getVisibleAgentIds(db, companyId, userId);
+  }
+
+  /** True if this request's actor is allowed to see the given agent. */
+  async function actorCanSeeAgent(
+    req: Request,
+    agent: { id: string; companyId: string },
+  ): Promise<boolean> {
+    if (isPrivilegedAgentViewer(req, agent.companyId)) return true;
+    if (req.actor.type === "agent") return true;
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    if (!userId) return false;
+    const visible = await visibleAgentIds(agent.companyId, userId);
+    return visible.has(agent.id);
   }
 
   async function actorCanReadConfigurationsForCompany(req: Request, companyId: string) {
@@ -1601,7 +1655,12 @@ export function agentRoutes(
       });
       return;
     }
-    const result = await svc.list(companyId);
+    let result = await svc.list(companyId);
+    // Non-privileged users (operator/viewer) see only the agents they've joined.
+    if (!isPrivilegedAgentViewer(req, companyId) && req.actor.type === "board" && req.actor.userId) {
+      const visible = await visibleAgentIds(companyId, req.actor.userId);
+      result = result.filter((agent) => visible.has(agent.id));
+    }
     const canReadConfigs = await actorCanReadConfigurationsForCompany(req, companyId);
     if (canReadConfigs) {
       res.json(result);
@@ -1791,6 +1850,11 @@ export function agentRoutes(
       return;
     }
     assertCompanyAccess(req, agent.companyId);
+    // Restricted users may only open an agent they've joined; hide others as 404.
+    if (!(await actorCanSeeAgent(req, agent))) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
     const isSelf = req.actor.type === "agent" && req.actor.agentId === id;
     const canReadSensitiveDetail = isSelf
       ? true
@@ -3089,6 +3153,12 @@ export function agentRoutes(
     const limitParam = req.query.limit as string | undefined;
     const limit = limitParam ? Math.max(1, Math.min(1000, parseInt(limitParam, 10) || 200)) : undefined;
     const runs = await heartbeat.list(companyId, agentId, limit);
+    // Restricted members only see runs for agents they've joined.
+    if (!isPrivilegedAgentViewer(req, companyId) && req.actor.type === "board" && req.actor.userId) {
+      const joined = await visibleAgentIds(companyId, req.actor.userId);
+      res.json(runs.filter((r: { agentId?: string | null }) => r.agentId != null && joined.has(r.agentId)));
+      return;
+    }
     res.json(runs);
   });
 
@@ -3103,6 +3173,17 @@ export function agentRoutes(
     // padded in and renders bogus "live" counts.
     const minCount = readLiveRunsQueryInt(req.query.minCount, 50, 0);
     const limit = readLiveRunsQueryInt(req.query.limit, 50, 50);
+
+    // Restricted members only see live runs for agents they've joined. An empty
+    // scope (no joined agents) uses a sentinel so the query matches nothing.
+    let restrictedAgentScope: string[] | null = null;
+    if (!isPrivilegedAgentViewer(req, companyId) && req.actor.type === "board" && req.actor.userId) {
+      const joined = await visibleAgentIds(companyId, req.actor.userId);
+      restrictedAgentScope = joined.size > 0 ? [...joined] : ["__none__"];
+    }
+    const restrictedScopeCondition = restrictedAgentScope
+      ? [inArray(heartbeatRuns.agentId, restrictedAgentScope)]
+      : [];
 
     const columns = {
       id: heartbeatRuns.id,
@@ -3140,6 +3221,7 @@ export function agentRoutes(
         and(
           eq(heartbeatRuns.companyId, companyId),
           inArray(heartbeatRuns.status, ["queued", "running"]),
+          ...restrictedScopeCondition,
         ),
       )
       .orderBy(desc(heartbeatRuns.createdAt));
@@ -3158,6 +3240,7 @@ export function agentRoutes(
             eq(heartbeatRuns.companyId, companyId),
             not(inArray(heartbeatRuns.status, ["queued", "running"])),
             ...(activeIds.length > 0 ? [not(inArray(heartbeatRuns.id, activeIds))] : []),
+            ...restrictedScopeCondition,
           ),
         )
         .orderBy(desc(heartbeatRuns.createdAt))

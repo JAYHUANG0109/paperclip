@@ -43,6 +43,7 @@ Core fields:
 - command (string, optional): defaults to "claude"
 - extraArgs (string[], optional): additional CLI args
 - accountConfigDirs (string[], object[], or newline/comma-separated string, optional): ordered Claude account profiles for automatic account switching. String entries may be \`label=default\` for the normal Claude login or \`label=/path\` for a separate config directory; object entries may use \`{ label, configDir }\` or \`{ email, path }\`. Non-default directories should already be logged in with \`CLAUDE_CONFIG_DIR=/path claude login\`; when a run hits a Claude usage limit, Paperclip retries the heartbeat with the next profile.
+- quotaSwitchThresholdPercent (number, optional, default 95): when multiple account profiles are configured, Paperclip checks Claude quota before starting a run and skips accounts whose reported usage is at or above this percent.
 - env (object, optional): KEY=VALUE environment variables
 - workspaceStrategy (object, optional): execution workspace strategy; currently supports { type: "git_worktree", baseRef?, branchTemplate?, worktreeParentDir? }
 - workspaceRuntime (object, optional): reserved for workspace runtime metadata; workspace runtime services are manually controlled from the workspace UI and are not auto-started by heartbeats

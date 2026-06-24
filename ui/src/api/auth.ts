@@ -113,6 +113,20 @@ export const authApi = {
     await authPost("/sign-up/email", input);
   },
 
+  /** Begin a social (e.g. Google) sign-in. Returns the provider URL to redirect
+   *  the browser to; better-auth completes the flow at /api/auth/callback/<provider>. */
+  signInSocial: async (input: { provider: string; callbackURL?: string }): Promise<{ url: string }> => {
+    const payload = await authPost("/sign-in/social", {
+      provider: input.provider,
+      callbackURL: input.callbackURL ?? "/",
+    });
+    const url = (payload as { url?: string } | null)?.url;
+    if (!url || typeof url !== "string") {
+      throw new AuthApiError("Social sign-in did not return a redirect URL", 500, payload);
+    }
+    return { url };
+  },
+
   getProfile: async (): Promise<CurrentUserProfile> => {
     const res = await fetch("/api/auth/profile", {
       credentials: "include",

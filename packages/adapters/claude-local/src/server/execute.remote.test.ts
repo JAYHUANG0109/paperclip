@@ -11,6 +11,7 @@ const {
   restoreWorkspaceFromSshExecution,
   syncDirectoryToSsh,
   startAdapterExecutionTargetPaperclipBridge,
+  getQuotaWindowsForEnv,
 } = vi.hoisted(() => ({
   runChildProcess: vi.fn(async () => ({
     exitCode: 0,
@@ -37,6 +38,12 @@ const {
       PAPERCLIP_API_BRIDGE_MODE: "queue_v1",
     },
     stop: async () => {},
+  })),
+  getQuotaWindowsForEnv: vi.fn(async () => ({
+    provider: "anthropic",
+    source: "test",
+    ok: true,
+    windows: [{ label: "Current session", usedPercent: 10, resetsAt: null, valueLabel: null, detail: null }],
   })),
 }));
 
@@ -74,6 +81,14 @@ vi.mock("@paperclipai/adapter-utils/execution-target", async () => {
   };
 });
 
+vi.mock("./quota.js", async () => {
+  const actual = await vi.importActual<typeof import("./quota.js")>("./quota.js");
+  return {
+    ...actual,
+    getQuotaWindowsForEnv,
+  };
+});
+
 import { execute } from "./execute.js";
 
 describe("claude remote execution", () => {
@@ -90,6 +105,12 @@ describe("claude remote execution", () => {
 
   afterEach(async () => {
     vi.clearAllMocks();
+    getQuotaWindowsForEnv.mockResolvedValue({
+      provider: "anthropic",
+      source: "test",
+      ok: true,
+      windows: [{ label: "Current session", usedPercent: 10, resetsAt: null, valueLabel: null, detail: null }],
+    });
     if (originalPaperclipHome == null) {
       delete process.env.PAPERCLIP_HOME;
     } else {
@@ -422,6 +443,91 @@ describe("claude remote execution", () => {
       claudeAccountConfigDir: accountB,
       claudeAccountLabel: "claude_bot_08@seasonart.org",
     });
+  });
+
+  it("proactively switches through three local Claude accounts at the quota threshold", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-claude-threshold-"));
+    cleanupDirs.push(rootDir);
+    const workspaceDir = path.join(rootDir, "workspace");
+    const accountB = path.join(rootDir, "account-b");
+    const accountC = path.join(rootDir, "account-c");
+    await mkdir(workspaceDir, { recursive: true });
+
+    getQuotaWindowsForEnv
+      .mockResolvedValueOnce({
+        provider: "anthropic",
+        source: "test",
+        ok: true,
+        windows: [{ label: "Current session", usedPercent: 95, resetsAt: null, valueLabel: null, detail: null }],
+      })
+      .mockResolvedValueOnce({
+        provider: "anthropic",
+        source: "test",
+        ok: true,
+        windows: [{ label: "Current session", usedPercent: 98, resetsAt: null, valueLabel: null, detail: null }],
+      })
+      .mockResolvedValueOnce({
+        provider: "anthropic",
+        source: "test",
+        ok: true,
+        windows: [{ label: "Current session", usedPercent: 40, resetsAt: null, valueLabel: null, detail: null }],
+      });
+
+    const logs: string[] = [];
+    const metaEnvs: Array<Record<string, string>> = [];
+    const result = await execute({
+      runId: "run-threshold-switch",
+      agent: {
+        id: "agent-1",
+        companyId: "company-1",
+        name: "Claude Coder",
+        adapterType: "claude_local",
+        adapterConfig: {},
+      },
+      runtime: {
+        sessionId: "session-default",
+        sessionParams: {
+          sessionId: "session-default",
+          cwd: workspaceDir,
+          claudeConfigDir: "default",
+        },
+        sessionDisplayId: "session-default",
+        taskKey: null,
+      },
+      config: {
+        command: "claude",
+        cwd: workspaceDir,
+        accountConfigDirs: [
+          "claude_bot_13@seasonart.org=default",
+          `claude_bot_08@seasonart.org=${accountB}`,
+          `jay20020109@gmail.com=${accountC}`,
+        ],
+        quotaSwitchThresholdPercent: 95,
+      },
+      context: {},
+      onLog: async (_stream, chunk) => {
+        logs.push(chunk);
+      },
+      onMeta: async (meta) => {
+        metaEnvs.push({ ...(meta.env ?? {}) });
+      },
+    });
+
+    expect(getQuotaWindowsForEnv).toHaveBeenCalledTimes(3);
+    expect(runChildProcess).toHaveBeenCalledTimes(1);
+    expect(metaEnvs).toHaveLength(1);
+    expect(metaEnvs[0]?.CLAUDE_CONFIG_DIR).toBe(accountC);
+    const call = runChildProcess.mock.calls[0] as unknown as [string, string, string[]] | undefined;
+    const commandArgs = call?.[2];
+    expect(commandArgs).not.toContain("--resume");
+    expect(logs.join("")).toContain('"claude_bot_13@seasonart.org" is at 95% quota usage');
+    expect(logs.join("")).toContain('"claude_bot_08@seasonart.org" is at 98% quota usage');
+    expect(result.errorCode).toBeNull();
+    expect(result.resultJson).toMatchObject({
+      claudeAccountConfigDir: accountC,
+      claudeAccountLabel: "jay20020109@gmail.com",
+    });
+    expect(result.sessionParams).toMatchObject({ claudeConfigDir: accountC });
   });
 
 });
