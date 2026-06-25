@@ -8,6 +8,7 @@ import { useTranslation } from "@/i18n";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { issuesApi } from "../api/issues";
 import { sectionsApi } from "../api/sections";
+import { customFieldsApi } from "../api/custom-fields";
 import { authApi } from "../api/auth";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { queryKeys } from "../lib/queryKeys";
@@ -129,7 +130,7 @@ export type BoardColumnPageSize = KanbanColumnPageSize;
 export type IssueViewState = IssueFilterState & {
   sortField: IssueSortField;
   sortDir: "asc" | "desc";
-  groupBy: "status" | "priority" | "assignee" | "project" | "section" | "workspace" | "parent" | "none";
+  groupBy: "status" | "priority" | "assignee" | "project" | "section" | "workspace" | "parent" | "none" | (string & {});
   viewMode: "list" | "board" | "calendar";
   nestingEnabled: boolean;
   collapsedGroups: string[];
@@ -799,6 +800,38 @@ export function IssuesList({
     return map;
   }, [allSections]);
 
+  // Phase 9: custom-field groupBy — fetch the project's attached fields and batch values.
+  const customFieldGroupMatch = viewState.groupBy.startsWith("customField:")
+    ? viewState.groupBy.slice("customField:".length)
+    : null;
+  const { data: projectCustomFields } = useQuery({
+    queryKey: ["custom-fields", "project", projectId],
+    queryFn: () => customFieldsApi.listForProject(projectId!, selectedCompanyId!),
+    enabled: !!projectId && !!selectedCompanyId && customFieldGroupMatch !== null,
+  });
+  const { data: projectCustomFieldValues } = useQuery({
+    queryKey: ["custom-fields", "project-values", projectId],
+    queryFn: () => customFieldsApi.listValuesForProject(projectId!, selectedCompanyId!),
+    enabled: !!projectId && !!selectedCompanyId && customFieldGroupMatch !== null,
+  });
+  // issueId → fieldId → raw value (built from batch)
+  const customFieldValueByIssue = useMemo(() => {
+    const map = new Map<string, Map<string, Record<string, unknown> | null>>();
+    for (const v of projectCustomFieldValues ?? []) {
+      if (!map.has(v.issueId)) map.set(v.issueId, new Map());
+      map.get(v.issueId)!.set(v.fieldId, v.value);
+    }
+    return map;
+  }, [projectCustomFieldValues]);
+  // select-type fields attached to this project (these can be meaningfully grouped)
+  const groupableCustomFields = useMemo(
+    () => (projectCustomFields ?? []).filter((f) =>
+      f.type === "single_select" || f.type === "multi_select" || f.type === "people"
+    ),
+    [projectCustomFields],
+  );
+
+
   const projectWorkspaceById = useMemo(() => {
     const map = new Map<string, { name: string; projectId: string }>();
     for (const project of projects ?? []) {
@@ -1193,6 +1226,34 @@ export function IssuesList({
           items: groups[key]!,
         }));
     }
+    // custom-field groupBy (Phase 9)
+    if (viewState.groupBy.startsWith("customField:")) {
+      const fieldId = viewState.groupBy.slice("customField:".length);
+      const field = (projectCustomFields ?? []).find((f) => f.fieldId === fieldId);
+      const getValueKey = (issue: { id: string }): string => {
+        const val = customFieldValueByIssue.get(issue.id)?.get(fieldId) ?? null;
+        if (!val) return "__none";
+        if (val.optionId) return String(val.optionId);
+        if (val.agentId) return String(val.agentId);
+        if (Array.isArray(val.optionIds) && val.optionIds.length > 0) return String(val.optionIds[0]);
+        return "__none";
+      };
+      const groups = groupBy(filtered, getValueKey);
+      const optMap = new Map(
+        (field?.options?.options ?? []).map((o: {id: string; label: string}) => [o.id, o.label])
+      );
+      return Object.keys(groups).sort((a, b) => {
+        if (a === "__none") return 1;
+        if (b === "__none") return -1;
+        return (optMap.get(a) ?? a).localeCompare(optMap.get(b) ?? b);
+      }).map((key) => ({
+        key,
+        label: key === "__none"
+          ? t("issues.group.noValue", { defaultValue: "— No value" })
+          : (optMap.get(key) ?? key.slice(0, 12)),
+        items: groups[key]!,
+      }));
+    }
     // assignee
     const groups = groupBy(
       filtered,
@@ -1217,6 +1278,8 @@ export function IssuesList({
     currentUserId,
     workspaceNameMap,
     sectionNameMap,
+    customFieldValueByIssue,
+    projectCustomFields,
     issueTitleMap,
     companyUserLabelMap,
     projectById,
@@ -1616,6 +1679,10 @@ export function IssuesList({
                     ["assignee", "Assignee"],
                     ["project", "Project"],
                     ["section", "Section"],
+                    ...groupableCustomFields.map((f) => [
+                      `customField:${f.fieldId}`,
+                      f.name,
+                    ] as const),
                     ["workspace", "Workspace"],
                     ["parent", "Parent Task"],
                     ["none", "None"],

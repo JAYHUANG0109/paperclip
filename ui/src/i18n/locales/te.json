@@ -118,7 +118,8 @@
       "noParent": "No Parent",
       "unassigned": "Unassigned",
       "user": "User",
-      "noSection": "No section"
+      "noSection": "No section",
+      "noValue": "— No value"
     },
     "filter": {
       "filters": "Filters",

@@ -118,7 +118,8 @@
       "noParent": "無母議題",
       "unassigned": "未指派",
       "user": "使用者",
-      "noSection": "無區段"
+      "noSection": "無區段",
+      "noValue": "— 無值"
     },
     "filter": {
       "filters": "篩選",
