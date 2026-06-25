@@ -35,7 +35,9 @@
     "settings": "設定",
     "chatLogs": "聊天紀錄",
     "assignments": "代理指派",
-    "calendar": "行事曆"
+    "calendar": "行事曆",
+    "conferenceRoom": "會議室",
+    "artifacts": "產物"
   },
   "sort": {
     "top": "置頂",

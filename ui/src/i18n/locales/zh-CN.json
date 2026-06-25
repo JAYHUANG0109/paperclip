@@ -35,7 +35,9 @@
     "settings": "Settings",
     "chatLogs": "聊天记录",
     "assignments": "代理指派",
-    "calendar": "Calendar"
+    "calendar": "Calendar",
+    "conferenceRoom": "Conference Room",
+    "artifacts": "Artifacts"
   },
   "sort": {
     "top": "Top",

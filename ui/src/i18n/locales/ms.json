@@ -35,7 +35,9 @@
     "settings": "Settings",
     "chatLogs": "Chat Logs",
     "assignments": "Assignments",
-    "calendar": "Calendar"
+    "calendar": "Calendar",
+    "conferenceRoom": "Conference Room",
+    "artifacts": "Artifacts"
   },
   "sort": {
     "top": "Top",

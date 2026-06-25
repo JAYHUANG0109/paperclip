@@ -39,8 +39,10 @@ import { cn, SIDEBAR_RAIL_HIDDEN_LABEL } from "../lib/utils";
 import { PluginSlotOutlet } from "@/plugins/slots";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
+import { useTranslation } from "@/i18n";
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const { openNewIssue } = useDialogActions();
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { isMobile, collapsed, collapseLocked, peeking, toggleCollapsed, setCollapsed } = useSidebar();
@@ -91,7 +93,7 @@ export function Sidebar() {
               variant="ghost"
               size="icon-sm"
               className="text-muted-foreground shrink-0"
-              aria-label="Open search"
+              aria-label={t("nav.search", { defaultValue: "Open search" })}
               title="Open search"
             >
               <NavLink to="/search">
@@ -158,10 +160,10 @@ export function Sidebar() {
               newTaskButton
             );
           })()}
-          <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+          <SidebarNavItem to="/dashboard" label={t("nav.dashboard", { defaultValue: "Dashboard" })} icon={LayoutDashboard} liveCount={liveRunCount} />
           <SidebarNavItem
             to="/inbox"
-            label="Inbox"
+            label={t("nav.inbox", { defaultValue: "Inbox" })}
             icon={Inbox}
             badge={inboxBadge.inbox}
             badgeLabel="unread"
@@ -169,22 +171,22 @@ export function Sidebar() {
             alert={inboxBadge.failedRuns > 0}
           />
           {conferenceRoomChatEnabled ? (
-            <SidebarNavItem to="/board-chat" label="Conference Room" icon={MessagesSquare} />
+            <SidebarNavItem to="/board-chat" label={t("nav.conferenceRoom", { defaultValue: "Conference Room" })} icon={MessagesSquare} />
           ) : null}
         </div>
 
-        <SidebarSection label="Work">
-          <SidebarNavItem to="/issues" label="Tasks" icon={CircleDot} />
-          <SidebarNavItem to="/calendar" label="行事曆" icon={CalendarDays} />
-          <SidebarNavItem to="/routines" label="Routines" icon={Repeat} />
-          <SidebarNavItem to="/goals" label="Goals" icon={Target} />
-          <SidebarNavItem to="/artifacts" label="Artifacts" icon={Package} />
-          <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
+        <SidebarSection label={t("nav.work", { defaultValue: "Work" })}>
+          <SidebarNavItem to="/issues" label={t("nav.issues", { defaultValue: "Tasks" })} icon={CircleDot} />
+          <SidebarNavItem to="/calendar" label={t("nav.calendar", { defaultValue: "Calendar" })} icon={CalendarDays} />
+          <SidebarNavItem to="/routines" label={t("nav.routines", { defaultValue: "Routines" })} icon={Repeat} />
+          <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />
+          <SidebarNavItem to="/artifacts" label={t("nav.artifacts", { defaultValue: "Artifacts" })} icon={Package} />
+          <SidebarNavItem to="/skills" label={t("nav.skills", { defaultValue: "Skills" })} icon={Boxes} />
           {showWorkspacesLink ? (
-            <SidebarNavItem to="/workspaces" label="Workspaces" icon={GitBranch} />
+            <SidebarNavItem to="/workspaces" label={t("nav.workspaces", { defaultValue: "Workspaces" })} icon={GitBranch} />
           ) : null}
           {streamlined ? (
-            <SidebarNavItem to="/projects" label="Projects" icon={FolderOpen} />
+            <SidebarNavItem to="/projects" label={t("nav.projects", { defaultValue: "Projects" })} icon={FolderOpen} />
           ) : null}
           <PluginSlotOutlet
             slotTypes={["sidebar"]}
@@ -206,11 +208,11 @@ export function Sidebar() {
 
         <SidebarAgents streamlined={streamlined} />
 
-        <SidebarSection label="Company">
-          <SidebarNavItem to="/org" label="Org" icon={Network} />
-          <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
-          <SidebarNavItem to="/activity" label="Activity" icon={History} />
-          <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+        <SidebarSection label={t("nav.company", { defaultValue: "Company" })}>
+          <SidebarNavItem to="/org" label={t("nav.org", { defaultValue: "Org" })} icon={Network} />
+          <SidebarNavItem to="/costs" label={t("nav.costs", { defaultValue: "Costs" })} icon={DollarSign} />
+          <SidebarNavItem to="/activity" label={t("nav.activity", { defaultValue: "Activity" })} icon={History} />
+          <SidebarNavItem to="/company/settings" label={t("nav.settings", { defaultValue: "Settings" })} icon={Settings} />
         </SidebarSection>
 
         <PluginSlotOutlet
