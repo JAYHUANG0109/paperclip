@@ -1712,7 +1712,8 @@
     },
     "loadingWorkspaces": "加载工作区中…",
     "team": "Team",
-    "teamPlaceholder": "e.g. IT"
+    "teamPlaceholder": "e.g. IT",
+    "noTeam": "No team"
   },
   "issuesList": {
     "newIssueInGroup": "在 {{group}} 中新建议题",

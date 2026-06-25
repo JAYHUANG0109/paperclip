@@ -91,25 +91,17 @@ function OverviewContent({
   project,
   onUpdate,
   imageUploadHandler,
+  teamOptions = [],
 }: {
   project: { description: string | null; status: string; targetDate: string | null; team?: string | null };
   onUpdate: (data: Record<string, unknown>) => void;
   imageUploadHandler?: (file: File) => Promise<string>;
+  teamOptions?: string[];
 }) {
   const { t } = useTranslation();
   return (
     <div className="space-y-6">
-      <InlineEditor
-        value={project.description ?? ""}
-        onSave={(description) => onUpdate({ description })}
-        nullable
-        as="p"
-        className="text-sm text-muted-foreground"
-        placeholder={t("projectDetail.addDescription")}
-        multiline
-        imageUploadHandler={imageUploadHandler}
-      />
-
+      {/* Properties first, description at the bottom */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
         <div>
           <span className="text-muted-foreground">{t("projectDetail.status")}</span>
@@ -152,19 +144,47 @@ function OverviewContent({
         <div>
           <span className="text-muted-foreground">{t("projectDetail.team", { defaultValue: "Team / 團隊" })}</span>
           <div className="mt-1">
-            <input
-              type="text"
-              defaultValue={project.team ?? ""}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if (v !== (project.team ?? "")) onUpdate({ team: v || null });
-              }}
-              placeholder={t("projectDetail.teamPlaceholder", { defaultValue: "e.g. 資訊部" })}
-              className="rounded border border-border bg-transparent px-1.5 py-0.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="inline-flex items-center gap-1.5 rounded border border-border hover:bg-accent/50 px-2 py-0.5 text-sm transition-colors">
+                  <span className={cn(!project.team && "text-muted-foreground")}>
+                    {project.team ?? t("projectDetail.noTeam", { defaultValue: "No team" })}
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-48 p-1">
+                <button
+                  className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", !project.team && "bg-accent")}
+                  onClick={() => onUpdate({ team: null })}
+                >
+                  {t("projectDetail.noTeam", { defaultValue: "No team" })}
+                </button>
+                {teamOptions.map((teamName) => (
+                  <button
+                    key={teamName}
+                    className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50 whitespace-nowrap", teamName === project.team && "bg-accent")}
+                    onClick={() => onUpdate({ team: teamName })}
+                  >
+                    {teamName}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </div>
+
+      <InlineEditor
+        value={project.description ?? ""}
+        onSave={(description) => onUpdate({ description })}
+        nullable
+        as="p"
+        className="text-sm text-muted-foreground"
+        placeholder={t("projectDetail.addDescription")}
+        multiline
+        imageUploadHandler={imageUploadHandler}
+      />
     </div>
   );
 }
@@ -371,6 +391,22 @@ export function ProjectDetail() {
   }, [companies, companyPrefix]);
   const lookupCompanyId = routeCompanyId ?? selectedCompanyId ?? undefined;
   const canFetchProject = routeProjectRef.length > 0 && (isUuidLike(routeProjectRef) || Boolean(lookupCompanyId));
+  // Team options for the project Team dropdown — derived from the teams defined on agents
+  // (metadata.teams) plus any existing project team, so projects pick from a consistent set.
+  const { data: teamSourceAgents } = useQuery({
+    queryKey: queryKeys.agents.list(lookupCompanyId ?? "__none__"),
+    queryFn: () => agentsApi.list(lookupCompanyId!),
+    enabled: !!lookupCompanyId,
+  });
+  const projectTeamOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of teamSourceAgents ?? []) {
+      const md = (a.metadata as Record<string, unknown> | null);
+      const teams = Array.isArray(md?.teams) ? (md!.teams as unknown[]) : [];
+      for (const tname of teams) if (typeof tname === "string" && tname.trim()) set.add(tname.trim());
+    }
+    return Array.from(set).sort((x, y) => x.localeCompare(y));
+  }, [teamSourceAgents]);
   const activeRouteTab = routeProjectRef ? resolveProjectTab(location.pathname, routeProjectRef) : null;
   const pluginTabFromSearch = useMemo(() => {
     const tab = new URLSearchParams(location.search).get("tab");
@@ -847,6 +883,7 @@ export function ProjectDetail() {
       {activeTab === "overview" && (
         <OverviewContent
           project={project}
+          teamOptions={projectTeamOptions}
           onUpdate={(data) => updateProject.mutate(data)}
           imageUploadHandler={async (file) => {
             const asset = await uploadImage.mutateAsync(file);

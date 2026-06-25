@@ -1712,7 +1712,8 @@
     },
     "loadingWorkspaces": "Loading workspaces...",
     "team": "Team",
-    "teamPlaceholder": "e.g. IT"
+    "teamPlaceholder": "e.g. IT",
+    "noTeam": "No team"
   },
   "issuesList": {
     "newIssueInGroup": "New issue in {{group}}",
