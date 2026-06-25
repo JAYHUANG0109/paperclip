@@ -158,6 +158,7 @@ export function healthRoutes(
       res.json({
         status: "ok",
         deploymentMode: opts.deploymentMode,
+        deploymentExposure: opts.deploymentExposure,
         bootstrapStatus,
         bootstrapInviteActive,
         googleAuthEnabled: Boolean(opts.googleAuthEnabled),

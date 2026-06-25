@@ -1,13 +1,16 @@
 export {
+  instanceSettingsSchema,
   instanceGeneralSettingsSchema,
   patchInstanceGeneralSettingsSchema,
   type InstanceGeneralSettings,
   type PatchInstanceGeneralSettings,
   instanceExperimentalSettingsSchema,
   patchInstanceExperimentalSettingsSchema,
+  patchInstanceSettingsSchema,
   issueGraphLivenessAutoRecoveryRequestSchema,
   type InstanceExperimentalSettings,
   type PatchInstanceExperimentalSettings,
+  type PatchInstanceSettings,
   type IssueGraphLivenessAutoRecoveryRequest,
 } from "./instance.js";
 
@@ -56,17 +59,48 @@ export {
   updateResourceMembershipSchema,
   type UpdateResourceMembership,
 } from "./resource-memberships.js";
+
+export {
+  externalObjectStatusCategorySchema,
+  externalObjectStatusToneSchema,
+  externalObjectLivenessStateSchema,
+  externalObjectMentionSourceKindSchema,
+  externalObjectMentionConfidenceSchema,
+  externalObjectProviderKeySchema,
+  externalObjectTypeSchema,
+  externalObjectCanonicalIdentitySchema,
+  externalObjectMentionSourceSchema,
+  type ExternalObjectCanonicalIdentityInput,
+  type ExternalObjectMentionSourceInput,
+  type ExternalObjectProviderKeyInput,
+  type ExternalObjectTypeInput,
+} from "./external-object.js";
 export {
   companySkillSourceTypeSchema,
   companySkillTrustLevelSchema,
   companySkillCompatibilitySchema,
   companySkillSourceBadgeSchema,
+  companySkillSharingScopeSchema,
+  companySkillListSortSchema,
   companySkillFileInventoryEntrySchema,
+  companySkillVersionFileInventoryEntrySchema,
   companySkillSchema,
   companySkillListItemSchema,
   companySkillUsageAgentSchema,
+  companySkillListQuerySchema,
+  companySkillCategoryCountSchema,
+  companySkillVersionSchema,
   companySkillDetailSchema,
+  companySkillVersionCreateSchema,
+  companySkillStarResultSchema,
+  companySkillCommentSchema,
+  companySkillCommentCreateSchema,
+  companySkillCommentUpdateSchema,
+  companySkillForkSchema,
+  companySkillUpdateSchema,
   companySkillUpdateStatusSchema,
+  companySkillAuditFindingSchema,
+  companySkillAuditResultSchema,
   companySkillImportSchema,
   companySkillProjectScanRequestSchema,
   companySkillProjectScanSkippedSchema,
@@ -75,14 +109,57 @@ export {
   companySkillCreateSchema,
   companySkillFileDetailSchema,
   companySkillFileUpdateSchema,
+  catalogSkillKindSchema,
+  catalogSkillFileSchema,
+  catalogSkillGitHubSourceSchema,
+  catalogSkillSourceSchema,
+  catalogSkillSchema,
+  catalogSkillListQuerySchema,
+  catalogSkillFileDetailSchema,
+  companySkillInstallCatalogSchema,
+  companySkillInstallCatalogResultSchema,
+  companySkillInstallUpdateSchema,
+  companySkillResetSchema,
   type CompanySkillImport,
+  type CompanySkillListQuery,
   type CompanySkillProjectScan,
   type CompanySkillCreate,
   type CompanySkillFileUpdate,
+  type CompanySkillVersionCreate,
+  type CompanySkillCommentCreate,
+  type CompanySkillCommentUpdate,
+  type CompanySkillFork,
+  type CatalogSkillListQuery,
+  type CompanySkillInstallCatalog,
+  type CompanySkillInstallUpdate,
+  type CompanySkillReset,
 } from "./company-skill.js";
+export {
+  catalogTeamKindSchema,
+  catalogTeamTrustLevelSchema,
+  catalogTeamCompatibilitySchema,
+  catalogTeamFileKindSchema,
+  catalogTeamSkillRequirementTypeSchema,
+  catalogTeamSkillRequirementSchema,
+  catalogTeamEnvInputSummarySchema,
+  catalogTeamSourceRefSchema,
+  catalogTeamFileSchema,
+  catalogTeamSchema,
+  catalogTeamListQuerySchema,
+  catalogTeamFileDetailSchema,
+  catalogTeamSourcePolicySchema,
+  catalogTeamPreviewSchema,
+  catalogTeamInstallSchema,
+  catalogTeamSkillPreparationSchema,
+  type CatalogTeamListQuery,
+  type CatalogTeamPreview,
+  type CatalogTeamInstall,
+} from "./teams-catalog.js";
 export {
   agentSkillStateSchema,
   agentSkillSyncModeSchema,
+  agentDesiredSkillEntrySchema,
+  agentDesiredSkillSelectionSchema,
   agentSkillEntrySchema,
   agentSkillSnapshotSchema,
   agentSkillSyncSchema,
@@ -107,6 +184,19 @@ export {
   type CompanyPortabilityPreview,
   type CompanyPortabilityImport,
 } from "./company-portability.js";
+
+export {
+  trustPresetSchema,
+  lowTrustBoundarySchema,
+  lowTrustReviewPresetPolicySchema,
+  trustAuthorizationPolicySchema,
+  sourceTrustArtifactKindSchema,
+  sourceTrustMetadataSchema,
+  type TrustPresetInput,
+  type LowTrustBoundaryInput,
+  type TrustAuthorizationPolicyInput,
+  type SourceTrustMetadataInput,
+} from "./trust-policy.js";
 
 export {
   createAgentSchema,
@@ -153,9 +243,25 @@ export {
 } from "./project.js";
 
 export {
+  createDocumentAnnotationCommentSchema,
+  createDocumentAnnotationThreadSchema,
+  documentAnnotationAnchorConfidenceSchema,
+  documentAnnotationAnchorSelectorSchema,
+  documentAnnotationAnchorStateSchema,
+  documentAnnotationTextPositionSelectorSchema,
+  documentAnnotationTextQuoteSelectorSchema,
+  documentAnnotationThreadStatusSchema,
+  updateDocumentAnnotationThreadSchema,
+  type CreateDocumentAnnotationComment,
+  type CreateDocumentAnnotationThread,
+  type UpdateDocumentAnnotationThread,
+} from "./document-annotation.js";
+
+export {
   createIssueSchema,
   createIssueInputSchema,
   createChildIssueSchema,
+  createAcceptedPlanDecompositionSchema,
   resolveCreateIssueStatusDefault,
   createIssueLabelSchema,
   createProjectSectionSchema,
@@ -200,6 +306,9 @@ export {
   requestConfirmationTargetSchema,
   requestConfirmationPayloadSchema,
   requestConfirmationResultSchema,
+  requestCheckboxConfirmationOptionSchema,
+  requestCheckboxConfirmationPayloadSchema,
+  requestCheckboxConfirmationResultSchema,
   createIssueThreadInteractionSchema,
   acceptIssueThreadInteractionSchema,
   rejectIssueThreadInteractionSchema,
@@ -211,8 +320,10 @@ export {
   issueDocumentKeySchema,
   upsertIssueDocumentSchema,
   restoreIssueDocumentRevisionSchema,
+  upsertIssueWatchdogSchema,
   type CreateIssue,
   type CreateChildIssue,
+  type CreateAcceptedPlanDecomposition,
   type CreateIssueLabel,
   type UpdateIssue,
   type IssueExecutionWorkspaceSettings,
@@ -230,6 +341,7 @@ export {
   type IssueDocumentFormat,
   type UpsertIssueDocument,
   type RestoreIssueDocumentRevision,
+  type UpsertIssueWatchdog,
 } from "./issue.js";
 
 export {
@@ -255,13 +367,30 @@ export {
 
 export {
   createIssueWorkProductSchema,
+  issueWorkProductMetadataSchema,
   updateIssueWorkProductSchema,
+  attachmentArtifactWorkProductMetadataSchema,
   issueWorkProductTypeSchema,
   issueWorkProductStatusSchema,
   issueWorkProductReviewStateSchema,
   type CreateIssueWorkProduct,
+  type IssueWorkProductMetadata,
   type UpdateIssueWorkProduct,
 } from "./work-product.js";
+
+export {
+  COMPANY_ARTIFACTS_DEFAULT_LIMIT,
+  COMPANY_ARTIFACTS_MAX_LIMIT,
+  COMPANY_ARTIFACTS_MAX_QUERY_LENGTH,
+  companyArtifactGroupBySchema,
+  companyArtifactGroupSchema,
+  companyArtifactMediaKindSchema,
+  companyArtifactSchema,
+  companyArtifactSourceSchema,
+  companyArtifactsQuerySchema,
+  companyArtifactsResponseSchema,
+  type CompanyArtifactsQuery,
+} from "./artifact.js";
 
 export {
   executionWorkspaceConfigSchema,
@@ -275,6 +404,21 @@ export {
   executionWorkspaceCloseReadinessStateSchema,
   type UpdateExecutionWorkspace,
 } from "./execution-workspace.js";
+
+export {
+  resolvedWorkspaceResourceSchema,
+  workspaceFileListModeSchema,
+  workspaceFileListQuerySchema,
+  workspaceFileContentSchema,
+  workspaceFilePreviewKindSchema,
+  workspaceFileRefSchema,
+  workspaceFileResourceKindSchema,
+  workspaceFileResourceQuerySchema,
+  workspaceFileSelectorSchema,
+  workspaceFileWorkspaceKindSchema,
+  type WorkspaceFileListQuery,
+  type WorkspaceFileResourceQuery,
+} from "./workspace-file-resource.js";
 
 export {
   createGoalSchema,
@@ -376,6 +520,7 @@ export {
   boardCliAuthAccessLevelSchema,
   createCliAuthChallengeSchema,
   resolveCliAuthChallengeSchema,
+  createBoardApiKeySchema,
   currentUserProfileSchema,
   authSessionSchema,
   updateCurrentUserProfileSchema,
@@ -394,6 +539,7 @@ export {
   type BoardCliAuthAccessLevel,
   type CreateCliAuthChallenge,
   type ResolveCliAuthChallenge,
+  type CreateBoardApiKey,
   type CurrentUserProfile,
   type AuthSession,
   type UpdateCurrentUserProfile,

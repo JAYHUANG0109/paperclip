@@ -7,11 +7,12 @@ import { environmentsApi } from "../api/environments";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
-import { orderReusableExecutionWorkspaces } from "../lib/reusable-execution-workspaces";
 import { cn, projectWorkspaceUrl } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Check, Copy, GitBranch, FolderOpen, Pencil, X } from "lucide-react";
 import { t, useTranslation } from "@/i18n";
+import { Check, Copy, FileSearch, FolderOpen, FolderSearch, GitBranch, Pencil, X } from "lucide-react";
+import { ReusableExecutionWorkspaceSelect } from "./ReusableExecutionWorkspaceSelect";
 
 /* -------------------------------------------------------------------------- */
 /*  Utility helpers (mirrored from IssueProperties for self-containment)      */
@@ -193,6 +194,10 @@ interface IssueWorkspaceCardProps {
   initialEditing?: boolean;
   livePreview?: boolean;
   onDraftChange?: (data: Record<string, unknown>, meta: { canSave: boolean; workspaceBranchName?: string | null }) => void;
+  /** Opens the workspace file browser sheet. When omitted, the browse row is hidden. */
+  onBrowseFiles?: () => void;
+  /** Opens the same browser sheet focused for path entry. */
+  onOpenFileByPath?: () => void;
 }
 
 export function IssueWorkspaceCard({
@@ -202,6 +207,8 @@ export function IssueWorkspaceCard({
   initialEditing = false,
   livePreview = false,
   onDraftChange,
+  onBrowseFiles,
+  onOpenFileByPath,
 }: IssueWorkspaceCardProps) {
   const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
@@ -224,7 +231,11 @@ export function IssueWorkspaceCard({
     enabled: Boolean(companyId) && environmentsEnabled,
   });
 
-  const { data: reusableExecutionWorkspaces } = useQuery({
+  const {
+    data: reusableExecutionWorkspaces,
+    isLoading: reusableExecutionWorkspacesLoading,
+    isError: reusableExecutionWorkspacesError,
+  } = useQuery({
     queryKey: queryKeys.executionWorkspaces.list(companyId!, {
       projectId: issue.projectId ?? undefined,
       projectWorkspaceId: issue.projectWorkspaceId ?? undefined,
@@ -239,12 +250,10 @@ export function IssueWorkspaceCard({
     enabled: Boolean(companyId) && Boolean(issue.projectId) && editing,
   });
 
-  const deduplicatedReusableWorkspaces = useMemo(() => {
-    return orderReusableExecutionWorkspaces(reusableExecutionWorkspaces ?? []);
-  }, [reusableExecutionWorkspaces]);
+  const selectableReusableWorkspaces = reusableExecutionWorkspaces ?? [];
 
   const selectedReusableExecutionWorkspace =
-    deduplicatedReusableWorkspaces.find((w) => w.id === issue.executionWorkspaceId)
+    selectableReusableWorkspaces.find((w) => w.id === issue.executionWorkspaceId)
     ?? workspace
     ?? null;
 
@@ -258,7 +267,6 @@ export function IssueWorkspaceCard({
 
   const [draftSelection, setDraftSelection] = useState(currentSelection);
   const [draftExecutionWorkspaceId, setDraftExecutionWorkspaceId] = useState(issue.executionWorkspaceId ?? "");
-  const [draftEnvironmentId, setDraftEnvironmentId] = useState(issue.executionWorkspaceSettings?.environmentId ?? "");
   const projectEnvironmentId = environmentsEnabled
     ? project?.executionWorkspacePolicy?.environmentId ?? null
     : null;
@@ -267,7 +275,6 @@ export function IssueWorkspaceCard({
     ? (
         (currentSelection === "reuse_existing" && currentReusableEnvironmentId)
         ?? workspace?.config?.environmentId
-        ?? issue.executionWorkspaceSettings?.environmentId
         ?? projectEnvironmentId
       )
     : null;
@@ -279,13 +286,12 @@ export function IssueWorkspaceCard({
     if (editing) return;
     setDraftSelection(currentSelection);
     setDraftExecutionWorkspaceId(issue.executionWorkspaceId ?? "");
-    setDraftEnvironmentId(issue.executionWorkspaceSettings?.environmentId ?? "");
-  }, [currentSelection, editing, issue.executionWorkspaceId, issue.executionWorkspaceSettings?.environmentId]);
+  }, [currentSelection, editing, issue.executionWorkspaceId]);
 
   const activeNonDefaultWorkspace = Boolean(workspace && workspace.mode !== "shared_workspace");
 
   const configuredReusableWorkspace =
-    deduplicatedReusableWorkspaces.find((w) => w.id === draftExecutionWorkspaceId)
+    selectableReusableWorkspaces.find((w) => w.id === draftExecutionWorkspaceId)
     ?? (draftExecutionWorkspaceId === issue.executionWorkspaceId ? selectedReusableExecutionWorkspace : null);
 
   const selectedReusableWorkspaceLink = workspaceDetailLink({
@@ -300,17 +306,6 @@ export function IssueWorkspaceCard({
   });
 
   const canSaveWorkspaceConfig = draftSelection !== "reuse_existing" || draftExecutionWorkspaceId.length > 0;
-  const reuseExistingSelection = draftSelection === "reuse_existing";
-  const selectedReusableEnvironmentId = configuredReusableWorkspace?.config?.environmentId ?? "";
-  const runSelectableEnvironments = useMemo(
-    () => environmentsEnabled ? (environments ?? []).filter((environment) => {
-      if (environment.driver === "local" || environment.driver === "ssh") return true;
-      if (environment.driver !== "sandbox") return false;
-      const provider = typeof environment.config?.provider === "string" ? environment.config.provider : null;
-      return provider !== null && provider !== "fake";
-    }) : [],
-    [environments, environmentsEnabled],
-  );
   const draftWorkspaceBranchName =
     draftSelection === "reuse_existing" && configuredReusableWorkspace?.mode !== "shared_workspace"
       ? configuredReusableWorkspace?.branchName ?? null
@@ -324,11 +319,10 @@ export function IssueWorkspaceCard({
         draftSelection === "reuse_existing"
           ? issueModeForExistingWorkspace(configuredReusableWorkspace?.mode)
           : draftSelection,
-      environmentId: draftSelection === "reuse_existing" ? null : draftEnvironmentId || null,
+      environmentId: null,
     },
   }), [
     configuredReusableWorkspace?.mode,
-    draftEnvironmentId,
     draftExecutionWorkspaceId,
     draftSelection,
   ]);
@@ -354,9 +348,8 @@ export function IssueWorkspaceCard({
   const handleCancel = useCallback(() => {
     setDraftSelection(currentSelection);
     setDraftExecutionWorkspaceId(issue.executionWorkspaceId ?? "");
-    setDraftEnvironmentId(issue.executionWorkspaceSettings?.environmentId ?? "");
     setEditing(false);
-  }, [currentSelection, issue.executionWorkspaceId, issue.executionWorkspaceSettings?.environmentId]);
+  }, [currentSelection, issue.executionWorkspaceId]);
 
   if (!policyEnabled || !project) return null;
 
@@ -500,8 +493,7 @@ export function IssueWorkspaceCard({
           </select>
 
           {draftSelection === "reuse_existing" && (
-            <select
-              className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+            <ReusableExecutionWorkspaceSelect
               value={draftExecutionWorkspaceId}
               onChange={(e) => {
                 setDraftExecutionWorkspaceId(e.target.value);
@@ -572,6 +564,28 @@ export function IssueWorkspaceCard({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Workspace file discovery — calm row under the workspace identity. */}
+      {!showEditingControls && onBrowseFiles && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/50 pt-2 text-xs">
+          <button
+            type="button"
+            onClick={onBrowseFiles}
+            className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <FolderSearch className="h-3.5 w-3.5 shrink-0" />
+            Browse files…
+          </button>
+          <button
+            type="button"
+            onClick={onOpenFileByPath ?? onBrowseFiles}
+            className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <FileSearch className="h-3.5 w-3.5 shrink-0" />
+            Open file by path…
+          </button>
         </div>
       )}
     </div>

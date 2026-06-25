@@ -43,9 +43,9 @@ function scopeLabel(scope: CompanySearchScope): string {
   }
 }
 
-type SubGroupKey = "issues" | "comments" | "documents" | "agents" | "projects";
+type SubGroupKey = "issues" | "comments" | "documents" | "artifacts" | "agents" | "projects";
 
-const SUBGROUP_ORDER: SubGroupKey[] = ["issues", "comments", "documents", "agents", "projects"];
+const SUBGROUP_ORDER: SubGroupKey[] = ["issues", "comments", "documents", "artifacts", "agents", "projects"];
 
 function subgroupLabel(key: SubGroupKey): string {
   switch (key) {
@@ -59,6 +59,7 @@ function subgroupLabel(key: SubGroupKey): string {
 }
 
 function classifyResult(result: CompanySearchResult): SubGroupKey {
+  if (result.type === "artifact") return "artifacts";
   if (result.type === "agent") return "agents";
   if (result.type === "project") return "projects";
   const matched = new Set(result.matchedFields);
@@ -269,7 +270,7 @@ export function Search() {
     return () => window.removeEventListener("keydown", handler);
   }, [focusInput]);
 
-  const counts = data?.countsByType ?? { issue: 0, agent: 0, project: 0 };
+  const counts = data?.countsByType ?? { issue: 0, artifact: 0, agent: 0, project: 0 };
   const totalResults = data?.results.length ?? 0;
 
   const tabItems = useMemo<PageTabItem[]>(() => {
@@ -284,8 +285,9 @@ export function Search() {
     const issuesTotal = counts.issue ?? 0;
     return COMPANY_SEARCH_SCOPES.map((value) => {
       let count: number | null = null;
-      if (value === "all") count = (counts.issue ?? 0) + (counts.agent ?? 0) + (counts.project ?? 0);
+      if (value === "all") count = (counts.issue ?? 0) + (counts.artifact ?? 0) + (counts.agent ?? 0) + (counts.project ?? 0);
       else if (value === "issues") count = issuesTotal;
+      else if (value === "artifacts") count = counts.artifact ?? 0;
       else if (value === "agents") count = counts.agent ?? 0;
       else if (value === "projects") count = counts.project ?? 0;
       return {

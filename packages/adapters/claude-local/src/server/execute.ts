@@ -52,16 +52,18 @@ import {
   detectClaudeLoginRequired,
   extractClaudeRetryNotBefore,
   isClaudeMaxTurnsResult,
+  isClaudeRefusalResult,
   isClaudeTransientUpstreamError,
-  isClaudeUsageLimitError,
   isClaudeUnknownSessionError,
+  isClaudePoisonedPreviousMessageIdError,
+  isClaudeImageProcessingError,
 } from "./parse.js";
-import { prepareClaudeConfigSeed } from "./claude-config.js";
+import { prepareClaudeConfigSeed, resolveSharedClaudeConfigDir } from "./claude-config.js";
+import { claudeCommandSupportsEffortFlag } from "./cli-capabilities.js";
 import { resolveClaudeDesiredSkillNames } from "./skills.js";
 import { isBedrockModelId } from "./models.js";
 import { prepareClaudePromptBundle } from "./prompt-cache.js";
 import { buildClaudeExecutionPermissionArgs } from "./permissions.js";
-import { getQuotaWindowsForEnv } from "./quota.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -89,17 +91,6 @@ interface ClaudeRuntimeConfig {
   timeoutSec: number;
   graceSec: number;
   extraArgs: string[];
-}
-
-interface ClaudeAccountConfig {
-  index: number;
-  configDir: string | null;
-  label: string;
-}
-
-interface ClaudeAccountConfigEntry {
-  configDir: string;
-  label: string | null;
 }
 
 export function claudeSessionCwdMatchesExecutionTarget(input: {
@@ -141,119 +132,6 @@ function isBedrockAuth(env: Record<string, string>): boolean {
 function resolveClaudeBillingType(env: Record<string, string>): "api" | "subscription" | "metered_api" {
   if (isBedrockAuth(env)) return "metered_api";
   return hasNonEmptyEnvValue(env, "ANTHROPIC_API_KEY") ? "api" : "subscription";
-}
-
-function expandHomeDir(rawPath: string): string {
-  if (rawPath === "~") return process.env.HOME ?? rawPath;
-  if (rawPath.startsWith("~/")) return path.join(process.env.HOME ?? "~", rawPath.slice(2));
-  return rawPath;
-}
-
-function isDefaultClaudeAccountPath(rawPath: string): boolean {
-  return /^(?:default|builtin|global)$/i.test(rawPath.trim());
-}
-
-function parseClaudeAccountConfigEntry(raw: string): ClaudeAccountConfigEntry | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const separatorIndex = trimmed.indexOf("=");
-  if (separatorIndex > 0) {
-    const label = trimmed.slice(0, separatorIndex).trim();
-      const configDir = trimmed.slice(separatorIndex + 1).trim();
-      if (configDir) return { label: label || null, configDir };
-  }
-  return { label: null, configDir: trimmed };
-}
-
-function readClaudeAccountConfigEntries(config: Record<string, unknown>): ClaudeAccountConfigEntry[] {
-  const raw = config.accountConfigDirs;
-  if (Array.isArray(raw)) {
-    return raw.flatMap((item) => {
-      if (typeof item === "string") {
-        const parsed = parseClaudeAccountConfigEntry(item);
-        return parsed ? [parsed] : [];
-      }
-      if (typeof item !== "object" || item === null) return [];
-      const record = item as Record<string, unknown>;
-      const configDir =
-        asString(record.configDir, "") ||
-        asString(record.dir, "") ||
-        asString(record.path, "");
-      if (!configDir.trim()) return [];
-      const label =
-        asString(record.label, "") ||
-        asString(record.email, "") ||
-        asString(record.name, "");
-      return [{ configDir, label: label.trim() || null }];
-    });
-  }
-
-  return asString(raw, "")
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .flatMap((item) => {
-      const parsed = parseClaudeAccountConfigEntry(item);
-      return parsed ? [parsed] : [];
-    });
-}
-
-function resolveClaudeAccountConfigs(config: Record<string, unknown>): ClaudeAccountConfig[] {
-  const seen = new Set<string>();
-  const accounts: ClaudeAccountConfig[] = [];
-  for (const entry of readClaudeAccountConfigEntries(config)) {
-    const configDir = isDefaultClaudeAccountPath(entry.configDir)
-      ? null
-      : path.resolve(expandHomeDir(entry.configDir));
-    const key = configDir ?? "__default__";
-    if (seen.has(key)) continue;
-    seen.add(key);
-    accounts.push({
-      index: accounts.length,
-      configDir,
-      label: entry.label ?? (configDir ? path.basename(configDir) || configDir : "default"),
-    });
-  }
-  return accounts;
-}
-
-function findClaudeAccountIndex(accounts: ClaudeAccountConfig[], configDir: string): number {
-  if (isDefaultClaudeAccountPath(configDir)) {
-    return accounts.findIndex((account) => account.configDir === null);
-  }
-  const resolved = path.resolve(configDir);
-  return accounts.findIndex((account) => account.configDir != null && path.resolve(account.configDir) === resolved);
-}
-
-function claudeAccountSessionKey(accountConfig: ClaudeAccountConfig | null): string | null {
-  if (!accountConfig) return null;
-  return accountConfig.configDir ?? "default";
-}
-
-function buildClaudeAccountEnv(input: {
-  baseEnv: Record<string, string>;
-  accountConfig: ClaudeAccountConfig | null;
-}): Record<string, string> {
-  const env = { ...input.baseEnv };
-  if (!input.accountConfig) return env;
-  if (input.accountConfig.configDir) {
-    env.CLAUDE_CONFIG_DIR = input.accountConfig.configDir;
-  } else {
-    delete env.CLAUDE_CONFIG_DIR;
-  }
-  return env;
-}
-
-function maxQuotaUsedPercent(windows: Array<{ usedPercent?: number | null }>): number | null {
-  const values = windows
-    .map((window) => window.usedPercent)
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  return values.length > 0 ? Math.max(...values) : null;
-}
-
-function resolveClaudeQuotaSwitchThreshold(config: Record<string, unknown>): number {
-  const raw = asNumber(config.quotaSwitchThresholdPercent, 95);
-  if (!Number.isFinite(raw) || raw <= 0) return 95;
-  return Math.min(100, Math.max(1, raw));
 }
 
 async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<ClaudeRuntimeConfig> {
@@ -504,8 +382,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const maxTurns = asNumber(config.maxTurnsPerRun, 0);
   const dangerouslySkipPermissions = asBoolean(config.dangerouslySkipPermissions, true);
   const configEnv = parseObject(config.env);
-  const accountConfigs = resolveClaudeAccountConfigs(config);
-  const quotaSwitchThresholdPercent = resolveClaudeQuotaSwitchThreshold(config);
   const workspaceContext = parseObject(context.paperclipWorkspace);
   const workspaceCwd = asString(workspaceContext.cwd, "");
   const workspaceSource = asString(workspaceContext.source, "");
@@ -610,6 +486,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           workspaceLocalDir: cwd,
           installCommand: SANDBOX_INSTALL_COMMAND,
           detectCommand: command,
+          onProgress: (line) => onLog("stdout", line),
+          onRuntimeProgress: ctx.onRuntimeProgress,
           assets: [
             {
               key: "skills",
@@ -648,7 +526,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     executionCwd: effectiveExecutionCwd,
   });
   const restoreRemoteWorkspace = preparedExecutionTargetRuntime
-    ? () => preparedExecutionTargetRuntime.restoreWorkspace()
+    ? () => preparedExecutionTargetRuntime.restoreWorkspace((line) => onLog("stdout", line))
     : null;
   const effectivePromptBundleAddDir = executionTargetIsRemote
     ? preparedExecutionTargetRuntime?.assetDirs.skills ??
@@ -717,17 +595,37 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       }
     }
   }
+  let effectiveEffort = effort;
+  if (executionTargetIsSandbox && effort) {
+    const supportsEffort = await claudeCommandSupportsEffortFlag({
+      runId,
+      command,
+      target: runtimeExecutionTarget,
+      cwd,
+      env,
+      timeoutSec,
+      graceSec,
+    });
+    if (supportsEffort === false) {
+      effectiveEffort = "";
+      await onLog(
+        "stderr",
+        `[paperclip] Claude CLI in the sandbox does not advertise --effort; omitting configured effort "${effort}". Upgrade the sandbox CLI/image to restore reasoning-effort control.\n`,
+      );
+    }
+  }
 
   const runtimeSessionParams = parseObject(runtime.sessionParams);
   const runtimeSessionId = asString(runtimeSessionParams.sessionId, runtime.sessionId ?? "");
   const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
-  const runtimeSessionClaudeConfigDir = asString(runtimeSessionParams.claudeConfigDir, "");
   const runtimeRemoteExecution = parseObject(runtimeSessionParams.remoteExecution);
   const runtimePromptBundleKey = asString(runtimeSessionParams.promptBundleKey, "");
   const hasMatchingPromptBundle =
     runtimePromptBundleKey.length === 0 || runtimePromptBundleKey === promptBundle.bundleKey;
+  const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runtimeSessionId);
   const canResumeSession =
     runtimeSessionId.length > 0 &&
+    isValidUuid &&
     hasMatchingPromptBundle &&
     claudeSessionCwdMatchesExecutionTarget({
       runtimeSessionCwd,
@@ -736,78 +634,16 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     }) &&
     adapterExecutionTargetSessionMatches(runtimeRemoteExecution, runtimeExecutionTarget);
   const sessionId = canResumeSession ? runtimeSessionId : null;
-  const initialAccountIndex =
-    !executionTargetIsRemote && accountConfigs.length > 0 && runtimeSessionClaudeConfigDir
-      ? Math.max(0, findClaudeAccountIndex(accountConfigs, runtimeSessionClaudeConfigDir))
-      : 0;
-  const orderedAccountConfigs =
-    !executionTargetIsRemote && accountConfigs.length > 0
-      ? [
-          ...accountConfigs.slice(initialAccountIndex),
-          ...accountConfigs.slice(0, initialAccountIndex),
-        ]
-      : [];
-  if (executionTargetIsRemote && accountConfigs.length > 0) {
+  if (runtimeSessionId && !isValidUuid) {
     await onLog(
-      "stderr",
-      "[paperclip] Claude account auto-switch is configured, but automatic account switching only supports local Claude config directories. Remote execution will use the remote/default Claude auth state.\n",
+      "stdout",
+      `[paperclip] Claude session "${runtimeSessionId}" is not a valid UUID and will not be passed to --resume.\n`,
     );
   }
-
-  const selectAccountBelowQuotaThreshold = async (
-    candidates: ClaudeAccountConfig[],
-  ): Promise<{ account: ClaudeAccountConfig | null; skipped: ClaudeAccountConfig[] }> => {
-    if (candidates.length <= 1) {
-      return { account: candidates[0] ?? null, skipped: [] };
-    }
-
-    const skipped: ClaudeAccountConfig[] = [];
-    for (const account of candidates) {
-      try {
-        const quota = await getQuotaWindowsForEnv(buildClaudeAccountEnv({
-          baseEnv: effectiveEnv,
-          accountConfig: account,
-        }));
-        if (!quota.ok) {
-          await onLog(
-            "stderr",
-            `[paperclip] Could not check Claude quota for "${account.label}" before account selection: ${quota.error ?? "unknown error"}. Trying this account normally.\n`,
-          );
-          return { account, skipped };
-        }
-
-        const maxUsed = maxQuotaUsedPercent(quota.windows);
-        if (maxUsed != null && maxUsed >= quotaSwitchThresholdPercent) {
-          skipped.push(account);
-          await onLog(
-            "stdout",
-            `[paperclip] Claude account "${account.label}" is at ${maxUsed}% quota usage (threshold ${quotaSwitchThresholdPercent}%); trying the next account before starting this heartbeat.\n`,
-          );
-          continue;
-        }
-
-        if (maxUsed != null) {
-          await onLog(
-            "stdout",
-            `[paperclip] Claude account "${account.label}" quota usage is ${maxUsed}% (threshold ${quotaSwitchThresholdPercent}%).\n`,
-          );
-        }
-        return { account, skipped };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        await onLog(
-          "stderr",
-          `[paperclip] Could not check Claude quota for "${account.label}" before account selection: ${message}. Trying this account normally.\n`,
-        );
-        return { account, skipped };
-      }
-    }
-
-    return { account: candidates[candidates.length - 1] ?? null, skipped };
-  };
   if (
     executionTargetIsRemote &&
     runtimeSessionId &&
+    isValidUuid &&
     !canResumeSession
   ) {
     await onLog(
@@ -816,6 +652,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     );
   } else if (
     runtimeSessionId &&
+    isValidUuid &&
     runtimeSessionCwd.length > 0 &&
     path.resolve(runtimeSessionCwd) !== path.resolve(effectiveExecutionCwd)
   ) {
@@ -823,7 +660,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       "stdout",
       `[paperclip] Claude session "${runtimeSessionId}" does not match the current remote execution identity and will not be resumed in "${effectiveExecutionCwd}". Starting a fresh remote session.\n`,
     );
-  } else if (runtimeSessionId && !canResumeSession) {
+  } else if (runtimeSessionId && isValidUuid && !canResumeSession) {
     await onLog(
       "stdout",
       `[paperclip] Claude session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${effectiveExecutionCwd}".\n`,
@@ -878,7 +715,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (resumeSessionId) args.push("--resume", resumeSessionId);
     args.push(...buildClaudeExecutionPermissionArgs({
       dangerouslySkipPermissions,
-      targetIsSandbox: executionTargetIsSandbox,
+      targetIsRemote: executionTargetIsRemote,
     }));
     if (chrome) args.push("--chrome");
     // For Bedrock: only pass --model when the ID is a Bedrock-native identifier
@@ -887,7 +724,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (model && (!isBedrockAuth(effectiveEnv) || isBedrockModelId(model))) {
       args.push("--model", model);
     }
-    if (effort) args.push("--effort", effort);
+    if (effectiveEffort) args.push("--effort", effectiveEffort);
     if (maxTurns > 0) args.push("--max-turns", String(maxTurns));
     // On resumed sessions the instructions are already in the session cache;
     // re-injecting them via --append-system-prompt-file wastes 5-10K tokens
@@ -916,32 +753,16 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       : `Claude exited with code ${proc.exitCode ?? -1}`;
   };
 
-  const runAttempt = async (resumeSessionId: string | null, accountConfig: ClaudeAccountConfig | null = null) => {
-    if (accountConfig) {
-      if (accountConfig.configDir) {
-        env.CLAUDE_CONFIG_DIR = accountConfig.configDir;
-        loggedEnv.CLAUDE_CONFIG_DIR = accountConfig.configDir;
-      } else {
-        delete env.CLAUDE_CONFIG_DIR;
-        delete loggedEnv.CLAUDE_CONFIG_DIR;
-      }
-    }
+  const runAttempt = async (resumeSessionId: string | null) => {
     const attemptInstructionsFilePath = resumeSessionId ? undefined : effectiveInstructionsFilePath;
     const args = buildClaudeArgs(resumeSessionId, attemptInstructionsFilePath);
     const commandNotes: string[] = [];
-    if (accountConfig) {
-      commandNotes.push(
-        accountConfig.configDir
-          ? `Using Claude account config ${accountConfig.label} (${accountConfig.configDir}).`
-          : `Using default Claude account config ${accountConfig.label}.`,
-      );
-    }
     if (!resumeSessionId) {
       commandNotes.push(`Using stable Claude prompt bundle ${promptBundle.bundleKey}.`);
     }
-    if (dangerouslySkipPermissions && executionTargetIsSandbox) {
+    if (dangerouslySkipPermissions && executionTargetIsRemote) {
       commandNotes.push(
-        "Using a broad --allowedTools whitelist for sandbox execution because Claude rejects --dangerously-skip-permissions under root/sudo.",
+        "Using a broad --allowedTools whitelist for remote execution so hosted targets do not inherit local Claude bypass permissions.",
       );
     }
     if (attemptInstructionsFilePath && !resumeSessionId) {
@@ -970,6 +791,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       timeoutSec,
       graceSec,
       onSpawn,
+      onRuntimeProgress: ctx.onRuntimeProgress,
       onLog,
       terminalResultCleanup: {
         graceMs: terminalResultCleanupGraceMs,
@@ -979,7 +801,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
     const parsedStream = parseClaudeStreamJson(proc.stdout);
     const parsed = parsedStream.resultJson ?? parseJson(proc.stdout);
-    return { proc, parsedStream, parsed, accountConfig };
+    return { proc, parsedStream, parsed };
   };
 
   const toAdapterResult = (
@@ -987,7 +809,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       proc: RunProcessResult;
       parsedStream: ReturnType<typeof parseClaudeStreamJson>;
       parsed: Record<string, unknown> | null;
-      accountConfig?: ClaudeAccountConfig | null;
     },
     opts: { fallbackSessionId: string | null; clearSessionOnMissingSession?: boolean },
   ): AdapterExecutionResult => {
@@ -1052,12 +873,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         resultJson: {
           stdout: proc.stdout,
           stderr: proc.stderr,
-          ...(attempt.accountConfig
-            ? {
-                claudeAccountConfigDir: attempt.accountConfig.configDir ?? "default",
-                claudeAccountLabel: attempt.accountConfig.label,
-              }
-            : {}),
           ...(transientUpstream ? { errorFamily: "transient_upstream" } : {}),
           ...(transientRetryNotBefore
             ? { retryNotBefore: transientRetryNotBefore.toISOString() }
@@ -1081,9 +896,26 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         };
       })();
 
-    const resolvedSessionId =
+    const rawResolvedSessionId =
       parsedStream.sessionId ??
       (asString(parsed.session_id, opts.fallbackSessionId ?? "") || opts.fallbackSessionId);
+    const clearSessionForMaxTurns = isClaudeMaxTurnsResult(parsed);
+    const poisonedPreviousMessageId = isClaudePoisonedPreviousMessageIdError(parsed);
+    // Fable 5 policy refusals exit cleanly (exitCode=0, is_error=false), so this
+    // is intentionally independent of `failed` — otherwise a refusal looks like a
+    // successful run to Paperclip and the heartbeat stalls silently. See RY-604.
+    const claudeRefusal = isClaudeRefusalResult(parsed);
+    const parsedIsError = asBoolean(parsed.is_error, false);
+    const failed = (proc.exitCode ?? 0) !== 0 || parsedIsError;
+    // Validate-before-persist guard: never persist a sessionId whose transcript
+    // is known-poisoned. The Claude CLI keeps an on-disk JSONL keyed by the
+    // session id; if the last entry contains a non-`msg_`-prefixed
+    // `previous_message_id`, every subsequent `--resume` hits a 400 from
+    // /v1/messages and the issue is permanently unrecoverable until the
+    // sessionId is dropped server-side. Drop here so resolveNextSessionState
+    // calls clearTaskSessions on the next heartbeat. See RED-978 / RED-976.
+    const shouldDropSessionForPoison = poisonedPreviousMessageId;
+    const resolvedSessionId = shouldDropSessionForPoison ? null : rawResolvedSessionId;
     const resolvedSessionParams = resolvedSessionId
       ? ({
         sessionId: resolvedSessionId,
@@ -1097,12 +929,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         ...(workspaceId ? { workspaceId } : {}),
         ...(workspaceRepoUrl ? { repoUrl: workspaceRepoUrl } : {}),
         ...(workspaceRepoRef ? { repoRef: workspaceRepoRef } : {}),
-        ...(attempt.accountConfig ? { claudeConfigDir: attempt.accountConfig.configDir ?? "default" } : {}),
       } as Record<string, unknown>)
       : null;
-    const clearSessionForMaxTurns = isClaudeMaxTurnsResult(parsed);
-    const parsedIsError = asBoolean(parsed.is_error, false);
-    const failed = (proc.exitCode ?? 0) !== 0 || parsedIsError;
     const errorMessage = failed
       ? describeClaudeFailure(parsed) ?? `Claude exited with code ${proc.exitCode ?? -1}`
       : null;
@@ -1110,6 +938,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       failed &&
       !loginMeta.requiresLogin &&
       !clearSessionForMaxTurns &&
+      !poisonedPreviousMessageId &&
       isClaudeTransientUpstreamError({
         parsed,
         stdout: proc.stdout,
@@ -1128,18 +957,18 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       ? "claude_auth_required"
       : failed && clearSessionForMaxTurns
       ? "max_turns_exhausted"
+      : failed && poisonedPreviousMessageId
+      ? "claude_poisoned_previous_message_id"
       : transientUpstream
       ? "claude_transient_upstream"
+      : claudeRefusal
+      ? "claude_refusal"
       : null;
     const mergedResultJson: Record<string, unknown> = {
       ...parsed,
       ...(failed && clearSessionForMaxTurns ? { stopReason: "max_turns_exhausted" } : {}),
-      ...(attempt.accountConfig
-        ? {
-            claudeAccountConfigDir: attempt.accountConfig.configDir ?? "default",
-            claudeAccountLabel: attempt.accountConfig.label,
-          }
-        : {}),
+      ...(failed && poisonedPreviousMessageId ? { stopReason: "claude_poisoned_previous_message_id" } : {}),
+      ...(claudeRefusal ? { stopReason: "refusal", errorFamily: "model_refusal" } : {}),
       ...(transientUpstream ? { errorFamily: "transient_upstream" } : {}),
       ...(transientRetryNotBefore ? { retryNotBefore: transientRetryNotBefore.toISOString() } : {}),
       ...(transientRetryNotBefore ? { transientRetryNotBefore: transientRetryNotBefore.toISOString() } : {}),
@@ -1151,7 +980,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       timedOut: false,
       errorMessage,
       errorCode: resolvedErrorCode,
-      errorFamily: transientUpstream ? "transient_upstream" : null,
+      errorFamily: transientUpstream
+        ? "transient_upstream"
+        : claudeRefusal
+        ? "model_refusal"
+        : null,
       retryNotBefore: transientRetryNotBefore ? transientRetryNotBefore.toISOString() : null,
       errorMeta,
       usage,
@@ -1165,76 +998,65 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       costUsd: parsedStream.costUsd ?? asNumber(parsed.total_cost_usd, 0),
       resultJson: mergedResultJson,
       summary: parsedStream.summary || asString(parsed.result, ""),
-      clearSession: clearSessionForMaxTurns || Boolean(opts.clearSessionOnMissingSession && !resolvedSessionId),
+      clearSession:
+        clearSessionForMaxTurns ||
+        // Clear-on-error: a poisoned previous_message_id is a deterministic
+        // state error. Force the server to drop persisted session state for
+        // this issue so the next continuation starts from a clean slate.
+        poisonedPreviousMessageId ||
+        Boolean(opts.clearSessionOnMissingSession && !resolvedSessionId),
     };
   };
 
   try {
-    const selected = await selectAccountBelowQuotaThreshold(orderedAccountConfigs);
-    const initialAccount = selected.account;
-    const initialAccountIndex = initialAccount
-      ? orderedAccountConfigs.findIndex((account) => account.index === initialAccount.index)
-      : -1;
-    const remainingAccountConfigs = initialAccountIndex >= 0
-      ? orderedAccountConfigs.slice(initialAccountIndex + 1)
-      : orderedAccountConfigs.slice(1);
-    const selectedAccountSessionKey = claudeAccountSessionKey(initialAccount);
-    const canResumeWithSelectedAccount =
-      Boolean(sessionId) &&
-      (
-        runtimeSessionClaudeConfigDir
-          ? selectedAccountSessionKey === runtimeSessionClaudeConfigDir
-          : selectedAccountSessionKey == null || selectedAccountSessionKey === "default"
-      );
-    if (sessionId && !canResumeWithSelectedAccount) {
-      await onLog(
-        "stdout",
-        `[paperclip] Claude session "${sessionId}" belongs to "${runtimeSessionClaudeConfigDir || "default"}" and will not be resumed with "${selectedAccountSessionKey ?? "default"}". Starting a fresh session.\n`,
-      );
-    }
-    const initial = await runAttempt(canResumeWithSelectedAccount ? sessionId : null, initialAccount);
-    if (
+    const initial = await runAttempt(sessionId ?? null);
+    const sessionErrorKind =
       sessionId &&
       !initial.proc.timedOut &&
       (initial.proc.exitCode ?? 0) !== 0 &&
-      initial.parsed &&
-      isClaudeUnknownSessionError(initial.parsed)
-    ) {
+      initial.parsed
+        ? isClaudeUnknownSessionError(initial.parsed)
+          ? "unknown"
+          : isClaudePoisonedPreviousMessageIdError(initial.parsed)
+          ? "poisoned"
+          : isClaudeImageProcessingError(initial.parsed)
+          ? "image"
+          : null
+        : null;
+
+    if (sessionErrorKind !== null) {
+      const reason =
+        sessionErrorKind === "poisoned"
+          ? "returned a poisoned message-id"
+          : sessionErrorKind === "image"
+          ? "contains an unprocessable image"
+          : "is unavailable";
       await onLog(
         "stdout",
-        `[paperclip] Claude resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
+        `[paperclip] Claude resume session "${sessionId}" ${reason}; retrying with a fresh session.\n`,
       );
-      const retry = await runAttempt(null, initialAccount);
-      return toAdapterResult(retry, { fallbackSessionId: null, clearSessionOnMissingSession: true });
-    }
-
-    let latest = initial;
-    if (remainingAccountConfigs.length > 0) {
-      for (const nextAccount of remainingAccountConfigs) {
-        const fallbackErrorMessage = latest.parsed
-          ? describeClaudeFailure(latest.parsed)
-          : parseFallbackErrorMessage(latest.proc);
-        const shouldSwitch =
-          !latest.proc.timedOut &&
-          (latest.proc.exitCode ?? 0) !== 0 &&
-          isClaudeUsageLimitError({
-            parsed: latest.parsed,
-            stdout: latest.proc.stdout,
-            stderr: latest.proc.stderr,
-            errorMessage: fallbackErrorMessage,
-          });
-        if (!shouldSwitch) break;
-
-        await onLog(
-          "stdout",
-          `[paperclip] Claude account "${latest.accountConfig?.label ?? "default"}" hit a usage limit; switching to "${nextAccount.label}".\n`,
-        );
-        latest = await runAttempt(null, nextAccount);
+      if (sessionErrorKind === "poisoned" && !executionTargetIsRemote) {
+        const claudeConfigDir = resolveSharedClaudeConfigDir(effectiveEnv);
+        // Mirrors Claude Code's project-dir encoding: non-alphanumeric chars become "-"; existing hyphens pass through.
+        const encodedCwd = effectiveExecutionCwd.replace(/[^a-zA-Z0-9-]/g, "-");
+        const poisonedJsonlPath = path.join(claudeConfigDir, "projects", encodedCwd, `${sessionId}.jsonl`);
+        let unlinked = false;
+        try {
+          await fs.unlink(poisonedJsonlPath);
+          unlinked = true;
+        } catch {
+          // best-effort; session is cleared server-side regardless
+        }
+        if (unlinked) {
+          try {
+            await onLog("stdout", `[paperclip] Removed poisoned session file: ${poisonedJsonlPath}\n`);
+          } catch {
+            // log stream may be closed; the unlink already succeeded
+          }
+        }
       }
-    }
-
-    if (latest !== initial) {
-      return toAdapterResult(latest, { fallbackSessionId: null, clearSessionOnMissingSession: true });
+      const retry = await runAttempt(null);
+      return toAdapterResult(retry, { fallbackSessionId: null, clearSessionOnMissingSession: true });
     }
 
     return toAdapterResult(initial, { fallbackSessionId: runtimeSessionId || runtime.sessionId });

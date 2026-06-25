@@ -33,10 +33,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCompany } from "@/context/CompanyContext";
+import { useConferenceRoomChatEnabled } from "@/hooks/useConferenceRoomChatEnabled";
 import { useDialogActions } from "@/context/DialogContext";
 import { useCompanyOrder } from "@/hooks/useCompanyOrder";
 import { queryKeys } from "@/lib/queryKeys";
-import { cn } from "@/lib/utils";
+import { cn, SIDEBAR_RAIL_HIDDEN_LABEL } from "@/lib/utils";
 import { useSidebar } from "../context/SidebarContext";
 import { CompanyPatternIcon } from "./CompanyPatternIcon";
 import { useTranslation } from "@/i18n";
@@ -136,8 +137,12 @@ export function SidebarCompanyMenu({ open: controlledOpen, onOpenChange }: Sideb
   const [isEditingOrder, setIsEditingOrder] = useState(false);
   const queryClient = useQueryClient();
   const { companies, selectedCompany, setSelectedCompanyId } = useCompany();
+  // Team-centric copy (PAP-67) ships behind the Conference Room Chat flag
+  // (PAP-139); OFF keeps master's "Add company...".
+  const { enabled: conferenceRoomChatEnabled } = useConferenceRoomChatEnabled();
   const { openOnboarding } = useDialogActions();
-  const { isMobile, setSidebarOpen } = useSidebar();
+  const { isMobile, setSidebarOpen, collapsed, peeking } = useSidebar();
+  const rail = collapsed && !peeking;
   const location = useLocation();
   const navigate = useNavigate();
   const open = controlledOpen ?? internalOpen;
@@ -236,7 +241,7 @@ export function SidebarCompanyMenu({ open: controlledOpen, onOpenChange }: Sideb
               {selectedCompany?.name ?? t("sidebarCompanyMenu.selectWorkspace")}
             </span>
           </span>
-          <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+          {!rail && <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={8} className="w-64 p-1">

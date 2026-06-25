@@ -23,6 +23,7 @@ export const projects = pgTable(
     team: text("team"),
     targetDate: date("target_date"),
     color: text("color"),
+    icon: text("icon"),
     env: jsonb("env").$type<AgentEnvConfig>(),
     pauseReason: text("pause_reason"),
     pausedAt: timestamp("paused_at", { withTimezone: true }),

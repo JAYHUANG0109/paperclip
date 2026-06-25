@@ -1154,7 +1154,15 @@
       "cloudUpstream": "Cloud upstream",
       "members": "Members",
       "invites": "Invites",
-      "secrets": "Secrets"
+      "secrets": "Secrets",
+      "instanceProfile": "Instance profile",
+      "instanceGeneral": "Instance general",
+      "instanceEnvironments": "Instance environments",
+      "instanceAccess": "Instance access",
+      "instanceHeartbeats": "Instance heartbeats",
+      "instanceExperimental": "Instance experimental",
+      "instancePlugins": "Instance plugins",
+      "instanceAdapters": "Instance adapters"
     }
   },
   "common": {
@@ -4930,5 +4938,10 @@
     "tableIssue": "Issue",
     "tableNoRows": "No matching issues",
     "clearFilter": "Clear"
+  },
+  "issueInteraction": {
+    "kind": {
+      "plan": "Plan"
+    }
   }
 }

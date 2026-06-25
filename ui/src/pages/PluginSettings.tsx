@@ -134,7 +134,7 @@ export function PluginSettings() {
   }
 
   if (!plugin) {
-    return <Navigate to="/instance/settings/plugins" replace />;
+    return <Navigate to="/company/settings/instance/plugins" replace />;
   }
 
   const displayStatus = plugin.status;
@@ -157,7 +157,7 @@ export function PluginSettings() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center gap-4">
-        <Link to="/instance/settings/plugins">
+        <Link to="/company/settings/instance/plugins">
           <Button variant="outline" size="icon" className="h-8 w-8">
             <ArrowLeft className="h-4 w-4" />
           </Button>

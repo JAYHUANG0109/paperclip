@@ -4,7 +4,21 @@ import { t, useTranslation } from "@/i18n";
 interface ShortcutEntry {
   keys: string[];
   label: string;
+  /** Render keys as a simultaneous chord (joined with "+") rather than a
+   *  "then" sequence. */
+  combo?: boolean;
 }
+
+// Platform-appropriate label for the Cmd/Ctrl modifier so the cheatsheet shows
+// the same key the user actually presses (re-pointed in the collapsible sidebar
+// work — Cmd/Ctrl+B toggles the rail).
+function getPlatformLabel() {
+  if (typeof navigator === "undefined") return "";
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return nav.userAgentData?.platform || navigator.userAgent || "";
+}
+
+const META_KEY = /Mac|iPhone|iPad|iPod/.test(getPlatformLabel()) ? "⌘" : "Ctrl";
 
 interface ShortcutSection {
   title: string;

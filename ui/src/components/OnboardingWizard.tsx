@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AdapterEnvironmentTestResult } from "@paperclipai/shared";
 import { useLocation, useNavigate, useParams } from "@/lib/router";
@@ -8,8 +8,6 @@ import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
 import { approvalsApi } from "../api/approvals";
-import { issuesApi } from "../api/issues";
-import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import {
@@ -31,28 +29,23 @@ import { useAdapterCapabilities } from "../adapters/use-adapter-capabilities";
 import { getAdapterDisplay } from "../adapters/adapter-display-registry";
 import { defaultCreateValues } from "./agent-config-defaults";
 import { parseOnboardingGoalInput } from "../lib/onboarding-goal";
-import {
-  buildOnboardingIssuePayload,
-  buildOnboardingProjectPayload,
-  selectDefaultCompanyGoalId
-} from "../lib/onboarding-launch";
+import { composeCeoInstructions } from "../lib/ceo-instructions";
 import { buildNewAgentRuntimeConfig } from "../lib/new-agent-runtime-config";
-import {
-  DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX,
-  DEFAULT_CODEX_LOCAL_MODEL
-} from "@paperclipai/adapter-codex-local";
+import { DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX } from "@paperclipai/adapter-codex-local";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { DEFAULT_OPENCODE_LOCAL_MODEL, isValidOpenCodeModelId } from "@paperclipai/adapter-opencode-local";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
+import { FrontDoor } from "./FrontDoor";
+import { AgentCapsule } from "./AgentCapsule";
 import {
   Building2,
   Bot,
   ListTodo,
-  Rocket,
   ArrowLeft,
   ArrowRight,
+  Sparkles,
   Check,
   Loader2,
   ChevronDown,
@@ -60,8 +53,9 @@ import {
 } from "lucide-react";
 import { t, useTranslation } from "@/i18n";
 
-
-type Step = 1 | 2 | 3 | 4;
+type Step = 0 | 1 | 2 | 3 | 4 | 5;
+// Plugin/external adapters use arbitrary type ids, so this mirrors the master
+// wizard's registry-driven approach rather than a fixed union.
 type AdapterType = string;
 
 const getDefaultTaskDescription = () => t("onboarding.defaultTaskDescription");
@@ -75,11 +69,12 @@ export function OnboardingWizard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { companyPrefix } = useParams<{ companyPrefix?: string }>();
-  const [routeDismissed, setRouteDismissed] = useState(false);
 
-  // Sync disabled adapter types from server so adapter grid filters them out
+  // Sync disabled adapter types from server so the adapter grid filters them out.
   const disabledTypes = useDisabledAdaptersSync();
 
+  // Support opening the wizard from a route (e.g. /onboarding or an existing
+  // company's "add agent" entry point) in addition to the dialog context.
   const routeOnboardingOptions =
     companyPrefix && companiesLoading
       ? null
@@ -94,26 +89,43 @@ export function OnboardingWizard() {
     ? onboardingOptions
     : routeOnboardingOptions ?? {};
 
-  const initialStep = effectiveOnboardingOptions.initialStep ?? 1;
+  const initialStep = effectiveOnboardingOptions.initialStep ?? 0;
   const existingCompanyId = effectiveOnboardingOptions.companyId;
 
-  const [step, setStep] = useState<Step>(initialStep);
+  // Restore saved state from localStorage (read once on mount)
+  const saved = useMemo(loadSavedState, []);
+
+  const [step, setStep] = useState<Step>((saved?.step as Step) ?? initialStep);
+  const [onboardingPath, setOnboardingPath] = useState<"create" | "grow" | null>((saved?.onboardingPath as "create" | "grow" | null) ?? null);
+
+  // "Grow existing" questionnaire fields
+  const [growWorkflows, setGrowWorkflows] = useState((saved?.growWorkflows as string) ?? "");
+  const [growPainPoints, setGrowPainPoints] = useState((saved?.growPainPoints as string) ?? "");
+  const [growAutomate, setGrowAutomate] = useState((saved?.growAutomate as string) ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
 
   // Step 1
-  const [companyName, setCompanyName] = useState("");
-  const [companyGoal, setCompanyGoal] = useState("");
+  const [companyName, setCompanyName] = useState((saved?.companyName as string) ?? "");
+  const [companyGoal, setCompanyGoal] = useState((saved?.companyGoal as string) ?? "");
+  const [missionPath, setMissionPath] = useState<"direct" | "questionnaire" | null>((saved?.missionPath as "direct" | "questionnaire" | null) ?? null);
+  const [missionConfirmed, setMissionConfirmed] = useState((saved?.missionConfirmed as boolean) ?? false);
+  // Questionnaire answers
+  const [q1, setQ1] = useState((saved?.q1 as string) ?? ""); // What do you do?
+  const [q2, setQ2] = useState((saved?.q2 as string) ?? ""); // Who do you serve?
+  const [q3, setQ3] = useState((saved?.q3 as string) ?? ""); // Biggest bottleneck?
+  const [q4, setQ4] = useState((saved?.q4 as string) ?? ""); // What would success look like?
 
   // Step 2
-  const [agentName, setAgentName] = useState("CEO");
-  const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
-  const [model, setModel] = useState("");
-  const [command, setCommand] = useState("");
-  const [args, setArgs] = useState("");
-  const [url, setUrl] = useState("");
+  const [agentName, setAgentName] = useState((saved?.agentName as string) ?? "Chief of staff");
+  const [adapterType, setAdapterType] = useState<AdapterType>((saved?.adapterType as AdapterType) ?? "claude_local");
+  const [cwd, setCwd] = useState((saved?.cwd as string) ?? "");
+  const [model, setModel] = useState((saved?.model as string) ?? "");
+  const [command, setCommand] = useState((saved?.command as string) ?? "");
+  const [args, setArgs] = useState((saved?.args as string) ?? "");
+  const [url, setUrl] = useState((saved?.url as string) ?? "");
   const [adapterEnvResult, setAdapterEnvResult] =
     useState<AdapterEnvironmentTestResult | null>(null);
   const [adapterEnvError, setAdapterEnvError] = useState<string | null>(null);
@@ -142,35 +154,30 @@ export function OnboardingWizard() {
 
   // Created entity IDs — pre-populate from existing company when skipping step 1
   const [createdCompanyId, setCreatedCompanyId] = useState<string | null>(
-    existingCompanyId ?? null
+    existingCompanyId ?? (saved?.createdCompanyId as string) ?? null
   );
   const [createdCompanyPrefix, setCreatedCompanyPrefix] = useState<
     string | null
-  >(null);
-  const [createdCompanyGoalId, setCreatedCompanyGoalId] = useState<string | null>(
-    null
-  );
-  const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
-  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
-  const [createdIssueRef, setCreatedIssueRef] = useState<string | null>(null);
+  >((saved?.createdCompanyPrefix as string) ?? null);
+  const [createdAgentId, setCreatedAgentId] = useState<string | null>((saved?.createdAgentId as string) ?? null);
 
+  // Reset the route-dismissed flag when navigating to a different path.
   useEffect(() => {
     setRouteDismissed(false);
   }, [location.pathname]);
 
-  // Sync step and company when onboarding opens with options.
-  // Keep this independent from company-list refreshes so Step 1 completion
-  // doesn't get reset after creating a company.
+  // Sync step and company when onboarding opens with explicit options.
+  // Only override saved state when explicit options provide values.
   useEffect(() => {
     if (!effectiveOnboardingOpen) return;
-    const cId = effectiveOnboardingOptions.companyId ?? null;
-    setStep(effectiveOnboardingOptions.initialStep ?? 1);
-    setCreatedCompanyId(cId);
-    setCreatedCompanyPrefix(null);
-    setCreatedCompanyGoalId(null);
-    setCreatedProjectId(null);
-    setCreatedAgentId(null);
-    setCreatedIssueRef(null);
+    // If explicit options are provided, they take precedence over saved state
+    if (effectiveOnboardingOptions.initialStep) {
+      setStep(effectiveOnboardingOptions.initialStep);
+    }
+    if (effectiveOnboardingOptions.companyId) {
+      setCreatedCompanyId(effectiveOnboardingOptions.companyId);
+      setCreatedCompanyPrefix(null);
+    }
   }, [
     effectiveOnboardingOpen,
     effectiveOnboardingOptions.companyId,
@@ -184,26 +191,56 @@ export function OnboardingWizard() {
     if (company) setCreatedCompanyPrefix(company.issuePrefix);
   }, [effectiveOnboardingOpen, createdCompanyId, createdCompanyPrefix, companies]);
 
-  // Resize textarea when step 3 is shown or description changes
+  // Persist wizard state to localStorage on every change
   useEffect(() => {
-    if (step === 3) autoResizeTextarea();
-  }, [step, taskDescription, autoResizeTextarea]);
+    if (!effectiveOnboardingOpen) return;
+    const state = {
+      step, companyName, companyGoal, missionPath, missionConfirmed,
+      q1, q2, q3, q4, agentName, adapterType, cwd, model, command, args, url,
+      createdCompanyId, createdCompanyPrefix, createdAgentId,
+      onboardingPath, growWorkflows, growPainPoints, growAutomate,
+    };
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(state));
+  }, [
+    effectiveOnboardingOpen, step, companyName, companyGoal, missionPath, missionConfirmed,
+    q1, q2, q3, q4, agentName, adapterType, cwd, model, command, args, url,
+    createdCompanyId, createdCompanyPrefix, createdAgentId,
+    onboardingPath, growWorkflows, growPainPoints, growAutomate,
+  ]);
 
-  const { data: adapterModels } = useQuery({
+  const {
+    data: adapterModels,
+    error: adapterModelsError,
+    isLoading: adapterModelsLoading,
+    isFetching: adapterModelsFetching
+  } = useQuery({
     // The wizard doesn't expose an environment selector, so models always
     // resolve against the local Paperclip host (environmentId = null).
     queryKey: createdCompanyId
       ? queryKeys.agents.adapterModels(createdCompanyId, adapterType, null)
       : ["agents", "none", "adapter-models", adapterType, null],
     queryFn: () => agentsApi.adapterModels(createdCompanyId!, adapterType, { environmentId: null }),
-    enabled: Boolean(createdCompanyId) && effectiveOnboardingOpen && step === 2
+    // Models are picked on step 4 (Connect a model).
+    enabled: Boolean(createdCompanyId) && effectiveOnboardingOpen && step === 4
   });
   const getCapabilities = useAdapterCapabilities();
   const adapterCaps = getCapabilities(adapterType);
-  const isLocalAdapter = adapterCaps.supportsInstructionsBundle || adapterCaps.supportsSkills || adapterCaps.supportsLocalAgentJwt;
-
+  const isLocalAdapterCaps =
+    adapterCaps.supportsInstructionsBundle ||
+    adapterCaps.supportsSkills ||
+    adapterCaps.supportsLocalAgentJwt;
+  const isLocalAdapter =
+    isLocalAdapterCaps ||
+    adapterType === "claude_local" ||
+    adapterType === "codex_local" ||
+    adapterType === "gemini_local" ||
+    adapterType === "hermes_local" ||
+    adapterType === "opencode_local" ||
+    adapterType === "pi_local" ||
+    adapterType === "cursor";
   // Build adapter grids dynamically from the UI registry + display metadata.
-  // External/plugin adapters automatically appear with generic defaults.
+  // External/plugin adapters automatically appear with generic defaults, and
+  // server-disabled types are filtered out.
   const { recommendedAdapters, moreAdapters } = useMemo(() => {
     const SYSTEM_ADAPTER_TYPES = new Set(["process", "http"]);
     const all = listUIAdapters()
@@ -219,10 +256,12 @@ export function OnboardingWizard() {
       moreAdapters: all.filter((a) => !a.recommended),
     };
   }, [disabledTypes]);
+
   const COMMAND_PLACEHOLDERS: Record<string, string> = {
     claude_local: "claude",
     codex_local: "codex",
     gemini_local: "gemini",
+    hermes_local: "hermes",
     pi_local: "pi",
     cursor: "agent",
     opencode_local: "opencode",
@@ -232,7 +271,7 @@ export function OnboardingWizard() {
     (COMMAND_PLACEHOLDERS[adapterType] ?? adapterType.replace(/_local$/, ""));
 
   useEffect(() => {
-    if (step !== 2) return;
+    if (step !== 4) return;
     setAdapterEnvResult(null);
     setAdapterEnvError(null);
   }, [step, adapterType, model, command, args, url]);
@@ -284,12 +323,23 @@ export function OnboardingWizard() {
   }, [filteredModels, adapterType]);
 
   function reset() {
-    setStep(1);
+    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    setStep(0);
+    setOnboardingPath(null);
+    setGrowWorkflows("");
+    setGrowPainPoints("");
+    setGrowAutomate("");
     setLoading(false);
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
-    setAgentName("CEO");
+    setMissionPath(null);
+    setMissionConfirmed(false);
+    setQ1("");
+    setQ2("");
+    setQ3("");
+    setQ4("");
+    setAgentName("Chief of staff");
     setAdapterType("claude_local");
     setModel("");
     setCommand("");
@@ -304,15 +354,24 @@ export function OnboardingWizard() {
     setTaskDescription(getDefaultTaskDescription());
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
-    setCreatedCompanyGoalId(null);
     setCreatedAgentId(null);
-    setCreatedProjectId(null);
-    setCreatedIssueRef(null);
   }
 
   function handleClose() {
     reset();
     closeOnboarding();
+    // On the /onboarding route the wizard is also kept open by the route
+    // itself, so closing the dialog must mark the route dismissed — otherwise
+    // effectiveOnboardingOpen stays true and the wizard re-renders instead of
+    // handing off to the launcher card (PAP-52).
+    setRouteDismissed(true);
+  }
+
+  function handleLaunchToChat() {
+    const prefix = createdCompanyPrefix;
+    reset();
+    closeOnboarding();
+    navigate(prefix ? `/${prefix}/board-chat` : "/dashboard");
   }
 
   function buildAdapterConfig(): Record<string, unknown> {
@@ -321,10 +380,8 @@ export function OnboardingWizard() {
       ...defaultCreateValues,
       adapterType,
       model:
-        adapterType === "codex_local"
-          ? model || DEFAULT_CODEX_LOCAL_MODEL
-          : adapterType === "gemini_local"
-            ? model || DEFAULT_GEMINI_LOCAL_MODEL
+        adapterType === "gemini_local"
+          ? model || DEFAULT_GEMINI_LOCAL_MODEL
           : adapterType === "cursor"
             ? model || DEFAULT_CURSOR_LOCAL_MODEL
             : adapterType === "opencode_local"
@@ -384,7 +441,14 @@ export function OnboardingWizard() {
     }
   }
 
-  async function handleStep1Next() {
+  // Step 2 → 3 ("Confirm mission"): create the company + its company-level
+  // goal, then advance to naming the team lead. Guarded so revisiting the
+  // mission step (e.g. via Back) doesn't create a duplicate company.
+  async function handleConfirmMission() {
+    if (createdCompanyId) {
+      setStep(3);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -394,25 +458,20 @@ export function OnboardingWizard() {
       setSelectedCompanyId(company.id);
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
 
-      if (companyGoal.trim()) {
-        const parsedGoal = parseOnboardingGoalInput(companyGoal);
-        const goal = await goalsApi.create(company.id, {
-          title: parsedGoal.title,
-          ...(parsedGoal.description
-            ? { description: parsedGoal.description }
-            : {}),
-          level: "company",
-          status: "active"
-        });
-        setCreatedCompanyGoalId(goal.id);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.goals.list(company.id)
-        });
-      } else {
-        setCreatedCompanyGoalId(null);
-      }
+      const parsedGoal = parseOnboardingGoalInput(companyGoal);
+      await goalsApi.create(company.id, {
+        title: parsedGoal.title,
+        ...(parsedGoal.description
+          ? { description: parsedGoal.description }
+          : {}),
+        level: "company",
+        status: "active"
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.goals.list(company.id)
+      });
 
-      setStep(2);
+      setStep(3); // → Create your team lead
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboarding.error.createCompany"));
     } finally {
@@ -420,15 +479,46 @@ export function OnboardingWizard() {
     }
   }
 
-  async function handleStep2Next() {
+  // Step 4 → 5 ("Give it a heartbeat"): hire the lead agent + seed its
+  // instructions, then advance to Review. Guarded so revisiting step 4
+  // doesn't hire a second agent.
+  async function handleGiveHeartbeat() {
     if (!createdCompanyId) return;
+    if (createdAgentId) {
+      setStep(5);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       if (adapterType === "opencode_local") {
-        if (!isValidOpenCodeModelId(model)) {
+        const selectedModelId = model.trim();
+        if (!isValidOpenCodeModelId(selectedModelId)) {
           setError(
             t("onboarding.error.opencodeModelRequired")
+          );
+          return;
+        }
+        if (adapterModelsError) {
+          setError(
+            adapterModelsError instanceof Error
+              ? adapterModelsError.message
+              : "Failed to load OpenCode models."
+          );
+          return;
+        }
+        if (adapterModelsLoading || adapterModelsFetching) {
+          setError(
+            "OpenCode models are still loading. Please wait and try again."
+          );
+          return;
+        }
+        const discoveredModels = adapterModels ?? [];
+        if (!discoveredModels.some((entry) => entry.id === selectedModelId)) {
+          setError(
+            discoveredModels.length === 0
+              ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
+              : `Configured OpenCode model is unavailable: ${selectedModelId}`
           );
           return;
         }
@@ -460,7 +550,35 @@ export function OnboardingWizard() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.agents.list(createdCompanyId)
       });
-      setStep(3);
+
+      // Seed the CEO's agent instructions file so the agent always has
+      // company context + a hiring-plan output format rule. Non-fatal on
+      // failure — the agent can still function with adapter defaults.
+      try {
+        const bundle = await agentsApi.instructionsBundle(agent.id, createdCompanyId);
+        await agentsApi.saveInstructionsFile(
+          agent.id,
+          {
+            path: bundle.entryFile,
+            content: composeCeoInstructions({
+              companyName,
+              companyGoal,
+              growPath: onboardingPath === "grow",
+              growWorkflows,
+              growPainPoints,
+              growAutomate,
+              q1, q2, q3, q4,
+            }),
+          },
+          createdCompanyId,
+        );
+      } catch (err) {
+        console.warn("Failed to seed CEO instructions:", err);
+      }
+
+      // Advance to the Review step — the lead is now online. The user drives
+      // strategy + hiring from the planning chat after "Get started".
+      setStep(5);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboarding.error.createAgent"));
     } finally {
@@ -585,10 +703,12 @@ export function OnboardingWizard() {
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (step === 1 && companyName.trim()) handleStep1Next();
-      else if (step === 2 && agentName.trim()) handleStep2Next();
-      else if (step === 3 && taskTitle.trim()) handleStep3Next();
-      else if (step === 4) handleLaunch();
+      if (step === 0) return; // front door requires click
+      if (step === 1 && companyName.trim()) setStep(2);
+      else if (step === 2 && companyName.trim() && companyGoal.trim()) handleConfirmMission();
+      else if (step === 3 && agentName.trim()) setStep(4);
+      else if (step === 4 && agentName.trim()) handleGiveHeartbeat();
+      else if (step === 5) handleLaunchToChat();
     }
   }
 
@@ -599,7 +719,6 @@ export function OnboardingWizard() {
       open={effectiveOnboardingOpen}
       onOpenChange={(open) => {
         if (!open) {
-          setRouteDismissed(true);
           handleClose();
         }
       }}
@@ -619,11 +738,22 @@ export function OnboardingWizard() {
             <span className="sr-only">{t("common.close")}</span>
           </button>
 
-          {/* Left half — form */}
+          {/* Step 0: Front Door — full-screen choice */}
+          {step === 0 && (
+            <div className="w-full flex flex-col overflow-y-auto">
+              <FrontDoor onChoose={(path) => {
+                setOnboardingPath(path);
+                setStep(1);
+              }} />
+            </div>
+          )}
+
+          {/* Left half — form (steps 1+) */}
+          {step !== 0 && (
           <div
             className={cn(
               "w-full flex flex-col overflow-y-auto transition-[width] duration-500 ease-in-out",
-              step === 1 ? "md:w-1/2" : "md:w-full"
+              step === 1 || step === 2 ? "md:w-1/2" : "md:w-full"
             )}
           >
             <div className="w-full max-w-md mx-auto my-auto px-8 py-12 shrink-0">
@@ -654,7 +784,157 @@ export function OnboardingWizard() {
                 ))}
               </div>
 
+              {/* Persistent evolving capsule (steps 3–5): a single AgentCapsule
+                  held in the same tree slot so React reuses the DOM node and the
+                  morph reads as one capsule coming to life — dashed slot →
+                  solid (configured) → liquid fill + blue glow (online). */}
+              {step >= 3 && step <= 5 && (
+                <div className="space-y-4 mb-6">
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="bg-muted/50 p-2">
+                      {step === 5 ? (
+                        <Check className="h-5 w-5 text-muted-foreground" />
+                      ) : (
+                        <Bot className="h-5 w-5 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-medium">
+                        {step === 3
+                          ? "Create your team lead"
+                          : step === 4
+                            ? "Connect a model"
+                            : "Review"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        {step === 3 ? (
+                          <>
+                            Name your lead. They'll help drive{" "}
+                            <span className="font-medium text-foreground">{companyName}</span>{" "}
+                            toward its mission. We default to{" "}
+                            <span className="font-medium text-foreground">Chief of staff</span> —
+                            rename it to anything you like.
+                          </>
+                        ) : step === 4 ? (
+                          <>Pick the adapter and model your lead will run on, then check the environment.</>
+                        ) : (
+                          <>Everything's set up — your team lead is online and ready to work.</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1.5 py-1 text-center">
+                    <AgentCapsule
+                      state={step === 3 ? "slot" : step === 4 ? "configured" : "online"}
+                      gradient={5}
+                      glow="blue"
+                      size="md"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      {step === 3 ? (
+                        "an empty slot for an agent"
+                      ) : step === 4 ? (
+                        "your team lead, taking shape"
+                      ) : (
+                        <>
+                          <span className="font-medium text-foreground">{agentName}</span>{" "}
+                          is online and ready to work!
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Step content */}
+              {step === 2 && onboardingPath === "grow" && (
+                <div className="space-y-5">
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="bg-muted/50 p-2">
+                      <Sparkles className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Tell us about your team</h3>
+                      <p className="text-xs text-muted-foreground">
+                        We'll use this to set up your lead agent and plan which agents to add.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="group">
+                    <label className="text-xs text-muted-foreground mb-1 block">What does your team work on?</label>
+                    <input
+                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                      placeholder="e.g. We create educational YouTube content about AI"
+                      value={q1}
+                      onChange={(e) => setQ1(e.target.value)}
+                    />
+                  </div>
+                  <div className="group">
+                    <label className="text-xs text-muted-foreground mb-1 block">What are your current workflows?</label>
+                    <textarea
+                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                      placeholder="e.g. Manual content creation, spreadsheet tracking, email outreach"
+                      value={growWorkflows}
+                      onChange={(e) => setGrowWorkflows(e.target.value)}
+                    />
+                  </div>
+                  <div className="group">
+                    <label className="text-xs text-muted-foreground mb-1 block">What pain points would you solve with AI?</label>
+                    <textarea
+                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                      placeholder="e.g. Can't produce content fast enough, no time for social media"
+                      value={growPainPoints}
+                      onChange={(e) => setGrowPainPoints(e.target.value)}
+                    />
+                  </div>
+                  <div className="group">
+                    <label className="text-xs text-muted-foreground mb-1 block">What would you automate first?</label>
+                    <input
+                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                      placeholder="e.g. Social media scheduling and content repurposing"
+                      value={growAutomate}
+                      onChange={(e) => setGrowAutomate(e.target.value)}
+                    />
+                  </div>
+                  {companyName.trim() && q1.trim() && (
+                    <>
+                      {!companyGoal.trim() && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const parts = [q1.trim()];
+                            if (growPainPoints.trim()) parts.push(`Key challenge: ${growPainPoints.trim()}`);
+                            if (growAutomate.trim()) parts.push(`First priority: automate ${growAutomate.trim().toLowerCase()}`);
+                            setCompanyGoal(parts.join(". "));
+                          }}
+                        >
+                          Generate mission from answers
+                        </Button>
+                      )}
+                      {companyGoal.trim() && (
+                        <div className="group">
+                          <label className="text-xs text-foreground mb-1 block">Generated mission — edit however you like:</label>
+                          <textarea
+                            className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                            value={companyGoal}
+                            onChange={(e) => setCompanyGoal(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <button
+                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => { setOnboardingPath(null); setStep(0); }}
+                  >
+                    ← Back to start
+                  </button>
+                </div>
+              )}
+
+              {/* Step 1: Name your team (both paths) */}
               {step === 1 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
@@ -684,6 +964,13 @@ export function OnboardingWizard() {
                       placeholder={t("onboarding.companyNamePlaceholder")}
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && companyName.trim()) {
+                          e.preventDefault();
+                          if (onboardingPath !== "grow" && !missionPath) setMissionPath("direct");
+                          setStep(2);
+                        }
+                      }}
                       autoFocus
                     />
                   </div>
@@ -708,7 +995,8 @@ export function OnboardingWizard() {
                 </div>
               )}
 
-              {step === 2 && (
+              {/* Step 4: Connect a model — adapter + model + env check (capsule above) */}
+              {step === 4 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="bg-muted/50 p-2">
@@ -753,9 +1041,6 @@ export function OnboardingWizard() {
                             const nextType = opt.type;
                             setAdapterType(nextType);
                             if (nextType === "codex_local") {
-                              if (!model) {
-                                setModel(DEFAULT_CODEX_LOCAL_MODEL);
-                              }
                               return;
                             }
                             if (nextType === "opencode_local") {
@@ -1180,7 +1465,7 @@ export function OnboardingWizard() {
               {/* Footer navigation */}
               <div className="flex items-center justify-between mt-8">
                 <div>
-                  {step > 1 && step > (onboardingOptions.initialStep ?? 1) && (
+                  {step > 1 && step > (effectiveOnboardingOptions.initialStep ?? 0) && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1196,8 +1481,11 @@ export function OnboardingWizard() {
                   {step === 1 && (
                     <Button
                       size="sm"
-                      disabled={!companyName.trim() || loading}
-                      onClick={handleStep1Next}
+                      disabled={!companyName.trim()}
+                      onClick={() => {
+                        if (onboardingPath !== "grow" && !missionPath) setMissionPath("direct");
+                        setStep(2);
+                      }}
                     >
                       {loading ? (
                         <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
@@ -1210,10 +1498,8 @@ export function OnboardingWizard() {
                   {step === 2 && (
                     <Button
                       size="sm"
-                      disabled={
-                        !agentName.trim() || loading || adapterEnvLoading
-                      }
-                      onClick={handleStep2Next}
+                      disabled={!companyName.trim() || !companyGoal.trim() || loading}
+                      onClick={handleConfirmMission}
                     >
                       {loading ? (
                         <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
@@ -1226,8 +1512,18 @@ export function OnboardingWizard() {
                   {step === 3 && (
                     <Button
                       size="sm"
-                      disabled={!taskTitle.trim() || loading}
-                      onClick={handleStep3Next}
+                      disabled={!agentName.trim()}
+                      onClick={() => setStep(4)}
+                    >
+                      Next
+                      <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                    </Button>
+                  )}
+                  {step === 4 && (
+                    <Button
+                      size="sm"
+                      disabled={!agentName.trim() || loading || adapterEnvLoading}
+                      onClick={handleGiveHeartbeat}
                     >
                       {loading ? (
                         <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
@@ -1251,12 +1547,14 @@ export function OnboardingWizard() {
               </div>
             </div>
           </div>
+          )}
 
-          {/* Right half — ASCII art (hidden on mobile) */}
+          {/* Right half — ASCII art (hidden on mobile, only for the team
+              name + mission steps) */}
           <div
             className={cn(
               "hidden md:block overflow-hidden bg-[#1d1d1d] transition-[width,opacity] duration-500 ease-in-out",
-              step === 1 ? "w-1/2 opacity-100" : "w-0 opacity-0"
+              step === 1 || step === 2 ? "w-1/2 opacity-100" : "w-0 opacity-0"
             )}
           >
             <AsciiArtAnimation />

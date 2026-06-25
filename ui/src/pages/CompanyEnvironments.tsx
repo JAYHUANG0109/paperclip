@@ -1,17 +1,24 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AGENT_ADAPTER_TYPES,
-  getAdapterEnvironmentSupport,
+  type EnvBinding,
   type Environment,
   type EnvironmentProbeResult,
   type JsonSchema,
 } from "@paperclipai/shared";
-import { Check, Settings } from "lucide-react";
 import { environmentsApi } from "@/api/environments";
 import { instanceSettingsApi } from "@/api/instanceSettings";
 import { secretsApi } from "@/api/secrets";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { EnvVarEditor } from "@/components/EnvVarEditor";
 import { JsonSchemaForm, getDefaultValues, validateJsonSchemaForm } from "@/components/JsonSchemaForm";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
@@ -20,7 +27,6 @@ import { queryKeys } from "@/lib/queryKeys";
 import {
   Field,
   ToggleField,
-  adapterLabels,
 } from "../components/agent-config-primitives";
 import { useTranslation } from "@/i18n";
 
@@ -38,18 +44,15 @@ type EnvironmentFormState = {
   sshStrictHostKeyChecking: boolean;
   sandboxProvider: string;
   sandboxConfig: Record<string, unknown>;
+  envVars: Record<string, EnvBinding>;
 };
-
-const ENVIRONMENT_SUPPORT_ROWS = AGENT_ADAPTER_TYPES.map((adapterType) => ({
-  adapterType,
-  support: getAdapterEnvironmentSupport(adapterType),
-}));
 
 function buildEnvironmentPayload(form: EnvironmentFormState) {
   return {
     name: form.name.trim(),
     description: form.description.trim() || null,
     driver: form.driver,
+    envVars: form.envVars,
     config:
       form.driver === "ssh"
         ? {
@@ -89,7 +92,21 @@ function createEmptyEnvironmentForm(): EnvironmentFormState {
     sshStrictHostKeyChecking: true,
     sandboxProvider: "",
     sandboxConfig: {},
+    envVars: {},
   };
+}
+
+function isLocalEnvironment(environment: Environment | null | undefined) {
+  return environment?.driver === "local";
+}
+
+function normalizeNonLocalEnvironmentId(
+  environmentId: string | null | undefined,
+  environments: readonly Environment[],
+): string {
+  if (!environmentId) return "";
+  const environment = environments.find((candidate) => candidate.id === environmentId) ?? null;
+  return isLocalEnvironment(environment) ? "" : environmentId;
 }
 
 function readSshConfig(environment: Environment) {
@@ -166,9 +183,11 @@ export function CompanyEnvironments() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
+  const [environmentDialogOpen, setEnvironmentDialogOpen] = useState(false);
   const [editingEnvironmentId, setEditingEnvironmentId] = useState<string | null>(null);
   const [environmentForm, setEnvironmentForm] = useState<EnvironmentFormState>(createEmptyEnvironmentForm);
   const [probeResults, setProbeResults] = useState<Record<string, EnvironmentProbeResult | null>>({});
+  const [testingEnvironmentId, setTestingEnvironmentId] = useState<string | null>(null);
 
   useEffect(() => {
     setBreadcrumbs([
@@ -201,6 +220,16 @@ export function CompanyEnvironments() {
     queryFn: () => secretsApi.list(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId),
   });
+  const createSecret = useMutation({
+    mutationFn: (input: { name: string; value: string }) => {
+      if (!selectedCompanyId) throw new Error("Select a company to create secrets");
+      return secretsApi.create(selectedCompanyId, input);
+    },
+    onSuccess: async () => {
+      if (!selectedCompanyId) return;
+      await queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
+    },
+  });
 
   const environmentMutation = useMutation({
     mutationFn: async (form: EnvironmentFormState) => {
@@ -213,11 +242,15 @@ export function CompanyEnvironments() {
       return await environmentsApi.create(selectedCompanyId!, body);
     },
     onSuccess: async (environment) => {
+      const wasEditing = editingEnvironmentId !== null;
       await queryClient.invalidateQueries({
         queryKey: queryKeys.environments.list(selectedCompanyId!),
       });
+      setEnvironmentDialogOpen(false);
       setEditingEnvironmentId(null);
       setEnvironmentForm(createEmptyEnvironmentForm());
+      environmentMutation.reset();
+      draftEnvironmentProbeMutation.reset();
       pushToast({
         title: editingEnvironmentId ? t("companyEnvironments.toastUpdated") : t("companyEnvironments.toastCreated"),
         body: t("companyEnvironments.toastReady", { name: environment.name }),
@@ -233,8 +266,34 @@ export function CompanyEnvironments() {
     },
   });
 
+  const defaultEnvironmentMutation = useMutation({
+    mutationFn: async (defaultEnvironmentId: string | null) =>
+      await instanceSettingsApi.update({ defaultEnvironmentId }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.instance.settings });
+      pushToast({
+        title: "Default environment updated",
+        body: "Agent inheritance now follows the updated instance default.",
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Failed to update default environment",
+        body: error instanceof Error ? error.message : "Default environment update failed.",
+        tone: "error",
+      });
+    },
+  });
+
   const environmentProbeMutation = useMutation({
     mutationFn: async (environmentId: string) => await environmentsApi.probe(environmentId),
+    onMutate: (environmentId) => {
+      setTestingEnvironmentId(environmentId);
+    },
+    onSettled: (_probe, _error, environmentId) => {
+      setTestingEnvironmentId((current) => (current === environmentId ? null : current));
+    },
     onSuccess: (probe, environmentId) => {
       setProbeResults((current) => ({
         ...current,
@@ -287,13 +346,26 @@ export function CompanyEnvironments() {
   });
 
   useEffect(() => {
+    setEnvironmentDialogOpen(false);
     setEditingEnvironmentId(null);
     setEnvironmentForm(createEmptyEnvironmentForm());
     setProbeResults({});
+    setTestingEnvironmentId(null);
   }, [selectedCompanyId]);
 
+  function handleStartCreateEnvironment() {
+    setEditingEnvironmentId(null);
+    setEnvironmentForm(createEmptyEnvironmentForm());
+    environmentMutation.reset();
+    draftEnvironmentProbeMutation.reset();
+    setEnvironmentDialogOpen(true);
+  }
+
   function handleEditEnvironment(environment: Environment) {
+    environmentMutation.reset();
+    draftEnvironmentProbeMutation.reset();
     setEditingEnvironmentId(environment.id);
+    setEnvironmentDialogOpen(true);
     if (environment.driver === "ssh") {
       const ssh = readSshConfig(environment);
       setEnvironmentForm({
@@ -309,6 +381,7 @@ export function CompanyEnvironments() {
         sshPrivateKeySecretId: ssh.privateKeySecretId,
         sshKnownHosts: ssh.knownHosts,
         sshStrictHostKeyChecking: ssh.strictHostKeyChecking,
+        envVars: environment.envVars ?? {},
       });
       return;
     }
@@ -322,6 +395,7 @@ export function CompanyEnvironments() {
         driver: "sandbox",
         sandboxProvider: sandbox.provider,
         sandboxConfig: sandbox.config,
+        envVars: environment.envVars ?? {},
       });
       return;
     }
@@ -331,12 +405,17 @@ export function CompanyEnvironments() {
       name: environment.name,
       description: environment.description ?? "",
       driver: "local",
+      envVars: environment.envVars ?? {},
     });
   }
 
-  function handleCancelEnvironmentEdit() {
+  function closeEnvironmentDialog() {
+    if (environmentMutation.isPending) return;
+    setEnvironmentDialogOpen(false);
     setEditingEnvironmentId(null);
     setEnvironmentForm(createEmptyEnvironmentForm());
+    environmentMutation.reset();
+    draftEnvironmentProbeMutation.reset();
   }
 
   const discoveredPluginSandboxProviders = Object.entries(environmentCapabilities?.sandboxProviders ?? {})
@@ -349,7 +428,6 @@ export function CompanyEnvironments() {
     }))
     .sort((left, right) => left.displayName.localeCompare(right.displayName));
   const sandboxCreationEnabled = discoveredPluginSandboxProviders.length > 0;
-  const sandboxSupportVisible = sandboxCreationEnabled;
   const pluginSandboxProviders =
     environmentForm.sandboxProvider.trim().length > 0 &&
     environmentForm.sandboxProvider !== "fake" &&
@@ -398,6 +476,13 @@ export function CompanyEnvironments() {
       environmentForm.sandboxProvider.trim().length > 0 &&
       environmentForm.sandboxProvider !== "fake" &&
       Object.keys(sandboxConfigErrors).length === 0);
+
+  const savedEnvironments = environments ?? [];
+  const nonLocalEnvironments = savedEnvironments.filter((environment) => !isLocalEnvironment(environment));
+  const instanceDefaultEnvironmentId = normalizeNonLocalEnvironmentId(
+    instanceSettings?.defaultEnvironmentId ?? null,
+    savedEnvironments,
+  );
 
   if (!selectedCompanyId) {
     return <div className="text-sm text-muted-foreground">{t("companyEnvironments.selectCompany")}</div>;
@@ -542,27 +627,21 @@ export function CompanyEnvironments() {
                       ) : null}
                       <Button
                         size="sm"
-                        variant="ghost"
-                        onClick={() => handleEditEnvironment(environment)}
+                        variant="outline"
+                        onClick={() => environmentProbeMutation.mutate(environment.id)}
+                        disabled={testingEnvironmentId === environment.id}
                       >
                         {isEditing ? t("companyEnvironments.editing") : t("common.edit")}
                       </Button>
-                    </div>
-                  </div>
-                  {probe ? (
-                    <div
-                      className={
-                        probe.ok
-                          ? "mt-3 rounded border border-green-500/30 bg-green-500/5 px-2.5 py-2 text-xs text-green-700"
-                          : "mt-3 rounded border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-xs text-destructive"
-                      }
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleEditEnvironment(environment)}
                     >
-                      <div className="font-medium">{probe.summary}</div>
-                      {probe.details?.error && typeof probe.details.error === "string" ? (
-                        <div className="mt-1 font-mono text-[11px]">{probe.details.error}</div>
-                      ) : null}
-                    </div>
-                  ) : null}
+                      {isEditing ? "Editing" : "Edit"}
+                    </Button>
+                  </div>
                 </div>
               );
             })
@@ -669,7 +748,35 @@ export function CompanyEnvironments() {
                   <div className="space-y-2">
                     <select
                       className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                      value={environmentForm.sshPrivateKeySecretId}
+                      type="text"
+                      value={environmentForm.sshHost}
+                      onChange={(e) => setEnvironmentForm((current) => ({ ...current, sshHost: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Port" hint="Defaults to 22.">
+                    <input
+                      className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={environmentForm.sshPort}
+                      onChange={(e) => setEnvironmentForm((current) => ({ ...current, sshPort: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Username" hint="SSH login user.">
+                    <input
+                      className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                      type="text"
+                      value={environmentForm.sshUsername}
+                      onChange={(e) => setEnvironmentForm((current) => ({ ...current, sshUsername: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Remote workspace path" hint="Absolute path that Paperclip will verify during SSH connection tests.">
+                    <input
+                      className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                      type="text"
+                      placeholder="/Users/paperclip/workspace"
+                      value={environmentForm.sshRemoteWorkspacePath}
                       onChange={(e) =>
                         setEnvironmentForm((current) => ({
                           ...current,
@@ -684,9 +791,17 @@ export function CompanyEnvironments() {
                     </select>
                     <textarea
                       className="h-32 w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-xs font-mono outline-none"
-                      value={environmentForm.sshPrivateKey}
-                      disabled={!!environmentForm.sshPrivateKeySecretId}
-                      onChange={(e) => setEnvironmentForm((current) => ({ ...current, sshPrivateKey: e.target.value }))}
+                      value={environmentForm.sshKnownHosts}
+                      onChange={(e) => setEnvironmentForm((current) => ({ ...current, sshKnownHosts: e.target.value }))}
+                    />
+                  </Field>
+                  <div className="md:col-span-2">
+                    <ToggleField
+                      label="Strict host key checking"
+                      hint="Keep this on unless you deliberately want probe-time host key acceptance disabled."
+                      checked={environmentForm.sshStrictHostKeyChecking}
+                      onChange={(checked) =>
+                        setEnvironmentForm((current) => ({ ...current, sshStrictHostKeyChecking: checked }))}
                     />
                   </div>
                 </Field>
@@ -706,8 +821,7 @@ export function CompanyEnvironments() {
                       setEnvironmentForm((current) => ({ ...current, sshStrictHostKeyChecking: checked }))}
                   />
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
             {environmentForm.driver === "sandbox" ? (
               <div className="grid gap-3 md:grid-cols-2">
@@ -757,14 +871,11 @@ export function CompanyEnvironments() {
                     </div>
                   )}
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                onClick={() => environmentMutation.mutate(environmentForm)}
-                disabled={environmentMutation.isPending || !environmentFormValid}
+              <Field
+                label="Environment variables"
+                hint="Injected into runs that resolve through this environment. Use plain values or company secrets."
               >
                 {environmentMutation.isPending
                   ? editingEnvironmentId
@@ -795,21 +906,52 @@ export function CompanyEnvironments() {
                 </Button>
               ) : null}
               {environmentMutation.isError ? (
-                <span className="text-xs text-destructive">
+                <div className="text-xs text-destructive">
                   {environmentMutation.error instanceof Error
                     ? environmentMutation.error.message
                     : t("companyEnvironments.toastSaveFailed")}
                 </span>
               ) : null}
               {draftEnvironmentProbeMutation.data ? (
-                <span className={draftEnvironmentProbeMutation.data.ok ? "text-xs text-green-600" : "text-xs text-destructive"}>
+                <div className={draftEnvironmentProbeMutation.data.ok ? "text-xs text-green-600" : "text-xs text-destructive"}>
                   {draftEnvironmentProbeMutation.data.summary}
-                </span>
+                </div>
               ) : null}
             </div>
           </div>
-        </div>
-      </div>
+
+          <DialogFooter className="border-t border-border/60 bg-background px-6 py-4">
+            <Button
+              variant="outline"
+              onClick={closeEnvironmentDialog}
+              disabled={environmentMutation.isPending}
+            >
+              Cancel
+            </Button>
+            {environmentForm.driver !== "local" ? (
+              <Button
+                variant="outline"
+                onClick={() => draftEnvironmentProbeMutation.mutate(environmentForm)}
+                disabled={draftEnvironmentProbeMutation.isPending || !environmentFormValid}
+              >
+                {draftEnvironmentProbeMutation.isPending ? "Testing..." : "Test"}
+              </Button>
+            ) : null}
+            <Button
+              onClick={() => environmentMutation.mutate(environmentForm)}
+              disabled={environmentMutation.isPending || !environmentFormValid}
+            >
+              {environmentMutation.isPending
+                ? editingEnvironmentId
+                  ? "Saving..."
+                  : "Creating..."
+                : editingEnvironmentId
+                  ? "Save environment"
+                  : "Create environment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

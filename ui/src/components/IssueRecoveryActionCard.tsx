@@ -281,20 +281,28 @@ const RESOLVE_OPTIONS: Array<{
 }> = [
   {
     outcome: "todo",
+    label: "Try again",
+    description: "Dismiss recovery and return the source task to todo.",
   },
   {
     outcome: "done",
+    label: "Mark task done",
+    description: "Restore by recording the requested work as complete.",
   },
   {
     outcome: "in_review",
   },
   {
     outcome: "false_positive_done",
+    label: "False positive, done",
+    description: "Dismiss recovery and mark the source task complete.",
     destructive: true,
     boardOnly: true,
   },
   {
     outcome: "false_positive_in_review",
+    label: "False positive, review",
+    description: "Dismiss recovery and send the source task for review.",
     destructive: true,
     boardOnly: true,
   },

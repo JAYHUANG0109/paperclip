@@ -9,9 +9,9 @@ import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
 import { queryKeys } from "../lib/queryKeys";
-import { StatusBadge } from "../components/StatusBadge";
+import { AgentStatusBadge, AgentStatusCapsule } from "../components/StatusBadge";
+import { AgentActionButtons } from "../components/AgentActionButtons";
 import { MembershipAction } from "../components/MembershipAction";
-import { agentStatusDot, agentStatusDotDefault } from "../lib/status-colors";
 import { EntityRow } from "../components/EntityRow";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -19,7 +19,7 @@ import { relativeTime, cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Bot, Plus, List, GitBranch, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, Bot, Plus, List, GitBranch } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 import {
   resourceMembershipState,
@@ -33,8 +33,12 @@ const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 
 type FilterTab = "all" | "active" | "paused" | "error";
 
-function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean): boolean {
-  if (status === "terminated") return showTerminated;
+// Agents in these states never appear in the agents list — `terminated` is
+// hidden like an archived company, and `pending_approval` is a hiring gate that
+// lives in the task thread, not an agent run state (PAP-75).
+const HIDDEN_AGENT_STATUSES = new Set(["terminated", "pending_approval"]);
+
+function matchesFilter(status: string, tab: FilterTab): boolean {
   if (tab === "all") return true;
   if (tab === "active") return status === "active" || status === "running" || status === "idle";
   if (tab === "paused") return status === "paused";
@@ -42,9 +46,9 @@ function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean):
   return true;
 }
 
-function filterAgents(agents: Agent[], tab: FilterTab, showTerminated: boolean): Agent[] {
+function filterAgents(agents: Agent[], tab: FilterTab): Agent[] {
   return agents
-    .filter((a) => matchesFilter(a.status, tab, showTerminated))
+    .filter((a) => !HIDDEN_AGENT_STATUSES.has(a.status) && matchesFilter(a.status, tab))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -55,11 +59,17 @@ function getConfiguredModel(agent: Agent): string | null {
   return model.length > 0 ? model : null;
 }
 
-function filterOrgTree(nodes: OrgNode[], tab: FilterTab, showTerminated: boolean): OrgNode[] {
+function filterOrgTree(nodes: OrgNode[], tab: FilterTab): OrgNode[] {
   return nodes
     .reduce<OrgNode[]>((acc, node) => {
-      const filteredReports = filterOrgTree(node.reports, tab, showTerminated);
-      if (matchesFilter(node.status, tab, showTerminated) || filteredReports.length > 0) {
+      const filteredReports = filterOrgTree(node.reports, tab);
+      // Hidden agents (terminated / pending_approval) never render as a row, but
+      // any visible reports are promoted so the tree doesn't lose live agents.
+      if (HIDDEN_AGENT_STATUSES.has(node.status)) {
+        acc.push(...filteredReports);
+        return acc;
+      }
+      if (matchesFilter(node.status, tab) || filteredReports.length > 0) {
         acc.push({ ...node, reports: filteredReports });
       }
       return acc;
@@ -80,8 +90,6 @@ export function Agents() {
   const [view, setView] = useState<"list" | "org">("org");
   const forceListView = isMobile;
   const effectiveView: "list" | "org" = forceListView ? "list" : view;
-  const [showTerminated, setShowTerminated] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const { data: agents, isLoading, error } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -137,8 +145,8 @@ export function Agents() {
     return <PageSkeleton variant="list" />;
   }
 
-  const filtered = filterAgents(agents ?? [], tab, showTerminated);
-  const filteredOrg = filterOrgTree(orgTree ?? [], tab, showTerminated);
+  const filtered = filterAgents(agents ?? [], tab);
+  const filteredOrg = filterOrgTree(orgTree ?? [], tab);
 
   return (
     <div className="space-y-4">
@@ -235,10 +243,16 @@ export function Agents() {
       {effectiveView === "list" && filtered.length > 0 && (
         <div className="border border-border">
           {filtered.map((agent) => {
+            const hasInvalidOrgChain = agent.orgChainHealth?.status === "invalid_org_chain";
             return (
               <EntityRow
                 key={agent.id}
                 title={agent.name}
+                // Fixed (truncating) title width so the `meta` group starts at a
+                // constant x on every row — that's what makes the model + timestamp
+                // columns line up vertically (PAP-86). Agent names vary in width, so
+                // a content-sized title (`min-w-[7rem]`) shifted meta's start per row.
+                titleClassName="w-56"
                 subtitle={`${roleLabels[agent.role] ?? agent.role}${agent.title ? ` - ${agent.title}` : ""}`}
                 to={agentUrl(agent)}
                 className={cn(
@@ -246,12 +260,15 @@ export function Agents() {
                   agent.pausedAt && tab !== "paused" ? "opacity-50" : "",
                   resourceMembershipState(membershipsQuery.data, "agent", agent.id) === "left" ? "text-foreground/55" : "",
                 )}
-                leading={
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span
-                      className={`absolute inline-flex h-full w-full rounded-full ${agentStatusDot[agent.status] ?? agentStatusDotDefault}`}
-                    />
-                  </span>
+                leading={hasInvalidOrgChain ? (
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-label="Invalid reporting chain" />
+                ) : (
+                  <AgentStatusCapsule status={agent.status} />
+                )}
+                meta={
+                  <div className="hidden xl:flex items-center gap-3">
+                    <AgentMetaColumns agent={agent} />
+                  </div>
                 }
                 trailing={
                   <div className="flex items-center gap-3">
@@ -263,7 +280,7 @@ export function Agents() {
                           liveCount={liveRunByAgent.get(agent.id)!.liveCount}
                         />
                       ) : (
-                        <StatusBadge status={agent.status} />
+                        <AgentStatusBadge status={agent.status} />
                       )}
                     </span>
                     <div className="hidden sm:flex items-center gap-3">
@@ -274,21 +291,24 @@ export function Agents() {
                           liveCount={liveRunByAgent.get(agent.id)!.liveCount}
                         />
                       )}
-                      <span className="w-28 whitespace-nowrap text-left font-mono text-xs text-muted-foreground">
-                        {getAdapterLabel(agent.adapterType)}
-                      </span>
-                      <span
-                        className="w-36 truncate text-left font-mono text-xs text-muted-foreground"
-                        title={getConfiguredModel(agent) ?? undefined}
-                      >
-                        {getConfiguredModel(agent) ?? "—"}
-                      </span>
-                      <span className="text-xs text-muted-foreground w-16 text-right">
-                        {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
-                      </span>
                       <span className="w-20 flex justify-end">
-                        <StatusBadge status={agent.status} />
+                        <AgentStatusBadge status={agent.status} />
                       </span>
+                    </div>
+                    {/* Row actions mirror the agent detail page; stop the click
+                        from bubbling to the row link so buttons don't navigate. */}
+                    <div
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
+                      <AgentActionButtons
+                        agent={agent}
+                        companyId={selectedCompanyId}
+                        runLabel="Run Heartbeat"
+                        showStatus={false}
+                      />
                     </div>
                     <MembershipAction
                       state={resourceMembershipState(membershipsQuery.data, "agent", agent.id)}
@@ -383,12 +403,11 @@ function OrgTreeNode({
   membershipMutation: ReturnType<typeof useResourceMembershipMutation>;
 }) {
   const agent = agentMap.get(node.id);
+  const hasInvalidOrgChain = Boolean(agent && agent.orgChainHealth?.status === "invalid_org_chain");
   const membershipState = resourceMembershipState(memberships, "agent", node.id);
   const pending = membershipMutation.isPending &&
     membershipMutation.variables?.resourceType === "agent" &&
     membershipMutation.variables.resourceId === node.id;
-
-  const statusColor = agentStatusDot[node.status] ?? agentStatusDotDefault;
 
   return (
     <div style={{ paddingLeft: depth * 24 }}>
@@ -400,10 +419,12 @@ function OrgTreeNode({
           membershipState === "left" && "text-foreground/55",
         )}
       >
-        <span className="relative flex h-2.5 w-2.5 shrink-0">
-          <span className={`absolute inline-flex h-full w-full rounded-full ${statusColor}`} />
-        </span>
-        <div className="flex-1 min-w-0">
+        {hasInvalidOrgChain ? (
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-label="Invalid reporting chain" />
+        ) : (
+          <AgentStatusCapsule status={node.status} />
+        )}
+        <div className="flex-1 min-w-[7rem]">
           <span className="text-sm font-medium">{node.name}</span>
           <span className="text-xs text-muted-foreground ml-2">
             {roleLabels[node.role] ?? node.role}
@@ -419,7 +440,7 @@ function OrgTreeNode({
                 liveCount={liveRunByAgent.get(node.id)!.liveCount}
               />
             ) : (
-              <StatusBadge status={node.status} />
+              <AgentStatusBadge status={node.status} />
             )}
           </span>
           <div className="hidden sm:flex items-center gap-3">
@@ -431,23 +452,12 @@ function OrgTreeNode({
               />
             )}
             {agent && (
-              <>
-                <span className="w-28 whitespace-nowrap text-left font-mono text-xs text-muted-foreground">
-                  {getAdapterLabel(agent.adapterType)}
-                </span>
-                <span
-                  className="w-36 truncate text-left font-mono text-xs text-muted-foreground"
-                  title={getConfiguredModel(agent) ?? undefined}
-                >
-                  {getConfiguredModel(agent) ?? "—"}
-                </span>
-                <span className="text-xs text-muted-foreground w-16 text-right">
-                  {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
-                </span>
-              </>
+              <div className="hidden xl:flex items-center gap-3">
+                <AgentMetaColumns agent={agent} />
+              </div>
             )}
             <span className="w-20 flex justify-end">
-              <StatusBadge status={node.status} />
+              <AgentStatusBadge status={node.status} />
             </span>
           </div>
           <MembershipAction
@@ -487,6 +497,36 @@ function OrgTreeNode({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Provider/model + heartbeat columns shared by the list and org views. The
+ * model and adapter label share one fixed-width cell, each line truncating with
+ * an ellipsis so a long model id can never overlap the heartbeat column. The
+ * heartbeat is single-line (`whitespace-nowrap`) and wide enough for a full
+ * date like "Apr 30, 2026".
+ */
+function AgentMetaColumns({ agent }: { agent: Agent }) {
+  const model = getConfiguredModel(agent);
+  const adapterLabel = getAdapterLabel(agent.adapterType);
+  return (
+    <>
+      <div className="w-44 min-w-0 leading-tight">
+        <div
+          className="truncate font-mono text-xs text-muted-foreground"
+          title={model ?? undefined}
+        >
+          {model ?? "—"}
+        </div>
+        <div className="truncate font-mono text-[11px] text-muted-foreground/70" title={adapterLabel}>
+          {adapterLabel}
+        </div>
+      </div>
+      <span className="w-24 whitespace-nowrap text-right text-xs text-muted-foreground">
+        {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
+      </span>
+    </>
   );
 }
 

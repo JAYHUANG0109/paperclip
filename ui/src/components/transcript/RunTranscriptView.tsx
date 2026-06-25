@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TranscriptEntry } from "../../adapters";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody, type MarkdownExternalReferenceMap } from "../MarkdownBody";
 import { cn, formatTokens } from "../../lib/utils";
 import { t, useTranslation } from "@/i18n";
 import {
@@ -32,6 +32,7 @@ interface RunTranscriptViewProps {
   emptyMessage?: string;
   className?: string;
   thinkingClassName?: string;
+  externalReferences?: MarkdownExternalReferenceMap;
 }
 
 type TranscriptBlock =
@@ -637,9 +638,11 @@ export function normalizeTranscript(entries: TranscriptEntry[], streaming: boole
 function TranscriptMessageBlock({
   block,
   density,
+  externalReferences,
 }: {
   block: Extract<TranscriptBlock, { type: "message" }>;
   density: TranscriptDensity;
+  externalReferences?: MarkdownExternalReferenceMap;
 }) {
   const { t } = useTranslation();
   const isAssistant = block.role === "assistant";
@@ -658,6 +661,7 @@ function TranscriptMessageBlock({
           "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
           compact ? "text-xs leading-5 text-foreground/85" : "text-sm",
         )}
+        externalReferences={externalReferences}
       >
         {block.text}
       </MarkdownBody>
@@ -678,10 +682,12 @@ function TranscriptThinkingBlock({
   block,
   density,
   className,
+  externalReferences,
 }: {
   block: Extract<TranscriptBlock, { type: "thinking" }>;
   density: TranscriptDensity;
   className?: string;
+  externalReferences?: MarkdownExternalReferenceMap;
 }) {
   return (
     <MarkdownBody
@@ -690,6 +696,7 @@ function TranscriptThinkingBlock({
         density === "compact" ? "text-[11px] leading-5" : "text-sm leading-6",
         className,
       )}
+      externalReferences={externalReferences}
     >
       {block.text}
     </MarkdownBody>
@@ -1095,9 +1102,11 @@ function TranscriptActivityRow({
 function TranscriptEventRow({
   block,
   density,
+  externalReferences,
 }: {
   block: Extract<TranscriptBlock, { type: "event" }>;
   density: TranscriptDensity;
+  externalReferences?: MarkdownExternalReferenceMap;
 }) {
   const compact = density === "compact";
   const toneClasses =
@@ -1126,6 +1135,7 @@ function TranscriptEventRow({
                 "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 text-sky-700 dark:text-sky-300",
                 compact ? "text-[11px] leading-5" : "text-xs leading-5",
               )}
+              externalReferences={externalReferences}
             >
               {block.text}
             </MarkdownBody>
@@ -1481,6 +1491,7 @@ export function RunTranscriptView({
   emptyMessage,
   className,
   thinkingClassName,
+  externalReferences,
 }: RunTranscriptViewProps) {
   const { t } = useTranslation();
   const blocks = useMemo(
@@ -1513,9 +1524,20 @@ export function RunTranscriptView({
           key={`${block.type}-${block.ts}-${index}`}
           className={cn(index === visibleBlocks.length - 1 && streaming && "animate-in fade-in slide-in-from-bottom-1 duration-300")}
         >
-          {block.type === "message" && <TranscriptMessageBlock block={block} density={density} />}
+          {block.type === "message" && (
+            <TranscriptMessageBlock
+              block={block}
+              density={density}
+              externalReferences={externalReferences}
+            />
+          )}
           {block.type === "thinking" && (
-            <TranscriptThinkingBlock block={block} density={density} className={thinkingClassName} />
+            <TranscriptThinkingBlock
+              block={block}
+              density={density}
+              className={thinkingClassName}
+              externalReferences={externalReferences}
+            />
           )}
           {block.type === "tool" && <TranscriptToolCard block={block} density={density} />}
           {block.type === "command_group" && <TranscriptCommandGroup block={block} density={density} />}
@@ -1527,7 +1549,13 @@ export function RunTranscriptView({
             <TranscriptStdoutRow block={block} density={density} collapseByDefault={collapseStdout} />
           )}
           {block.type === "activity" && <TranscriptActivityRow block={block} density={density} />}
-          {block.type === "event" && <TranscriptEventRow block={block} density={density} />}
+          {block.type === "event" && (
+            <TranscriptEventRow
+              block={block}
+              density={density}
+              externalReferences={externalReferences}
+            />
+          )}
         </div>
       ))}
     </div>

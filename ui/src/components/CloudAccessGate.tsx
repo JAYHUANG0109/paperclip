@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accessApi } from "@/api/access";
+import { ApiError } from "@/api/client";
 import { authApi } from "@/api/auth";
 import { healthApi } from "@/api/health";
 import { queryKeys } from "@/lib/queryKeys";
@@ -45,6 +46,7 @@ function NoBoardAccessPage() {
 export function CloudAccessGate() {
   const { t } = useTranslation();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const healthQuery = useQuery({
     queryKey: queryKeys.health,
     queryFn: () => healthApi.get(),
@@ -61,6 +63,7 @@ export function CloudAccessGate() {
   });
 
   const isAuthenticatedMode = healthQuery.data?.deploymentMode === "authenticated";
+  const isBootstrapPending = isAuthenticatedMode && healthQuery.data?.bootstrapStatus === "bootstrap_pending";
   const sessionQuery = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
@@ -71,14 +74,24 @@ export function CloudAccessGate() {
   const boardAccessQuery = useQuery({
     queryKey: queryKeys.access.currentBoardAccess,
     queryFn: () => accessApi.getCurrentBoardAccess(),
-    enabled: isAuthenticatedMode && !!sessionQuery.data,
+    enabled: isAuthenticatedMode && !isBootstrapPending && !!sessionQuery.data,
     retry: false,
+  });
+  const claimMutation = useMutation({
+    mutationFn: () => accessApi.claimBootstrapAdmin(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.health });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.access.currentBoardAccess });
+    },
   });
 
   if (
     healthQuery.isLoading ||
     (isAuthenticatedMode && sessionQuery.isLoading) ||
-    (isAuthenticatedMode && !!sessionQuery.data && boardAccessQuery.isLoading)
+    (isAuthenticatedMode && !isBootstrapPending && !!sessionQuery.data && boardAccessQuery.isLoading)
   ) {
     return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">{t("common.loading")}</div>;
   }
@@ -95,8 +108,26 @@ export function CloudAccessGate() {
     );
   }
 
-  if (isAuthenticatedMode && healthQuery.data?.bootstrapStatus === "bootstrap_pending") {
-    return <BootstrapPendingPage hasActiveInvite={healthQuery.data.bootstrapInviteActive} />;
+  if (isBootstrapPending) {
+    const health = healthQuery.data;
+    if (!health) {
+      return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+    }
+    const claimError = claimMutation.error instanceof ApiError
+      ? { status: claimMutation.error.status, message: claimMutation.error.message }
+      : claimMutation.error instanceof Error
+        ? { message: claimMutation.error.message }
+        : null;
+    return (
+      <BootstrapPendingPage
+        claimAvailable={health.deploymentExposure === "private"}
+        hasActiveInvite={health.bootstrapInviteActive}
+        session={sessionQuery.data}
+        claimState={claimMutation.isSuccess ? "success" : claimMutation.isPending ? "claiming" : "idle"}
+        claimError={claimError}
+        onClaim={() => claimMutation.mutate()}
+      />
+    );
   }
 
   if (isAuthenticatedMode && !sessionQuery.data) {

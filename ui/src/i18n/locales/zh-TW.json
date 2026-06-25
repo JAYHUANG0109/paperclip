@@ -1154,7 +1154,15 @@
       "cloudUpstream": "雲端上游",
       "members": "成員",
       "invites": "邀請",
-      "secrets": "密鑰"
+      "secrets": "密鑰",
+      "instanceProfile": "實例設定檔",
+      "instanceGeneral": "實例一般設定",
+      "instanceEnvironments": "實例環境",
+      "instanceAccess": "實例存取",
+      "instanceHeartbeats": "實例心跳",
+      "instanceExperimental": "實例實驗功能",
+      "instancePlugins": "實例外掛",
+      "instanceAdapters": "實例轉接器"
     }
   },
   "common": {
@@ -4930,5 +4938,10 @@
     "tableIssue": "議題",
     "tableNoRows": "沒有符合的議題",
     "clearFilter": "清除"
+  },
+  "issueInteraction": {
+    "kind": {
+      "plan": "計畫"
+    }
   }
 }

@@ -168,7 +168,9 @@ export function PluginPage() {
       return <NotFoundPage scope="board" />;
     }
     // No page slot: redirect to plugin settings where plugin info is always shown
-    const settingsPath = pluginId ? `/instance/settings/plugins/${pluginId}` : "/instance/settings/plugins";
+    const settingsPath = pluginId
+      ? `/company/settings/instance/plugins/${pluginId}`
+      : "/company/settings/instance/plugins";
     return <Navigate to={settingsPath} replace />;
   }
 

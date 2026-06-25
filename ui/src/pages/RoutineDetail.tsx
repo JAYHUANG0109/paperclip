@@ -1,32 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "@/lib/router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Navigate, useNavigate, useParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Activity as ActivityIcon,
-  ChevronDown,
-  ChevronRight,
-  Clock3,
-  Copy,
-  History as HistoryIcon,
-  KeyRound,
-  Play,
-  RefreshCw,
-  Repeat,
-  Save,
-  Trash2,
-  Webhook,
-  Zap,
-} from "lucide-react";
+import { AlertCircle, Repeat, Sparkles } from "lucide-react";
 import { ApiError } from "../api/client";
-import { routinesApi, type RoutineTriggerResponse, type RotateRoutineTriggerResponse, type RestoreRoutineRevisionResponse } from "../api/routines";
-import { secretsApi } from "../api/secrets";
-import { EnvVarEditor } from "../components/EnvVarEditor";
 import {
-  RoutineHistoryTab,
-  type RoutineHistoryDirtyFieldDescriptor,
-} from "../components/RoutineHistoryTab";
+  routinesApi,
+  type RoutineTriggerResponse,
+  type RotateRoutineTriggerResponse,
+  type RestoreRoutineRevisionResponse,
+} from "../api/routines";
+import { secretsApi } from "../api/secrets";
+import { type RoutineHistoryDirtyFieldDescriptor } from "../components/RoutineHistoryTab";
 import { heartbeatsApi } from "../api/heartbeats";
-import { LiveRunWidget } from "../components/LiveRunWidget";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { accessApi } from "../api/access";
@@ -34,43 +19,51 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
-import { buildRoutineTriggerPatch } from "../lib/routine-trigger-patch";
 import { buildMarkdownMentionOptions } from "../lib/company-members";
-import { timeAgo } from "../lib/timeAgo";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { AgentIcon } from "../components/AgentIconPicker";
-import { InlineEntitySelector, type InlineEntityOption } from "../components/InlineEntitySelector";
-import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "../components/MarkdownEditor";
+import { type InlineEntityOption } from "../components/InlineEntitySelector";
+import { type MarkdownEditorRef, type MentionOption } from "../components/MarkdownEditor";
 import {
   RoutineRunVariablesDialog,
   type RoutineRunDialogSubmitData,
 } from "../components/RoutineRunVariablesDialog";
-import { RoutineVariablesEditor, RoutineVariablesHint } from "../components/RoutineVariablesEditor";
-import { ScheduleEditor, describeSchedule } from "../components/ScheduleEditor";
 import { RunButton } from "../components/AgentActionButtons";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { getRecentProjectIds, trackRecentProject } from "../lib/recent-projects";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import {
+  RoutineSubSidebar,
+  RoutineSectionPicker,
+} from "../components/RoutineSubSidebar";
+import { RoutineSaveBar } from "../components/RoutineSaveBar";
+import {
+  EDITABLE_SECTIONS,
+  ROUTINE_SECTION_KEYS,
+  SECTION_FIELD_KEYS,
+  RoutineDetailContext,
+  createDefaultNewTrigger,
+  type RoutineDetailContextValue,
+  type RoutineEditDraft,
+  type RoutineSectionKey,
+  type SecretMessage,
+} from "../components/routine-sections/context";
+import {
+  OverviewSection,
+  TriggersSection,
+  VariablesSection,
+  SecretsSection,
+  DeliverySection,
+} from "../components/routine-sections/editable-sections";
+import {
+  RunsSection,
+  ActivitySection,
+  HistorySection,
+} from "../components/routine-sections/operate-sections";
 import type {
-  EnvBinding,
   RoutineDetail as RoutineDetailType,
   RoutineEnvConfig,
-  RoutineTrigger,
   RoutineVariable,
 } from "@paperclipai/shared";
 import { t, useTranslation } from "@/i18n";
@@ -96,42 +89,59 @@ const signingModeDescriptionKeys: Record<string, string> = {
   none: "routineDetail.signingDesc.none",
 };
 const SIGNING_MODES_WITHOUT_REPLAY_WINDOW = new Set(["github_hmac", "none"]);
+const LAST_SECTION_STORAGE_KEY = "paperclip.routineLastSection";
 
-type RoutineTab = (typeof routineTabs)[number];
+const SECTION_TITLES: Record<RoutineSectionKey, string> = {
+  overview: "Overview",
+  triggers: "Triggers",
+  variables: "Variables",
+  secrets: "Secrets",
+  delivery: "Delivery",
+  runs: "Runs",
+  activity: "Activity",
+  history: "History",
+};
 
-type SecretMessage = {
-  title: string;
-  entries: Array<{
-    webhookUrl: string;
-    webhookSecret: string;
-  }>;
+function isRoutineSection(value: string | undefined | null): value is RoutineSectionKey {
+  return value != null && ROUTINE_SECTION_KEYS.includes(value as RoutineSectionKey);
+}
+
+function readLastSection(routineId: string): RoutineSectionKey | null {
+  try {
+    const raw = localStorage.getItem(LAST_SECTION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    const stored = parsed[routineId];
+    return isRoutineSection(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastSection(routineId: string, section: RoutineSectionKey) {
+  try {
+    const raw = localStorage.getItem(LAST_SECTION_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    parsed[routineId] = section;
+    localStorage.setItem(LAST_SECTION_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
+/** Back-compat: `?tab=x` query param maps to the new section sub-routes. */
+const LEGACY_TAB_TO_SECTION: Record<string, RoutineSectionKey> = {
+  triggers: "triggers",
+  runs: "runs",
+  activity: "activity",
+  secrets: "secrets",
+  history: "history",
 };
 
 function autoResizeTextarea(element: HTMLTextAreaElement | null) {
   if (!element) return;
   element.style.height = "auto";
   element.style.height = `${element.scrollHeight}px`;
-}
-
-function isRoutineTab(value: string | null): value is RoutineTab {
-  return value !== null && routineTabs.includes(value as RoutineTab);
-}
-
-function getRoutineTabFromSearch(search: string): RoutineTab {
-  const tab = new URLSearchParams(search).get("tab");
-  return isRoutineTab(tab) ? tab : "triggers";
-}
-
-function formatActivityDetailValue(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return value.length === 0 ? "[]" : value.map((item) => formatActivityDetailValue(item)).join(", ");
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return "[unserializable]";
-  }
 }
 
 function getLocalTimezone(): string {
@@ -142,17 +152,7 @@ function getLocalTimezone(): string {
   }
 }
 
-function buildRoutineMutationPayload(input: {
-  title: string;
-  description: string;
-  projectId: string;
-  assigneeAgentId: string;
-  priority: string;
-  concurrencyPolicy: string;
-  catchUpPolicy: string;
-  variables: RoutineVariable[];
-  env: RoutineEnvConfig | null;
-}) {
+function buildRoutineMutationPayload(input: RoutineEditDraft) {
   return {
     ...input,
     description: input.description.trim() || null,
@@ -291,7 +291,6 @@ export function RoutineDetail() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const location = useLocation();
   const { pushToast } = useToastActions();
   const hydratedRoutineIdRef = useRef<string | null>(null);
   const titleInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -299,26 +298,10 @@ export function RoutineDetail() {
   const assigneeSelectorRef = useRef<HTMLButtonElement | null>(null);
   const projectSelectorRef = useRef<HTMLButtonElement | null>(null);
   const [secretMessage, setSecretMessage] = useState<SecretMessage | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saveConflict, setSaveConflict] = useState(false);
   const [runVariablesOpen, setRunVariablesOpen] = useState(false);
-  const [newTrigger, setNewTrigger] = useState({
-    kind: "schedule",
-    cronExpression: "0 10 * * *",
-    signingMode: "bearer",
-    replayWindowSec: "300",
-  });
-  const [editDraft, setEditDraft] = useState<{
-    title: string;
-    description: string;
-    projectId: string;
-    assigneeAgentId: string;
-    priority: string;
-    concurrencyPolicy: string;
-    catchUpPolicy: string;
-    variables: RoutineVariable[];
-    env: RoutineEnvConfig | null;
-  }>({
+  const [newTrigger, setNewTrigger] = useState(createDefaultNewTrigger);
+  const [editDraft, setEditDraft] = useState<RoutineEditDraft>({
     title: "",
     description: "",
     projectId: "",
@@ -329,7 +312,17 @@ export function RoutineDetail() {
     variables: [],
     env: null,
   });
-  const activeTab = useMemo(() => getRoutineTabFromSearch(location.search), [location.search]);
+
+  const section: RoutineSectionKey = isRoutineSection(sectionParam) ? sectionParam : "overview";
+
+  const navigateToSection = useCallback(
+    (next: RoutineSectionKey, options?: { replace?: boolean }) => {
+      if (!routineId) return;
+      writeLastSection(routineId, next);
+      navigate(`/routines/${routineId}/${next}`, { replace: options?.replace ?? true });
+    },
+    [navigate, routineId],
+  );
 
   const { data: routine, isLoading, error } = useQuery({
     queryKey: queryKeys.routines.detail(routineId!),
@@ -397,7 +390,7 @@ export function RoutineDetail() {
     },
   });
 
-  const routineDefaults = useMemo(
+  const routineDefaults = useMemo<RoutineEditDraft | null>(
     () =>
       routine
         ? {
@@ -446,11 +439,38 @@ export function RoutineDetail() {
   }, [editDraft, routineDefaults]);
   const isEditDirty = dirtyFields.length > 0;
 
+  const sectionDirtyFields = useCallback(
+    (target: RoutineSectionKey) => {
+      const keys = SECTION_FIELD_KEYS[target];
+      if (!keys) return [];
+      return dirtyFields.filter((field) => keys.includes(field.key));
+    },
+    [dirtyFields],
+  );
+  const isSectionDirty = useCallback(
+    (target: RoutineSectionKey) => sectionDirtyFields(target).length > 0,
+    [sectionDirtyFields],
+  );
+  const discardSection = useCallback(
+    (target: RoutineSectionKey) => {
+      if (!routineDefaults) return;
+      const keys = SECTION_FIELD_KEYS[target];
+      if (!keys) return;
+      setEditDraft((current) => {
+        const next = { ...current } as Record<string, unknown>;
+        for (const key of keys) {
+          next[key] = (routineDefaults as Record<string, unknown>)[key];
+        }
+        return next as RoutineEditDraft;
+      });
+    },
+    [routineDefaults],
+  );
+
   useEffect(() => {
     if (!routine) return;
     setBreadcrumbs([{ label: t("nav.routines"), href: "/routines" }, { label: routine.title }]);
     if (!routineDefaults) return;
-
     const changedRoutine = hydratedRoutineIdRef.current !== routine.id;
     if (changedRoutine || !isEditDirty) {
       setEditDraft(routineDefaults);
@@ -473,25 +493,23 @@ export function RoutineDetail() {
         tone: "error",
       });
     }
-  };
+  }, [routineId, sectionParam]);
 
-  const setActiveTab = (value: string) => {
-    if (!routineId || !isRoutineTab(value)) return;
-    const params = new URLSearchParams(location.search);
-    if (value === "triggers") {
-      params.delete("tab");
-    } else {
-      params.set("tab", value);
-    }
-    const search = params.toString();
-    navigate(
-      {
-        pathname: location.pathname,
-        search: search ? `?${search}` : "",
-      },
-      { replace: true },
-    );
-  };
+  const copySecretValue = useCallback(
+    async (label: string, value: string) => {
+      try {
+        await navigator.clipboard.writeText(value);
+        pushToast({ title: `${label} copied`, tone: "success" });
+      } catch (copyError) {
+        pushToast({
+          title: `Failed to copy ${label.toLowerCase()}`,
+          body: copyError instanceof Error ? copyError.message : "Clipboard access was denied.",
+          tone: "error",
+        });
+      }
+    },
+    [pushToast],
+  );
 
   const saveRoutine = useMutation({
     mutationFn: () => {
@@ -511,8 +529,8 @@ export function RoutineDetail() {
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.revisions(routineId!) }),
       ]);
     },
-    onError: (error) => {
-      if (error instanceof ApiError && error.status === 409) {
+    onError: (mutationError) => {
+      if (mutationError instanceof ApiError && mutationError.status === 409) {
         setSaveConflict(true);
         pushToast({
           title: t("routineDetail.toast.routineChanged"),
@@ -546,7 +564,7 @@ export function RoutineDetail() {
     onSuccess: async () => {
       pushToast({ title: t("routineDetail.toast.runStarted"), tone: "success" });
       setRunVariablesOpen(false);
-      setActiveTab("runs");
+      navigateToSection("runs");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(routineId!) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.runs(routineId!) }),
@@ -554,7 +572,7 @@ export function RoutineDetail() {
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.activity(selectedCompanyId!, routineId!) }),
       ]);
     },
-    onError: (error) => {
+    onError: (runError) => {
       pushToast({
         title: t("routineDetail.toast.runFailed"),
         body: error instanceof Error ? error.message : t("routineDetail.toast.runFailedBody"),
@@ -576,7 +594,7 @@ export function RoutineDetail() {
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
       ]);
     },
-    onError: (error) => {
+    onError: (statusError) => {
       pushToast({
         title: t("routineDetail.toast.failedUpdate"),
         body: error instanceof Error ? error.message : t("routineDetail.toast.failedUpdateBody"),
@@ -596,10 +614,7 @@ export function RoutineDetail() {
           ? { cronExpression: newTrigger.cronExpression.trim(), timezone: getLocalTimezone() }
           : {}),
         ...(newTrigger.kind === "webhook"
-          ? {
-            signingMode: newTrigger.signingMode,
-            replayWindowSec: Number(newTrigger.replayWindowSec || "300"),
-          }
+          ? { signingMode: newTrigger.signingMode, replayWindowSec: Number(newTrigger.replayWindowSec || "300") }
           : {}),
       });
     },
@@ -625,7 +640,7 @@ export function RoutineDetail() {
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.activity(selectedCompanyId!, routineId!) }),
       ]);
     },
-    onError: (error) => {
+    onError: (triggerError) => {
       pushToast({
         title: t("routineDetail.toast.failedAddTrigger"),
         body: error instanceof Error ? error.message : t("routineDetail.toast.failedAddTriggerBody"),
@@ -648,7 +663,7 @@ export function RoutineDetail() {
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.activity(selectedCompanyId!, routineId!) }),
       ]);
     },
-    onError: (error) => {
+    onError: (triggerError) => {
       pushToast({
         title: t("routineDetail.toast.failedUpdateTrigger"),
         body: error instanceof Error ? error.message : t("routineDetail.toast.failedUpdateTriggerBody"),
@@ -670,7 +685,7 @@ export function RoutineDetail() {
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.activity(selectedCompanyId!, routineId!) }),
       ]);
     },
-    onError: (error) => {
+    onError: (triggerError) => {
       pushToast({
         title: t("routineDetail.toast.failedDeleteTrigger"),
         body: error instanceof Error ? error.message : t("routineDetail.toast.failedDeleteTriggerBody"),
@@ -694,7 +709,7 @@ export function RoutineDetail() {
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.activity(selectedCompanyId!, routineId!) }),
       ]);
     },
-    onError: (error) => {
+    onError: (triggerError) => {
       pushToast({
         title: t("routineDetail.toast.failedRotate"),
         body: error instanceof Error ? error.message : t("routineDetail.toast.failedRotateBody"),
@@ -703,14 +718,8 @@ export function RoutineDetail() {
     },
   });
 
-  const agentById = useMemo(
-    () => new Map((agents ?? []).map((agent) => [agent.id, agent])),
-    [agents],
-  );
-  const projectById = useMemo(
-    () => new Map((projects ?? []).map((project) => [project.id, project])),
-    [projects],
-  );
+  const agentById = useMemo(() => new Map((agents ?? []).map((agent) => [agent.id, agent])), [agents]);
+  const projectById = useMemo(() => new Map((projects ?? []).map((project) => [project.id, project])), [projects]);
   const recentAssigneeIds = useMemo(() => getRecentAssigneeIds(), [routine?.id]);
   const recentProjectIds = useMemo(() => getRecentProjectIds(), [routine?.id]);
   const assigneeOptions = useMemo<InlineEntityOption[]>(
@@ -734,25 +743,105 @@ export function RoutineDetail() {
       })),
     [projects],
   );
-  const mentionOptions = useMemo<MentionOption[]>(() => {
-    return buildMarkdownMentionOptions({
-      agents,
-      projects,
-      members: companyMembers?.users,
+  const mentionOptions = useMemo<MentionOption[]>(
+    () => buildMarkdownMentionOptions({ agents, projects, members: companyMembers?.users }),
+    [agents, companyMembers?.users, projects],
+  );
+
+  // Wrap track-recent side-effects so the section components stay declarative.
+  const setEditDraftTracked: typeof setEditDraft = useCallback((updater) => {
+    setEditDraft((current) => {
+      const next = typeof updater === "function" ? (updater as (c: RoutineEditDraft) => RoutineEditDraft)(current) : updater;
+      if (next.assigneeAgentId && next.assigneeAgentId !== current.assigneeAgentId) {
+        trackRecentAssignee(next.assigneeAgentId);
+      }
+      if (next.projectId && next.projectId !== current.projectId) {
+        trackRecentProject(next.projectId);
+      }
+      return next;
     });
-  }, [agents, companyMembers?.users, projects]);
+  }, []);
+
   const currentAssignee = editDraft.assigneeAgentId ? agentById.get(editDraft.assigneeAgentId) ?? null : null;
   const currentProject = editDraft.projectId ? projectById.get(editDraft.projectId) ?? null : null;
 
+  const reloadLatest = useCallback(() => {
+    setSaveConflict(false);
+    if (routineDefaults) setEditDraft(routineDefaults);
+    queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(routineId!) });
+  }, [queryClient, routineDefaults, routineId]);
+
+  const onHistoryRestoreSecretMaterials = useCallback((response: RestoreRoutineRevisionResponse) => {
+    if (response.secretMaterials.length > 0) {
+      setSecretMessage({
+        title:
+          response.secretMaterials.length === 1
+            ? "Webhook trigger restored"
+            : `${response.secretMaterials.length} webhook triggers restored`,
+        entries: response.secretMaterials.map((recreated) => ({
+          webhookUrl: recreated.webhookUrl,
+          webhookSecret: recreated.webhookSecret,
+        })),
+      });
+    }
+  }, []);
+
+  const onHistoryRestored = useCallback(
+    (response: RestoreRoutineRevisionResponse) => {
+      setSaveConflict(false);
+      queryClient.setQueryData<RoutineDetailType | undefined>(
+        queryKeys.routines.detail(routineId!),
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                ...response.routine,
+                latestRevisionId: response.revision.id,
+                latestRevisionNumber: response.revision.revisionNumber,
+              }
+            : prev,
+      );
+      setEditDraft({
+        title: response.routine.title,
+        description: response.routine.description ?? "",
+        projectId: response.routine.projectId ?? "",
+        assigneeAgentId: response.routine.assigneeAgentId ?? "",
+        priority: response.routine.priority,
+        concurrencyPolicy: response.routine.concurrencyPolicy,
+        catchUpPolicy: response.routine.catchUpPolicy,
+        variables: response.routine.variables as RoutineVariable[],
+        env: (response.routine.env ?? null) as RoutineEnvConfig | null,
+      });
+      hydratedRoutineIdRef.current = response.routine.id;
+    },
+    [queryClient, routineId],
+  );
+
   if (!selectedCompanyId) {
     return <EmptyState icon={Repeat} message={t("routineDetail.selectCompany")} />;
+  }
+
+  // Back-compat redirect: `?tab=x` → `/routines/:id/x`.
+  const legacyTab = new URLSearchParams(window.location.search).get("tab");
+  if (routineId && legacyTab && LEGACY_TAB_TO_SECTION[legacyTab]) {
+    return <Navigate to={`/routines/${routineId}/${LEGACY_TAB_TO_SECTION[legacyTab]}`} replace />;
+  }
+
+  // Bare /routines/:id → remembered section or overview.
+  if (routineId && !sectionParam) {
+    const landing = readLastSection(routineId) ?? "overview";
+    return <Navigate to={`/routines/${routineId}/${landing}`} replace />;
+  }
+  // Unknown section → overview.
+  if (routineId && sectionParam && !isRoutineSection(sectionParam)) {
+    return <Navigate to={`/routines/${routineId}/overview`} replace />;
   }
 
   if (isLoading) {
     return <PageSkeleton variant="issues-list" />;
   }
 
-  if (error || !routine) {
+  if (error || !routine || !routineDefaults) {
     return (
       <p className="pt-6 text-sm text-destructive">
         {error instanceof Error ? error.message : t("routineDetail.notFound")}
@@ -761,7 +850,6 @@ export function RoutineDetail() {
   }
 
   const automationEnabled = routine.status === "active";
-  const selectedProject = routine.projectId ? (projects?.find((project) => project.id === routine.projectId) ?? null) : null;
   const automationToggleDisabled = updateRoutineStatus.isPending || routine.status === "archived";
   const automationLabel = routine.status === "archived"
     ? t("routineDetail.automation.archived")
@@ -803,10 +891,8 @@ export function RoutineDetail() {
                   if (editDraft.projectId) {
                     descriptionEditorRef.current?.focus();
                   } else {
-                    projectSelectorRef.current?.focus();
+                    navigateToSection("overview");
                   }
-                } else {
-                  assigneeSelectorRef.current?.focus();
                 }
               }
             }}
@@ -909,8 +995,7 @@ export function RoutineDetail() {
               </Button>
             </div>
           </div>
-        </div>
-      )}
+        </header>
 
       {!routine.assigneeAgentId ? (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-900 dark:text-amber-200">
@@ -1353,6 +1438,6 @@ export function RoutineDetail() {
         isPending={runRoutine.isPending}
         onSubmit={(data) => runRoutine.mutate(data)}
       />
-    </div>
+    </RoutineDetailContext.Provider>
   );
 }
