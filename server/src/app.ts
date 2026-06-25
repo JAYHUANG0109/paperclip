@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Db } from "@paperclipai/db";
+import { companies } from "@paperclipai/db";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import type { StorageService } from "./storage/types.js";
 import { httpLogger, errorHandler } from "./middleware/index.js";
@@ -48,6 +49,8 @@ import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
 import { createPluginWorkerManager, type PluginWorkerManager } from "./services/plugin-worker-manager.js";
 import { createPluginJobScheduler } from "./services/plugin-job-scheduler.js";
+import { wikiRoutes } from "./routes/wiki.js";
+import { distillCompanyWiki } from "./services/wiki-distillation.js";
 import { pluginJobStore } from "./services/plugin-job-store.js";
 import { createPluginToolDispatcher } from "./services/plugin-tool-dispatcher.js";
 import { pluginLifecycleManager } from "./services/plugin-lifecycle.js";
@@ -150,6 +153,10 @@ export async function createApp(
     pluginWorkerManager?: PluginWorkerManager;
     betterAuthHandler?: express.RequestHandler;
     resolveSession?: (req: ExpressRequest) => Promise<BetterAuthSessionResult | null>;
+    wikiRoot?: string;
+    wikiDistillEnabled?: boolean;
+    wikiDistillCompanyId?: string;
+    wikiDistillIntervalMs?: number;
   },
 ) {
   const app = express();
@@ -239,6 +246,7 @@ export async function createApp(
   api.use(sidebarBadgeRoutes(db));
   api.use(sidebarPreferenceRoutes(db));
   api.use(resourceMembershipRoutes(db));
+  api.use(wikiRoutes(db, { wikiRoot: opts.wikiRoot }));
   api.use(inboxDismissalRoutes(db));
   api.use(instanceSettingsRoutes(db));
   if (opts.databaseBackupService) {
@@ -467,6 +475,36 @@ export async function createApp(
   if (opts.feedbackExportService) {
     void flushPendingFeedbackExports();
   }
+
+  // Phase 8: daily server-side wiki distillation (route B2). Deterministic,
+  // no LLM — bypasses the claude-local Wiki Maintainer limitation.
+  let wikiDistillTimer: ReturnType<typeof setInterval> | null = null;
+  const runWikiDistillation = async () => {
+    const wikiRoot = opts.wikiRoot;
+    if (!wikiRoot) return;
+    try {
+      let companyIds: string[];
+      if (opts.wikiDistillCompanyId) {
+        companyIds = [opts.wikiDistillCompanyId];
+      } else {
+        const rows = await db.select({ id: companies.id }).from(companies);
+        companyIds = rows.map((r) => r.id);
+      }
+      for (const companyId of companyIds) {
+        const result = await distillCompanyWiki({ db, companyId, wikiRoot });
+        logger.info({ companyId, ...result }, "wiki distillation pass complete");
+      }
+    } catch (err) {
+      logger.error({ err }, "scheduled wiki distillation failed");
+    }
+  };
+  if (opts.wikiDistillEnabled && opts.wikiRoot) {
+    wikiDistillTimer = setInterval(() => {
+      void runWikiDistillation();
+    }, opts.wikiDistillIntervalMs ?? 24 * 60 * 60 * 1000);
+    wikiDistillTimer.unref?.();
+    void runWikiDistillation();
+  }
   void toolDispatcher.initialize().catch((err) => {
     logger.error({ err }, "Failed to initialize plugin tool dispatcher");
   });
@@ -489,6 +527,10 @@ export async function createApp(
     if (appServicesShutdown) return;
     appServicesShutdown = true;
     disableFeedbackExportFlushes();
+    if (wikiDistillTimer) {
+      clearInterval(wikiDistillTimer);
+      wikiDistillTimer = null;
+    }
     devWatcher?.close();
     viteHtmlRenderer?.dispose();
     hostServiceCleanup.disposeAll();

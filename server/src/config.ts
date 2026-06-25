@@ -89,6 +89,10 @@ export interface Config {
   restrictAgentVisibility: boolean;
   googleAuthEnabled: boolean;
   telemetryEnabled: boolean;
+  wikiDistillEnabled: boolean;
+  wikiRoot: string | undefined;
+  wikiDistillCompanyId: string | undefined;
+  wikiDistillIntervalMs: number;
 }
 
 function detectTailnetBindHost(): string | undefined {
@@ -342,5 +346,12 @@ export function loadConfig(): Config {
     restrictAgentVisibility,
     googleAuthEnabled,
     telemetryEnabled: fileConfig?.telemetry?.enabled ?? true,
+    wikiDistillEnabled: process.env.PAPERCLIP_WIKI_DISTILL_ENABLED === "true",
+    wikiRoot: process.env.PAPERCLIP_WIKI_ROOT?.trim() || undefined,
+    wikiDistillCompanyId: process.env.PAPERCLIP_WIKI_DISTILL_COMPANY_ID?.trim() || undefined,
+    wikiDistillIntervalMs: Math.max(
+      60 * 60 * 1000,
+      Number(process.env.PAPERCLIP_WIKI_DISTILL_INTERVAL_MS) || 24 * 60 * 60 * 1000,
+    ),
   };
 }
