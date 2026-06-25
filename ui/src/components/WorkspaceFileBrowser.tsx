@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import {
   useEffect,
   useId,
@@ -477,6 +478,7 @@ export function WorkspaceFileBrowser({
   selectedWorkspaceId: activeWorkspaceId,
   className,
 }: WorkspaceFileBrowserProps) {
+  const { t } = useTranslation();
   const source: BrowserSource =
     initialProjectId && initialWorkspaceId ? "other" : "current";
   const workspace: WorkspaceFileSelector = "auto";
@@ -1017,8 +1019,8 @@ export function WorkspaceFileBrowser({
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
           onKeyDown={handleSearchKeyDown}
-          placeholder="Search files by name or path…"
-          aria-label="Search workspace files"
+          placeholder={t("workspaceFileBrowser.searchPlaceholder", { defaultValue: "Search files by name or path…" })}
+          aria-label={t("workspaceFileBrowser.searchAriaLabel", { defaultValue: "Search workspace files" })}
           role="combobox"
           aria-expanded={items.length > 0}
           aria-controls={items.length > 0 ? listboxId : undefined}

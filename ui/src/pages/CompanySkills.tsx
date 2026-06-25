@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { useTranslation } from "@/i18n";
+import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -4333,7 +4333,7 @@ export function CompanySkills() {
   });
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={Boxes} message="Select a company to manage skills." />;
+    return <EmptyState icon={Boxes} message={t("companySkills.selectCompany", { defaultValue: "Select a company to manage skills." })} />;
   }
 
   function handleAddSkillSource() {
@@ -4518,7 +4518,7 @@ export function CompanySkills() {
               <Input
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
-                placeholder="Paste path, GitHub URL, or skills.sh command"
+                placeholder={t("companySkills.importPlaceholder", { defaultValue: "Paste path, GitHub URL, or skills.sh command" })}
                 className="h-9 rounded-none border-0 px-0 shadow-none focus-visible:ring-0"
               />
               <Button size="sm" onClick={handleAddSkillSource} disabled={importSkill.isPending}>
@@ -4647,7 +4647,7 @@ export function CompanySkills() {
           {catalogListQuery.isLoading || catalogDetailQuery.isLoading ? (
             <PageSkeleton variant="detail" />
           ) : !selectedCatalogSkill ? (
-            <EmptyState icon={Boxes} message="Catalog skill not found." />
+            <EmptyState icon={Boxes} message={t("companySkills.catalogSkillNotFound", { defaultValue: "Catalog skill not found." })} />
           ) : (
             <div className="grid gap-0 xl:grid-cols-[14rem_minmax(0,1fr)]">
               <aside className="border-b border-border px-3 py-4 xl:border-b-0 xl:border-r">

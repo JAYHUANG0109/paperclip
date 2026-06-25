@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -2167,6 +2168,7 @@ function matchesSearch(team: CatalogTeam, q: string): boolean {
 }
 
 export function TeamCatalog() {
+  const { t } = useTranslation();
   const { "*": routePath } = useParams<{ "*": string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2297,7 +2299,7 @@ export function TeamCatalog() {
   if (!selectedCompanyId) {
     return (
       <div className="p-8">
-        <EmptyState icon={Users2} message="Select a company to browse the team catalog." />
+        <EmptyState icon={Users2} message={t("teamCatalog.selectCompany", { defaultValue: "Select a company to browse the team catalog." })} />
       </div>
     );
   }
@@ -2312,7 +2314,7 @@ export function TeamCatalog() {
           <Input
             value={q}
             onChange={(e) => setFilterParam("search", e.target.value)}
-            placeholder="Search teams"
+            placeholder={t("teamCatalog.searchPlaceholder", { defaultValue: "Search teams" })}
             className="h-8 w-56 pl-8"
           />
         </div>
