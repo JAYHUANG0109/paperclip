@@ -93,6 +93,10 @@ export interface Config {
   wikiRoot: string | undefined;
   wikiDistillCompanyId: string | undefined;
   wikiDistillIntervalMs: number;
+  // Phase 5: when off (default), all company members see all projects (today's
+  // behavior). When on, projects with visibility='private' are gated to their
+  // project_access_members (+ company owners/admins).
+  projectPrivacyEnabled: boolean;
 }
 
 function detectTailnetBindHost(): string | undefined {
@@ -353,5 +357,6 @@ export function loadConfig(): Config {
       60 * 60 * 1000,
       Number(process.env.PAPERCLIP_WIKI_DISTILL_INTERVAL_MS) || 24 * 60 * 60 * 1000,
     ),
+    projectPrivacyEnabled: process.env.PAPERCLIP_PROJECT_PRIVACY === "true",
   };
 }
