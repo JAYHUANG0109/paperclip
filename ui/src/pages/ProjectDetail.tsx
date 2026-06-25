@@ -25,6 +25,7 @@ import { ProjectFieldsTable } from "../components/ProjectFieldsTable";
 import { ProjectCustomFieldsManager } from "../components/ProjectCustomFieldsManager";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
+import { useTranslation } from "@/i18n";
 import { ProjectWorkspacesContent } from "../components/ProjectWorkspacesContent";
 import { MembershipAction } from "../components/MembershipAction";
 import { buildProjectWorkspaceSummaries } from "../lib/project-workspaces-tab";
@@ -343,6 +344,7 @@ function ProjectPluginOperationsList({
 /* ── Main project page ── */
 
 export function ProjectDetail() {
+  const { t } = useTranslation();
   const { companyPrefix, projectId, filter } = useParams<{
     companyPrefix?: string;
     projectId: string;
@@ -831,13 +833,13 @@ export function ProjectDetail() {
       <Tabs value={activeTab ?? "list"} onValueChange={(value) => handleTabChange(value as ProjectTab)}>
         <PageTabBar
           items={[
-            { value: "list", label: "Tasks" },
-            { value: "overview", label: "Overview" },
-            { value: "fields", label: "欄位" },
-            ...(project.managedByPlugin ? [{ value: "plugin-operations", label: "Plugin operations" }] : []),
-            ...(showWorkspacesTab ? [{ value: "workspaces", label: "Workspaces" }] : []),
-            { value: "configuration", label: "Configuration" },
-            { value: "budget", label: "Budget" },
+            { value: "list", label: t("projectDetail.tab.issues", { defaultValue: "Tasks" }) },
+            { value: "overview", label: t("projectDetail.tab.overview", { defaultValue: "Overview" }) },
+            { value: "fields", label: t("projectDetail.tab.fields", { defaultValue: "Fields" }) },
+            ...(project.managedByPlugin ? [{ value: "plugin-operations", label: t("projectDetail.tab.pluginOperations", { defaultValue: "Plugin operations" }) }] : []),
+            ...(showWorkspacesTab ? [{ value: "workspaces", label: t("projectDetail.tab.workspaces", { defaultValue: "Workspaces" }) }] : []),
+            { value: "configuration", label: t("projectDetail.tab.configuration", { defaultValue: "Configuration" }) },
+            { value: "budget", label: t("projectDetail.tab.budget", { defaultValue: "Budget" }) },
             ...pluginTabItems.map((item) => ({
               value: item.value,
               label: item.label,
