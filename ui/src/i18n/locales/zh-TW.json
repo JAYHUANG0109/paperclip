@@ -103,7 +103,7 @@
       "assignee": "受指派者",
       "project": "專案",
       "workspace": "工作區",
-      "parent": "父議題",
+      "parent": "母議題",
       "none": "無",
       "section": "區段"
     },
@@ -112,7 +112,7 @@
       "me": "我",
       "noWorkspace": "無工作區",
       "noProject": "無專案",
-      "noParent": "無父議題",
+      "noParent": "無母議題",
       "unassigned": "未指派",
       "user": "使用者",
       "noSection": "無區段"
@@ -176,7 +176,7 @@
         "assignee": "受指派者",
         "model": "模型",
         "project": "專案",
-        "parent": "父議題",
+        "parent": "母議題",
         "blockedBy": "受阻於",
         "blocking": "阻擋",
         "subIssues": "子議題",
@@ -201,7 +201,7 @@
         "section": "區段"
       },
       "noLabels": "無標籤",
-      "noParent": "無父議題",
+      "noParent": "無母議題",
       "notScheduled": "未排程",
       "addBlocker": "新增阻擋項",
       "addSubIssue": "新增子議題",

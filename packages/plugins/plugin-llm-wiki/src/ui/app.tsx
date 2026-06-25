@@ -2402,12 +2402,64 @@ function SpacePagesWarmup({ companyId, spaceSlug }: { companyId: string | null; 
   return selected ? <SpacePageContentWarmup companyId={companyId} path={selected} spaceSlug={spaceSlug} /> : null;
 }
 
+// ---------------------------------------------------------------------------
+// Lightweight i18n for the wiki UI chrome.
+// The plugin runs in the same browser window as the host, so it reads the host's
+// active locale from localStorage (set by the core i18n) — no SDK/host change.
+// ---------------------------------------------------------------------------
+type WikiLocale = "en" | "zh-TW";
+
+function readWikiLocale(): WikiLocale {
+  try {
+    const override = localStorage.getItem("paperclip.locale.override");
+    if (override === "en" || override === "zh-TW") return override;
+    const resolved = localStorage.getItem("paperclip.locale.resolved");
+    if (resolved === "en" || resolved === "zh-TW") return resolved;
+  } catch {
+    /* localStorage may be unavailable */
+  }
+  return "en";
+}
+
+function useWikiLocale(): WikiLocale {
+  const [loc, setLoc] = useState<WikiLocale>(() => readWikiLocale());
+  useEffect(() => {
+    const onChange = () => setLoc(readWikiLocale());
+    window.addEventListener("storage", onChange);
+    // The core flips locale without a storage event in the same tab; poll lightly.
+    const id = window.setInterval(onChange, 1500);
+    return () => {
+      window.removeEventListener("storage", onChange);
+      window.clearInterval(id);
+    };
+  }, []);
+  return loc;
+}
+
+const WIKI_STRINGS: Record<string, Record<WikiLocale, string>> = {
+  "section.browse": { en: "Wiki", "zh-TW": "維基" },
+  "section.query": { en: "Ask", "zh-TW": "詢問" },
+  "section.ingest": { en: "Add Content", "zh-TW": "新增內容" },
+  "section.lint": { en: "Lint", "zh-TW": "檢查" },
+  "section.history": { en: "History", "zh-TW": "歷史紀錄" },
+  "section.settings": { en: "Settings", "zh-TW": "設定" },
+  "sharedSpaces": { en: "Shared Spaces", "zh-TW": "共用空間" },
+  "distill.idle": { en: "↻ Distill now", "zh-TW": "↻ 立即更新維基" },
+  "distill.running": { en: "Distilling…", "zh-TW": "更新中…" },
+  "distill.done": { en: "✓ Distilled", "zh-TW": "✓ 已更新" },
+  "distill.error": { en: "✗ Failed — retry", "zh-TW": "✗ 失敗，請重試" },
+};
+
+function wt(loc: WikiLocale, key: string): string {
+  return WIKI_STRINGS[key]?.[loc] ?? WIKI_STRINGS[key]?.en ?? key;
+}
+
 /**
  * Owner/admin button that triggers a server-side deterministic distill of the
  * whole company (route B2). The Wiki surface is already gated to admins via the
  * slot `minRole`, and the server route re-checks the role, so this is safe.
  */
-function DistillNowButton({ companyId }: { companyId: string | null }) {
+function DistillNowButton({ companyId, loc }: { companyId: string | null; loc: WikiLocale }) {
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const run = async () => {
     if (!companyId || status === "running") return;
@@ -2424,30 +2476,23 @@ function DistillNowButton({ companyId }: { companyId: string | null }) {
       setStatus("error");
     }
   };
-  const label =
-    status === "running"
-      ? "更新中… Distilling…"
-      : status === "done"
-        ? "✓ 已更新 Distilled"
-        : status === "error"
-          ? "✗ 失敗 Failed — retry"
-          : "↻ 立即更新 Wiki / Distill now";
+  const label = wt(loc, `distill.${status}`);
   return (
     <button
       type="button"
       onClick={run}
       disabled={!companyId || status === "running"}
-      title="Distill all projects' current state into the wiki now (owners/admins only)."
-      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:opacity-60"
+      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground disabled:opacity-60"
       style={{ textDecoration: "none", cursor: companyId ? "pointer" : "default" }}
     >
-      <span className="truncate">{label}</span>
+      <span className="flex-1 truncate text-left">{label}</span>
     </button>
   );
 }
 
 export function WikiRouteSidebar({ context }: PluginRouteSidebarProps) {
   const hostNavigation = useHostNavigation();
+  const wikiLocale = useWikiLocale();
   const { pathname, search, state } = useHostLocation();
   const activeSection = useMemo(() => readSectionFromLocation(pathname, search), [pathname, search]);
   const activeSpaceSlug = useMemo(() => readActiveSpaceSlugFromLocation(pathname), [pathname]);
@@ -2553,6 +2598,7 @@ export function WikiRouteSidebar({ context }: PluginRouteSidebarProps) {
   };
 
   const renderToolLink = ({ key, label, Icon }: (typeof SECTIONS)[number]) => {
+    const localizedLabel = wt(wikiLocale, `section.${key}`) || label;
     const isLegacyLintSettingsActive = key === "settings" && activeSection === "lint";
     const isActive = key === activeSection || isLegacyLintSettingsActive;
     return (
@@ -2573,7 +2619,7 @@ export function WikiRouteSidebar({ context }: PluginRouteSidebarProps) {
         <span aria-hidden="true" className="shrink-0">
           <Icon />
         </span>
-        <span className="flex-1 truncate">{label}</span>
+        <span className="flex-1 truncate">{localizedLabel}</span>
       </a>
     );
   };
@@ -2594,12 +2640,12 @@ export function WikiRouteSidebar({ context }: PluginRouteSidebarProps) {
           </span>
           <span className="truncate">{companyName}</span>
         </a>
-        <DistillNowButton companyId={context.companyId} />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto border-t border-border px-3 py-3">
         <nav aria-label="Wiki primary" className="mb-3">
           <div className="flex flex-col gap-0.5">
             {TOP_TOOL_SECTIONS.map(renderToolLink)}
+            <DistillNowButton companyId={context.companyId} loc={wikiLocale} />
           </div>
         </nav>
         <div className="mb-1 flex items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-normal text-muted-foreground" style={{ height: 24 }}>
@@ -2607,7 +2653,7 @@ export function WikiRouteSidebar({ context }: PluginRouteSidebarProps) {
             className="flex-1 truncate"
             title="Destination spaces. Browsing and manual ingest happen in the active space; Paperclip distillation always writes into the default space in Phase 1."
           >
-            Shared Spaces
+            {wt(wikiLocale, "sharedSpaces")}
           </span>
           <button
             type="button"

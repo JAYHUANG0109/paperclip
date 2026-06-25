@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/i18n";
@@ -335,7 +335,10 @@ export function SidebarAgents() {
   );
   const teamGroups = useMemo(() => groupAgentsByTeam(sortedAgents), [sortedAgents]);
   const hasTeams = useMemo(() => teamGroups.some((g) => g.team !== null), [teamGroups]);
+  // Team folders start collapsed for a cleaner sidebar; the folder containing
+  // the currently-open agent is auto-expanded so it stays visible.
   const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(() => new Set());
+  const teamsInitializedRef = useRef(false);
   const toggleTeam = useCallback((key: string) => {
     setCollapsedTeams((current) => {
       const next = new Set(current);
@@ -348,6 +351,19 @@ export function SidebarAgents() {
   const agentMatch = location.pathname.match(/^\/(?:[^/]+\/)?agents\/([^/]+)(?:\/([^/]+))?/);
   const activeAgentId = agentMatch?.[1] ?? null;
   const activeTab = agentMatch?.[2] ?? null;
+
+  // On first load (once agents/teams resolve), collapse every team folder except
+  // the one holding the currently-open agent.
+  useEffect(() => {
+    if (teamsInitializedRef.current) return;
+    if (teamGroups.length === 0) return;
+    teamsInitializedRef.current = true;
+    const keep = new Set<string>();
+    for (const group of teamGroups) {
+      if (activeAgentId && group.agents.some((a) => a.id === activeAgentId)) keep.add(group.key);
+    }
+    setCollapsedTeams(new Set(teamGroups.filter((g) => !keep.has(g.key)).map((g) => g.key)));
+  }, [teamGroups, activeAgentId]);
 
   useEffect(() => {
     if (!sortModeStorageKey) {
