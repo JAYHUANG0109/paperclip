@@ -74,6 +74,11 @@ export const customFieldsApi = {
   // Per-issue values
   listForIssue: (issueId: string) =>
     api.get<IssueCustomFieldValue[]>(`/issues/${issueId}/custom-fields`),
+  // Batch: every field value for every issue in a project (Phase 9 columns).
+  listValuesForProject: (projectId: string, companyId: string) =>
+    api.get<{ issueId: string; fieldId: string; value: Record<string, unknown> | null }[]>(
+      `/projects/${projectId}/custom-field-values?companyId=${encodeURIComponent(companyId)}`,
+    ),
   setValue: (issueId: string, fieldId: string, value: Record<string, unknown> | null) =>
     api.put(`/issues/${issueId}/custom-fields/${fieldId}`, { value }),
 };

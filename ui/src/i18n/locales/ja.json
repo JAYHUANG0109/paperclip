@@ -1708,7 +1708,8 @@
       "pluginOperations": "Plugin operations",
       "workspaces": "Workspaces",
       "configuration": "Configuration",
-      "budget": "Budget"
+      "budget": "Budget",
+      "fields": "Fields"
     },
     "loadingWorkspaces": "Loading workspaces...",
     "team": "Team",
@@ -4923,6 +4924,10 @@
     "namePlaceholder": "Field name",
     "optionsPlaceholder": "Options (one per line or comma-separated)",
     "noOptions": "No options",
-    "peopleUnsupported": "(People field coming soon)"
+    "peopleUnsupported": "(People field coming soon)",
+    "tableEmpty": "This project has no custom fields yet. Create them on the Overview tab to see a field view here.",
+    "tableFilter": "Filter issues or field values…",
+    "tableIssue": "Issue",
+    "tableNoRows": "No matching issues"
   }
 }

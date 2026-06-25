@@ -5147,6 +5147,19 @@ export function issueService(db: Db) {
         .returning()
         .then((rows) => rows[0] ?? null),
 
+    // All custom-field values for every issue in a project, in one query
+    // (Phase 9: avoids N+1 when rendering field columns in the list view).
+    listProjectCustomFieldValues: (companyId: string, projectId: string) =>
+      db
+        .select({
+          issueId: customFieldValues.issueId,
+          fieldId: customFieldValues.fieldId,
+          value: customFieldValues.value,
+        })
+        .from(customFieldValues)
+        .innerJoin(issues, eq(customFieldValues.issueId, issues.id))
+        .where(and(eq(issues.companyId, companyId), eq(issues.projectId, projectId))),
+
     // Values on an issue (joined with field definitions).
     listIssueCustomFieldValues: (issueId: string) =>
       db

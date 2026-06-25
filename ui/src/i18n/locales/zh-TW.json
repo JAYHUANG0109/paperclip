@@ -1708,7 +1708,8 @@
       "pluginOperations": "外掛操作",
       "workspaces": "工作區",
       "configuration": "設定",
-      "budget": "預算"
+      "budget": "預算",
+      "fields": "欄位"
     },
     "loadingWorkspaces": "載入工作區中…",
     "team": "團隊",
@@ -4923,6 +4924,10 @@
     "namePlaceholder": "欄位名稱",
     "optionsPlaceholder": "選項（每行一個或以逗號分隔）",
     "noOptions": "尚無選項",
-    "peopleUnsupported": "（人員欄位即將推出）"
+    "peopleUnsupported": "（人員欄位即將推出）",
+    "tableEmpty": "此專案尚未加入自訂欄位。到「總覽」分頁建立欄位後即可在此以欄位檢視。",
+    "tableFilter": "篩選議題或欄位值…",
+    "tableIssue": "議題",
+    "tableNoRows": "沒有符合的議題"
   }
 }

@@ -1708,7 +1708,8 @@
       "pluginOperations": "插件操作",
       "workspaces": "工作区",
       "configuration": "配置",
-      "budget": "预算"
+      "budget": "预算",
+      "fields": "Fields"
     },
     "loadingWorkspaces": "加载工作区中…",
     "team": "Team",
@@ -4923,6 +4924,10 @@
     "namePlaceholder": "Field name",
     "optionsPlaceholder": "Options (one per line or comma-separated)",
     "noOptions": "No options",
-    "peopleUnsupported": "(People field coming soon)"
+    "peopleUnsupported": "(People field coming soon)",
+    "tableEmpty": "This project has no custom fields yet. Create them on the Overview tab to see a field view here.",
+    "tableFilter": "Filter issues or field values…",
+    "tableIssue": "Issue",
+    "tableNoRows": "No matching issues"
   }
 }

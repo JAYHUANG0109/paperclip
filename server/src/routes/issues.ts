@@ -2171,6 +2171,17 @@ export function issueRoutes(
     res.json(await svc.detachCustomField(fieldId, projectId));
   });
 
+  router.get("/projects/:projectId/custom-field-values", async (req, res) => {
+    const projectId = req.params.projectId as string;
+    const companyId = readNonEmptyString(req.query.companyId);
+    if (!companyId) {
+      res.status(400).json({ error: "companyId query param is required" });
+      return;
+    }
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.listProjectCustomFieldValues(companyId, projectId));
+  });
+
   router.get("/issues/:id/custom-fields", async (req, res) => {
     const id = req.params.id as string;
     const issue = await svc.getById(id);

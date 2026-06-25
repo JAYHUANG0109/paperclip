@@ -229,6 +229,22 @@ Fixes needed regardless: relocate the wiki root off the literal `server/~/season
 
 **中文 —** 每日自動將 Paperclip 活動（議題、留言、文件）淬煉成可瀏覽的知識 wiki ——即「每日自動 distill」目標。採**伺服器端**（B2）而非外掛的 agent（B1）：外掛的 Wiki Maintainer 在 claude-local 上**被卡住**（agent 取不到 wiki 工具、也無 wiki 根目錄的檔案權限，見 SEAAA-168）。B2 由伺服器直接讀 DB 全量資料、直接寫 wiki，呼叫 LLM 淬煉，**完全繞過壞掉的 agent 路徑**；以 OKF 格式（markdown＋YAML frontmatter）輸出，與 OKF 標準相容。
 
+> **Status (shipped):** Route B2 deterministic distiller is live (no-LLM templated pages), wiki relocated to `~/seasonarts-wiki`, daily 23:59 job installed via `scripts/setup-wiki-distill.sh` (portable), on-demand `POST /companies/:id/wiki/distill` + a "Distill now" button (owner/admin), and the Wiki surface is gated to owners/admins via slot `minRole`. LLM-summarized prose is a future upgrade (swap the render* functions).
+
+---
+
+### Phase 9 — Custom-field columns & filtering / 自訂欄位的清單欄位與篩選  ·  Effort: M · 🟡
+
+**EN —** Phase 4 added custom fields (definitions, per-project attach, per-issue values) shown on the **issue panel** + **project overview**. Phase 9 surfaces them in the **list view**: render each attached field as a **column** across issues, and let users **filter/group** by a field. Needs a batch endpoint (all field values for a project's issues in one query, to avoid N+1) + integration into the list/column system. **Columns first, filtering second.** Easier and lower-risk than Phase 5 (additive, no authz changes).
+
+**中文 —** Phase 4 已加入自訂欄位（定義、依專案掛載、依議題值），顯示在**議題面板**與**專案總覽**。Phase 9 讓它們出現在**清單檢視**：把每個掛載欄位顯示成跨議題的**欄位（column）**，並可依欄位**篩選／分組**。需要一個批次端點（一次查詢取得整個專案所有議題的欄位值，避免 N+1）＋整合進清單欄位系統。**先做欄位顯示，再做篩選。** 比 Phase 5 簡單、風險低（純新增、不動授權）。
+
+---
+
+### Phase 5 addendum — Wiki data-API role gating / 補充：Wiki 資料 API 角色把關
+
+The Wiki **UI** (sidebar + page) is already owner/admin-gated via slot `minRole`, and the distill action is server-checked. But the wiki plugin's **read API routes** are still `auth: "board"` (any authenticated user). Truly locking wiki *data* (so an operator can't query it directly) needs the caller's role plumbed into plugin **data** handlers (they currently receive only params, not actor context) — a host/SDK change. **Folded into Phase 5** (the access-control phase), since it's the same authz machinery.
+
 ---
 
 ## 4b. Assignment & Sharing — current reality / 指派與分享的現況
