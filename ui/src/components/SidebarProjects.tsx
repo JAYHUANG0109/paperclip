@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "@/i18n";
-import { FolderOpen, Loader2, LogOut, MoreHorizontal, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, LogOut, MoreHorizontal, Plus } from "lucide-react";
 import {
   DndContext,
   MouseSensor,
@@ -65,6 +65,32 @@ function projectTimestamp(project: Project): number {
   if (Number.isFinite(updated)) return updated;
   const created = new Date(project.createdAt).getTime();
   return Number.isFinite(created) ? created : 0;
+}
+
+const UNGROUPED_PROJECT_TEAM_KEY = "__ungrouped__";
+
+function projectTeam(project: Project): string | null {
+  const raw = (project as { team?: string | null }).team;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+function groupProjectsByTeam(projects: Project[]): { key: string; team: string | null; projects: Project[] }[] {
+  const groups = new Map<string, Project[]>();
+  const order: string[] = [];
+  for (const p of projects) {
+    const key = projectTeam(p) ?? UNGROUPED_PROJECT_TEAM_KEY;
+    const list = groups.get(key);
+    if (list) list.push(p);
+    else { groups.set(key, [p]); order.push(key); }
+  }
+  const result: { key: string; team: string | null; projects: Project[] }[] = [];
+  for (const key of order) {
+    if (key === UNGROUPED_PROJECT_TEAM_KEY) continue;
+    result.push({ key, team: key, projects: groups.get(key)! });
+  }
+  const ungrouped = groups.get(UNGROUPED_PROJECT_TEAM_KEY);
+  if (ungrouped) result.push({ key: UNGROUPED_PROJECT_TEAM_KEY, team: null, projects: ungrouped });
+  return result;
 }
 
 function sortProjects(projects: Project[], sortMode: ProjectSidebarSortMode): Project[] {
@@ -288,6 +314,16 @@ export function SidebarProjects() {
   );
   const isTopMode = sortMode === "top";
   const canReorderProjects = isTopMode && !isMobile && fineReorderPointer;
+  const projectTeamGroups = useMemo(() => groupProjectsByTeam(sortedProjects), [sortedProjects]);
+  const hasProjectTeams = useMemo(() => projectTeamGroups.some((g) => g.team !== null), [projectTeamGroups]);
+  const [collapsedProjectTeams, setCollapsedProjectTeams] = useState<Set<string>>(() => new Set());
+  const toggleProjectTeam = useCallback((key: string) => {
+    setCollapsedProjectTeams((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
 
   const projectMatch = location.pathname.match(/^\/(?:[^/]+\/)?projects\/([^/]+)/);
   const activeProjectRef = projectMatch?.[1] ?? null;
@@ -443,7 +479,28 @@ export function SidebarProjects() {
         </DndContext>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {sortedProjects.map((project: Project) => renderProject(project))}
+          {!hasProjectTeams
+            ? sortedProjects.map((project: Project) => renderProject(project))
+            : projectTeamGroups.map((group) => {
+                const collapsed = collapsedProjectTeams.has(group.key);
+                const label = group.team ?? t("sidebarProjects.ungrouped", { defaultValue: "Ungrouped" });
+                return (
+                  <div key={group.key} className="mb-0.5">
+                    <button
+                      type="button"
+                      onClick={() => toggleProjectTeam(group.key)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] font-semibold text-foreground/70 transition-colors hover:text-foreground"
+                      aria-expanded={!collapsed}
+                    >
+                      {collapsed ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
+                      <Folder className="h-3.5 w-3.5 shrink-0" />
+                      <span className="flex-1 truncate text-left">{label}</span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{group.projects.length}</span>
+                    </button>
+                    {!collapsed && group.projects.map((project: Project) => renderProject(project))}
+                  </div>
+                );
+              })}
         </div>
       )}
     </SidebarSection>

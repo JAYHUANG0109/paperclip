@@ -1710,7 +1710,9 @@
       "configuration": "Configuration",
       "budget": "Budget"
     },
-    "loadingWorkspaces": "Loading workspaces..."
+    "loadingWorkspaces": "Loading workspaces...",
+    "team": "Team",
+    "teamPlaceholder": "e.g. IT"
   },
   "issuesList": {
     "newIssueInGroup": "New issue in {{group}}",
@@ -1909,7 +1911,8 @@
     "pausedByBudget": "Project paused by budget",
     "openActions": "Open actions for {{name}}",
     "leaving": "Leaving...",
-    "leaveProject": "Leave project"
+    "leaveProject": "Leave project",
+    "ungrouped": "Ungrouped"
   },
   "resizableSidebar": {
     "resize": "Resize sidebar"

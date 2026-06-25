@@ -19,6 +19,8 @@ export const projects = pgTable(
     // feature flag; default 'company' keeps existing behavior unchanged.
     ownerUserId: text("owner_user_id"),
     visibility: text("visibility").notNull().default("company"),
+    // Phase 2: group projects by team (free-text department label, like agent metadata.teams).
+    team: text("team"),
     targetDate: date("target_date"),
     color: text("color"),
     env: jsonb("env").$type<AgentEnvConfig>(),

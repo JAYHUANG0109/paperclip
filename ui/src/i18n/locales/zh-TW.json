@@ -1710,7 +1710,9 @@
       "configuration": "設定",
       "budget": "預算"
     },
-    "loadingWorkspaces": "載入工作區中…"
+    "loadingWorkspaces": "載入工作區中…",
+    "team": "團隊",
+    "teamPlaceholder": "例如：資訊部"
   },
   "issuesList": {
     "newIssueInGroup": "在 {{group}} 中建立新議題",
@@ -1909,7 +1911,8 @@
     "pausedByBudget": "專案因預算而暫停",
     "openActions": "開啟 {{name}} 的操作選單",
     "leaving": "正在離開…",
-    "leaveProject": "離開專案"
+    "leaveProject": "離開專案",
+    "ungrouped": "未分組"
   },
   "resizableSidebar": {
     "resize": "調整側邊欄寬度"

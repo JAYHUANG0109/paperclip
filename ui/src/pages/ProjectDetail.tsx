@@ -92,7 +92,7 @@ function OverviewContent({
   onUpdate,
   imageUploadHandler,
 }: {
-  project: { description: string | null; status: string; targetDate: string | null };
+  project: { description: string | null; status: string; targetDate: string | null; team?: string | null };
   onUpdate: (data: Record<string, unknown>) => void;
   imageUploadHandler?: (file: File) => Promise<string>;
 }) {
@@ -146,6 +146,21 @@ function OverviewContent({
               value={project.targetDate ?? ""}
               onChange={(e) => onUpdate({ targetDate: e.target.value || null })}
               className="rounded border border-border bg-transparent px-1.5 py-0.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring [color-scheme:light] dark:[color-scheme:dark]"
+            />
+          </div>
+        </div>
+        <div>
+          <span className="text-muted-foreground">{t("projectDetail.team", { defaultValue: "Team / 團隊" })}</span>
+          <div className="mt-1">
+            <input
+              type="text"
+              defaultValue={project.team ?? ""}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v !== (project.team ?? "")) onUpdate({ team: v || null });
+              }}
+              placeholder={t("projectDetail.teamPlaceholder", { defaultValue: "e.g. 資訊部" })}
+              className="rounded border border-border bg-transparent px-1.5 py-0.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
             />
           </div>
         </div>

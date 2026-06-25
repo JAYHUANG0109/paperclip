@@ -1710,7 +1710,9 @@
       "configuration": "配置",
       "budget": "预算"
     },
-    "loadingWorkspaces": "加载工作区中…"
+    "loadingWorkspaces": "加载工作区中…",
+    "team": "Team",
+    "teamPlaceholder": "e.g. IT"
   },
   "issuesList": {
     "newIssueInGroup": "在 {{group}} 中新建议题",
@@ -1909,7 +1911,8 @@
     "pausedByBudget": "项目因预算而暂停",
     "openActions": "打开 {{name}} 的操作菜单",
     "leaving": "正在离开…",
-    "leaveProject": "离开项目"
+    "leaveProject": "离开项目",
+    "ungrouped": "Ungrouped"
   },
   "resizableSidebar": {
     "resize": "调整侧边栏宽度"

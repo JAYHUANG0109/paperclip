@@ -78,6 +78,7 @@ export interface Project {
   leadAgentId: string | null;
   ownerUserId?: string | null;
   visibility?: "company" | "private";
+  team?: string | null;
   targetDate: string | null;
   color: string | null;
   env: AgentEnvConfig | null;
