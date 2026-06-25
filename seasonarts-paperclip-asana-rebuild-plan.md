@@ -210,6 +210,27 @@ This view is **the natural home for deadlines** and pairs with each user↔agent
 
 ---
 
+### Phase 8 — Memory / Knowledge automation (server-side wiki distillation) / 記憶‧知識自動化（伺服器端 wiki 淬煉）  ·  Effort: L · 🟡
+
+**EN —** Automatically distill Paperclip activity (issues, comments, documents) into a browsable knowledge wiki on a daily schedule — the "auto daily distill" goal.
+
+**Why server-side (route B2), not the plugin's agent (B1):** the `plugin-llm-wiki` Wiki Maintainer agent is **blocked on claude-local** — it has neither the plugin's wiki tools (no MCP bridge to the agent run) nor filesystem access to the wiki root (sandbox). Proven by SEAAA-168's "runtime is missing the tooling" disposition. B1 (fixing that agent wiring) is large core/adapter work and depends on an unfinished alpha feature.
+
+**Route B2 — server-side distill job (chosen):** the server already has full DB access to all Paperclip data AND write access to the wiki (files + DB), so a scheduled server job can read everything and write pages by calling an LLM directly — **bypassing the broken agent path entirely.**
+
+Build steps:
+1. A scheduled server job (daily cron, Asia/Taipei) that reads recent Paperclip issues/comments/documents (cursor-windowed, with caps).
+2. Calls an LLM (Claude) with a distillation prompt → produces/updates wiki pages.
+3. Writes pages directly to the wiki store (plugin DB `wiki_pages`/revisions + the wiki root files), in **OKF format** (markdown + YAML frontmatter — pairs with the OKF standard).
+4. Records provenance + cost; respects per-run source caps.
+5. Browse in the Paperclip UI (the wiki plugin's Wiki page) and/or as portable OKF files.
+
+Fixes needed regardless: relocate the wiki root off the literal `server/~/seasonarts-wiki` path to a clean, server-writable location.
+
+**中文 —** 每日自動將 Paperclip 活動（議題、留言、文件）淬煉成可瀏覽的知識 wiki ——即「每日自動 distill」目標。採**伺服器端**（B2）而非外掛的 agent（B1）：外掛的 Wiki Maintainer 在 claude-local 上**被卡住**（agent 取不到 wiki 工具、也無 wiki 根目錄的檔案權限，見 SEAAA-168）。B2 由伺服器直接讀 DB 全量資料、直接寫 wiki，呼叫 LLM 淬煉，**完全繞過壞掉的 agent 路徑**；以 OKF 格式（markdown＋YAML frontmatter）輸出，與 OKF 標準相容。
+
+---
+
 ## 4b. Assignment & Sharing — current reality / 指派與分享的現況
 
 > Verified in code. This is what works **today**, before any phase is built.
@@ -239,6 +260,7 @@ This view is **the natural home for deadlines** and pairs with each user↔agent
 | 5 | Per-project roles + privacy / 每專案角色＋隱私 | **XL** | 🔴 | **high (core authz)** |
 | 6 | Deadlines + Calendar/Timeline (per user & agent) / 期限＋行事曆‧時間軸 | M | 🟡 | low–medium (adds `dueDate`) |
 | 7 | Guests / 訪客 | M | 🟢 | low | low |
+| 8 | Memory/Knowledge automation (server-side wiki distillation, route B2) / 記憶‧知識自動化 | L | 🟡 | medium |
 
 **EN — Recommendation:** Do **0 → 1 → 6 → 3 → 5**, treating Phase 5 as its own project with a feature flag and a test plan; slot 2, 4, 7 in when needed. (Phase 6 is pulled early because deadlines + a per-user/agent calendar deliver high day-one value at low risk once `dueDate` is added.) Phase 5 is where ~70% of the risk lives — everything before it is additive and safe. If you never do Phase 5, you keep Asana's *shape* (teams, projects, sections, fields, board) but with Paperclip's **company-wide** security model (admins see all, operators see own work) instead of Asana's per-project security.
 
