@@ -416,6 +416,8 @@ export function NewIssueDialog() {
   const [draftHasText, setDraftHasText] = useState(false);
   const [status, setStatus] = useState("todo");
   const [priority, setPriority] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [assigneeValue, setAssigneeValue] = useState("");
   const [reviewerValue, setReviewerValue] = useState("");
   const [approverValue, setApproverValue] = useState("");
@@ -989,6 +991,8 @@ export function NewIssueDialog() {
       ...(selectedAssigneeUserId ? { assigneeUserId: selectedAssigneeUserId } : {}),
       ...(newIssueDefaults.parentId ? { parentId: newIssueDefaults.parentId } : {}),
       ...(newIssueDefaults.goalId ? { goalId: newIssueDefaults.goalId } : {}),
+      ...(startDate ? { startDate } : {}),
+      ...(dueDate ? { dueDate } : {}),
       ...(projectId ? { projectId } : {}),
       ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
       ...(assigneeAdapterOverrides ? { assigneeAdapterOverrides } : {}),
@@ -2008,14 +2012,26 @@ export function NewIssueDialog() {
                 ))}
                 <div className="my-1 border-t border-border" />
               </div>
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                {t("newIssue.startDate")}
-              </button>
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                {t("newIssue.dueDate")}
-              </button>
+              <label className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground cursor-pointer">
+                <Calendar className="h-3 w-3 shrink-0" />
+                <span className="flex-1">{t("newIssue.startDate")}</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-transparent text-foreground outline-none [color-scheme:light] dark:[color-scheme:dark]"
+                />
+              </label>
+              <label className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground cursor-pointer">
+                <Calendar className="h-3 w-3 shrink-0" />
+                <span className="flex-1">{t("newIssue.dueDate")}</span>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="bg-transparent text-foreground outline-none [color-scheme:light] dark:[color-scheme:dark]"
+                />
+              </label>
             </PopoverContent>
           </Popover>
         </div>

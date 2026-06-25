@@ -4900,5 +4900,12 @@
     "todaySection": "Today",
     "prevWeek": "Previous week",
     "nextWeek": "Next week"
+  },
+  "projectStatus": {
+    "backlog": "Backlog",
+    "planned": "Planned",
+    "in_progress": "In Progress",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
   }
 }

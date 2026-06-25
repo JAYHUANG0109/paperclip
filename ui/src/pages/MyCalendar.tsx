@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
 import { CalendarDays, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { issuesApi } from "../api/issues";
+import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useTranslation } from "@/i18n";
@@ -220,7 +221,21 @@ export function MyCalendar() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: projects } = useQuery({
+    queryKey: queryKeys.projects.list(selectedCompanyId ?? "__none__"),
+    queryFn: () => projectsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
   const dated = useMemo(() => (issues ?? []).filter((i: Issue) => Boolean(i.dueDate)), [issues]);
+  const projectEvents = useMemo(
+    () =>
+      (projects ?? [])
+        .filter((p) => p.targetDate && !p.archivedAt)
+        .map((p) => ({ id: p.id, name: p.name, date: p.targetDate as string, urlKey: p.urlKey })),
+    [projects],
+  );
+  const hasAnything = dated.length > 0 || projectEvents.length > 0;
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4 p-4 sm:p-6">
@@ -243,7 +258,7 @@ export function MyCalendar() {
         </Tabs>
       </div>
 
-      {dated.length === 0 && (
+      {!hasAnything && (
         <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
           {t("calendar.empty.message", { defaultValue: "No issues have a due date yet. Set a due date on an issue to see it here." })}
         </div>
@@ -251,7 +266,7 @@ export function MyCalendar() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsContent value="month" className="mt-0">
-          <IssueCalendar issues={dated} />
+          <IssueCalendar issues={dated} projectEvents={projectEvents} />
         </TabsContent>
         <TabsContent value="week" className="mt-0">
           <WeekView issues={dated} />

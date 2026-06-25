@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "@/lib/router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import type { Issue } from "@paperclipai/shared";
 import { cn } from "../lib/utils";
@@ -24,11 +24,25 @@ type CalendarIssue = Pick<Issue, "id" | "title" | "status" | "priority" | "dueDa
   identifier?: string | null;
 };
 
+export interface ProjectCalendarEvent {
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD (project target date)
+  urlKey?: string | null;
+}
+
 /**
  * Month-grid calendar that plots issues on their dueDate.
  * Reused by the top-level "My Calendar" page and the per-project Issues calendar view.
+ * Optionally overlays project target dates (projectEvents) as distinct chips.
  */
-export function IssueCalendar({ issues }: { issues: CalendarIssue[] }) {
+export function IssueCalendar({
+  issues,
+  projectEvents = [],
+}: {
+  issues: CalendarIssue[];
+  projectEvents?: ProjectCalendarEvent[];
+}) {
   const { t } = useTranslation();
   const [cursor, setCursor] = useState(() => {
     const now = new Date();
@@ -46,6 +60,18 @@ export function IssueCalendar({ issues }: { issues: CalendarIssue[] }) {
     }
     return map;
   }, [issues]);
+
+  const projectsByDay = useMemo(() => {
+    const map = new Map<string, ProjectCalendarEvent[]>();
+    for (const ev of projectEvents) {
+      if (!ev.date) continue;
+      const key = ev.date.slice(0, 10);
+      const list = map.get(key);
+      if (list) list.push(ev);
+      else map.set(key, [ev]);
+    }
+    return map;
+  }, [projectEvents]);
 
   const { weeks, monthLabel } = useMemo(() => {
     const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -116,6 +142,7 @@ export function IssueCalendar({ issues }: { issues: CalendarIssue[] }) {
           const inMonth = day.getMonth() === cursor.getMonth();
           const isToday = key === todayKey;
           const dayIssues = issuesByDay.get(key) ?? [];
+          const dayProjects = projectsByDay.get(key) ?? [];
           return (
             <div
               key={key}
@@ -133,6 +160,17 @@ export function IssueCalendar({ issues }: { issues: CalendarIssue[] }) {
                 {day.getDate()}
               </div>
               <div className="space-y-0.5">
+                {dayProjects.map((proj) => (
+                  <Link
+                    key={proj.id}
+                    to={`/projects/${proj.urlKey ?? proj.id}/overview`}
+                    title={proj.name}
+                    className="flex items-center gap-1 rounded bg-violet-500/15 px-1 py-0.5 text-[11px] text-violet-700 no-underline transition-colors hover:bg-violet-500/25 dark:text-violet-300"
+                  >
+                    <Flag className="h-3 w-3 shrink-0" />
+                    <span className="truncate font-medium">{proj.name}</span>
+                  </Link>
+                ))}
                 {dayIssues.slice(0, 4).map((issue) => (
                   <Link
                     key={issue.id}

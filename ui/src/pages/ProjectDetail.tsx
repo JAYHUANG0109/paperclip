@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Link, useParams, useNavigate, useLocation, Navigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PROJECT_COLORS, isUuidLike, type BudgetPolicySummary } from "@paperclipai/shared";
+import { PROJECT_COLORS, PROJECT_STATUSES, isUuidLike, type BudgetPolicySummary } from "@paperclipai/shared";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ChevronDown } from "lucide-react";
+import { cn } from "../lib/utils";
 import { budgetsApi } from "../api/budgets";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -64,6 +67,25 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
 
 /* ── Overview tab content ── */
 
+const PROJECT_STATUS_META: Record<string, { dot: string; label: string }> = {
+  backlog: { dot: "bg-neutral-400", label: "Backlog" },
+  planned: { dot: "bg-blue-500", label: "Planned" },
+  in_progress: { dot: "bg-violet-500", label: "In Progress" },
+  completed: { dot: "bg-emerald-500", label: "Completed" },
+  cancelled: { dot: "bg-neutral-500", label: "Cancelled" },
+};
+
+function ProjectStatusLabel({ status }: { status: string }) {
+  const { t } = useTranslation();
+  const meta = PROJECT_STATUS_META[status] ?? { dot: "bg-neutral-400", label: status };
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm">
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", meta.dot)} />
+      {t(`projectStatus.${status}`, { defaultValue: meta.label })}
+    </span>
+  );
+}
+
 function OverviewContent({
   project,
   onUpdate,
@@ -91,15 +113,41 @@ function OverviewContent({
         <div>
           <span className="text-muted-foreground">{t("projectDetail.status")}</span>
           <div className="mt-1">
-            <StatusBadge status={project.status} />
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="inline-flex items-center gap-1.5 rounded hover:bg-accent/50 px-1.5 -mx-1.5 py-0.5 transition-colors">
+                  <ProjectStatusLabel status={project.status} />
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-44 p-1">
+                {PROJECT_STATUSES.map((s) => (
+                  <button
+                    key={s}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
+                      s === project.status && "bg-accent",
+                    )}
+                    onClick={() => onUpdate({ status: s })}
+                  >
+                    <ProjectStatusLabel status={s} />
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
-        {project.targetDate && (
-          <div>
-            <span className="text-muted-foreground">{t("projectDetail.targetDate")}</span>
-            <p>{project.targetDate}</p>
+        <div>
+          <span className="text-muted-foreground">{t("projectDetail.targetDate")}</span>
+          <div className="mt-1">
+            <input
+              type="date"
+              value={project.targetDate ?? ""}
+              onChange={(e) => onUpdate({ targetDate: e.target.value || null })}
+              className="rounded border border-border bg-transparent px-1.5 py-0.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring [color-scheme:light] dark:[color-scheme:dark]"
+            />
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
