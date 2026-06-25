@@ -20,6 +20,7 @@ import {
   deriveRecoveryDisplayState,
   type RecoveryDisplayState,
 } from "@/lib/recovery-display";
+import { t, useTranslation } from "@/i18n";
 
 export type RecoveryCardCardState = RecoveryDisplayState;
 export const deriveRecoveryCardState = deriveRecoveryDisplayState;
@@ -43,31 +44,14 @@ export interface IssueRecoveryActionCardProps {
   className?: string;
 }
 
-const KIND_LABEL: Record<IssueRecoveryActionKind, string> = {
-  missing_disposition: "Missing Disposition",
-  stranded_assigned_issue: "Stranded Task",
-  workspace_validation: "Workspace Validation",
-  configuration_validation: "Configuration Validation",
-  active_run_watchdog: "Active Watchdog",
-  issue_graph_liveness: "Graph Liveness",
-};
+const kindLabel = (kind: IssueRecoveryActionKind): string =>
+  t(`recoveryCard.kindLabel.${kind}`);
 
-const KIND_HEADLINE: Record<IssueRecoveryActionKind, string> = {
-  missing_disposition: "This task's run finished, but no next step was chosen.",
-  stranded_assigned_issue:
-    "Paperclip retried this task's last run and it still has no live execution path.",
-  workspace_validation:
-    "Paperclip stopped this run because the task's git workspace could not be validated.",
-  configuration_validation:
-    "Paperclip stopped before dispatching this run because required secret/env bindings are missing.",
-  active_run_watchdog:
-    "The active run has been silent. Recovery is observing without interrupting it.",
-  issue_graph_liveness:
-    "Paperclip detected this task lost a live action path. A recovery owner needs to act.",
-};
+const kindHeadline = (kind: IssueRecoveryActionKind): string =>
+  t(`recoveryCard.kindHeadline.${kind}`);
 
 const STATE_TONE: Record<RecoveryCardCardState, {
-  label: string;
+  labelKey: string;
   containerClass: string;
   iconWrapClass: string;
   iconClass: string;
@@ -76,7 +60,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
   divider: string;
 }> = {
   needed: {
-    label: "RECOVERY NEEDED",
+    labelKey: "recoveryCard.tone.needed",
     containerClass:
       "border-amber-300/70 bg-amber-50/85 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100",
     iconWrapClass: "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200",
@@ -86,7 +70,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
     divider: "border-amber-300/60 dark:border-amber-500/30",
   },
   in_progress: {
-    label: "RECOVERY IN PROGRESS",
+    labelKey: "recoveryCard.tone.in_progress",
     containerClass:
       "border-sky-300/70 bg-sky-50/80 text-sky-950 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-100",
     iconWrapClass: "bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200",
@@ -96,7 +80,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
     divider: "border-sky-300/60 dark:border-sky-500/30",
   },
   observe_only: {
-    label: "OBSERVING ACTIVE RUN",
+    labelKey: "recoveryCard.tone.observe_only",
     containerClass:
       "border-border bg-muted/40 text-foreground dark:bg-muted/20",
     iconWrapClass: "bg-muted text-foreground/70",
@@ -106,7 +90,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
     divider: "border-border/70",
   },
   escalated: {
-    label: "RECOVERY ESCALATED",
+    labelKey: "recoveryCard.tone.escalated",
     containerClass:
       "border-red-400/60 bg-red-50/85 text-red-950 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100",
     iconWrapClass: "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-200",
@@ -116,7 +100,7 @@ const STATE_TONE: Record<RecoveryCardCardState, {
     divider: "border-red-400/50 dark:border-red-500/30",
   },
   resolved: {
-    label: "RECOVERY RESOLVED",
+    labelKey: "recoveryCard.tone.resolved",
     containerClass:
       "border-emerald-300/70 bg-emerald-50/80 text-emerald-950 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100",
     iconWrapClass: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200",
@@ -127,14 +111,8 @@ const STATE_TONE: Record<RecoveryCardCardState, {
   },
 };
 
-const OUTCOME_LABEL: Record<IssueRecoveryActionOutcome, string> = {
-  restored: "restored",
-  delegated: "delegated to follow-up",
-  false_positive: "false positive",
-  blocked: "blocked",
-  escalated: "escalated",
-  cancelled: "cancelled",
-};
+const outcomeLabel = (outcome: IssueRecoveryActionOutcome): string =>
+  t(`recoveryCard.outcome.${outcome}`);
 
 function readEvidenceString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -172,13 +150,14 @@ function readWakePolicySummary(action: IssueRecoveryAction): string | null {
   if (!policy) return null;
   const type = readEvidenceString(policy.type);
   if (!type) return null;
-  if (type === "wake_owner") return "Corrective wake queued";
-  if (type === "board_escalation") return "Escalated to board";
-  if (type === "manual") return "Manual";
-  if (type === "manual_repair_required") return "Manual repair required";
+  if (type === "wake_owner") return t("recoveryCard.wake.correctiveQueued");
+  if (type === "board_escalation") return t("recoveryCard.wake.escalatedToBoard");
+  if (type === "manual") return t("recoveryCard.wake.manual");
   if (type === "monitor") {
     const interval = readEvidenceString(policy.intervalLabel);
-    return interval ? `Monitor scheduled · ${interval}` : "Monitor scheduled";
+    return interval
+      ? t("recoveryCard.wake.monitorScheduledWithInterval", { interval })
+      : t("recoveryCard.wake.monitorScheduled");
   }
   return type.replaceAll("_", " ");
 }
@@ -192,7 +171,9 @@ function formatTimeShort(value: string | Date | null | undefined): string | null
     const diffMs = date.getTime() - now;
     const absMin = Math.round(Math.abs(diffMs) / 60_000);
     if (absMin < 60) {
-      return diffMs >= 0 ? `in ${absMin}m` : `${absMin}m ago`;
+      return diffMs >= 0
+        ? t("recoveryCard.time.inMinutes", { count: absMin })
+        : t("recoveryCard.time.minutesAgo", { count: absMin });
     }
     return date.toLocaleString(undefined, {
       month: "short",
@@ -245,7 +226,7 @@ function AgentLink({
     return fallback ? <span>{fallback}</span> : <MissingValue />;
   }
   const agent = agentMap?.get(agentId);
-  const label = agent?.name ?? `agent ${agentId.slice(0, 8)}`;
+  const label = agent?.name ?? t("recoveryCard.agentShort", { id: agentId.slice(0, 8) });
   if (agent) {
     return (
       <Link
@@ -273,7 +254,7 @@ function RunChip({
   const inner = (
     <>
       <code className="rounded bg-background/80 px-1.5 py-0.5 font-mono text-[11px] text-foreground/80">
-        run {short}
+        {t("recoveryCard.runShort", { id: short })}
       </code>
       {status ? (
         <span className="font-sans text-[11px] text-muted-foreground">{status}</span>
@@ -295,37 +276,25 @@ function RunChip({
 
 const RESOLVE_OPTIONS: Array<{
   outcome: RecoveryResolveOutcome;
-  label: string;
-  description: string;
   destructive?: boolean;
   boardOnly?: boolean;
 }> = [
   {
     outcome: "todo",
-    label: "Try again",
-    description: "Dismiss recovery and return the source task to todo.",
   },
   {
     outcome: "done",
-    label: "Mark task done",
-    description: "Restore by recording the requested work as complete.",
   },
   {
     outcome: "in_review",
-    label: "Send for review",
-    description: "Hand off to a reviewer with a real review path.",
   },
   {
     outcome: "false_positive_done",
-    label: "False positive, done",
-    description: "Dismiss recovery and mark the source task complete.",
     destructive: true,
     boardOnly: true,
   },
   {
     outcome: "false_positive_in_review",
-    label: "False positive, review",
-    description: "Dismiss recovery and send the source task for review.",
     destructive: true,
     boardOnly: true,
   },
@@ -339,16 +308,20 @@ export function IssueRecoveryActionCard({
   canFalsePositive = false,
   className,
 }: IssueRecoveryActionCardProps) {
+  const { t } = useTranslation();
   const cardState: RecoveryCardCardState = forcedState ?? deriveRecoveryCardState(action);
   const tone = STATE_TONE[cardState];
   const ToneIcon = tone.Icon;
 
   const headline = useMemo(() => {
     if (cardState === "resolved" && action.outcome) {
-      return `Recovery resolved as ${OUTCOME_LABEL[action.outcome] ?? action.outcome}.`;
+      return t("recoveryCard.resolvedAs", {
+        outcome: outcomeLabel(action.outcome) ?? action.outcome,
+      });
     }
-    return KIND_HEADLINE[action.kind] ?? KIND_HEADLINE.missing_disposition;
-  }, [action.kind, action.outcome, cardState]);
+    return kindHeadline(action.kind) ?? kindHeadline("missing_disposition");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action.kind, action.outcome, cardState, t]);
 
   const wakeSummary = readWakePolicySummary(action);
   const evidenceSummary = pickEvidenceSummary(action);
@@ -367,13 +340,7 @@ export function IssueRecoveryActionCard({
   })();
   const updatedAtLabel = formatTimeShort(action.updatedAt);
 
-  const ariaState = ({
-    needed: "needed",
-    in_progress: "in progress",
-    observe_only: "observing active run",
-    escalated: "escalated",
-    resolved: "resolved",
-  } satisfies Record<RecoveryCardCardState, string>)[cardState];
+  const ariaState = t(`recoveryCard.ariaState.${cardState}`);
 
   const showResolveActions = onResolve !== undefined && cardState !== "resolved";
   const visibleResolveOptions = RESOLVE_OPTIONS.filter((option) => {
@@ -384,7 +351,7 @@ export function IssueRecoveryActionCard({
   return (
     <section
       role="status"
-      aria-label={`Recovery action: ${ariaState}`}
+      aria-label={t("recoveryCard.ariaLabel", { state: ariaState })}
       data-recovery-state={cardState}
       data-recovery-kind={action.kind}
       className={cn(
@@ -405,10 +372,10 @@ export function IssueRecoveryActionCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-semibold uppercase tracking-[0.14em]">
-            <span className={tone.labelClass}>{tone.label}</span>
+            <span className={tone.labelClass}>{t(tone.labelKey)}</span>
             <span className="text-muted-foreground/60" aria-hidden>·</span>
             <code className="rounded bg-background/70 px-1.5 py-0.5 font-mono text-[11px] tracking-normal text-muted-foreground">
-              {KIND_LABEL[action.kind] ?? action.kind}
+              {kindLabel(action.kind) ?? action.kind}
             </code>
             {updatedAtLabel ? (
               <>
@@ -423,67 +390,67 @@ export function IssueRecoveryActionCard({
         </div>
       </header>
       <dl className={cn("border-t bg-background/40 dark:bg-background/20", tone.divider)}>
-        <MetadataRow label="Owner">
+        <MetadataRow label={t("recoveryCard.field.owner")}>
           <span className="inline-flex flex-wrap items-center gap-1.5">
             {action.ownerType === "agent" && action.ownerAgentId ? (
               <>
-                <span className="text-muted-foreground">Recovery:</span>
+                <span className="text-muted-foreground">{t("recoveryCard.recoveryColon")}</span>
                 <AgentLink agentId={action.ownerAgentId} agentMap={agentMap} />
               </>
             ) : action.ownerType === "board" ? (
-              <span className="font-medium">Board</span>
+              <span className="font-medium">{t("recoveryCard.board")}</span>
             ) : action.ownerType === "user" && action.ownerUserId ? (
-              <span className="font-medium">user {action.ownerUserId.slice(0, 6)}</span>
+              <span className="font-medium">{t("recoveryCard.userShort", { id: action.ownerUserId.slice(0, 6) })}</span>
             ) : action.ownerType === "system" ? (
-              <span className="font-medium">System</span>
+              <span className="font-medium">{t("recoveryCard.system")}</span>
             ) : (
-              <span className="text-muted-foreground">unassigned — pick one to wake them</span>
+              <span className="text-muted-foreground">{t("recoveryCard.unassignedPickOne")}</span>
             )}
             {action.returnOwnerAgentId ? (
               <>
-                <span className="text-muted-foreground">→ Returns to:</span>
+                <span className="text-muted-foreground">{t("recoveryCard.returnsTo")}</span>
                 <AgentLink agentId={action.returnOwnerAgentId} agentMap={agentMap} />
               </>
             ) : null}
           </span>
         </MetadataRow>
-        <MetadataRow label="Source run">
+        <MetadataRow label={t("recoveryCard.field.sourceRun")}>
           <RunChip runId={sourceRunId} agentId={action.previousOwnerAgentId} />
         </MetadataRow>
         {correctiveRunId ? (
-          <MetadataRow label="Corrective run">
+          <MetadataRow label={t("recoveryCard.field.correctiveRun")}>
             <RunChip runId={correctiveRunId} agentId={action.previousOwnerAgentId} />
           </MetadataRow>
         ) : null}
-        <MetadataRow label="Evidence">
+        <MetadataRow label={t("recoveryCard.field.evidence")}>
           {evidenceSummary ? (
             <span className="break-words font-mono text-[11px] text-foreground/80">{evidenceSummary}</span>
           ) : (
             <MissingValue />
           )}
         </MetadataRow>
-        <MetadataRow label="Next action">
+        <MetadataRow label={t("recoveryCard.field.nextAction")}>
           {action.nextAction ? <span>{action.nextAction}</span> : <MissingValue />}
         </MetadataRow>
-        <MetadataRow label="Wake">
+        <MetadataRow label={t("recoveryCard.field.wake")}>
           <span className="inline-flex flex-wrap items-center gap-1.5">
             {wakeSummary ? <span>{wakeSummary}</span> : <MissingValue />}
             {showAttempt ? (
               <span className="rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                attempt {action.attemptCount} of {action.maxAttempts}
+                {t("recoveryCard.attemptOf", { count: action.attemptCount, max: action.maxAttempts })}
               </span>
             ) : null}
             {showTimeoutInline ? (
               <span className="rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                Times out {formatTimeShort(action.timeoutAt) ?? "soon"}
+                {t("recoveryCard.timesOut", { time: formatTimeShort(action.timeoutAt) ?? t("recoveryCard.soon") })}
               </span>
             ) : null}
           </span>
         </MetadataRow>
         {cardState === "resolved" && action.outcome ? (
-          <MetadataRow label="Resolution">
+          <MetadataRow label={t("recoveryCard.field.resolution")}>
             <span className={cn("font-medium", tone.labelClass)}>
-              Resolved as {OUTCOME_LABEL[action.outcome]}
+              {t("recoveryCard.resolvedAsShort", { outcome: outcomeLabel(action.outcome) })}
               {action.resolvedAt ? ` · ${formatTimeShort(action.resolvedAt) ?? ""}` : ""}
             </span>
           </MetadataRow>
@@ -498,9 +465,9 @@ export function IssueRecoveryActionCard({
                 size="sm"
                 variant="default"
                 data-testid="recovery-action-resolve-trigger"
-                aria-label="Resolve recovery"
+                aria-label={t("recoveryCard.resolveRecovery")}
               >
-                Resolve…
+                {t("recoveryCard.resolveEllipsis")}
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -509,7 +476,7 @@ export function IssueRecoveryActionCard({
               className="w-72 p-1.5"
             >
               <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Resolve recovery
+                {t("recoveryCard.resolveRecovery")}
               </div>
               <div className="flex flex-col">
                 {visibleResolveOptions.map((option) => (
@@ -523,8 +490,8 @@ export function IssueRecoveryActionCard({
                       option.destructive ? "text-destructive" : null,
                     )}
                   >
-                    <span className="font-medium leading-5">{option.label}</span>
-                    <span className="text-[11px] leading-4 text-muted-foreground">{option.description}</span>
+                    <span className="font-medium leading-5">{t(`recoveryCard.resolveOption.${option.outcome}.label`)}</span>
+                    <span className="text-[11px] leading-4 text-muted-foreground">{t(`recoveryCard.resolveOption.${option.outcome}.description`)}</span>
                   </button>
                 ))}
               </div>
@@ -532,11 +499,11 @@ export function IssueRecoveryActionCard({
           </Popover>
           {cardState === "observe_only" ? (
             <span className="text-[11px] text-muted-foreground">
-              Recovery is observing without interrupting the live run.
+              {t("recoveryCard.observingNote")}
             </span>
           ) : (
             <span className="text-[11px] text-muted-foreground">
-              The card stays open until an explicit decision is recorded.
+              {t("recoveryCard.staysOpenNote")}
             </span>
           )}
         </div>
