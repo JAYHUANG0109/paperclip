@@ -4912,5 +4912,17 @@
     "completed": "Completed",
     "cancelled": "Cancelled",
     "blocked": "Blocked"
+  },
+  "customFields": {
+    "title": "Custom fields",
+    "manageTitle": "Custom fields",
+    "noneAttached": "No fields added yet",
+    "addExisting": "Add an existing field",
+    "detach": "Remove",
+    "createNew": "Create new field",
+    "namePlaceholder": "Field name",
+    "optionsPlaceholder": "Options (one per line or comma-separated)",
+    "noOptions": "No options",
+    "peopleUnsupported": "(People field coming soon)"
   }
 }

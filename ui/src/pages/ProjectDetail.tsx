@@ -23,6 +23,7 @@ import { InlineEditor } from "../components/InlineEditor";
 import { StatusBadge } from "../components/StatusBadge";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
+import { ProjectCustomFieldsManager } from "../components/ProjectCustomFieldsManager";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { ProjectWorkspacesContent } from "../components/ProjectWorkspacesContent";
@@ -881,15 +882,20 @@ export function ProjectDetail() {
       </Tabs>
 
       {activeTab === "overview" && (
-        <OverviewContent
-          project={project}
-          teamOptions={projectTeamOptions}
-          onUpdate={(data) => updateProject.mutate(data)}
-          imageUploadHandler={async (file) => {
-            const asset = await uploadImage.mutateAsync(file);
-            return asset.contentPath;
-          }}
-        />
+        <div className="space-y-4">
+          <OverviewContent
+            project={project}
+            teamOptions={projectTeamOptions}
+            onUpdate={(data) => updateProject.mutate(data)}
+            imageUploadHandler={async (file) => {
+              const asset = await uploadImage.mutateAsync(file);
+              return asset.contentPath;
+            }}
+          />
+          {project?.id && resolvedCompanyId && (
+            <ProjectCustomFieldsManager projectId={project.id} companyId={resolvedCompanyId} />
+          )}
+        </div>
       )}
 
       {activeTab === "list" && project?.id && resolvedCompanyId && (

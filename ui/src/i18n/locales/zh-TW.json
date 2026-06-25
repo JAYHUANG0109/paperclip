@@ -4912,5 +4912,17 @@
     "completed": "已完成",
     "cancelled": "已取消",
     "blocked": "已封鎖"
+  },
+  "customFields": {
+    "title": "自訂欄位",
+    "manageTitle": "自訂欄位",
+    "noneAttached": "尚未加入欄位",
+    "addExisting": "加入既有欄位",
+    "detach": "移除",
+    "createNew": "建立新欄位",
+    "namePlaceholder": "欄位名稱",
+    "optionsPlaceholder": "選項（每行一個或以逗號分隔）",
+    "noOptions": "尚無選項",
+    "peopleUnsupported": "（人員欄位即將推出）"
   }
 }

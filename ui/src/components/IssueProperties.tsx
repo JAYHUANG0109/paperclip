@@ -11,6 +11,7 @@ import { authApi } from "../api/auth";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { sectionsApi } from "../api/sections";
+import { IssueCustomFields } from "./IssueCustomFields";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { buildCompanyUserInlineOptions, buildCompanyUserLabelMap } from "../lib/company-members";
@@ -1960,6 +1961,16 @@ export function IssueProperties({
           >
             {sectionContent}
           </PropertyPicker>
+        ) : null}
+
+        {issue.projectId ? (
+          <div className="px-1 py-1">
+            <IssueCustomFields
+              issueId={issue.id}
+              projectId={issue.projectId}
+              companyId={companyId}
+            />
+          </div>
         ) : null}
 
         <PropertyPicker
