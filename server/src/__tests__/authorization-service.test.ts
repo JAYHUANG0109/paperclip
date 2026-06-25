@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
+  agentMemberships,
   companies,
   companyMemberships,
   createDb,
@@ -1187,4 +1188,78 @@ describeEmbeddedPostgres("authorization service", () => {
       grant: { permissionKey: "tasks:assign" },
     });
   });
+
+  describeEmbeddedPostgres; // keep ref
+  it("四季 restriction (flag ON): scopes non-privileged members to joined agents", async () => {
+    process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY = "true";
+    try {
+      const company = await createCompany(db, "SeasonartsRestrict");
+      const operatorId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: operatorId,
+        status: "active", membershipRole: "operator",
+      });
+      const joinedAgent = await createAgent(db, company.id);
+      const otherAgent = await createAgent(db, company.id);
+      await db.insert(agentMemberships).values({
+        companyId: company.id, agentId: joinedAgent.id, userId: operatorId, state: "joined",
+      });
+      const auth = authorizationService(db);
+      const actor = { type: "board" as const, userId: operatorId, source: "session" as const };
+
+      // joined agent → visible
+      await expect(auth.decide({ actor, action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: joinedAgent.id } }))
+        .resolves.toMatchObject({ allowed: true });
+      // non-joined agent → HIDDEN (this is the 四季 restriction)
+      await expect(auth.decide({ actor, action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: otherAgent.id } }))
+        .resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+      // company-wide read → denied so per-item filtering kicks in
+      await expect(auth.decide({ actor, action: "company_scope:read",
+        resource: { type: "company", companyId: company.id } }))
+        .resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    } finally {
+      delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+    }
+  });
+
+  it("四季 restriction (flag OFF, default): non-privileged members keep upstream company-wide visibility", async () => {
+    delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+    const company = await createCompany(db, "SeasonartsDefault");
+    const operatorId = `user-${randomUUID()}`;
+    await db.insert(companyMemberships).values({
+      companyId: company.id, principalType: "user", principalId: operatorId,
+      status: "active", membershipRole: "operator",
+    });
+    const otherAgent = await createAgent(db, company.id); // NOT joined
+    const decision = await authorizationService(db).decide({
+      actor: { type: "board", userId: operatorId, source: "session" },
+      action: "agent:read",
+      resource: { type: "agent", companyId: company.id, agentId: otherAgent.id },
+    });
+    expect(decision).toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+  });
+
+  it("四季 restriction (flag ON): owners/admins are unaffected — see all agents", async () => {
+    process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY = "true";
+    try {
+      const company = await createCompany(db, "SeasonartsAdmin");
+      const adminId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: adminId,
+        status: "active", membershipRole: "admin",
+      });
+      const otherAgent = await createAgent(db, company.id); // NOT joined
+      const decision = await authorizationService(db).decide({
+        actor: { type: "board", userId: adminId, source: "session" },
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: otherAgent.id },
+      });
+      expect(decision).toMatchObject({ allowed: true });
+    } finally {
+      delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+    }
+  });
+
 });

@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
+  agentMemberships,
   companyMemberships,
   heartbeatRuns,
   instanceUserRoles,
@@ -401,7 +402,98 @@ function deny(input: Omit<AuthorizationDecision, "allowed">): AuthorizationDecis
   return { ...input, allowed: false };
 }
 
+// 四季 (Seasonarts) operator-visibility restriction, ported onto upstream's authz.
+// When PAPERCLIP_RESTRICT_AGENT_VISIBILITY=true, a non-privileged board member
+// (company role operator/member/viewer — i.e. NOT owner/admin, and not an
+// instance admin or the local board) is scoped to: agents they have JOINED plus
+// agents that transitively report to a joined agent, and issues assigned to them,
+// assigned to a visible agent, or created by them. Default (flag off) keeps
+// upstream's company-wide visibility unchanged.
+function restrictAgentVisibilityEnabled(): boolean {
+  return process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY === "true";
+}
+
+function isPrivilegedCompanyRole(role: string | null | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
+
 export function authorizationService(db: Db) {
+  // Visible agent set for a restricted member: joined agents + their reports-to
+  // subtree (manager-of-a-joined-agent style). Empty when the user joined none.
+  async function getVisibleAgentIdsForUser(companyId: string, userId: string): Promise<Set<string>> {
+    const joinedRows = await db
+      .select({ agentId: agentMemberships.agentId })
+      .from(agentMemberships)
+      .where(
+        and(
+          eq(agentMemberships.companyId, companyId),
+          eq(agentMemberships.userId, userId),
+          eq(agentMemberships.state, "joined"),
+        ),
+      );
+    const visible = new Set(joinedRows.map((r) => r.agentId));
+    if (visible.size === 0) return visible;
+    const allAgents = await db
+      .select({ id: agents.id, reportsTo: agents.reportsTo })
+      .from(agents)
+      .where(eq(agents.companyId, companyId));
+    const childrenByManager = new Map<string, string[]>();
+    for (const a of allAgents) {
+      if (!a.reportsTo) continue;
+      const list = childrenByManager.get(a.reportsTo) ?? [];
+      list.push(a.id);
+      childrenByManager.set(a.reportsTo, list);
+    }
+    const queue = [...visible];
+    while (queue.length > 0) {
+      const current = queue.shift() as string;
+      for (const child of childrenByManager.get(current) ?? []) {
+        if (!visible.has(child)) {
+          visible.add(child);
+          queue.push(child);
+        }
+      }
+    }
+    return visible;
+  }
+
+  // Per-item visibility decision for a restricted member. Returns true=allow,
+  // false=deny; null=not applicable (fall through to upstream's logic).
+  async function restrictedMemberCanRead(
+    action: string,
+    companyId: string,
+    userId: string,
+    resource: AuthorizationResource,
+  ): Promise<boolean | null> {
+    if (action === "company_scope:read") return false; // force per-item filtering
+    if (action === "agent:read") {
+      const agentId = resource.type === "agent" ? resource.agentId : null;
+      const visible = await getVisibleAgentIdsForUser(companyId, userId);
+      return Boolean(agentId && visible.has(agentId));
+    }
+    if (action === "issue:read") {
+      const issueId = resource.type === "issue" ? resource.issueId : null;
+      if (!issueId) return null;
+      const issue = await db
+        .select({
+          assigneeAgentId: issues.assigneeAgentId,
+          assigneeUserId: issues.assigneeUserId,
+          createdByUserId: issues.createdByUserId,
+        })
+        .from(issues)
+        .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)))
+        .then((rows) => rows[0] ?? null);
+      if (!issue) return false;
+      if (issue.assigneeUserId === userId || issue.createdByUserId === userId) return true;
+      if (issue.assigneeAgentId) {
+        const visible = await getVisibleAgentIdsForUser(companyId, userId);
+        return visible.has(issue.assigneeAgentId);
+      }
+      return false;
+    }
+    return null; // project:read / runtime:manage / secrets:read → upstream's logic
+  }
+
   async function isInstanceAdmin(userId: string | null | undefined): Promise<boolean> {
     if (!userId) return false;
     if (
@@ -1111,6 +1203,35 @@ export function authorizationService(db: Db) {
           input.action === "secrets:read"
         ) {
           const membership = await getActiveMembership(companyId, "user", input.actor.userId);
+          // 四季 restriction (flag-gated): non-privileged members are scoped to
+          // their visible agents / own issues instead of company-wide visibility.
+          if (
+            restrictAgentVisibilityEnabled() &&
+            membership &&
+            !isPrivilegedCompanyRole(membership.membershipRole)
+          ) {
+            const restricted = await restrictedMemberCanRead(
+              input.action,
+              companyId,
+              input.actor.userId,
+              input.resource,
+            );
+            if (restricted === true) {
+              return allow({
+                action: input.action,
+                reason: "allow_simple_company_member",
+                explanation: "Allowed: resource is within the restricted member's visible scope.",
+              });
+            }
+            if (restricted === false) {
+              return deny({
+                action: input.action,
+                reason: "deny_scope",
+                explanation: "Restricted member: resource is outside the visible agent/issue scope.",
+              });
+            }
+            // restricted === null → fall through to standard membership logic below
+          }
           // Mirroring the tasks:assign carve-out above, viewers keep the
           // read-only visibility actions but not the privileged ones.
           const requiresNonViewer =
