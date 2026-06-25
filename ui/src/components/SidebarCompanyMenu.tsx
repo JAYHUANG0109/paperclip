@@ -237,7 +237,7 @@ export function SidebarCompanyMenu({ open: controlledOpen, onOpenChange }: Sideb
         >
           <span className="flex min-w-0 flex-1 items-center gap-2">
             {selectedCompany ? <WorkspaceIcon company={selectedCompany} /> : null}
-            <span className="truncate text-sm font-bold text-foreground">
+            <span className={cn(rail ? SIDEBAR_RAIL_HIDDEN_LABEL : "truncate text-sm font-bold text-foreground")}>
               {selectedCompany?.name ?? t("sidebarCompanyMenu.selectWorkspace")}
             </span>
           </span>

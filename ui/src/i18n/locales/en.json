@@ -8,11 +8,11 @@
   },
   "nav": {
     "search": "Open search",
-    "newIssue": "New Issue",
+    "newIssue": "New Task",
     "dashboard": "Dashboard",
     "inbox": "Inbox",
     "work": "Work",
-    "issues": "Issues",
+    "issues": "Tasks",
     "routines": "Routines",
     "goals": "Goals",
     "workspaces": "Workspaces",

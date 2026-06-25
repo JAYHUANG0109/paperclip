@@ -8,11 +8,11 @@
   },
   "nav": {
     "search": "開啟搜尋",
-    "newIssue": "新增議題",
+    "newIssue": "新增任務",
     "dashboard": "儀表板",
     "inbox": "收件匣",
     "work": "工作",
-    "issues": "議題",
+    "issues": "任務",
     "routines": "例行作業",
     "goals": "目標",
     "workspaces": "工作區",
