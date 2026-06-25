@@ -37,7 +37,8 @@
     "assignments": "代理指派",
     "calendar": "Calendar",
     "conferenceRoom": "Conference Room",
-    "artifacts": "Artifacts"
+    "artifacts": "Artifacts",
+    "newTask": "New Task"
   },
   "sort": {
     "top": "Top",
@@ -4616,7 +4617,10 @@
     "creatingIssue": "正在创建议题…",
     "creating": "正在创建…",
     "createSubIssue": "创建子议题",
-    "createIssue": "创建议题"
+    "createIssue": "创建议题",
+    "taskTitle": "Task title",
+    "createTask": "Create Task",
+    "createSubTask": "Create Sub-Task"
   },
   "routineDetail": {
     "concurrencyDesc": {

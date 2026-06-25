@@ -37,7 +37,8 @@
     "assignments": "Assignments",
     "calendar": "Calendar",
     "conferenceRoom": "Conference Room",
-    "artifacts": "Artifacts"
+    "artifacts": "Artifacts",
+    "newTask": "New Task"
   },
   "sort": {
     "top": "Top",
@@ -4616,7 +4617,10 @@
     "creatingIssue": "Creating issue...",
     "creating": "Creating...",
     "createSubIssue": "Create Sub-Issue",
-    "createIssue": "Create Issue"
+    "createIssue": "Create Issue",
+    "taskTitle": "Task title",
+    "createTask": "Create Task",
+    "createSubTask": "Create Sub-Task"
   },
   "routineDetail": {
     "concurrencyDesc": {

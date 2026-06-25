@@ -37,7 +37,8 @@
     "assignments": "代理指派",
     "calendar": "行事曆",
     "conferenceRoom": "會議室",
-    "artifacts": "產物"
+    "artifacts": "產物",
+    "newTask": "新增任務"
   },
   "sort": {
     "top": "置頂",
@@ -4616,7 +4617,10 @@
     "creatingIssue": "正在建立議題…",
     "creating": "正在建立…",
     "createSubIssue": "建立子議題",
-    "createIssue": "建立議題"
+    "createIssue": "建立議題",
+    "taskTitle": "任務標題",
+    "createTask": "建立任務",
+    "createSubTask": "建立子任務"
   },
   "routineDetail": {
     "concurrencyDesc": {
