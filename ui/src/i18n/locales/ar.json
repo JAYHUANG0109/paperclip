@@ -4906,6 +4906,7 @@
     "planned": "Planned",
     "in_progress": "In Progress",
     "completed": "Completed",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "blocked": "Blocked"
   }
 }

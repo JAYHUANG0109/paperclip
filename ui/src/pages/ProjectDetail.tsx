@@ -71,6 +71,7 @@ const PROJECT_STATUS_META: Record<string, { dot: string; label: string }> = {
   backlog: { dot: "bg-neutral-400", label: "Backlog" },
   planned: { dot: "bg-blue-500", label: "Planned" },
   in_progress: { dot: "bg-violet-500", label: "In Progress" },
+  blocked: { dot: "bg-red-500", label: "Blocked" },
   completed: { dot: "bg-emerald-500", label: "Completed" },
   cancelled: { dot: "bg-neutral-500", label: "Cancelled" },
 };

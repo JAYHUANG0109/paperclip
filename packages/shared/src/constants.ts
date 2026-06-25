@@ -333,6 +333,7 @@ export const PROJECT_STATUSES = [
   "backlog",
   "planned",
   "in_progress",
+  "blocked",
   "completed",
   "cancelled",
 ] as const;
