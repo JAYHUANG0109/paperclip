@@ -2138,7 +2138,11 @@
     "availableCount": "{{count}} 個可用",
     "scanWorkspacesTitle": "掃描專案工作區中的技能",
     "filterSkills": "篩選技能",
-    "sourcePlaceholder": "貼上路徑、GitHub 網址或 skills.sh 指令"
+    "sourcePlaceholder": "貼上路徑、GitHub 網址或 skills.sh 指令",
+    "filterAll": "全部",
+    "filterInstalled": "已安裝",
+    "filterCatalog": "目錄",
+    "filterBundled": "內建"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",

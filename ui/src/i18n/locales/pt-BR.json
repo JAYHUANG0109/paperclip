@@ -2138,7 +2138,11 @@
     "availableCount": "{{count}} available",
     "scanWorkspacesTitle": "Scan project workspaces for skills",
     "filterSkills": "Filter skills",
-    "sourcePlaceholder": "Paste path, GitHub URL, or skills.sh command"
+    "sourcePlaceholder": "Paste path, GitHub URL, or skills.sh command",
+    "filterAll": "All",
+    "filterInstalled": "Installed",
+    "filterCatalog": "Catalog",
+    "filterBundled": "Bundled"
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",
