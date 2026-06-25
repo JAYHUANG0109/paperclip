@@ -437,6 +437,34 @@ export const updateProjectSectionSchema = z.object({
 
 export type UpdateProjectSection = z.infer<typeof updateProjectSectionSchema>;
 
+export const CUSTOM_FIELD_TYPES = ["text", "number", "single_select", "multi_select", "date", "people"] as const;
+
+export const createCustomFieldSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  type: z.enum(CUSTOM_FIELD_TYPES),
+  options: z.record(z.string(), z.unknown()).optional().nullable(),
+  position: z.number().int().min(0).optional(),
+});
+
+export type CreateCustomField = z.infer<typeof createCustomFieldSchema>;
+
+export const updateCustomFieldSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  options: z.record(z.string(), z.unknown()).optional().nullable(),
+  position: z.number().int().min(0).optional(),
+});
+
+export type UpdateCustomField = z.infer<typeof updateCustomFieldSchema>;
+
+export const attachCustomFieldSchema = z.object({
+  fieldId: z.string().uuid(),
+});
+
+export const setCustomFieldValueSchema = z.object({
+  // null clears the value; otherwise a typed value object.
+  value: z.record(z.string(), z.unknown()).nullable(),
+});
+
 export const updateIssueSchema = createIssueBaseSchema.partial().extend({
   requestDepth: issueRequestDepthInputSchema.optional(),
   assigneeAgentId: z.string().trim().min(1).optional().nullable(),

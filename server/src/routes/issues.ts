@@ -24,6 +24,10 @@ import {
   createIssueLabelSchema,
   createProjectSectionSchema,
   updateProjectSectionSchema,
+  createCustomFieldSchema,
+  updateCustomFieldSchema,
+  attachCustomFieldSchema,
+  setCustomFieldValueSchema,
   checkoutIssueSchema,
   createChildIssueSchema,
   createIssueSchema,
@@ -2091,6 +2095,108 @@ export function issueRoutes(
     assertCompanyAccess(req, existing.companyId);
     res.json(await svc.deleteSection(sectionId));
   });
+
+  // ---- Custom fields (Phase 4) ----
+  router.get("/companies/:companyId/custom-fields", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.listCustomFields(companyId));
+  });
+
+  router.post("/companies/:companyId/custom-fields", validate(createCustomFieldSchema), async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const field = await svc.createCustomField(companyId, req.body);
+    res.status(201).json(field);
+  });
+
+  router.patch("/custom-fields/:fieldId", validate(updateCustomFieldSchema), async (req, res) => {
+    const fieldId = req.params.fieldId as string;
+    const existing = await svc.getCustomFieldById(fieldId);
+    if (!existing) {
+      res.status(404).json({ error: "Custom field not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+    res.json(await svc.updateCustomField(fieldId, req.body));
+  });
+
+  router.delete("/custom-fields/:fieldId", async (req, res) => {
+    const fieldId = req.params.fieldId as string;
+    const existing = await svc.getCustomFieldById(fieldId);
+    if (!existing) {
+      res.status(404).json({ error: "Custom field not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+    res.json(await svc.deleteCustomField(fieldId));
+  });
+
+  router.get("/projects/:projectId/custom-fields", async (req, res) => {
+    const projectId = req.params.projectId as string;
+    const companyId = readNonEmptyString(req.query.companyId);
+    if (!companyId) {
+      res.status(400).json({ error: "companyId query param is required" });
+      return;
+    }
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.listProjectCustomFields(companyId, projectId));
+  });
+
+  router.post(
+    "/projects/:projectId/custom-fields",
+    validate(attachCustomFieldSchema),
+    async (req, res) => {
+      const projectId = req.params.projectId as string;
+      const companyId = readNonEmptyString(req.query.companyId);
+      if (!companyId) {
+        res.status(400).json({ error: "companyId query param is required" });
+        return;
+      }
+      assertCompanyAccess(req, companyId);
+      const attached = await svc.attachCustomField(companyId, req.body.fieldId, projectId);
+      res.status(201).json(attached);
+    },
+  );
+
+  router.delete("/projects/:projectId/custom-fields/:fieldId", async (req, res) => {
+    const projectId = req.params.projectId as string;
+    const fieldId = req.params.fieldId as string;
+    const field = await svc.getCustomFieldById(fieldId);
+    if (!field) {
+      res.status(404).json({ error: "Custom field not found" });
+      return;
+    }
+    assertCompanyAccess(req, field.companyId);
+    res.json(await svc.detachCustomField(fieldId, projectId));
+  });
+
+  router.get("/issues/:id/custom-fields", async (req, res) => {
+    const id = req.params.id as string;
+    const issue = await svc.getById(id);
+    if (!issue) {
+      res.status(404).json({ error: "Issue not found" });
+      return;
+    }
+    assertCompanyAccess(req, issue.companyId);
+    res.json(await svc.listIssueCustomFieldValues(id));
+  });
+
+  router.put(
+    "/issues/:id/custom-fields/:fieldId",
+    validate(setCustomFieldValueSchema),
+    async (req, res) => {
+      const id = req.params.id as string;
+      const fieldId = req.params.fieldId as string;
+      const issue = await svc.getById(id);
+      if (!issue) {
+        res.status(404).json({ error: "Issue not found" });
+        return;
+      }
+      assertCompanyAccess(req, issue.companyId);
+      res.json(await svc.setIssueCustomFieldValue(issue.companyId, id, fieldId, req.body.value));
+    },
+  );
 
   router.get("/issues/:id/heartbeat-context", async (req, res) => {
     const id = req.params.id as string;

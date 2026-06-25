@@ -26,6 +26,9 @@ import {
   issues,
   labels,
   projectSections,
+  customFields,
+  customFieldSettings,
+  customFieldValues,
   projectWorkspaces,
   projects,
 } from "@paperclipai/db";
@@ -5068,6 +5071,118 @@ export function issueService(db: Db) {
         .where(eq(projectSections.id, id))
         .returning()
         .then((rows) => rows[0] ?? null),
+
+    // ---- Custom fields (Phase 4) ----
+    listCustomFields: (companyId: string) =>
+      db
+        .select()
+        .from(customFields)
+        .where(eq(customFields.companyId, companyId))
+        .orderBy(asc(customFields.position), asc(customFields.name)),
+
+    getCustomFieldById: (id: string) =>
+      db.select().from(customFields).where(eq(customFields.id, id)).then((rows) => rows[0] ?? null),
+
+    createCustomField: async (
+      companyId: string,
+      data: { name: string; type: string; options?: Record<string, unknown> | null; position?: number },
+    ) => {
+      const [created] = await db
+        .insert(customFields)
+        .values({
+          companyId,
+          name: data.name.trim(),
+          type: data.type,
+          options: data.options ?? null,
+          position: data.position ?? 0,
+        })
+        .returning();
+      return created;
+    },
+
+    updateCustomField: async (
+      id: string,
+      data: { name?: string; options?: Record<string, unknown> | null; position?: number },
+    ) => {
+      const patch: Partial<typeof customFields.$inferInsert> = { updatedAt: new Date() };
+      if (data.name !== undefined) patch.name = data.name.trim();
+      if (data.options !== undefined) patch.options = data.options;
+      if (data.position !== undefined) patch.position = data.position;
+      const [updated] = await db.update(customFields).set(patch).where(eq(customFields.id, id)).returning();
+      return updated ?? null;
+    },
+
+    deleteCustomField: async (id: string) =>
+      db.delete(customFields).where(eq(customFields.id, id)).returning().then((rows) => rows[0] ?? null),
+
+    // Fields attached to a project (joined with their definitions).
+    listProjectCustomFields: (companyId: string, projectId: string) =>
+      db
+        .select({
+          settingId: customFieldSettings.id,
+          fieldId: customFields.id,
+          name: customFields.name,
+          type: customFields.type,
+          options: customFields.options,
+          position: customFieldSettings.position,
+        })
+        .from(customFieldSettings)
+        .innerJoin(customFields, eq(customFieldSettings.fieldId, customFields.id))
+        .where(and(eq(customFieldSettings.companyId, companyId), eq(customFieldSettings.projectId, projectId)))
+        .orderBy(asc(customFieldSettings.position), asc(customFields.name)),
+
+    attachCustomField: async (companyId: string, fieldId: string, projectId: string) => {
+      const [created] = await db
+        .insert(customFieldSettings)
+        .values({ companyId, fieldId, projectId })
+        .onConflictDoNothing()
+        .returning();
+      return created ?? null;
+    },
+
+    detachCustomField: async (fieldId: string, projectId: string) =>
+      db
+        .delete(customFieldSettings)
+        .where(and(eq(customFieldSettings.fieldId, fieldId), eq(customFieldSettings.projectId, projectId)))
+        .returning()
+        .then((rows) => rows[0] ?? null),
+
+    // Values on an issue (joined with field definitions).
+    listIssueCustomFieldValues: (issueId: string) =>
+      db
+        .select({
+          fieldId: customFields.id,
+          name: customFields.name,
+          type: customFields.type,
+          options: customFields.options,
+          value: customFieldValues.value,
+        })
+        .from(customFieldValues)
+        .innerJoin(customFields, eq(customFieldValues.fieldId, customFields.id))
+        .where(eq(customFieldValues.issueId, issueId)),
+
+    setIssueCustomFieldValue: async (
+      companyId: string,
+      issueId: string,
+      fieldId: string,
+      value: Record<string, unknown> | null,
+    ) => {
+      if (value === null) {
+        await db
+          .delete(customFieldValues)
+          .where(and(eq(customFieldValues.issueId, issueId), eq(customFieldValues.fieldId, fieldId)));
+        return { fieldId, issueId, value: null };
+      }
+      const [row] = await db
+        .insert(customFieldValues)
+        .values({ companyId, issueId, fieldId, value })
+        .onConflictDoUpdate({
+          target: [customFieldValues.fieldId, customFieldValues.issueId],
+          set: { value, updatedAt: new Date() },
+        })
+        .returning();
+      return row;
+    },
 
     listComments: async (
       issueId: string,
