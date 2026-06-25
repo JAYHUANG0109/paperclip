@@ -961,6 +961,15 @@ export function agentRoutes(
     if (req.actor.type === "agent" && req.actor.companyId) {
       return req.actor.companyId;
     }
+    // Board user with a single active company membership → use that company implicitly.
+    // This avoids requiring ?companyId= on every shortname lookup for single-company deploys.
+    if (req.actor.type === "board" && Array.isArray(req.actor.memberships)) {
+      const active = req.actor.memberships.filter((m) => m.status === "active");
+      if (active.length === 1) {
+        assertCompanyAccess(req, active[0].companyId);
+        return active[0].companyId;
+      }
+    }
     return null;
   }
 
