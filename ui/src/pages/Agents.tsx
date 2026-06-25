@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "@/lib/router";
-import { useTranslation } from "@/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
@@ -78,7 +77,6 @@ function filterOrgTree(nodes: OrgNode[], tab: FilterTab): OrgNode[] {
 }
 
 export function Agents() {
-  const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialogActions();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -134,11 +132,11 @@ export function Agents() {
   }, [agents]);
 
   useEffect(() => {
-    setBreadcrumbs([{ label: t("nav.agents") }]);
-  }, [setBreadcrumbs, t]);
+    setBreadcrumbs([{ label: "Agents" }]);
+  }, [setBreadcrumbs]);
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={Bot} message={t("agents.selectCompany")} />;
+    return <EmptyState icon={Bot} message="Select a company to view agents." />;
   }
 
   if (isLoading) {
@@ -154,46 +152,16 @@ export function Agents() {
         <Tabs value={tab} onValueChange={(v) => navigate(`/agents/${v}`)}>
           <PageTabBar
             items={[
-              { value: "all", label: t("agents.tabAll") },
-              { value: "active", label: t("agents.tabActive") },
-              { value: "paused", label: t("agents.tabPaused") },
-              { value: "error", label: t("agents.tabError") },
+              { value: "all", label: "All" },
+              { value: "active", label: "Active" },
+              { value: "paused", label: "Paused" },
+              { value: "error", label: "Error" },
             ]}
             value={tab}
             onValueChange={(v) => navigate(`/agents/${v}`)}
           />
         </Tabs>
         <div className="flex items-center gap-2">
-          {/* Filters */}
-          <div className="relative">
-            <button
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1.5 text-xs transition-colors border border-border",
-                filtersOpen || showTerminated ? "text-foreground bg-accent" : "text-muted-foreground hover:bg-accent/50"
-              )}
-              onClick={() => setFiltersOpen(!filtersOpen)}
-            >
-              <SlidersHorizontal className="h-3 w-3" />
-              {t("agents.filters")}
-              {showTerminated && <span className="ml-0.5 px-1 bg-foreground/10 rounded text-[10px]">1</span>}
-            </button>
-            {filtersOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-48 border border-border bg-popover shadow-md p-1">
-                <button
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs text-left hover:bg-accent/50 transition-colors"
-                  onClick={() => setShowTerminated(!showTerminated)}
-                >
-                  <span className={cn(
-                    "flex items-center justify-center h-3.5 w-3.5 border border-border rounded-sm",
-                    showTerminated && "bg-foreground"
-                  )}>
-                    {showTerminated && <span className="text-background text-[10px] leading-none">&#10003;</span>}
-                  </span>
-                  {t("agents.showTerminated")}
-                </button>
-              </div>
-            )}
-          </div>
           {/* View toggle */}
           {!forceListView && (
             <div className="flex items-center border border-border">
@@ -219,13 +187,13 @@ export function Agents() {
           )}
           <Button size="sm" variant="outline" onClick={openNewAgent}>
             <Plus className="h-3.5 w-3.5 mr-1.5" />
-            {t("agents.newAgent")}
+            New Agent
           </Button>
         </div>
       </div>
 
       {filtered.length > 0 && (
-        <p className="text-xs text-muted-foreground">{t("agents.count", { count: filtered.length })}</p>
+        <p className="text-xs text-muted-foreground">{filtered.length} agent{filtered.length !== 1 ? "s" : ""}</p>
       )}
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
@@ -233,8 +201,8 @@ export function Agents() {
       {agents && agents.length === 0 && (
         <EmptyState
           icon={Bot}
-          message={t("agents.empty")}
-          action={t("agents.newAgent")}
+          message="Create your first agent to get started."
+          action="New Agent"
           onAction={openNewAgent}
         />
       )}

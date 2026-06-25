@@ -258,7 +258,7 @@ function SidebarAgentItem({
   );
 }
 
-export function SidebarAgents() {
+export function SidebarAgents({ streamlined: _streamlined }: { streamlined?: boolean } = {}) {
   const { t } = useTranslation();
   const sortChoices = useMemo<SidebarSectionRadioChoice[]>(
     () => [

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
-  Languages,
   LogOut,
   Megaphone,
   type LucideIcon,
@@ -13,8 +12,6 @@ import type { DeploymentMode } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { authApi } from "@/api/auth";
 import { queryKeys } from "@/lib/queryKeys";
-import { useTranslation } from "@/i18n";
-import { setLocaleOverride } from "@/i18n/resolveLocale";
 import { useSidebar } from "../context/SidebarContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -112,9 +109,6 @@ export function SidebarAccountMenu({
   const queryClient = useQueryClient();
   const { isMobile, setSidebarOpen, collapsed, peeking } = useSidebar();
   const rail = collapsed && !peeking;
-  const { theme, toggleTheme } = useTheme();
-  const { t, i18n: i18nInstance } = useTranslation();
-  const isChinese = i18nInstance.language === "zh-TW";
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
   const { data: session } = useQuery({
@@ -131,10 +125,10 @@ export function SidebarAccountMenu({
     },
   });
 
-  const displayName = session?.user.name?.trim() || t("accountMenu.boardName");
+  const displayName = session?.user.name?.trim() || "Board";
   const secondaryLabel =
-    session?.user.email?.trim() || (deploymentMode === "authenticated" ? t("accountMenu.signedIn") : t("accountMenu.localWorkspaceBoard"));
-  const accountBadge = deploymentMode === "authenticated" ? t("accountMenu.account") : t("accountMenu.local");
+    session?.user.email?.trim() || (deploymentMode === "authenticated" ? "Signed in" : "Local workspace board");
+  const accountBadge = deploymentMode === "authenticated" ? "Account" : "Local";
   const initials = deriveInitials(displayName);
   const profileHref = `/u/${deriveUserSlug(session?.user.name, session?.user.email, session?.user.id)}`;
 
@@ -150,7 +144,7 @@ export function SidebarAccountMenu({
           <button
             type="button"
             className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground"
-            aria-label={t("accountMenu.openAccountMenu")}
+            aria-label="Open account menu"
           >
             <Avatar size="sm">
               {session?.user.image ? <AvatarImage src={session.user.image} alt={displayName} /> : null}
@@ -183,59 +177,43 @@ export function SidebarAccountMenu({
                 </div>
                 <p className="truncate text-sm text-muted-foreground">{secondaryLabel}</p>
                 {version ? (
-                  <p className="mt-1 text-xs text-muted-foreground">{t("accountMenu.version", { version })}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Paperclip v{version}</p>
                 ) : null}
               </div>
             </div>
 
             <div className="mt-4 space-y-1">
               <MenuAction
-                label={t("accountMenu.viewProfile")}
-                description={t("accountMenu.viewProfileDesc")}
+                label="View profile"
+                description="Open your activity, task, and usage ledger."
                 icon={UserRound}
                 href={profileHref}
                 onClick={closeNavigationChrome}
               />
               <MenuAction
-                label={t("accountMenu.editProfile")}
-                description={t("accountMenu.editProfileDesc")}
+                label="Edit profile"
+                description="Update your display name and avatar."
                 icon={UserRoundPen}
                 href={PROFILE_SETTINGS_PATH}
                 onClick={closeNavigationChrome}
               />
               <MenuAction
-                label={t("accountMenu.instanceSettings")}
-                description={t("accountMenu.instanceSettingsDesc")}
-                icon={Settings}
-                href={instanceSettingsTarget}
-                onClick={closeNavigationChrome}
-              />
-              <MenuAction
-                label={t("accountMenu.documentation")}
-                description={t("accountMenu.documentationDesc")}
+                label="Documentation"
+                description="Open Paperclip docs in a new tab."
                 icon={BookOpen}
                 href={DOCS_URL}
                 external
                 onClick={() => setOpen(false)}
               />
               <MenuAction
-                label={theme === "dark" ? t("accountMenu.switchToLight") : t("accountMenu.switchToDark")}
-                description={t("accountMenu.toggleAppearanceDesc")}
-                icon={theme === "dark" ? Sun : Moon}
-                onClick={() => {
-                  toggleTheme();
-                  setOpen(false);
-                }}
+                label="Feedback"
+                description="Share feedback or report an issue."
+                icon={Megaphone}
+                href={FEEDBACK_URL}
+                external
+                onClick={() => setOpen(false)}
               />
-              <MenuAction
-                label={isChinese ? "Switch to English" : "切換為繁體中文"}
-                description={isChinese ? "Display the app in English." : "將介面語言切換為繁體中文。"}
-                icon={Languages}
-                onClick={() => {
-                  setLocaleOverride(isChinese ? "en" : "zh-TW");
-                  setOpen(false);
-                }}
-              />
+              <ThemeToggle variant="menu-action" onAfterToggle={() => setOpen(false)} />
               {deploymentMode === "authenticated" ? (
                 <button
                   type="button"
@@ -251,10 +229,10 @@ export function SidebarAccountMenu({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-foreground">
-                      {signOutMutation.isPending ? t("accountMenu.signingOut") : t("accountMenu.signOut")}
+                      {signOutMutation.isPending ? "Signing out..." : "Sign out"}
                     </span>
                     <span className="block text-xs text-muted-foreground">
-                      {t("accountMenu.signOutDesc")}
+                      End this browser session.
                     </span>
                   </span>
                 </button>

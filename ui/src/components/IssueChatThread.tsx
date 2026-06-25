@@ -30,7 +30,6 @@ import {
   type ReactNode,
 } from "react";
 import { Link, useLocation } from "@/lib/router";
-import { t, useTranslation } from "@/i18n";
 import type {
   Agent,
   FeedbackDataSharingPreference,
@@ -505,22 +504,21 @@ class IssueChatErrorBoundary extends Component<IssueChatErrorBoundaryProps, Issu
 }
 
 function IssueAssigneePausedNotice({ agent }: { agent: Agent | null }) {
-  const { t } = useTranslation();
   if (!agent || agent.status !== "paused") return null;
 
   const pauseDetail =
     agent.pauseReason === "budget"
-      ? t("issues.chat.pausedByBudget")
+      ? "It was paused by a budget hard stop."
       : agent.pauseReason === "system"
-        ? t("issues.chat.pausedBySystem")
-        : t("issues.chat.pausedManually");
+        ? "It was paused by the system."
+        : "It was paused manually.";
 
   return (
     <div className="mb-3 rounded-md border border-orange-300/70 bg-orange-50/90 px-3 py-2.5 text-sm text-orange-950 shadow-sm dark:border-orange-500/40 dark:bg-orange-500/10 dark:text-orange-100">
       <div className="flex items-start gap-2">
         <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-orange-600 dark:text-orange-300" />
         <p className="min-w-0 leading-5">
-          <span className="font-medium">{agent.name}</span> {t("issues.chat.isPaused")} {pauseDetail}
+          <span className="font-medium">{agent.name}</span> is paused. New runs will not start until the agent is resumed. {pauseDetail}
         </p>
       </div>
     </div>
@@ -531,9 +529,9 @@ function fallbackAuthorLabel(message: ThreadMessage) {
   const custom = message.metadata?.custom as Record<string, unknown> | undefined;
   if (typeof custom?.["authorName"] === "string") return custom["authorName"];
   if (typeof custom?.["runAgentName"] === "string") return custom["runAgentName"];
-  if (message.role === "assistant") return t("issues.chat.agent");
-  if (message.role === "user") return t("issues.chat.you");
-  return t("issues.chat.system");
+  if (message.role === "assistant") return "Agent";
+  if (message.role === "user") return "You";
+  return "System";
 }
 
 function fallbackTextParts(message: ThreadMessage) {
@@ -569,16 +567,15 @@ function IssueChatFallbackThread({
   variant: "full" | "embedded";
   externalReferences?: MarkdownExternalReferenceMap;
 }) {
-  const { t } = useTranslation();
   return (
     <div className={cn(variant === "embedded" ? "space-y-3" : "space-y-4")}>
       <div className="rounded-xl border border-amber-300/60 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="space-y-1">
-            <p className="font-medium">{t("issues.chat.rendererError")}</p>
+            <p className="font-medium">Chat renderer hit an internal state error.</p>
             <p className="text-xs opacity-80">
-              {t("issues.chat.rendererErrorHint")}
+              Showing a safe fallback transcript instead of crashing the tasks page.
             </p>
           </div>
         </div>
@@ -613,7 +610,7 @@ function IssueChatFallbackThread({
                       {line}
                     </MarkdownBody>
                   )) : (
-                    <p className="text-sm text-muted-foreground">{t("issues.chat.noMessageContent")}</p>
+                    <p className="text-sm text-muted-foreground">No message content.</p>
                   )}
                 </div>
               </div>
@@ -772,23 +769,8 @@ export function SuccessfulRunHandoffCommentCallout({
 }
 
 function humanizeValue(value: string | null) {
-  if (!value) return t("issues.props.none");
+  if (!value) return "None";
   return value.replace(/_/g, " ");
-}
-
-function formatTimelineAssigneeLabel(
-  assignee: IssueTimelineAssignee,
-  agentMap?: Map<string, Agent>,
-  currentUserId?: string | null,
-  userLabelMap?: ReadonlyMap<string, string> | null,
-) {
-  if (assignee.agentId) {
-    return agentMap?.get(assignee.agentId)?.name ?? assignee.agentId.slice(0, 8);
-  }
-  if (assignee.userId) {
-    return formatAssigneeUserLabel(assignee.userId, currentUserId, userLabelMap) ?? t("issues.chat.board");
-  }
-  return t("issues.props.unassigned");
 }
 
 function initialsForName(name: string) {
@@ -811,9 +793,9 @@ function formatInteractionActorLabel(args: {
   if (userId) {
     return userLabelMap?.get(userId)
       ?? formatAssigneeUserLabel(userId, currentUserId, userLabelMap)
-      ?? t("issues.chat.board");
+      ?? "Board";
   }
-  return t("issues.chat.system");
+  return "System";
 }
 
 export function resolveIssueChatHumanAuthor(args: {
@@ -827,43 +809,13 @@ export function resolveIssueChatHumanAuthor(args: {
   const isCurrentUser = Boolean(authorUserId && currentUserId && authorUserId === currentUserId);
   const resolvedAuthorName = profile?.label?.trim()
     || authorName?.trim()
-    || (authorUserId === "local-board" ? t("issues.chat.board") : (isCurrentUser ? t("issues.chat.you") : t("issues.chat.user")));
+    || (authorUserId === "local-board" ? "Board" : (isCurrentUser ? "You" : "User"));
 
   return {
     isCurrentUser,
     authorName: resolvedAuthorName,
     avatarUrl: profile?.image ?? null,
   };
-}
-
-function formatRunStatusLabel(status: string) {
-  switch (status) {
-    case "timed_out":
-      return t("issues.chat.timedOut");
-    default:
-      return status.replace(/_/g, " ");
-  }
-}
-
-function runStatusClass(status: string) {
-  switch (status) {
-    case "succeeded":
-      return "text-green-700 dark:text-green-300";
-    case "failed":
-    case "error":
-      return "text-red-700 dark:text-red-300";
-    case "timed_out":
-      return "text-orange-700 dark:text-orange-300";
-    case "running":
-      return "text-cyan-700 dark:text-cyan-300";
-    case "queued":
-    case "pending":
-      return "text-amber-700 dark:text-amber-300";
-    case "cancelled":
-      return "text-muted-foreground";
-    default:
-      return "text-foreground";
-  }
 }
 
 function toolCountSummary(toolParts: ToolCallMessagePart[]): string | null {
@@ -875,8 +827,8 @@ function toolCountSummary(toolParts: ToolCallMessagePart[]): string | null {
     else other++;
   }
   const parts: string[] = [];
-  if (commands > 0) parts.push(t("issues.chat.ranCommands", { count: commands }));
-  if (other > 0) parts.push(t("issues.chat.calledTools", { count: other }));
+  if (commands > 0) parts.push(`ran ${commands} command${commands === 1 ? "" : "s"}`);
+  if (other > 0) parts.push(`called ${other} tool${other === 1 ? "" : "s"}`);
   return parts.join(", ");
 }
 
@@ -898,7 +850,6 @@ function IssueChatChainOfThought({
   message: ThreadMessage;
   cotParts: readonly IssueChatCoTPart[];
 }) {
-  const { t } = useTranslation();
   const { agentMap } = useContext(IssueChatCtx);
   const custom = message.metadata.custom as Record<string, unknown>;
   const runAgentId = typeof custom.runAgentId === "string" ? custom.runAgentId : null;
@@ -941,15 +892,15 @@ function IssueChatChainOfThought({
   let headerVerb: string;
   let headerSuffix: string | null = null;
   if (isActive) {
-    headerVerb = t("issues.chat.working");
-    if (liveElapsed) headerSuffix = t("issues.chat.forDuration", { duration: liveElapsed });
+    headerVerb = "Working";
+    if (liveElapsed) headerSuffix = `for ${liveElapsed}`;
   } else if (segmentTiming) {
     const durationMs = segmentTiming.endMs - segmentTiming.startMs;
     const durationText = formatDurationWords(durationMs);
-    headerVerb = t("issues.chat.worked");
-    if (durationText) headerSuffix = t("issues.chat.forDuration", { duration: durationText });
+    headerVerb = "Worked";
+    if (durationText) headerSuffix = `for ${durationText}`;
   } else {
-    headerVerb = t("issues.chat.worked");
+    headerVerb = "Worked";
   }
 
   const toolSummary = toolCountSummary(toolParts);
@@ -1133,7 +1084,6 @@ function IssueChatRollingToolPart({ toolParts }: { toolParts: ToolCallMessagePar
 }
 
 function CopyablePreBlock({ children, className }: { children: string; className?: string }) {
-  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const toastActions = useOptionalToastActions();
   return (
@@ -1145,8 +1095,8 @@ function CopyablePreBlock({ children, className }: { children: string; className
           "absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-foreground group-hover/pre:opacity-100",
           copied && "opacity-100",
         )}
-        title={t("common.copy")}
-        aria-label={t("common.copy")}
+        title="Copy"
+        aria-label="Copy"
         onClick={() => {
           void copyTextToClipboard(children).then(() => {
             setCopied(true);
@@ -1187,7 +1137,6 @@ function IssueChatToolPart({
   result?: unknown;
   isError?: boolean;
 }) {
-  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const rawArgsText = argsText ?? "";
   const parsedArgs = args ?? parseToolPayload(rawArgsText);
@@ -1239,7 +1188,7 @@ function IssueChatToolPart({
             {nonIntentDetails.length > 0 ? (
               <div>
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
-                  {t("issues.chat.input")}
+                  Input
                 </div>
                 <dl className="space-y-1.5">
                   {nonIntentDetails.map((detail) => (
@@ -1257,7 +1206,7 @@ function IssueChatToolPart({
             ) : rawArgsText ? (
               <div>
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
-                  {t("issues.chat.input")}
+                  Input
                 </div>
                 <CopyablePreBlock className="overflow-x-auto rounded-md bg-accent/30 p-2 text-[11px] leading-4 text-foreground/70">{rawArgsText}</CopyablePreBlock>
               </div>
@@ -1265,7 +1214,7 @@ function IssueChatToolPart({
             {result !== undefined ? (
               <div>
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
-                  {t("issues.chat.result")}
+                  Result
                 </div>
                 <CopyablePreBlock className="overflow-x-auto rounded-md bg-accent/30 p-2 text-[11px] leading-4 text-foreground/70">{resultText}</CopyablePreBlock>
               </div>
@@ -1384,7 +1333,6 @@ function IssueChatUserMessage({
   message: ThreadMessage;
   isInterruptingQueuedRun: boolean;
 }) {
-  const { t } = useTranslation();
   const {
     onInterruptQueued,
     onCancelQueued,
@@ -1401,7 +1349,7 @@ function IssueChatUserMessage({
   const sourceTrust = isSourceTrustMetadata(custom.sourceTrust) ? custom.sourceTrust : null;
   const followUpRequested = custom.followUpRequested === true;
   const queueReason = typeof custom.queueReason === "string" ? custom.queueReason : null;
-  const queueBadgeLabel = queueReason === "hold" ? `\u23f8 ${t("issues.chat.deferredWake")}` : t("issues.chat.queued");
+  const queueBadgeLabel = queueReason === "hold" ? "\u23f8 Deferred wake" : "Queued";
   const pending = custom.clientStatus === "pending";
   const deleted = Boolean(custom.deletedAt);
   const queueTargetRunId = typeof custom.queueTargetRunId === "string" ? custom.queueTargetRunId : null;
@@ -1441,7 +1389,7 @@ function IssueChatUserMessage({
         <SourceTrustBadge sourceTrust={sourceTrust} artifactLabel="comment" />
         {followUpRequested ? (
           <Badge variant="outline" className="text-[10px] uppercase tracking-[0.14em]">
-            {t("issues.chat.followUp")}
+            Follow-up
           </Badge>
         ) : null}
       </div>
@@ -1475,7 +1423,7 @@ function IssueChatUserMessage({
                 disabled={isInterruptingQueuedRun}
                 onClick={() => void onInterruptQueued(queueTargetRunId)}
               >
-                {isInterruptingQueuedRun ? t("issues.chat.interrupting") : t("issues.chat.interrupt")}
+                {isInterruptingQueuedRun ? "Interrupting..." : "Interrupt"}
               </Button>
             ) : null}
             {onCancelQueued ? (
@@ -1485,7 +1433,7 @@ function IssueChatUserMessage({
                 className="h-6 border-amber-300 px-2 text-[11px] text-amber-900 hover:bg-amber-100/80 hover:text-amber-950 dark:border-amber-500/40 dark:text-amber-100 dark:hover:bg-amber-500/10"
                 onClick={() => onCancelQueued(commentId)}
               >
-                {t("common.cancel")}
+                Cancel
               </Button>
             ) : null}
           </div>
@@ -1501,7 +1449,7 @@ function IssueChatUserMessage({
 
       {pending ? (
         <div className={cn("mt-1 flex px-1 text-[11px] text-muted-foreground", isCurrentUser ? "justify-end" : "justify-start")}>
-          {t("issues.chat.sending")}
+          Sending...
         </div>
       ) : (
         <div
@@ -1523,24 +1471,43 @@ function IssueChatUserMessage({
               {message.createdAt ? formatDateTime(message.createdAt) : ""}
             </TooltipContent>
           </Tooltip>
-          <button
-            type="button"
-            className="inline-flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-            title={t("issues.chat.copyMessage")}
-            aria-label={t("issues.chat.copyMessage")}
-            onClick={() => {
-              const text = message.content
-                .filter((p): p is { type: "text"; text: string } => p.type === "text")
-                .map((p) => p.text)
-                .join("\n\n");
-              void navigator.clipboard.writeText(text).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              });
-            }}
-          >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          </button>
+          {!deleted ? (
+            <button
+              type="button"
+              className="inline-flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+              title="Copy message"
+              aria-label="Copy message"
+              onClick={() => {
+                const text = message.content
+                  .filter((p): p is { type: "text"; text: string } => p.type === "text")
+                  .map((p) => p.text)
+                  .join("\n\n");
+                void copyTextToClipboard(text).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }).catch((error) => {
+                  toastActions?.pushToast({
+                    title: "Copy failed",
+                    body: error instanceof Error ? error.message : "Unable to copy message",
+                    tone: "error",
+                  });
+                });
+              }}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+          ) : null}
+          {canDeleteComment ? (
+            <button
+              type="button"
+              className="inline-flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors hover:text-destructive"
+              title="Delete comment"
+              aria-label="Delete comment"
+              onClick={handleDeleteComment}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </div>
       )}
     </div>
@@ -1596,15 +1563,14 @@ function IssueChatAssistantMessage({
   isRunActive: boolean;
   isStoppingRun: boolean;
 }) {
-  const { t } = useTranslation();
   const {
     feedbackDataSharingPreference,
     feedbackTermsUrl,
     onVote,
     agentMap,
     onStopRun,
-    stopRunLabel = t("issues.chat.stopRun"),
-    stoppingRunLabel = t("issues.chat.stopping"),
+    stopRunLabel = "Stop run",
+    stoppingRunLabel = "Stopping...",
     stopRunVariant = "stop",
     runFinalizationActions = [],
   } = useContext(IssueChatCtx);
@@ -1614,7 +1580,7 @@ function IssueChatAssistantMessage({
     ? custom.authorName
     : typeof custom.runAgentName === "string"
       ? custom.runAgentName
-      : t("issues.chat.agent");
+      : "Agent";
   const authorAgentId = typeof custom.authorAgentId === "string" ? custom.authorAgentId : null;
   const runId = typeof custom.runId === "string" ? custom.runId : null;
   const runAgentId = typeof custom.runAgentId === "string" ? custom.runAgentId : null;
@@ -1890,7 +1856,7 @@ function IssueChatAssistantMessage({
               {isRunning ? (
                 <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/40 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-cyan-700 dark:text-cyan-200">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  {t("issues.chat.running")}
+                  Running
                 </span>
               ) : null}
             </div>
@@ -1940,94 +1906,7 @@ function IssueChatAssistantMessage({
                 ) : null}
               </div>
 
-              <div className="mt-2 flex items-center gap-1">
-                <button
-                  type="button"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  title={t("issues.chat.copyMessage")}
-                  aria-label={t("issues.chat.copyMessage")}
-                  onClick={() => {
-                    void navigator.clipboard.writeText(copyText).then(() => {
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    });
-                  }}
-                >
-                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                </button>
-                {commentId && onVote ? (
-                  <IssueChatFeedbackButtons
-                    activeVote={activeVote}
-                    sharingPreference={feedbackDataSharingPreference}
-                    termsUrl={feedbackTermsUrl ?? null}
-                    onVote={handleVote}
-                  />
-                ) : null}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <a
-                      href={anchorId ? `#${anchorId}` : undefined}
-                      className="text-[11px] text-muted-foreground hover:text-foreground hover:underline"
-                    >
-                      {message.createdAt ? commentDateLabel(message.createdAt) : ""}
-                    </a>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    {message.createdAt ? formatDateTime(message.createdAt) : ""}
-                  </TooltipContent>
-                </Tooltip>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="text-muted-foreground hover:text-foreground"
-                      title={t("issues.chat.moreActions")}
-                      aria-label={t("issues.chat.moreActions")}
-                    >
-                      <MoreHorizontal className="h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        void navigator.clipboard.writeText(copyText);
-                      }}
-                    >
-                      <Copy className="mr-2 h-3.5 w-3.5" />
-                      {t("issues.chat.copyMessage")}
-                    </DropdownMenuItem>
-                    {canStopRun && onStopRun && runId ? (
-                      <DropdownMenuItem
-                        disabled={isStoppingRun}
-                        className={cn(
-                          stopRunVariant === "pause"
-                            ? "text-amber-700 focus:text-amber-800 dark:text-amber-300 dark:focus:text-amber-200"
-                            : "text-red-700 focus:text-red-800 dark:text-red-300 dark:focus:text-red-200",
-                        )}
-                        onSelect={() => {
-                          void onStopRun(runId);
-                        }}
-                      >
-                        {stopRunVariant === "pause" ? (
-                          <PauseCircle className="mr-2 h-3.5 w-3.5" />
-                        ) : (
-                          <Square className="mr-2 h-3.5 w-3.5 fill-current" />
-                        )}
-                        {isStoppingRun ? stoppingRunLabel : stopRunLabel}
-                      </DropdownMenuItem>
-                    ) : null}
-                    {runHref ? (
-                      <DropdownMenuItem asChild>
-                        <Link to={runHref} target="_blank" rel="noreferrer noopener">
-                          <Search className="mr-2 h-3.5 w-3.5" />
-                          {t("issues.chat.viewRun")}
-                        </Link>
-                      </DropdownMenuItem>
-                    ) : null}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+              {messageActionBar}
             </>
           ) : null}
         </div>
@@ -2047,7 +1926,6 @@ function IssueChatFeedbackButtons({
   termsUrl: string | null;
   onVote: (vote: FeedbackVoteValue, options?: { allowSharing?: boolean; reason?: string }) => Promise<void>;
 }) {
-  const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
   const [optimisticVote, setOptimisticVote] = useState<FeedbackVoteValue | null>(null);
   const [reasonOpen, setReasonOpen] = useState(false);
@@ -2127,8 +2005,8 @@ function IssueChatFeedbackButtons({
             ? "text-green-600 dark:text-green-400"
             : "text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
-        title={t("issues.chat.helpful")}
-        aria-label={t("issues.chat.helpful")}
+        title="Helpful"
+        aria-label="Helpful"
         onClick={handleThumbsUp}
       >
         <ThumbsUp className="h-3.5 w-3.5" />
@@ -2144,19 +2022,19 @@ function IssueChatFeedbackButtons({
                 ? "text-amber-600 dark:text-amber-400"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
-            title={t("issues.chat.needsWork")}
-            aria-label={t("issues.chat.needsWork")}
+            title="Needs work"
+            aria-label="Needs work"
             onClick={handleThumbsDown}
           >
             <ThumbsDown className="h-3.5 w-3.5" />
           </button>
         </PopoverTrigger>
         <PopoverContent side="top" align="start" className="w-80 p-3">
-          <div className="mb-2 text-sm font-medium">{t("issues.chat.feedbackPrompt")}</div>
+          <div className="mb-2 text-sm font-medium">What could have been better?</div>
           <Textarea
             value={downvoteReason}
             onChange={(event) => setDownvoteReason(event.target.value)}
-            placeholder={t("issues.chat.addNote")}
+            placeholder="Add a short note"
             className="min-h-20 resize-y bg-background text-sm"
             disabled={isSaving}
           />
@@ -2171,7 +2049,7 @@ function IssueChatFeedbackButtons({
                 setDownvoteReason("");
               }}
             >
-              {t("issues.chat.dismiss")}
+              Dismiss
             </Button>
             <Button
               type="button"
@@ -2179,7 +2057,7 @@ function IssueChatFeedbackButtons({
               disabled={isSaving || !downvoteReason.trim()}
               onClick={handleSubmitReason}
             >
-              {isSaving ? t("common.savingDots") : t("issues.chat.saveNote")}
+              {isSaving ? "Saving..." : "Save note"}
             </Button>
           </div>
         </PopoverContent>
@@ -2196,18 +2074,21 @@ function IssueChatFeedbackButtons({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("issues.chat.sharingDialogTitle")}</DialogTitle>
+            <DialogTitle>Save your feedback sharing preference</DialogTitle>
             <DialogDescription>
-              {t("issues.chat.sharingDialogDesc")}
+              Choose whether voted AI outputs can be shared with Paperclip Labs. This
+              answer becomes the default for future thumbs up and thumbs down votes.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm text-muted-foreground">
-            <p>{t("issues.chat.sharingSavedLocally")}</p>
+            <p>This vote is always saved locally.</p>
             <p>
-              {t("issues.chat.sharingChoosePrefix")} <span className="font-medium text-foreground">{t("issues.chat.alwaysAllow")}</span> {t("issues.chat.sharingChooseMiddle")}{" "}
-              <span className="font-medium text-foreground">{t("issues.chat.dontAllow")}</span> {t("issues.chat.sharingChooseSuffix")}
+              Choose <span className="font-medium text-foreground">Always allow</span> to share
+              this vote and future voted AI outputs. Choose{" "}
+              <span className="font-medium text-foreground">Don't allow</span> to keep this vote
+              and future votes local.
             </p>
-            <p>{t("issues.chat.sharingChangeLater")}</p>
+            <p>You can change this later in Instance Settings &gt; General.</p>
             {termsUrl ? (
               <a
                 href={termsUrl}
@@ -2215,7 +2096,7 @@ function IssueChatFeedbackButtons({
                 rel="noreferrer"
                 className="inline-flex text-sm text-foreground underline underline-offset-4"
               >
-                {t("issues.chat.readTerms")}
+                Read our terms of service
               </a>
             ) : null}
           </div>
@@ -2232,7 +2113,7 @@ function IssueChatFeedbackButtons({
                 ).then(() => setPendingSharingDialog(null));
               }}
             >
-              {isSaving ? t("common.savingDots") : t("issues.chat.dontAllow")}
+              {isSaving ? "Saving..." : "Don't allow"}
             </Button>
             <Button
               type="button"
@@ -2245,7 +2126,7 @@ function IssueChatFeedbackButtons({
                 }).then(() => setPendingSharingDialog(null));
               }}
             >
-              {isSaving ? t("common.savingDots") : t("issues.chat.alwaysAllow")}
+              {isSaving ? "Saving..." : "Always allow"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2263,7 +2144,6 @@ function ExpiredRequestConfirmationActivity({
   anchorId?: string;
   interaction: RequestConfirmationInteraction;
 }) {
-  const { t } = useTranslation();
   const {
     agentMap,
     currentUserId,
@@ -2298,7 +2178,7 @@ function ExpiredRequestConfirmationActivity({
     <div className="min-w-0 flex-1">
       <div className={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs", isCurrentUser && "justify-end")}>
         <span className="font-medium text-foreground">{actorName}</span>
-        <span className="text-muted-foreground">{t("timeline.updatedThisTask")}</span>
+        <span className="text-muted-foreground">updated this task</span>
         <a
           href={anchorId ? `#${anchorId}` : undefined}
           className="text-xs text-muted-foreground transition-colors hover:text-foreground hover:underline"
@@ -2313,7 +2193,7 @@ function ExpiredRequestConfirmationActivity({
           onClick={() => setExpanded((current) => !current)}
         >
           <ChevronDown className={cn("h-3 w-3 transition-transform", expanded && "rotate-180")} />
-          {expanded ? t("issues.chat.hideConfirmation") : t("issues.chat.expiredConfirmation")}
+          {expanded ? "Hide confirmation" : "Expired confirmation"}
         </button>
       </div>
       {expanded ? (
@@ -2610,7 +2490,6 @@ function SystemNoticeCommentRow({
   message: ThreadMessage;
   anchorId?: string;
 }) {
-  const { t } = useTranslation();
   const { onImageClick, agentMap, issueStatus, successfulRunHandoff } = useContext(IssueChatCtx);
   const toastActions = useOptionalToastActions();
   const custom = message.metadata.custom as Record<string, unknown>;
@@ -2722,8 +2601,8 @@ function SystemNoticeCommentRow({
             <button
               type="button"
               className="inline-flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-              title={t("issues.chat.copyLink")}
-              aria-label={t("issues.chat.copyLinkAria")}
+              title="Copy link"
+              aria-label="Copy link to system notice"
               onClick={handleCopyLink}
             >
               {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Paperclip className="h-3.5 w-3.5" />}
@@ -2732,8 +2611,8 @@ function SystemNoticeCommentRow({
           <button
             type="button"
             className="inline-flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-            title={t("issues.chat.copyNoticeText")}
-            aria-label={t("issues.chat.copyNoticeAria")}
+            title="Copy notice text"
+            aria-label="Copy system notice"
             onClick={handleCopy}
           >
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -2773,7 +2652,6 @@ function IssueChatMetadataRow({
 }
 
 function IssueChatSystemMessage({ message }: { message: ThreadMessage }) {
-  const { t } = useTranslation();
   const {
     agentMap,
     currentUserId,
@@ -2866,7 +2744,7 @@ function IssueChatSystemMessage({ message }: { message: ThreadMessage }) {
         <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
           <span className="font-medium text-foreground">{actorName}</span>
           <span className="text-muted-foreground">
-            {custom.followUpRequested === true ? t("timeline.requestedFollowUp") : t("timeline.updatedThisTask")}
+            {custom.followUpRequested === true ? "requested follow-up" : "updated this task"}
           </span>
           <a
             href={anchorId ? `#${anchorId}` : undefined}
@@ -3587,7 +3465,6 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
   issueWorkMode,
   onWorkModeChange,
 }, forwardedRef) {
-  const { t } = useTranslation();
   const api = useAui();
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -3673,18 +3550,8 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
     if (!trimmed || submitting) return;
 
     const composerHasAssigneePicker = enableReassign && reassignOptions.length > 0;
-    if (
-      composerHasAssigneePicker
-      && isUnassignedReassignValue(reassignTarget)
-      && !unassignedConfirmed
-    ) {
-      toastActions?.pushToast({
-        title: t("issues.chat.noAssigneeSelected"),
-        body: t("issues.chat.noAssigneeBody"),
-        tone: "warn",
-        dedupeKey: `issue-chat-no-assignee:${draftKey ?? ""}`,
-      });
-      setUnassignedConfirmed(true);
+    if (composerHasAssigneePicker && isUnassignedReassignValue(reassignTarget)) {
+      setNoAssigneeDialogOpen(true);
       return;
     }
 
@@ -3781,7 +3648,7 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
       } else {
         setComposerAttachments((prev) => prev.map((item) =>
           item.id === attachmentId
-            ? { ...item, status: "error", error: t("issues.chat.fileTypeUnsupported") }
+            ? { ...item, status: "error", error: "This file type cannot be attached here" }
             : item,
         ));
       }
@@ -3791,7 +3658,7 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
           ? {
               ...item,
               status: "error",
-              error: err instanceof Error ? err.message : t("issues.chat.uploadFailed"),
+              error: err instanceof Error ? err.message : "Upload failed",
             }
           : item,
       ));
@@ -3971,9 +3838,9 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
               <Paperclip className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-sm font-medium text-foreground">{t("issues.chat.dropToUpload")}</div>
+              <div className="text-sm font-medium text-foreground">Drop to upload</div>
               <div className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                {t("issues.chat.dropHint")}
+                Images insert into the reply. Other files are added to this task.
               </div>
             </div>
           </div>
@@ -3984,7 +3851,7 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
         ref={editorRef}
         value={body}
         onChange={setBody}
-        placeholder={t("issues.chat.replyPlaceholder")}
+        placeholder="Reply"
         mentions={mentions}
         onSubmit={handleSubmit}
         imageUploadHandler={onImageUpload}
@@ -4019,12 +3886,12 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
             const sizeLabel = formatAttachmentSize(attachment.size);
             const statusLabel =
               attachment.status === "uploading"
-                ? t("issues.chat.uploadingToIssue")
+                ? "Uploading to task"
                 : attachment.status === "error"
-                  ? attachment.error ?? t("issues.chat.uploadFailed")
+                  ? attachment.error ?? "Upload failed"
                   : attachment.inline
-                    ? t("issues.chat.insertedInline")
-                    : t("issues.chat.attachedToIssue");
+                    ? "Inserted inline"
+                    : "Attached to task";
             return (
               <div
                 key={attachment.id}
@@ -4076,7 +3943,7 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
                 size="icon-sm"
                 onClick={() => attachInputRef.current?.click()}
                 disabled={attaching}
-                title={t("issues.chat.attachFile")}
+                title="Attach file"
               >
                 <Paperclip className="h-4 w-4" />
               </Button>
@@ -4085,16 +3952,8 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
           {canToggleWorkMode ? (
             <Popover open={workModeMenuOpen} onOpenChange={setWorkModeMenuOpen}>
               <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  data-testid="issue-chat-composer-work-mode-menu"
-                  title={t("issues.chat.moreComposerOptions")}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-44 p-1" align="start">
+                {/* Single persistent mode chip (PAP-95b mockup rev 5): yellow in
+                    planning, neutral in standard, caret opens the switch menu. */}
                 <button
                   type="button"
                   data-testid="issue-chat-composer-work-mode-toggle"
@@ -4109,12 +3968,9 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
                     pendingWorkModeMeta.classes.chip,
                   )}
                 >
-                  {isPlanning ? (
-                    <Hammer className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                  ) : (
-                    <ClipboardList className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-300" aria-hidden />
-                  )}
-                  <span>{isPlanning ? t("issues.chat.switchToStandard") : t("issues.chat.switchToPlanning")}</span>
+                  <PendingWorkModeIcon className="h-3.5 w-3.5" aria-hidden />
+                  <span>{pendingWorkModeMeta.label}</span>
+                  <ChevronDown className="h-3 w-3 opacity-60" aria-hidden />
                 </button>
               </PopoverTrigger>
               <PopoverContent
@@ -4153,20 +4009,6 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
               </PopoverContent>
             </Popover>
           ) : null}
-          {canToggleWorkMode && isPlanning ? (
-            <button
-              type="button"
-              data-testid="issue-chat-composer-work-mode-toggle"
-              data-pending-work-mode={pendingWorkMode}
-              aria-pressed
-              title={t("issues.chat.planningModeTitle")}
-              onClick={() => setPendingWorkMode("standard")}
-              className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/60 bg-amber-500/15 px-2 py-1 text-xs text-amber-800 transition-colors hover:bg-amber-500/25 dark:border-amber-500/50 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25"
-            >
-              <ClipboardList className="h-3.5 w-3.5" aria-hidden />
-              <span>{t("issues.chat.planning")}</span>
-            </button>
-          ) : null}
         </div>
 
         {enableReassign && reassignOptions.length > 0 ? (
@@ -4174,14 +4016,14 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
             ref={reassignTriggerRef}
             value={reassignTarget}
             options={reassignOptions}
-            placeholder={t("routines.assignee")}
-            noneLabel={t("issues.props.noAssignee")}
-            searchPlaceholder={t("issues.props.searchAssignees")}
-            emptyMessage={t("routines.noAssigneesFound")}
+            placeholder="Assignee"
+            noneLabel="No assignee"
+            searchPlaceholder="Search assignees..."
+            emptyMessage="No assignees found."
             onChange={setReassignTarget}
             className="h-8 text-xs"
             renderTriggerValue={(option) => {
-              if (!option) return <span className="text-muted-foreground">{t("routines.assignee")}</span>;
+              if (!option) return <span className="text-muted-foreground">Assignee</span>;
               const agentId = option.id.startsWith("agent:") ? option.id.slice("agent:".length) : null;
               const agent = agentId ? agentMap?.get(agentId) : null;
               return (
@@ -4210,7 +4052,7 @@ const IssueChatComposer = forwardRef<IssueChatComposerHandle, IssueChatComposerP
         ) : null}
 
         <Button size="sm" disabled={!canSubmit} onClick={() => void handleSubmit()}>
-          {submitting ? t("issues.chat.posting") : t("issues.chat.send")}
+          {submitting ? "Posting..." : "Send"}
         </Button>
       </div>
 
@@ -4328,7 +4170,6 @@ export function IssueChatThread({
   resumeFromBacklogPending = false,
   externalReferences,
 }: IssueChatThreadProps) {
-  const { t } = useTranslation();
   const location = useLocation();
   const lastScrolledHashRef = useRef<string | null>(null);
   const virtualizedThreadRef = useRef<VirtualizedIssueChatThreadListHandle | null>(null);
@@ -4887,8 +4728,8 @@ export function IssueChatThread({
   const resolvedShowJumpToLatest = showJumpToLatest ?? variant === "full";
   const resolvedEmptyMessage = emptyMessage
     ?? (variant === "embedded"
-      ? t("issues.chat.noRunOutput")
-      : t("issues.chat.conversationEmpty"));
+      ? "No run output yet."
+      : "This task conversation is empty. Start with a message below.");
   const previousErrorBoundaryMessagesRef = useRef<readonly ThreadMessage[] | null>(null);
   const errorBoundaryResetVersionRef = useRef(0);
   if (previousErrorBoundaryMessagesRef.current !== messages) {
@@ -4908,7 +4749,7 @@ export function IssueChatThread({
               onClick={handleJumpToLatest}
               className="text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
-              {t("issues.chat.jumpToLatest")}
+              Jump to latest
             </button>
           </div>
         ) : null}
@@ -4979,10 +4820,10 @@ export function IssueChatThread({
                   {legacyRecoverySourceIssue ? (
                     <SystemNotice
                       tone="info"
-                      label={t("issues.chat.legacyRecoveryLabel")}
+                      label="Legacy recovery task"
                       body={
                         <span>
-                          {t("issues.chat.legacyRecoveryBody")}
+                          Legacy recovery task. Newer recovery actions live on the source task
                           {legacyRecoverySourceIssue.identifier ? (
                             <>
                               {" — "}

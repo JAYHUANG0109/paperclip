@@ -1,6 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, CloudUpload, KeyRound, MailPlus, MonitorCog, Puzzle, Settings, SlidersHorizontal, Users } from "lucide-react";
-import { useTranslation } from "@/i18n";
 import {
   ChevronLeft,
   Clock3,
@@ -44,7 +42,6 @@ function isSandboxProviderOnly(plugin: PluginRecord): boolean {
 }
 
 export function CompanySettingsSidebar() {
-  const { t } = useTranslation();
   const { selectedCompany, selectedCompanyId } = useCompany();
   const { isMobile, setSidebarOpen } = useSidebar();
   const { slots: companySettingsPluginSlots } = usePluginSlots({
@@ -92,12 +89,12 @@ export function CompanySettingsSidebar() {
           className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
         >
           <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{selectedCompany?.name ?? t("settings.nav.company")}</span>
+          <span className="truncate">{selectedCompany?.name ?? "Company"}</span>
         </Link>
         <div className="flex items-center gap-2 px-2 py-1">
           <Settings className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="flex-1 truncate text-sm font-bold text-foreground">
-            {t("settings.nav.companySettings")}
+            Company Settings
           </span>
         </div>
       </div>
@@ -107,24 +104,18 @@ export function CompanySettingsSidebar() {
           Company settings
         </div>
         <div className="flex flex-col gap-0.5">
-          <SidebarNavItem to="/company/settings" label={t("settings.nav.general")} icon={SlidersHorizontal} end />
-          <SidebarNavItem
-            to="/company/settings/environments"
-            label={t("settings.nav.environments")}
-            icon={MonitorCog}
-            end
-          />
+          <SidebarNavItem to="/company/settings" label="General" icon={SlidersHorizontal} end />
           {showCloudUpstream ? (
             <SidebarNavItem
               to="/company/settings/cloud-upstream"
-              label={t("settings.nav.cloudUpstream")}
+              label="Cloud upstream"
               icon={CloudUpload}
               end
             />
           ) : null}
           <SidebarNavItem
             to="/company/settings/members"
-            label={t("settings.nav.members")}
+            label="Members"
             icon={Users}
             badge={badges?.joinRequests ?? 0}
             end
@@ -140,8 +131,8 @@ export function CompanySettingsSidebar() {
                 end
               />
             ))}
-          <SidebarNavItem to="/company/settings/invites" label={t("settings.nav.invites")} icon={MailPlus} end />
-          <SidebarNavItem to="/company/settings/secrets" label={t("settings.nav.secrets")} icon={KeyRound} end />
+          <SidebarNavItem to="/company/settings/invites" label="Invites" icon={MailPlus} end />
+          <SidebarNavItem to="/company/settings/secrets" label="Secrets" icon={KeyRound} end />
         </div>
         <div className="mt-5 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Instance settings

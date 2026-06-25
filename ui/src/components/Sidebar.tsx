@@ -1,6 +1,5 @@
 import {
   Inbox,
-  CalendarDays,
   CircleDot,
   Target,
   LayoutDashboard,
@@ -21,12 +20,9 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useTranslation } from "@/i18n";
 import { NavLink } from "@/lib/router";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
-import { SidebarChat } from "./SidebarChat";
-import { SidebarProjects } from "./SidebarProjects";
 import { SidebarAgents } from "./SidebarAgents";
 import { SidebarProjects } from "./SidebarProjects";
 import { useDialogActions } from "../context/DialogContext";
@@ -44,7 +40,6 @@ import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
 
 export function Sidebar() {
-  const { t } = useTranslation();
   const { openNewIssue } = useDialogActions();
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { isMobile, collapsed, collapseLocked, peeking, toggleCollapsed, setCollapsed } = useSidebar();
@@ -83,40 +78,89 @@ export function Sidebar() {
       {/* Top bar: Company name (bold) + Search — aligned with top sections (no visible border) */}
       <div className="flex items-center gap-1 px-3 h-12 shrink-0">
         <SidebarCompanyMenu />
-        <Button
-          asChild
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground shrink-0"
-          aria-label={t("nav.search", { defaultValue: "Open search" })}
-          title={t("nav.search", { defaultValue: "Open search" })}
-        >
-          <NavLink to="/search">
-            <Search className="h-4 w-4" />
-          </NavLink>
-        </Button>
+        {/* In the collapsed rail the search/toggle controls don't fit beside the
+            logo — keeping them would overflow the 64px rail and squeeze the logo
+            out of alignment with the icon column below it (PAP-10676). They return
+            as soon as the panel is expanded (pinned) or peeking. Expansion in the
+            rail is still reachable via hover-peek + Pin and Cmd/Ctrl+B. */}
+        {!rail ? (
+          <>
+            <Button
+              asChild
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground shrink-0"
+              aria-label="Open search"
+              title="Open search"
+            >
+              <NavLink to="/search">
+                <Search className="h-4 w-4" />
+              </NavLink>
+            </Button>
+            {/* Desktop-only collapse/expand affordance. While peeking (hover flyout
+                over the collapsed rail) it becomes a Pin that promotes the peek to a
+                pinned-expanded sidebar; otherwise it toggles the pinned rail. Mobile
+                uses the off-canvas drawer, so this control is hidden there. It is
+                also hidden while a secondary sidebar forces the rail (collapseLocked):
+                the user cannot expand the primary while a secondary sidebar is shown. */}
+            {!isMobile && !collapseLocked ? (
+              peeking ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground shrink-0"
+                  aria-label="Keep sidebar expanded"
+                  title="Keep sidebar expanded"
+                  onClick={() => setCollapsed(false)}
+                >
+                  <Pin className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground shrink-0"
+                  aria-expanded={!collapsed}
+                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  onClick={() => toggleCollapsed()}
+                >
+                  {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                </Button>
+              )
+            ) : null}
+          </>
+        ) : null}
       </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col gap-4 pointer-coarse:gap-3 px-3 py-2">
         <div className="flex flex-col gap-0.5">
-          {/* New Issue button aligned with nav items */}
-          <button
-            onClick={() => openNewIssue()}
-            data-slot="icon-button"
-            className="flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-          >
-            <SquarePen className="h-4 w-4 shrink-0" />
-            <span className="truncate">{t("nav.newIssue", { defaultValue: "New Issue" })}</span>
-          </button>
-          <SidebarNavItem
-            to="/dashboard"
-            label={t("nav.dashboard", { defaultValue: "Dashboard" })}
-            icon={LayoutDashboard}
-            liveCount={liveRunCount}
-          />
+          {/* New Task button aligned with nav items */}
+          {(() => {
+            const newTaskButton = (
+              <button
+                onClick={() => openNewIssue()}
+                data-slot="icon-button"
+                aria-label={rail ? "New Task" : undefined}
+                className="flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium text-foreground/80 hover:bg-accent/50 hover:text-foreground transition-colors"
+              >
+                <SquarePen className="h-4 w-4 shrink-0" />
+                <span className={rail ? SIDEBAR_RAIL_HIDDEN_LABEL : "truncate"}>New Task</span>
+              </button>
+            );
+            return rail ? (
+              <Tooltip>
+                <TooltipTrigger asChild>{newTaskButton}</TooltipTrigger>
+                <TooltipContent side="right">New Task</TooltipContent>
+              </Tooltip>
+            ) : (
+              newTaskButton
+            );
+          })()}
+          <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
           <SidebarNavItem
             to="/inbox"
-            label={t("nav.inbox", { defaultValue: "Inbox" })}
+            label="Inbox"
             icon={Inbox}
             badge={inboxBadge.inbox}
             badgeLabel="unread"
@@ -128,17 +172,14 @@ export function Sidebar() {
           ) : null}
         </div>
 
-        <SidebarSection label={t("nav.work", { defaultValue: "Work" })}>
-          <SidebarNavItem to="/issues" label={t("nav.issues", { defaultValue: "Issues" })} icon={CircleDot} />
-          <SidebarNavItem to="/calendar" label={t("nav.calendar", { defaultValue: "Calendar" })} icon={CalendarDays} />
-          <SidebarNavItem to="/routines" label={t("nav.routines", { defaultValue: "Routines" })} icon={Repeat} />
-          <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />
+        <SidebarSection label="Work">
+          <SidebarNavItem to="/issues" label="Tasks" icon={CircleDot} />
+          <SidebarNavItem to="/routines" label="Routines" icon={Repeat} />
+          <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+          <SidebarNavItem to="/artifacts" label="Artifacts" icon={Package} />
+          <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
           {showWorkspacesLink ? (
-            <SidebarNavItem
-              to="/workspaces"
-              label={t("nav.workspaces", { defaultValue: "Workspaces" })}
-              icon={GitBranch}
-            />
+            <SidebarNavItem to="/workspaces" label="Workspaces" icon={GitBranch} />
           ) : null}
           {streamlined ? (
             <SidebarNavItem to="/projects" label="Projects" icon={FolderOpen} />
@@ -158,23 +199,16 @@ export function Sidebar() {
           />
         </SidebarSection>
 
-        <SidebarChat />
-
         {/* Classic mode restores the per-project collapsible below Work. */}
         {streamlined ? null : <SidebarProjects />}
 
         <SidebarAgents streamlined={streamlined} />
 
-        <SidebarSection label={t("nav.company", { defaultValue: "Company" })}>
-          <SidebarNavItem to="/org" label={t("nav.org", { defaultValue: "Org" })} icon={Network} />
-          <SidebarNavItem to="/skills" label={t("nav.skills", { defaultValue: "Skills" })} icon={Boxes} />
-          <SidebarNavItem to="/costs" label={t("nav.costs", { defaultValue: "Costs" })} icon={DollarSign} />
-          <SidebarNavItem to="/activity" label={t("nav.activity", { defaultValue: "Activity" })} icon={History} />
-          <SidebarNavItem
-            to="/company/settings"
-            label={t("nav.settings", { defaultValue: "Settings" })}
-            icon={Settings}
-          />
+        <SidebarSection label="Company">
+          <SidebarNavItem to="/org" label="Org" icon={Network} />
+          <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+          <SidebarNavItem to="/activity" label="Activity" icon={History} />
+          <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
         </SidebarSection>
 
         <PluginSlotOutlet

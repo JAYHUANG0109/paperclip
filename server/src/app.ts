@@ -238,7 +238,6 @@ export async function createApp(
   api.use(issueRoutes(db, opts.storageService, {
     feedbackExportService: opts.feedbackExportService,
     pluginWorkerManager: workerManager,
-    restrictVisibility,
   }));
   api.use(issueTreeControlRoutes(db));
   api.use(fileResourceRoutes(db));

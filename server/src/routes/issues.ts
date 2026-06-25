@@ -1087,7 +1087,6 @@ export function issueRoutes(
     taskWatchdogEnqueueWakeup?: TaskWatchdogServiceDeps["enqueueWakeup"] | null;
   } = {},
 ) {
-  const restrictVisibility = opts.restrictVisibility ?? false;
   const router = Router();
   const svc = issueService(db);
   const access = accessService(db);

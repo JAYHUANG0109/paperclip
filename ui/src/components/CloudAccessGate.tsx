@@ -5,38 +5,19 @@ import { ApiError } from "@/api/client";
 import { authApi } from "@/api/auth";
 import { healthApi } from "@/api/health";
 import { queryKeys } from "@/lib/queryKeys";
-import { useTranslation } from "@/i18n";
-
-function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: boolean }) {
-  const { t } = useTranslation();
-  return (
-    <div className="mx-auto max-w-xl py-10">
-      <div className="rounded-lg border border-border bg-card p-6">
-        <h1 className="text-xl font-semibold">{t("cloudAccessGate.setupRequired")}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {hasActiveInvite
-            ? t("cloudAccessGate.setupWithInvite")
-            : t("cloudAccessGate.setupWithoutInvite")}
-        </p>
-        <pre className="mt-4 overflow-x-auto rounded-md border border-border bg-muted/30 p-3 text-xs">
-{`pnpm paperclipai auth bootstrap-ceo`}
-        </pre>
-      </div>
-    </div>
-  );
-}
+import { BootstrapPendingPage } from "@/components/BootstrapPendingPage";
 
 function NoBoardAccessPage() {
-  const { t } = useTranslation();
   return (
     <div className="mx-auto max-w-xl py-10">
       <div className="rounded-lg border border-border bg-card p-6">
-        <h1 className="text-xl font-semibold">{t("cloudAccessGate.noAccessTitle")}</h1>
+        <h1 className="text-xl font-semibold">No company access</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {t("cloudAccessGate.noAccessBody")}
+          This account is signed in, but it does not have an active company membership or instance-admin access on
+          this Paperclip instance.
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
-          {t("cloudAccessGate.noAccessHint")}
+          Use a company invite or sign in with an account that already belongs to this org.
         </p>
       </div>
     </div>
@@ -44,7 +25,6 @@ function NoBoardAccessPage() {
 }
 
 export function CloudAccessGate() {
-  const { t } = useTranslation();
   const location = useLocation();
   const queryClient = useQueryClient();
   const healthQuery = useQuery({
@@ -93,7 +73,7 @@ export function CloudAccessGate() {
     (isAuthenticatedMode && sessionQuery.isLoading) ||
     (isAuthenticatedMode && !isBootstrapPending && !!sessionQuery.data && boardAccessQuery.isLoading)
   ) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">{t("common.loading")}</div>;
+    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
   }
 
   if (healthQuery.error || boardAccessQuery.error) {
@@ -103,7 +83,7 @@ export function CloudAccessGate() {
           ? healthQuery.error.message
           : boardAccessQuery.error instanceof Error
             ? boardAccessQuery.error.message
-            : t("cloudAccessGate.failedToLoad")}
+            : "Failed to load app state"}
       </div>
     );
   }

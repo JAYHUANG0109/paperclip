@@ -8497,50 +8497,59 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             issueContext.assigneeAdapterOverrides,
           )
         : null;
-    const contextProjectId = readNonEmptyString(context.projectId);
-    const executionProjectId = issueContext?.projectId ?? contextProjectId;
-    // Run independent async fetches in parallel to reduce pre-execution latency.
-    const [wakeCommentContext, projectContext, routineEnvContext, taskSession, isolatedWorkspacesEnabled] =
-      await Promise.all([
-        issueContext && wakeCommentId
-          ? db
-              .select({
-                id: issueComments.id,
-                body: issueComments.body,
-                authorType: issueComments.authorType,
-                authorAgentId: issueComments.authorAgentId,
-                authorUserId: issueComments.authorUserId,
-                presentation: issueComments.presentation,
-                metadata: issueComments.metadata,
-              })
-              .from(issueComments)
-              .where(and(
-                eq(issueComments.id, wakeCommentId),
-                eq(issueComments.issueId, issueContext.id),
-                eq(issueComments.companyId, agent.companyId),
-              ))
-              .then((rows) => rows[0] ?? null)
-          : Promise.resolve(null),
-        executionProjectId
-          ? db
-              .select({
-                id: projects.id,
-                executionWorkspacePolicy: projects.executionWorkspacePolicy,
-                env: projects.env,
-              })
-              .from(projects)
-              .where(and(eq(projects.id, executionProjectId), eq(projects.companyId, agent.companyId)))
-              .then((rows) => rows[0] ?? null)
-          : Promise.resolve(null),
-        getRoutineEnvForExecutionIssue(agent.companyId, issueContext),
-        taskKey
-          ? getTaskSession(agent.companyId, agent.id, agent.adapterType, taskKey)
-          : Promise.resolve(null),
-        instanceSettings.getExperimental().then((exp) => exp.enableIsolatedWorkspaces),
-      ]);
+    const isolatedWorkspacesEnabled = (await instanceSettings.getExperimental()).enableIsolatedWorkspaces;
     const issueExecutionWorkspaceSettings = isolatedWorkspacesEnabled
       ? parseIssueExecutionWorkspaceSettings(issueContext?.executionWorkspaceSettings)
       : null;
+    const contextProjectId = readNonEmptyString(context.projectId);
+    const executionProjectId = issueContext?.projectId ?? contextProjectId;
+    const projectContext = executionProjectId
+      ? await db
+          .select({
+            id: projects.id,
+            executionWorkspacePolicy: projects.executionWorkspacePolicy,
+            env: projects.env,
+          })
+          .from(projects)
+          .where(and(eq(projects.id, executionProjectId), eq(projects.companyId, agent.companyId)))
+          .then((rows) => rows[0] ?? null)
+      : null;
+    const acceptedPlanWakeRoutingDecision = issueContext
+      ? await resolveAcceptedPlanWakeRoutingDecision({
+          db,
+          companyId: agent.companyId,
+          agentId: agent.id,
+          issueId,
+          acceptedPlanContinuationWake:
+            readNonEmptyString(context.workspaceRefreshReason) === "accepted_plan_confirmation"
+            || (
+              issueContext.workMode === "planning"
+              && readNonEmptyString(context.interactionKind) === "request_confirmation"
+              && readNonEmptyString(context.interactionStatus) === "accepted"
+            ),
+          contextSnapshot: context,
+        })
+      : null;
+    if (acceptedPlanWakeRoutingDecision) {
+      context.forceFreshSession = true;
+      context.acceptedPlanWakeRouting = {
+        reason: "other_issue_claim_in_flight",
+        otherActiveClaimIssueId: acceptedPlanWakeRoutingDecision.otherActiveClaimIssueId,
+        otherActiveClaimIdentifier: acceptedPlanWakeRoutingDecision.otherActiveClaimIdentifier,
+        otherActiveClaimTitle: acceptedPlanWakeRoutingDecision.otherActiveClaimTitle,
+      };
+      if (acceptedPlanWakeRoutingDecision.suppressAcceptedContinuation) {
+        clearInteractionContinuationWakeContext(context);
+        delete context.workspaceRefreshReason;
+      }
+    } else {
+      delete context.acceptedPlanWakeRouting;
+    }
+    const routineEnvContext = await getRoutineEnvForExecutionIssue(agent.companyId, issueContext);
+    const projectExecutionWorkspacePolicy = gateProjectExecutionWorkspacePolicy(
+      parseProjectExecutionWorkspacePolicy(projectContext?.executionWorkspacePolicy),
+      isolatedWorkspacesEnabled,
+    );
     const trustPreset = resolveCoreTrustPreset({
       companyId: agent.companyId,
       agent: {

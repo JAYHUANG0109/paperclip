@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Link, useParams, useNavigate, useLocation, Navigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PROJECT_COLORS, PROJECT_STATUSES, isUuidLike, type BudgetPolicySummary } from "@paperclipai/shared";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronDown } from "lucide-react";
-import { cn } from "../lib/utils";
 import { PROJECT_COLORS, PROJECT_ICON_NAMES, isUuidLike, type BudgetPolicySummary } from "@paperclipai/shared";
 import { budgetsApi } from "../api/budgets";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
@@ -25,8 +21,6 @@ import { StatusBadge } from "../components/StatusBadge";
 import { ProjectTile } from "../components/ProjectTile";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
-import { ProjectCustomFieldsManager } from "../components/ProjectCustomFieldsManager";
-import { ProjectFieldsTable } from "../components/ProjectFieldsTable";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { ProjectWorkspacesContent } from "../components/ProjectWorkspacesContent";
@@ -47,11 +41,10 @@ import {
   useResourceMembershipMutation,
   useResourceMemberships,
 } from "../hooks/useResourceMemberships";
-import { useTranslation } from "@/i18n";
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "overview" | "list" | "fields" | "plugin-operations" | "workspaces" | "configuration" | "budget";
+type ProjectBaseTab = "overview" | "list" | "plugin-operations" | "workspaces" | "configuration" | "budget";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -68,7 +61,6 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (tab === "configuration") return "configuration";
   if (tab === "budget") return "budget";
   if (tab === "issues") return "list";
-  if (tab === "fields") return "fields";
   if (tab === "plugin-operations") return "plugin-operations";
   if (tab === "workspaces") return "workspaces";
   return null;
@@ -76,124 +68,42 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
 
 /* ── Overview tab content ── */
 
-const PROJECT_STATUS_META: Record<string, { dot: string; label: string }> = {
-  backlog: { dot: "bg-neutral-400", label: "Backlog" },
-  planned: { dot: "bg-blue-500", label: "Planned" },
-  in_progress: { dot: "bg-violet-500", label: "In Progress" },
-  blocked: { dot: "bg-red-500", label: "Blocked" },
-  completed: { dot: "bg-emerald-500", label: "Completed" },
-  cancelled: { dot: "bg-neutral-500", label: "Cancelled" },
-};
-
-function ProjectStatusLabel({ status }: { status: string }) {
-  const { t } = useTranslation();
-  const meta = PROJECT_STATUS_META[status] ?? { dot: "bg-neutral-400", label: status };
-  return (
-    <span className="inline-flex items-center gap-1.5 text-sm">
-      <span className={cn("h-2 w-2 shrink-0 rounded-full", meta.dot)} />
-      {t(`projectStatus.${status}`, { defaultValue: meta.label })}
-    </span>
-  );
-}
-
 function OverviewContent({
   project,
   onUpdate,
   imageUploadHandler,
-  teamOptions = [],
 }: {
-  project: { description: string | null; status: string; targetDate: string | null; team?: string | null };
+  project: { description: string | null; status: string; targetDate: string | null };
   onUpdate: (data: Record<string, unknown>) => void;
   imageUploadHandler?: (file: File) => Promise<string>;
-  teamOptions?: string[];
 }) {
-  const { t } = useTranslation();
   return (
     <div className="space-y-6">
-      {/* Properties first, description at the bottom */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-        <div>
-          <span className="text-muted-foreground">{t("projectDetail.status")}</span>
-          <div className="mt-1">
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className="inline-flex items-center gap-1.5 rounded hover:bg-accent/50 px-1.5 -mx-1.5 py-0.5 transition-colors">
-                  <ProjectStatusLabel status={project.status} />
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-44 p-1">
-                {PROJECT_STATUSES.map((s) => (
-                  <button
-                    key={s}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
-                      s === project.status && "bg-accent",
-                    )}
-                    onClick={() => onUpdate({ status: s })}
-                  >
-                    <ProjectStatusLabel status={s} />
-                  </button>
-                ))}
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-        <div>
-          <span className="text-muted-foreground">{t("projectDetail.targetDate")}</span>
-          <div className="mt-1">
-            <input
-              type="date"
-              value={project.targetDate ?? ""}
-              onChange={(e) => onUpdate({ targetDate: e.target.value || null })}
-              className="rounded border border-border bg-transparent px-1.5 py-0.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring [color-scheme:light] dark:[color-scheme:dark]"
-            />
-          </div>
-        </div>
-        <div>
-          <span className="text-muted-foreground">{t("projectDetail.team", { defaultValue: "Team / 團隊" })}</span>
-          <div className="mt-1">
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className="inline-flex items-center gap-1.5 rounded border border-border hover:bg-accent/50 px-2 py-0.5 text-sm transition-colors">
-                  <span className={cn(!project.team && "text-muted-foreground")}>
-                    {project.team ?? t("projectDetail.noTeam", { defaultValue: "No team" })}
-                  </span>
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-48 p-1">
-                <button
-                  className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", !project.team && "bg-accent")}
-                  onClick={() => onUpdate({ team: null })}
-                >
-                  {t("projectDetail.noTeam", { defaultValue: "No team" })}
-                </button>
-                {teamOptions.map((teamName) => (
-                  <button
-                    key={teamName}
-                    className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50 whitespace-nowrap", teamName === project.team && "bg-accent")}
-                    onClick={() => onUpdate({ team: teamName })}
-                  >
-                    {teamName}
-                  </button>
-                ))}
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-      </div>
-
       <InlineEditor
         value={project.description ?? ""}
         onSave={(description) => onUpdate({ description })}
         nullable
         as="p"
         className="text-sm text-muted-foreground"
-        placeholder={t("projectDetail.addDescription")}
+        placeholder="Add a description..."
         multiline
         imageUploadHandler={imageUploadHandler}
       />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+        <div>
+          <span className="text-muted-foreground">Status</span>
+          <div className="mt-1">
+            <StatusBadge status={project.status} />
+          </div>
+        </div>
+        {project.targetDate && (
+          <div>
+            <span className="text-muted-foreground">Target Date</span>
+            <p>{project.targetDate}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -213,7 +123,6 @@ function ProjectTilePicker({
   onSelectIcon: (icon: string) => void;
   onSelectColor: (color: string | null) => void;
 }) {
-  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -227,15 +136,55 @@ function ProjectTilePicker({
   // Keep the popover open across selections so the user can pick both an icon
   // and a color in one pass; reset the search when it closes.
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="shrink-0 h-5 w-5 rounded-md cursor-pointer hover:ring-2 hover:ring-foreground/20 transition-[box-shadow]"
-        style={{ backgroundColor: currentColor }}
-        aria-label={t("projectDetail.changeColor")}
-      />
-      {open && (
-        <div className="absolute top-full left-0 mt-2 p-2 bg-popover border border-border rounded-lg shadow-lg z-50 w-max">
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setSearch("");
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="shrink-0 rounded-lg cursor-pointer hover:ring-2 hover:ring-foreground/20 transition-[box-shadow]"
+          aria-label="Change project icon and color"
+        >
+          <ProjectTile color={color} icon={icon} size="md" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" align="start">
+        {/* Icon search + grid */}
+        <p className="text-xs font-medium text-muted-foreground mb-2">Icon</p>
+        <Input
+          placeholder="Search icons..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="mb-2 h-8 text-sm"
+          autoFocus
+        />
+        <div className="grid grid-cols-7 gap-1 max-h-40 overflow-y-auto">
+          {filteredIcons.map(([name, Icon]) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onSelectIcon(name)}
+              className={cn(
+                "flex items-center justify-center h-8 w-8 rounded hover:bg-accent transition-colors",
+                (icon ?? DEFAULT_PROJECT_ICON) === name && "bg-accent ring-1 ring-primary",
+              )}
+              title={name}
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+          {filteredIcons.length === 0 && (
+            <p className="col-span-7 text-xs text-muted-foreground text-center py-2">No icons match</p>
+          )}
+        </div>
+
+        {/* Color swatches */}
+        <div className="mt-3 border-t border-border pt-3">
+          <p className="text-xs font-medium text-muted-foreground mb-2">Color</p>
           <div className="grid grid-cols-5 gap-1.5">
             {/* Neutral / reset-to-gray option */}
             <button
@@ -261,8 +210,8 @@ function ProjectTilePicker({
                     ? "ring-2 ring-foreground ring-offset-1 ring-offset-background"
                     : "hover:ring-2 hover:ring-foreground/30"
                 }`}
-                style={{ backgroundColor: color }}
-                aria-label={t("projectDetail.selectColor", { color })}
+                style={{ backgroundColor: swatch }}
+                aria-label={`Select color ${swatch}`}
               />
             ))}
           </div>
@@ -396,7 +345,6 @@ export function ProjectDetail() {
     projectId: string;
     filter?: string;
   }>();
-  const { t } = useTranslation();
   const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { closePanel } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -416,22 +364,6 @@ export function ProjectDetail() {
   }, [companies, companyPrefix]);
   const lookupCompanyId = routeCompanyId ?? selectedCompanyId ?? undefined;
   const canFetchProject = routeProjectRef.length > 0 && (isUuidLike(routeProjectRef) || Boolean(lookupCompanyId));
-  // Team options for the project Team dropdown — derived from the teams defined on agents
-  // (metadata.teams) plus any existing project team, so projects pick from a consistent set.
-  const { data: teamSourceAgents } = useQuery({
-    queryKey: queryKeys.agents.list(lookupCompanyId ?? "__none__"),
-    queryFn: () => agentsApi.list(lookupCompanyId!),
-    enabled: !!lookupCompanyId,
-  });
-  const projectTeamOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const a of teamSourceAgents ?? []) {
-      const md = (a.metadata as Record<string, unknown> | null);
-      const teams = Array.isArray(md?.teams) ? (md!.teams as unknown[]) : [];
-      for (const tname of teams) if (typeof tname === "string" && tname.trim()) set.add(tname.trim());
-    }
-    return Array.from(set).sort((x, y) => x.localeCompare(y));
-  }, [teamSourceAgents]);
   const activeRouteTab = routeProjectRef ? resolveProjectTab(location.pathname, routeProjectRef) : null;
   const pluginTabFromSearch = useMemo(() => {
     const tab = new URLSearchParams(location.search).get("tab");
@@ -536,17 +468,17 @@ export function ProjectDetail() {
       ),
     onSuccess: (updatedProject, archived) => {
       invalidateProject();
-      const name = updatedProject?.name ?? project?.name ?? t("projectDetail.projectFallback");
+      const name = updatedProject?.name ?? project?.name ?? "Project";
       if (archived) {
-        pushToast({ title: t("projectDetail.archived", { name }), tone: "success" });
+        pushToast({ title: `"${name}" has been archived`, tone: "success" });
         navigate("/dashboard");
       } else {
-        pushToast({ title: t("projectDetail.unarchived", { name }), tone: "success" });
+        pushToast({ title: `"${name}" has been unarchived`, tone: "success" });
       }
     },
     onError: (_, archived) => {
       pushToast({
-        title: archived ? t("projectDetail.failedArchive") : t("projectDetail.failedUnarchive"),
+        title: archived ? "Failed to archive project" : "Failed to unarchive project",
         tone: "error",
       });
     },
@@ -569,10 +501,10 @@ export function ProjectDetail() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: t("projectDetail.breadcrumb"), href: "/projects" },
-      { label: project?.name ?? routeProjectRef ?? t("projectDetail.projectFallback") },
+      { label: "Projects", href: "/projects" },
+      { label: project?.name ?? routeProjectRef ?? "Project" },
     ]);
-  }, [setBreadcrumbs, project, routeProjectRef, t]);
+  }, [setBreadcrumbs, project, routeProjectRef]);
 
   useEffect(() => {
     if (!project) return;
@@ -591,10 +523,6 @@ export function ProjectDetail() {
     }
     if (activeTab === "budget") {
       navigate(`/projects/${canonicalProjectRef}/budget`, { replace: true });
-      return;
-    }
-    if (activeTab === "fields") {
-      navigate(`/projects/${canonicalProjectRef}/fields`, { replace: true });
       return;
     }
     if (activeTab === "plugin-operations") {
@@ -684,7 +612,7 @@ export function ProjectDetail() {
       companyId: resolvedCompanyId ?? "",
       scopeType: "project",
       scopeId: project?.id ?? routeProjectRef,
-      scopeName: project?.name ?? t("projectDetail.projectFallback"),
+      scopeName: project?.name ?? "Project",
       metric: "billed_cents",
       windowKind: "lifetime",
       amount: 0,
@@ -701,7 +629,7 @@ export function ProjectDetail() {
       windowStart: new Date(),
       windowEnd: new Date(),
     } satisfies BudgetPolicySummary;
-  }, [budgetOverview?.policies, project, resolvedCompanyId, routeProjectRef, t]);
+  }, [budgetOverview?.policies, project, resolvedCompanyId, routeProjectRef]);
 
   const budgetMutation = useMutation({
     mutationFn: (amount: number) =>
@@ -780,8 +708,6 @@ export function ProjectDetail() {
     }
     if (tab === "overview") {
       navigate(`/projects/${canonicalProjectRef}/overview`);
-    } else if (tab === "fields") {
-      navigate(`/projects/${canonicalProjectRef}/fields`);
     } else if (tab === "workspaces") {
       navigate(`/projects/${canonicalProjectRef}/workspaces`);
     } else if (tab === "budget") {
@@ -800,7 +726,7 @@ export function ProjectDetail() {
       {showLeftProjectNotice ? (
         <div className="flex items-center gap-3 border border-yellow-300/35 bg-yellow-300/10 px-3 py-2 text-sm text-yellow-100">
           <p className="min-w-0 flex-1">
-            {t("projectDetail.leftProjectNotice")}
+            You left this project. It no longer appears in your sidebar.
           </p>
           <MembershipAction
             compact
@@ -824,7 +750,7 @@ export function ProjectDetail() {
           <button
             type="button"
             className="h-6 w-6 shrink-0 text-yellow-100/70 hover:text-yellow-100"
-            aria-label={t("projectDetail.dismissNotice")}
+            aria-label="Dismiss project membership notice"
             onClick={() => setDismissedLeftProjectIds((current) => new Set(current).add(project.id))}
           >
             ×
@@ -850,13 +776,13 @@ export function ProjectDetail() {
           {project.pauseReason === "budget" ? (
             <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-red-200">
               <span className="h-2 w-2 rounded-full bg-red-400" />
-              {t("projectDetail.pausedByBudget")}
+              Paused by budget hard stop
             </div>
           ) : null}
           {project.managedByPlugin ? (
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: project.color ?? "#6366f1" }} />
-              {t("projectDetail.managedBy", { name: project.managedByPlugin.pluginDisplayName })}
+              Managed by {project.managedByPlugin.pluginDisplayName}
             </div>
           ) : null}
         </div>
@@ -896,13 +822,12 @@ export function ProjectDetail() {
       <Tabs value={activeTab ?? "list"} onValueChange={(value) => handleTabChange(value as ProjectTab)}>
         <PageTabBar
           items={[
-            { value: "list", label: t("projectDetail.tab.issues") },
-            { value: "overview", label: t("projectDetail.tab.overview") },
-            { value: "fields", label: t("projectDetail.tab.fields", { defaultValue: "欄位" }) },
-            ...(project.managedByPlugin ? [{ value: "plugin-operations", label: t("projectDetail.tab.pluginOperations") }] : []),
-            ...(showWorkspacesTab ? [{ value: "workspaces", label: t("projectDetail.tab.workspaces") }] : []),
-            { value: "configuration", label: t("projectDetail.tab.configuration") },
-            { value: "budget", label: t("projectDetail.tab.budget") },
+            { value: "list", label: "Tasks" },
+            { value: "overview", label: "Overview" },
+            ...(project.managedByPlugin ? [{ value: "plugin-operations", label: "Plugin operations" }] : []),
+            ...(showWorkspacesTab ? [{ value: "workspaces", label: "Workspaces" }] : []),
+            { value: "configuration", label: "Configuration" },
+            { value: "budget", label: "Budget" },
             ...pluginTabItems.map((item) => ({
               value: item.value,
               label: item.label,
@@ -915,32 +840,18 @@ export function ProjectDetail() {
       </Tabs>
 
       {activeTab === "overview" && (
-        <div className="space-y-4">
-          <OverviewContent
-            project={project}
-            teamOptions={projectTeamOptions}
-            onUpdate={(data) => updateProject.mutate(data)}
-            imageUploadHandler={async (file) => {
-              const asset = await uploadImage.mutateAsync(file);
-              return asset.contentPath;
-            }}
-          />
-          {project?.id && resolvedCompanyId && (
-            <ProjectCustomFieldsManager projectId={project.id} companyId={resolvedCompanyId} />
-          )}
-        </div>
+        <OverviewContent
+          project={project}
+          onUpdate={(data) => updateProject.mutate(data)}
+          imageUploadHandler={async (file) => {
+            const asset = await uploadImage.mutateAsync(file);
+            return asset.contentPath;
+          }}
+        />
       )}
 
       {activeTab === "list" && project?.id && resolvedCompanyId && (
         <ProjectIssuesList projectId={project.id} companyId={resolvedCompanyId} />
-      )}
-
-      {activeTab === "fields" && project?.id && resolvedCompanyId && (
-        <ProjectFieldsTable
-          projectId={project.id}
-          companyId={resolvedCompanyId}
-          projectRef={canonicalProjectRef}
-        />
       )}
 
       {activeTab === "plugin-operations" && project?.id && resolvedCompanyId && project.managedByPlugin && (
@@ -964,7 +875,7 @@ export function ProjectDetail() {
             />
           )
         ) : (
-          <p className="text-sm text-muted-foreground">{t("projectDetail.loadingWorkspaces")}</p>
+          <p className="text-sm text-muted-foreground">Loading workspaces...</p>
         )
       ) : null}
 

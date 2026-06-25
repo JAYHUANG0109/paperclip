@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { IssueBlockerAttention } from "@paperclipai/shared";
-import { useTranslation } from "@/i18n";
 import { cn } from "../lib/utils";
 import { StatusGlyph, type StatusGlyphSize } from "./StatusGlyph";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -78,7 +77,6 @@ function blockedAttentionLabel(blockerAttention: IssueBlockerAttention | null | 
  */
 export function StatusIcon({ status, blockerAttention, onChange, className, showLabel, size = "md" }: StatusIconProps) {
   const [open, setOpen] = useState(false);
-  const label = (s: string) => t(`status.${s}`, { defaultValue: statusLabel(s) });
   const isCoveredBlocked = status === "blocked" && blockerAttention?.state === "covered";
   const ariaLabel = status === "blocked" ? blockedAttentionLabel(blockerAttention) : statusLabel(status);
   const glyphStatus = isCoveredBlocked ? "in_queue" : status;
