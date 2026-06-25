@@ -15,7 +15,7 @@ import { trackProjectCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
 import { projectService, logActivity, workspaceOperationService } from "../services/index.js";
 import { conflict, forbidden } from "../errors.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, getActorInfo, isPrivilegedMemberViewer } from "./authz.js";
 import {
   buildWorkspaceRuntimeDesiredStatePatch,
   listConfiguredRuntimeServiceEntries,
@@ -192,6 +192,16 @@ export function projectRoutes(db: Db) {
     }
     assertCompanyAccess(req, existing.companyId);
     const body = { ...req.body };
+    // Only project leaders/admins may change a project's status.
+    if (body.status !== undefined && body.status !== existing.status) {
+      const isPrivileged = isPrivilegedMemberViewer(req, existing.companyId, true);
+      const isProjectOwner =
+        req.actor.type === "board" && req.actor.userId && req.actor.userId === existing.ownerUserId;
+      if (!isPrivileged && !isProjectOwner) {
+        res.status(403).json({ error: "Only project leaders or admins can change the project status" });
+        return;
+      }
+    }
     assertNoAgentHostWorkspaceCommandMutation(
       req,
       collectProjectExecutionWorkspaceCommandPaths(body.executionWorkspacePolicy),
