@@ -2546,7 +2546,10 @@
     "revoke": "撤銷",
     "inactive": "未啟用",
     "loadingMore": "載入更多…",
-    "viewMore": "檢視更多"
+    "viewMore": "檢視更多",
+    "guestProjects": "訪客專案存取",
+    "guestProjectsDesc": "選擇此訪客加入後可存取的私密專案（選填）。",
+    "noProjects": "尚無專案"
   },
   "adapterManager": {
     "external": "外部",
@@ -3635,7 +3638,8 @@
       "removeMemberFailed": "無法移除成員",
       "issuesCleanedUp_one": "已清理 {{count}} 個指派的議題。",
       "issuesCleanedUp_other": "已清理 {{count}} 個指派的議題。"
-    }
+    },
+    "guestBadge": "訪客"
   },
   "projects": {
     "selectCompany": "請選擇公司以檢視專案。",

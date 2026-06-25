@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, ExternalLink, MailPlus } from "lucide-react";
 import { accessApi } from "@/api/access";
+import { projectsApi } from "@/api/projects";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
@@ -55,6 +56,7 @@ export function CompanyInvites() {
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
   const [humanRole, setHumanRole] = useState<"owner" | "admin" | "operator" | "viewer">("operator");
+  const [guestProjectIds, setGuestProjectIds] = useState<string[]>([]);
   const [latestInviteUrl, setLatestInviteUrl] = useState<string | null>(null);
   const [latestInviteCopied, setLatestInviteCopied] = useState(false);
   const latestInviteInputRef = useRef<HTMLInputElement | null>(null);
@@ -149,16 +151,24 @@ export function CompanyInvites() {
     [invitesQuery.data?.pages],
   );
 
+  const { data: projects } = useQuery({
+    queryKey: queryKeys.projects.list(selectedCompanyId!),
+    queryFn: () => projectsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
   const createInviteMutation = useMutation({
     mutationFn: () =>
       accessApi.createCompanyInvite(selectedCompanyId!, {
         allowedJoinTypes: "human",
         humanRole,
         agentMessage: null,
+        defaultsPayload: humanRole === "viewer" && guestProjectIds.length > 0 ? { guestProjectIds } : null,
       }),
     onSuccess: async (invite) => {
       setLatestInviteUrl(invite.inviteUrl);
       setLatestInviteCopied(false);
+      if (humanRole !== "viewer") setGuestProjectIds([]);
       const copied = await copyText(invite.inviteUrl, t("companyInvites.copyManualBelow"));
 
       await queryClient.invalidateQueries({ queryKey: inviteHistoryQueryKey });
@@ -265,6 +275,46 @@ export function CompanyInvites() {
             })}
           </div>
         </fieldset>
+
+
+        {/* Phase 7: guest project picker — shown when viewer role selected */}
+        {humanRole === "viewer" && (
+          <div className="rounded-lg border border-border px-4 py-3 space-y-2">
+            <div className="text-sm font-medium text-foreground">
+              {t("companyInvites.guestProjects", { defaultValue: "訪客專案存取 Guest project access" })}
+            </div>
+            <p className="text-[12px] text-muted-foreground">
+              {t("companyInvites.guestProjectsDesc", { defaultValue: "選擇此訪客加入後可存取的私密專案（選填）。" })}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {(projects ?? []).map((proj) => {
+                const selected = guestProjectIds.includes(proj.id);
+                return (
+                  <button
+                    key={proj.id}
+                    type="button"
+                    onClick={() => setGuestProjectIds((ids) =>
+                      selected ? ids.filter((id) => id !== proj.id) : [...ids, proj.id]
+                    )}
+                    className={[
+                      "rounded-full border px-2.5 py-0.5 text-[12px] transition-colors",
+                      selected
+                        ? "border-primary/40 bg-primary/10 text-foreground"
+                        : "border-border text-muted-foreground hover:border-ring hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    {proj.name}
+                  </button>
+                );
+              })}
+              {!projects?.length && (
+                <span className="text-[12px] text-muted-foreground">
+                  {t("companyInvites.noProjects", { defaultValue: "尚無專案" })}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground">
           {t("companyInvites.singleUseNotice")}

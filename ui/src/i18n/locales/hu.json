@@ -2546,7 +2546,10 @@
     "revoke": "Revoke",
     "inactive": "Inactive",
     "loadingMore": "Loading more…",
-    "viewMore": "View more"
+    "viewMore": "View more",
+    "guestProjects": "Guest project access",
+    "guestProjectsDesc": "Select which projects this guest can access after joining (optional).",
+    "noProjects": "No projects yet"
   },
   "adapterManager": {
     "external": "External",
@@ -3635,7 +3638,8 @@
       "removeMemberFailed": "Failed to remove member",
       "issuesCleanedUp_one": "{{count}} assigned issue cleaned up.",
       "issuesCleanedUp_other": "{{count}} assigned issues cleaned up."
-    }
+    },
+    "guestBadge": "Guest"
   },
   "projects": {
     "selectCompany": "Select a company to view projects.",

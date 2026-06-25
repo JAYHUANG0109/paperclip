@@ -2546,7 +2546,10 @@
     "revoke": "撤销",
     "inactive": "未启用",
     "loadingMore": "加载更多…",
-    "viewMore": "查看更多"
+    "viewMore": "查看更多",
+    "guestProjects": "Guest project access",
+    "guestProjectsDesc": "Select which projects this guest can access after joining (optional).",
+    "noProjects": "No projects yet"
   },
   "adapterManager": {
     "external": "外部",
@@ -3635,7 +3638,8 @@
       "removeMemberFailed": "无法移除成员",
       "issuesCleanedUp_one": "已清理 {{count}} 个指派的议题。",
       "issuesCleanedUp_other": "已清理 {{count}} 个指派的议题。"
-    }
+    },
+    "guestBadge": "Guest"
   },
   "projects": {
     "selectCompany": "请选择公司以查看项目。",

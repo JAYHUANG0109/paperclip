@@ -27,6 +27,7 @@ import {
   invites,
   joinRequests,
   principalPermissionGrants,
+  projectAccessMembers,
 } from "@paperclipai/db";
 import {
   acceptInviteSchema,
@@ -2900,6 +2901,29 @@ export function accessRoutes(
       grants,
       input.invite.invitedByUserId ?? null,
     );
+
+    // Phase 7: if the invite carried guestProjectIds, add the new member to those projects.
+    const guestProjectIds = (() => {
+      const raw = (input.invite.defaultsPayload as Record<string, unknown> | null)?.guestProjectIds;
+      if (!Array.isArray(raw)) return [];
+      return raw.filter((id): id is string => typeof id === "string" && isUuidLike(id));
+    })();
+    if (guestProjectIds.length > 0 && input.joinRequest.requestingUserId) {
+      await Promise.all(
+        guestProjectIds.map((projectId) =>
+          db
+            .insert(projectAccessMembers)
+            .values({
+              companyId: input.companyId,
+              projectId,
+              principalType: "user",
+              principalId: input.joinRequest.requestingUserId!,
+              projectRole: "viewer",
+            })
+            .onConflictDoNothing(),
+        ),
+      );
+    }
 
     if (input.joinRequest.status === "approved") {
       return input.joinRequest;
