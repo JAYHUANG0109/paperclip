@@ -21,6 +21,8 @@ import { StatusBadge } from "../components/StatusBadge";
 import { ProjectTile } from "../components/ProjectTile";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
+import { ProjectFieldsTable } from "../components/ProjectFieldsTable";
+import { ProjectCustomFieldsManager } from "../components/ProjectCustomFieldsManager";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { ProjectWorkspacesContent } from "../components/ProjectWorkspacesContent";
@@ -44,7 +46,7 @@ import {
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "overview" | "list" | "plugin-operations" | "workspaces" | "configuration" | "budget";
+type ProjectBaseTab = "overview" | "list" | "fields" | "plugin-operations" | "workspaces" | "configuration" | "budget";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -61,6 +63,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (tab === "configuration") return "configuration";
   if (tab === "budget") return "budget";
   if (tab === "issues") return "list";
+  if (tab === "fields") return "fields";
   if (tab === "plugin-operations") return "plugin-operations";
   if (tab === "workspaces") return "workspaces";
   return null;
@@ -533,6 +536,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/workspaces`, { replace: true });
       return;
     }
+    if (activeTab === "fields") {
+      navigate(`/projects/${canonicalProjectRef}/fields`, { replace: true });
+      return;
+    }
     if (activeTab === "list") {
       if (filter) {
         navigate(`/projects/${canonicalProjectRef}/issues/${filter}`, { replace: true });
@@ -716,6 +723,8 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/plugin-operations`);
     } else if (tab === "configuration") {
       navigate(`/projects/${canonicalProjectRef}/configuration`);
+    } else if (tab === "fields") {
+      navigate(`/projects/${canonicalProjectRef}/fields`);
     } else {
       navigate(`/projects/${canonicalProjectRef}/issues`);
     }
@@ -824,6 +833,7 @@ export function ProjectDetail() {
           items={[
             { value: "list", label: "Tasks" },
             { value: "overview", label: "Overview" },
+            { value: "fields", label: "欄位" },
             ...(project.managedByPlugin ? [{ value: "plugin-operations", label: "Plugin operations" }] : []),
             ...(showWorkspacesTab ? [{ value: "workspaces", label: "Workspaces" }] : []),
             { value: "configuration", label: "Configuration" },
@@ -840,18 +850,31 @@ export function ProjectDetail() {
       </Tabs>
 
       {activeTab === "overview" && (
-        <OverviewContent
-          project={project}
-          onUpdate={(data) => updateProject.mutate(data)}
-          imageUploadHandler={async (file) => {
-            const asset = await uploadImage.mutateAsync(file);
-            return asset.contentPath;
-          }}
-        />
+        <div className="space-y-4">
+          <OverviewContent
+            project={project}
+            onUpdate={(data) => updateProject.mutate(data)}
+            imageUploadHandler={async (file) => {
+              const asset = await uploadImage.mutateAsync(file);
+              return asset.contentPath;
+            }}
+          />
+          {project?.id && resolvedCompanyId && (
+            <ProjectCustomFieldsManager projectId={project.id} companyId={resolvedCompanyId} />
+          )}
+        </div>
       )}
 
       {activeTab === "list" && project?.id && resolvedCompanyId && (
         <ProjectIssuesList projectId={project.id} companyId={resolvedCompanyId} />
+      )}
+
+      {activeTab === "fields" && project?.id && resolvedCompanyId && (
+        <ProjectFieldsTable
+          projectId={project.id}
+          companyId={resolvedCompanyId}
+          projectRef={canonicalProjectRef}
+        />
       )}
 
       {activeTab === "plugin-operations" && project?.id && resolvedCompanyId && project.managedByPlugin && (

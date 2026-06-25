@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AdapterModel } from "../api/agents";
 import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
+import { IssueCustomFields } from "./IssueCustomFields";
 import { authApi } from "../api/auth";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -2647,6 +2648,12 @@ export function IssueProperties({
             <span className="text-sm font-mono">{issue.requestDepth}</span>
           </PropertyRow>
         )}
+
+        {issue.projectId ? (
+          <div className="px-1 py-1">
+            <IssueCustomFields issueId={issue.id} projectId={issue.projectId} companyId={companyId} />
+          </div>
+        ) : null}
       </div>
 
       {hasWorkspaceRuntimeControls || issue.currentExecutionWorkspace?.branchName || issue.currentExecutionWorkspace?.cwd || issue.executionWorkspaceId ? (
