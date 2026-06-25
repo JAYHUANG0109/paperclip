@@ -4928,6 +4928,7 @@
     "tableEmpty": "This project has no custom fields yet. Create them on the Overview tab to see a field view here.",
     "tableFilter": "Filter issues or field values…",
     "tableIssue": "Issue",
-    "tableNoRows": "No matching issues"
+    "tableNoRows": "No matching issues",
+    "clearFilter": "Clear"
   }
 }

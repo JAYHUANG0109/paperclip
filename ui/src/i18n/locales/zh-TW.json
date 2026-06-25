@@ -4928,6 +4928,7 @@
     "tableEmpty": "此專案尚未加入自訂欄位。到「總覽」分頁建立欄位後即可在此以欄位檢視。",
     "tableFilter": "篩選議題或欄位值…",
     "tableIssue": "議題",
-    "tableNoRows": "沒有符合的議題"
+    "tableNoRows": "沒有符合的議題",
+    "clearFilter": "清除"
   }
 }
