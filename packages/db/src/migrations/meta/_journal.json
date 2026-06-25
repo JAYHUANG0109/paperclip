@@ -652,6 +652,13 @@
       "when": 1782292347775,
       "tag": "0092_bright_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1782346899022,
+      "tag": "0093_mighty_ares",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,11 @@ export const projects = pgTable(
     description: text("description"),
     status: text("status").notNull().default("backlog"),
     leadAgentId: uuid("lead_agent_id").references(() => agents.id),
+    // Phase 5: human project owner + visibility. visibility 'company' = all members
+    // (current behavior); 'private' = only project_access_members. Gated behind a
+    // feature flag; default 'company' keeps existing behavior unchanged.
+    ownerUserId: text("owner_user_id"),
+    visibility: text("visibility").notNull().default("company"),
     targetDate: date("target_date"),
     color: text("color"),
     env: jsonb("env").$type<AgentEnvConfig>(),
