@@ -6,6 +6,7 @@ import {
   type ProjectCustomField,
   type IssueCustomFieldValue,
 } from "../api/custom-fields";
+import { agentsApi } from "../api/agents";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -36,6 +37,19 @@ export function IssueCustomFields({ issueId, projectId, companyId }: IssueCustom
     enabled: !!issueId,
   });
 
+  // People-type fields resolve against the company's agents (each agent is
+  // paired to a user), so the picker offers the agent roster.
+  const hasPeopleField = (projectFields ?? []).some((f) => f.type === "people");
+  const { data: agents } = useQuery({
+    queryKey: ["agents", "list", companyId],
+    queryFn: () => agentsApi.list(companyId!),
+    enabled: !!companyId && hasPeopleField,
+  });
+  const agentOptions = useMemo(
+    () => (agents ?? []).map((a) => ({ id: a.id, label: a.name })),
+    [agents],
+  );
+
   const valueByFieldId = useMemo(() => {
     const map = new Map<string, IssueCustomFieldValue>();
     for (const v of issueValues ?? []) map.set(v.fieldId, v);
@@ -63,6 +77,7 @@ export function IssueCustomFields({ issueId, projectId, companyId }: IssueCustom
             key={field.fieldId}
             field={field}
             value={valueByFieldId.get(field.fieldId)?.value ?? null}
+            agentOptions={agentOptions}
             disabled={setValue.isPending}
             onChange={(value) => setValue.mutate({ fieldId: field.fieldId, value })}
           />
@@ -75,11 +90,12 @@ export function IssueCustomFields({ issueId, projectId, companyId }: IssueCustom
 interface FieldRowProps {
   field: ProjectCustomField;
   value: Record<string, unknown> | null;
+  agentOptions: { id: string; label: string }[];
   disabled: boolean;
   onChange: (value: Record<string, unknown> | null) => void;
 }
 
-function FieldRow({ field, value, disabled, onChange }: FieldRowProps) {
+function FieldRow({ field, value, agentOptions, disabled, onChange }: FieldRowProps) {
   const { t } = useTranslation();
   const options = field.options?.options ?? [];
 
@@ -151,9 +167,13 @@ function FieldRow({ field, value, disabled, onChange }: FieldRowProps) {
         )}
 
         {field.type === "people" && (
-          <span className="text-[12px] italic text-muted-foreground">
-            {t("customFields.peopleUnsupported", { defaultValue: "（人員欄位即將推出）" })}
-          </span>
+          <SelectEditor
+            options={agentOptions}
+            multi={false}
+            selectedIds={typeof value?.agentId === "string" ? [value.agentId as string] : []}
+            disabled={disabled}
+            onChange={(ids) => onChange(ids.length ? { agentId: ids[0] } : null)}
+          />
         )}
       </div>
     </div>
