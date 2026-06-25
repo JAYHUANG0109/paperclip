@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
   agentMemberships,
+  projectAccessMembers,
   companies,
   companyMemberships,
   createDb,
@@ -1260,6 +1261,160 @@ describeEmbeddedPostgres("authorization service", () => {
     } finally {
       delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
     }
+  });
+
+
+
+  // ============================================================
+  // Phase 5: per-project privacy tests
+  // ============================================================
+
+  it("Phase5 (flag ON): private project is hidden from non-member operator", async () => {
+    process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
+    try {
+      const company = await createCompany(db, "P5_HideOperator");
+      const project = await db.insert(projects).values({
+        companyId: company.id,
+        name: "Secret Project",
+        issuePrefix: randomUUID().slice(0,6).toUpperCase(),
+        visibility: "private",
+      }).returning().then(r=>r[0]!);
+      const operatorId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: operatorId,
+        status: "active", membershipRole: "operator",
+      });
+      const decision = await authorizationService(db).decide({
+        actor: { type: "board", userId: operatorId, source: "session" },
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      });
+      expect(decision).toMatchObject({ allowed: false, reason: "deny_scope" });
+    } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
+  });
+
+  it("Phase5 (flag ON): explicit project member CAN see private project", async () => {
+    process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
+    try {
+      const company = await createCompany(db, "P5_ExplicitMember");
+      const project = await db.insert(projects).values({
+        companyId: company.id,
+        name: "Members Only",
+        issuePrefix: randomUUID().slice(0,6).toUpperCase(),
+        visibility: "private",
+      }).returning().then(r=>r[0]!);
+      const userId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: userId,
+        status: "active", membershipRole: "operator",
+      });
+      await db.insert(projectAccessMembers).values({
+        companyId: company.id, projectId: project.id,
+        principalType: "user", principalId: userId, projectRole: "editor",
+      });
+      const decision = await authorizationService(db).decide({
+        actor: { type: "board", userId, source: "session" },
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      });
+      expect(decision).toMatchObject({ allowed: true });
+    } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
+  });
+
+  it("Phase5 (flag ON): company admin always sees private project (no member needed)", async () => {
+    process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
+    try {
+      const company = await createCompany(db, "P5_AdminBypass");
+      const project = await db.insert(projects).values({
+        companyId: company.id,
+        name: "Private",
+        issuePrefix: randomUUID().slice(0,6).toUpperCase(),
+        visibility: "private",
+      }).returning().then(r=>r[0]!);
+      const adminId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: adminId,
+        status: "active", membershipRole: "admin",
+      });
+      const decision = await authorizationService(db).decide({
+        actor: { type: "board", userId: adminId, source: "session" },
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      });
+      expect(decision).toMatchObject({ allowed: true });
+    } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
+  });
+
+  it("Phase5 (flag ON): issue inside private project hidden from non-member", async () => {
+    process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
+    try {
+      const company = await createCompany(db, "P5_IssueHidden");
+      const project = await db.insert(projects).values({
+        companyId: company.id,
+        name: "Secret",
+        issuePrefix: randomUUID().slice(0,6).toUpperCase(),
+        visibility: "private",
+      }).returning().then(r=>r[0]!);
+      const issue = await createIssue(db, company.id, { projectId: project.id });
+      const operatorId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: operatorId,
+        status: "active", membershipRole: "operator",
+      });
+      const decision = await authorizationService(db).decide({
+        actor: { type: "board", userId: operatorId, source: "session" },
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: issue.id, projectId: project.id },
+      });
+      expect(decision).toMatchObject({ allowed: false, reason: "deny_scope" });
+    } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
+  });
+
+  it("Phase5 (flag ON): company-wide project (visibility=company) unaffected — member can read", async () => {
+    process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
+    try {
+      const company = await createCompany(db, "P5_CompanyWide");
+      const project = await db.insert(projects).values({
+        companyId: company.id,
+        name: "Public",
+        issuePrefix: randomUUID().slice(0,6).toUpperCase(),
+        visibility: "company",
+      }).returning().then(r=>r[0]!);
+      const operatorId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: operatorId,
+        status: "active", membershipRole: "operator",
+      });
+      const decision = await authorizationService(db).decide({
+        actor: { type: "board", userId: operatorId, source: "session" },
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      });
+      expect(decision).toMatchObject({ allowed: true });
+    } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
+  });
+
+  it("Phase5 (flag OFF, default): private project STILL visible to all members (flag protects)", async () => {
+    delete process.env.PAPERCLIP_PROJECT_PRIVACY;
+    const company = await createCompany(db, "P5_FlagOff");
+    const project = await db.insert(projects).values({
+      companyId: company.id,
+      name: "Would-be-private",
+      issuePrefix: randomUUID().slice(0,6).toUpperCase(),
+      visibility: "private",
+    }).returning().then(r=>r[0]!);
+    const operatorId = `user-${randomUUID()}`;
+    await db.insert(companyMemberships).values({
+      companyId: company.id, principalType: "user", principalId: operatorId,
+      status: "active", membershipRole: "operator",
+    });
+    const decision = await authorizationService(db).decide({
+      actor: { type: "board", userId: operatorId, source: "session" },
+      action: "project:read",
+      resource: { type: "project", companyId: company.id, projectId: project.id },
+    });
+    // flag OFF → falls through to standard allow
+    expect(decision).toMatchObject({ allowed: true });
   });
 
 });
