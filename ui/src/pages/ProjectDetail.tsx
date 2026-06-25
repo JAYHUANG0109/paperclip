@@ -23,6 +23,8 @@ import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
 import { ProjectFieldsTable } from "../components/ProjectFieldsTable";
 import { ProjectCustomFieldsManager } from "../components/ProjectCustomFieldsManager";
+import { ProjectMembersPanel } from "../components/ProjectMembersPanel";
+import { accessApi } from "../api/access";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { useTranslation } from "@/i18n";
@@ -351,6 +353,19 @@ export function ProjectDetail() {
     filter?: string;
   }>();
   const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
+  const { data: boardAccess } = useQuery({
+    queryKey: queryKeys.access.currentBoardAccess,
+    queryFn: () => accessApi.getCurrentBoardAccess(),
+    enabled: !!selectedCompanyId,
+  });
+  const isPrivilegedViewer = Boolean(
+    boardAccess?.isInstanceAdmin ||
+    boardAccess?.memberships?.find(
+      (m: { companyId: string; membershipRole: string | null }) =>
+        m.companyId === (project?.companyId ?? selectedCompanyId) &&
+        (m.membershipRole === "owner" || m.membershipRole === "admin"),
+    ),
+  );
   const { closePanel } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToastActions();
@@ -863,6 +878,15 @@ export function ProjectDetail() {
           />
           {project?.id && resolvedCompanyId && (
             <ProjectCustomFieldsManager projectId={project.id} companyId={resolvedCompanyId} />
+          )}
+          {project?.id && resolvedCompanyId && (
+            <ProjectMembersPanel
+              projectId={project.id}
+              companyId={resolvedCompanyId}
+              canManage={isPrivilegedViewer}
+              visibility={(project.visibility as "company" | "private") ?? "company"}
+              onVisibilityChange={(v) => updateProject.mutate({ visibility: v })}
+            />
           )}
         </div>
       )}

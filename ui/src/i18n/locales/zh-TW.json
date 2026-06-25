@@ -4954,5 +4954,19 @@
     "kind": {
       "plan": "計畫"
     }
+  },
+  "projectMembers": {
+    "private": "私密專案",
+    "company": "全公司可見",
+    "makePublic": "改為全公司",
+    "makePrivate": "改為私密",
+    "members": "專案成員",
+    "everyoneAccess": "全公司成員均可存取",
+    "noMembers": "尚無明確成員。私密專案僅負責人可存取。",
+    "addMember": "新增成員",
+    "searchPlaceholder": "搜尋成員或代理人…",
+    "agents": "代理人",
+    "users": "使用者",
+    "noResults": "沒有找到可加入的成員"
   }
 }

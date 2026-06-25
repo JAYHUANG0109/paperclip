@@ -4954,5 +4954,19 @@
     "kind": {
       "plan": "Plan"
     }
+  },
+  "projectMembers": {
+    "private": "Private project",
+    "company": "Company-wide",
+    "makePublic": "Make company-wide",
+    "makePrivate": "Make private",
+    "members": "Project members",
+    "everyoneAccess": "All company members have access",
+    "noMembers": "No explicit members. Private projects are only accessible to the owner.",
+    "addMember": "Add member",
+    "searchPlaceholder": "Search members or agents…",
+    "agents": "Agents",
+    "users": "Users",
+    "noResults": "No members found to add"
   }
 }

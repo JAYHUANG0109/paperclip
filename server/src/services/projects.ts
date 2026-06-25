@@ -9,6 +9,7 @@ import {
   pluginManagedResources,
   plugins,
   projectWorkspaces,
+  projectAccessMembers,
   workspaceRuntimeServices,
 } from "@paperclipai/db";
 import {
@@ -1211,5 +1212,61 @@ export function projectService(db: Db) {
       }
       return { project: null, ambiguous: false } as const;
     },
+
+    // ---- Phase 5: project access members ----
+    listProjectMembers: (projectId: string) =>
+      db
+        .select()
+        .from(projectAccessMembers)
+        .where(eq(projectAccessMembers.projectId, projectId))
+        .orderBy(asc(projectAccessMembers.createdAt)),
+
+    getProjectMember: (projectId: string, principalType: string, principalId: string) =>
+      db
+        .select()
+        .from(projectAccessMembers)
+        .where(
+          and(
+            eq(projectAccessMembers.projectId, projectId),
+            eq(projectAccessMembers.principalType, principalType),
+            eq(projectAccessMembers.principalId, principalId),
+          ),
+        )
+        .then((rows) => rows[0] ?? null),
+
+    addProjectMember: async (
+      companyId: string,
+      projectId: string,
+      principalType: "user" | "agent",
+      principalId: string,
+      projectRole: "admin" | "editor" | "commenter" | "viewer" = "editor",
+    ) => {
+      const [row] = await db
+        .insert(projectAccessMembers)
+        .values({ companyId, projectId, principalType, principalId, projectRole })
+        .onConflictDoUpdate({
+          target: [
+            projectAccessMembers.projectId,
+            projectAccessMembers.principalType,
+            projectAccessMembers.principalId,
+          ],
+          set: { projectRole, updatedAt: new Date() },
+        })
+        .returning();
+      return row;
+    },
+
+    removeProjectMember: (projectId: string, principalType: string, principalId: string) =>
+      db
+        .delete(projectAccessMembers)
+        .where(
+          and(
+            eq(projectAccessMembers.projectId, projectId),
+            eq(projectAccessMembers.principalType, principalType),
+            eq(projectAccessMembers.principalId, principalId),
+          ),
+        )
+        .returning()
+        .then((rows) => rows[0] ?? null),
   };
 }

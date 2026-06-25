@@ -128,3 +128,18 @@ export const updateProjectSchema = z.object(projectFields).partial();
 export type UpdateProject = z.infer<typeof updateProjectSchema>;
 
 export type ProjectExecutionWorkspacePolicy = z.infer<typeof projectExecutionWorkspacePolicySchema>;
+
+export const PROJECT_ROLES = ["admin", "editor", "commenter", "viewer"] as const;
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
+
+export const addProjectMemberSchema = z.object({
+  principalType: z.enum(["user", "agent"]),
+  principalId: z.string().min(1),
+  projectRole: z.enum(PROJECT_ROLES).optional(),
+});
+export type AddProjectMember = z.infer<typeof addProjectMemberSchema>;
+
+export const updateProjectMemberSchema = z.object({
+  projectRole: z.enum(PROJECT_ROLES),
+});
+export type UpdateProjectMember = z.infer<typeof updateProjectMemberSchema>;

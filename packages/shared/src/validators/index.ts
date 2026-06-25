@@ -596,3 +596,12 @@ export {
   type SetPluginState,
   type ListPluginState,
 } from "./plugin.js";
+
+export {
+  addProjectMemberSchema,
+  updateProjectMemberSchema,
+  PROJECT_ROLES,
+  type ProjectRole,
+  type AddProjectMember,
+  type UpdateProjectMember,
+} from "./project.js";

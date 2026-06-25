@@ -18,6 +18,7 @@ import { conflict, forbidden } from "../errors.js";
 import { externalObjectService } from "../services/external-objects.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { assertCompanyAccess, getActorInfo, isPrivilegedMemberViewer } from "./authz.js";
+import { addProjectMemberSchema, updateProjectMemberSchema } from "@paperclipai/shared";
 import {
   buildWorkspaceRuntimeDesiredStatePatch,
   listConfiguredRuntimeServiceEntries,
@@ -728,6 +729,52 @@ export function projectRoutes(db: Db) {
     });
 
     res.json(project);
+  });
+
+
+  // ---- Phase 5: project membership ----
+  router.get("/projects/:id/members", async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    res.json(await svc.listProjectMembers(id));
+  });
+
+  router.post("/projects/:id/members", validate(addProjectMemberSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    if (!isPrivilegedMemberViewer(req, project.companyId, true)) {
+      res.status(403).json({ error: "Only owners/admins can manage project members" }); return;
+    }
+    const { principalType, principalId, projectRole } = req.body;
+    res.status(201).json(await svc.addProjectMember(project.companyId, id, principalType, principalId, projectRole));
+  });
+
+  router.patch("/projects/:id/members/:principalType/:principalId", validate(updateProjectMemberSchema), async (req, res) => {
+    const { id, principalType, principalId } = req.params as Record<string, string>;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    if (!isPrivilegedMemberViewer(req, project.companyId, true)) {
+      res.status(403).json({ error: "Only owners/admins can manage project members" }); return;
+    }
+    res.json(await svc.addProjectMember(project.companyId, id, principalType as "user" | "agent", principalId, req.body.projectRole));
+  });
+
+  router.delete("/projects/:id/members/:principalType/:principalId", async (req, res) => {
+    const { id, principalType, principalId } = req.params as Record<string, string>;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    if (!isPrivilegedMemberViewer(req, project.companyId, true)) {
+      res.status(403).json({ error: "Only owners/admins can manage project members" }); return;
+    }
+    const removed = await svc.removeProjectMember(id, principalType, principalId);
+    if (!removed) { res.status(404).json({ error: "Member not found" }); return; }
+    res.json(removed);
   });
 
   return router;

@@ -1496,3 +1496,12 @@ export {
   adapterRegistrySchema,
   type AdapterRegistryEntryParsed,
 } from "./validators/adapter-registry.js";
+
+export {
+  addProjectMemberSchema,
+  updateProjectMemberSchema,
+  PROJECT_ROLES,
+  type ProjectRole,
+  type AddProjectMember,
+  type UpdateProjectMember,
+} from "./validators/project.js";

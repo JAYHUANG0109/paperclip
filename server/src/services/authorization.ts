@@ -9,6 +9,7 @@ import {
   issueComments,
   issues,
   principalPermissionGrants,
+  projectAccessMembers,
   projects,
 } from "@paperclipai/db";
 import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
@@ -413,6 +414,10 @@ function restrictAgentVisibilityEnabled(): boolean {
   return process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY === "true";
 }
 
+function projectPrivacyEnabled(): boolean {
+  return process.env.PAPERCLIP_PROJECT_PRIVACY === "true";
+}
+
 function isPrivilegedCompanyRole(role: string | null | undefined): boolean {
   return role === "owner" || role === "admin";
 }
@@ -492,6 +497,61 @@ export function authorizationService(db: Db) {
       return false;
     }
     return null; // project:read / runtime:manage / secrets:read → upstream's logic
+  }
+
+  // ---- Phase 5: project privacy ----
+  // When PAPERCLIP_PROJECT_PRIVACY=true, projects with visibility='private' are only
+  // readable by: company owners/admins, instance admins, the project's ownerUserId,
+  // and explicit project_access_members. Everything else is denied.
+
+  async function getProjectVisibility(projectId: string, companyId: string) {
+    return db
+      .select({ visibility: projects.visibility, ownerUserId: projects.ownerUserId })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function isProjectMember(projectId: string, principalType: "user" | "agent", principalId: string) {
+    return db
+      .select({ id: projectAccessMembers.id })
+      .from(projectAccessMembers)
+      .where(
+        and(
+          eq(projectAccessMembers.projectId, projectId),
+          eq(projectAccessMembers.principalType, principalType),
+          eq(projectAccessMembers.principalId, principalId),
+        ),
+      )
+      .then((rows) => rows.length > 0);
+  }
+
+  // Returns true=allow, false=deny, null=not a private project (fall through).
+  async function decidePrivateProjectRead(
+    action: string,
+    companyId: string,
+    projectId: string | null | undefined,
+    actor: AuthorizationActor,
+    membershipRole: string | null | undefined,
+  ): Promise<boolean | null> {
+    if (!projectPrivacyEnabled() || !projectId) return null;
+    const proj = await getProjectVisibility(projectId, companyId);
+    if (!proj || proj.visibility !== "private") return null;
+    // Owners/admins and instance admins always see private projects.
+    if (isPrivilegedCompanyRole(membershipRole)) return true;
+    if (actor.type === "board") {
+      if (actor.source === "local_implicit" || actor.isInstanceAdmin) return true;
+      // Project owner
+      if (actor.userId && proj.ownerUserId === actor.userId) return true;
+      // Explicit project member (user principal)
+      if (actor.userId && await isProjectMember(projectId, "user", actor.userId)) return true;
+      return false;
+    }
+    if (actor.type === "agent" && actor.agentId) {
+      // Agent principal as explicit project member
+      if (await isProjectMember(projectId, "agent", actor.agentId)) return true;
+    }
+    return false;
   }
 
   async function isInstanceAdmin(userId: string | null | undefined): Promise<boolean> {
@@ -1231,6 +1291,42 @@ export function authorizationService(db: Db) {
               });
             }
             // restricted === null → fall through to standard membership logic below
+          }
+          // Phase 5: project privacy gate (flag-gated).
+          // Applied BEFORE the standard membership allow so private projects
+          // are blocked even for active members who aren't explicit members.
+          if (
+            (input.action === "project:read" || input.action === "issue:read") &&
+            projectPrivacyEnabled()
+          ) {
+            const projectId =
+              input.resource.type === "project"
+                ? input.resource.projectId ?? null
+                : input.resource.type === "issue"
+                  ? input.resource.projectId ?? null
+                  : null;
+            const privacyDecision = await decidePrivateProjectRead(
+              input.action,
+              companyId,
+              projectId,
+              input.actor,
+              membership?.membershipRole,
+            );
+            if (privacyDecision === false) {
+              return deny({
+                action: input.action,
+                reason: "deny_scope",
+                explanation: "Project is private: actor is not a project member.",
+              });
+            }
+            if (privacyDecision === true) {
+              return allow({
+                action: input.action,
+                reason: "allow_explicit_grant",
+                explanation: "Allowed: actor is an explicit project member or privileged.",
+              });
+            }
+            // null = not private → fall through
           }
           // Mirroring the tasks:assign carve-out above, viewers keep the
           // read-only visibility actions but not the privileged ones.
