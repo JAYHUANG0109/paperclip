@@ -2402,6 +2402,50 @@ function SpacePagesWarmup({ companyId, spaceSlug }: { companyId: string | null; 
   return selected ? <SpacePageContentWarmup companyId={companyId} path={selected} spaceSlug={spaceSlug} /> : null;
 }
 
+/**
+ * Owner/admin button that triggers a server-side deterministic distill of the
+ * whole company (route B2). The Wiki surface is already gated to admins via the
+ * slot `minRole`, and the server route re-checks the role, so this is safe.
+ */
+function DistillNowButton({ companyId }: { companyId: string | null }) {
+  const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const run = async () => {
+    if (!companyId || status === "running") return;
+    setStatus("running");
+    try {
+      const res = await fetch(`/api/companies/${companyId}/wiki/distill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: "{}",
+      });
+      setStatus(res.ok ? "done" : "error");
+    } catch {
+      setStatus("error");
+    }
+  };
+  const label =
+    status === "running"
+      ? "更新中… Distilling…"
+      : status === "done"
+        ? "✓ 已更新 Distilled"
+        : status === "error"
+          ? "✗ 失敗 Failed — retry"
+          : "↻ 立即更新 Wiki / Distill now";
+  return (
+    <button
+      type="button"
+      onClick={run}
+      disabled={!companyId || status === "running"}
+      title="Distill all projects' current state into the wiki now (owners/admins only)."
+      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:opacity-60"
+      style={{ textDecoration: "none", cursor: companyId ? "pointer" : "default" }}
+    >
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
 export function WikiRouteSidebar({ context }: PluginRouteSidebarProps) {
   const hostNavigation = useHostNavigation();
   const { pathname, search, state } = useHostLocation();
@@ -2550,6 +2594,7 @@ export function WikiRouteSidebar({ context }: PluginRouteSidebarProps) {
           </span>
           <span className="truncate">{companyName}</span>
         </a>
+        <DistillNowButton companyId={context.companyId} />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto border-t border-border px-3 py-3">
         <nav aria-label="Wiki primary" className="mb-3">

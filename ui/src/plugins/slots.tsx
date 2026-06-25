@@ -39,6 +39,8 @@ import type {
 } from "@paperclipai/shared";
 import { pluginsApi, type PluginUiContribution } from "@/api/plugins";
 import { authApi } from "@/api/auth";
+import { accessApi } from "@/api/access";
+import { useCompany } from "@/context/CompanyContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import {
@@ -649,6 +651,20 @@ export function usePluginSlots(filters: SlotFilters): UsePluginSlotsResult {
   // Kick off dynamic imports for any new plugin contributions.
   usePluginModuleLoader(data);
 
+  // Viewer's company role — used to enforce a slot's optional `minRole` gate so
+  // sensitive surfaces (e.g. the wiki) stay hidden from non-admins.
+  const { selectedCompanyId } = useCompany();
+  const { data: boardAccess } = useQuery({
+    queryKey: queryKeys.access.currentBoardAccess,
+    queryFn: () => accessApi.getCurrentBoardAccess(),
+    enabled: queryEnabled,
+  });
+  const isPrivilegedViewer = useMemo(() => {
+    if (boardAccess?.isInstanceAdmin) return true;
+    const role = boardAccess?.memberships?.find((m) => m.companyId === selectedCompanyId)?.membershipRole;
+    return role === "owner" || role === "admin";
+  }, [boardAccess, selectedCompanyId]);
+
   const slotTypesKey = useMemo(() => [...filters.slotTypes].sort().join("|"), [filters.slotTypes]);
 
   const slots = useMemo(() => {
@@ -657,6 +673,7 @@ export function usePluginSlots(filters: SlotFilters): UsePluginSlotsResult {
     for (const contribution of data ?? []) {
       for (const slot of contribution.slots) {
         if (!allowedTypes.has(slot.type)) continue;
+        if (slot.minRole === "admin" && !isPrivilegedViewer) continue;
         if (requiresEntityType(slot.type)) {
           if (!filters.entityType) continue;
           if (!slot.entityTypes?.includes(filters.entityType)) continue;
@@ -679,7 +696,7 @@ export function usePluginSlots(filters: SlotFilters): UsePluginSlotsResult {
       return a.displayName.localeCompare(b.displayName);
     });
     return rows;
-  }, [data, filters.entityType, slotTypesKey]);
+  }, [data, filters.entityType, slotTypesKey, isPrivilegedViewer]);
 
   // Consider loading until both query and module imports are done.
   const modulesLoaded = data ? aggregateLoadState(data) === "loaded" : true;

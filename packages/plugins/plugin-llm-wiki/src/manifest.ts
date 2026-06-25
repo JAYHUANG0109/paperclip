@@ -578,21 +578,24 @@ const manifest: PaperclipPluginManifestV1 = {
         id: "wiki-sidebar",
         displayName: "Wiki",
         exportName: "SidebarLink",
-        order: 35
+        order: 35,
+        minRole: "admin"
       },
       {
         type: "page",
         id: "wiki-page",
         displayName: "Wiki",
         exportName: "WikiPage",
-        routePath: "wiki"
+        routePath: "wiki",
+        minRole: "admin"
       },
       {
         type: "routeSidebar",
         id: "wiki-route-sidebar",
         displayName: "Wiki",
         exportName: "WikiRouteSidebar",
-        routePath: "wiki"
+        routePath: "wiki",
+        minRole: "admin"
       }
     ]
   }

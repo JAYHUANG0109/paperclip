@@ -358,6 +358,13 @@ export interface PluginUiSlotDeclaration {
    * Defaults to host-defined ordering if omitted.
    */
   order?: number;
+  /**
+   * Optional minimum company role required to see this slot. When set, the host
+   * hides the slot from viewers whose role is below this threshold (instance
+   * admins always pass). `"admin"` means owner+admin only. Use for sensitive
+   * surfaces such as a knowledge wiki that only leadership should browse.
+   */
+  minRole?: "admin";
 }
 
 /**
