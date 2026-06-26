@@ -5201,5 +5201,12 @@
     "couldNotLoad": "無法載入檔案",
     "searchPlaceholder": "依名稱或路徑搜尋檔案…",
     "searchAriaLabel": "搜尋工作區檔案"
+  },
+  "skillMembers": {
+    "title": "可存取的人員",
+    "empty": "目前只有您能看到此技能。新增人員以分享。",
+    "add": "新增人員",
+    "searchPlaceholder": "搜尋人員…",
+    "noResults": "找不到人員"
   }
 }

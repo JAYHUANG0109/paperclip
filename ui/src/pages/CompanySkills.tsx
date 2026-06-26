@@ -1,4 +1,5 @@
 import { useTranslation } from "@/i18n";
+import { SkillMembersPanel } from "../components/SkillMembersPanel";
 import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -3282,6 +3283,11 @@ export function SkillDetailPage({
               </select>
               <p className="text-xs text-muted-foreground">Public link sharing is coming later.</p>
             </div>
+            {detail.sharingScope === "private" ? (
+              <div className="rounded-md border border-border p-3">
+                <SkillMembersPanel skillId={detail.id} companyId={detail.companyId} canManage={detail.editable} />
+              </div>
+            ) : null}
             {detail.editable ? (
               <div className="rounded-md border border-destructive/40 p-3">
                 <div className="text-xs font-semibold uppercase tracking-wide text-destructive">Danger zone</div>
@@ -3666,6 +3672,7 @@ export function CompanySkills() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadScope, setUploadScope] = useState<"company" | "private">("company");
   const uploadFilesRef = useRef<HTMLInputElement | null>(null);
   const uploadFolderRef = useRef<HTMLInputElement | null>(null);
   const parsedRoute = useMemo(() => parseSkillRoute(routePath), [routePath]);
@@ -3988,7 +3995,7 @@ export function CompanySkills() {
       const name = readField("name") ?? fallbackName;
       const description = readField("description");
 
-      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown });
+      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope });
 
       // Write every other file (skip SKILL.md itself; skip obviously-binary by extension).
       const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|woff2?|ttf|otf|mp4|mov|mp3|wav)$/i;
@@ -4650,6 +4657,31 @@ export function CompanySkills() {
               <p className="mb-2.5 text-xs text-muted-foreground">
                 {t("companySkills.uploadSubtitle", { defaultValue: "Drop a SKILL.md (and its supporting files) to create a skill directly." })}
               </p>
+              {/* Sharing scope for the uploaded skill */}
+              <div className="mb-2.5 flex gap-2">
+                {(["company", "private"] as const).map((scope) => (
+                  <button
+                    key={scope}
+                    type="button"
+                    onClick={() => setUploadScope(scope)}
+                    className={cn(
+                      "flex-1 rounded-md border px-2.5 py-1.5 text-left text-xs",
+                      uploadScope === scope ? "border-foreground bg-accent/50" : "border-border text-muted-foreground",
+                    )}
+                  >
+                    <span className="block font-medium">
+                      {scope === "company"
+                        ? t("companySkills.scopePublic", { defaultValue: "Public" })
+                        : t("companySkills.scopePrivate", { defaultValue: "Private" })}
+                    </span>
+                    <span className="mt-0.5 block text-[11px]">
+                      {scope === "company"
+                        ? t("companySkills.scopePublicDesc", { defaultValue: "Visible to everyone in this company." })
+                        : t("companySkills.scopePrivateDesc", { defaultValue: "Only you and people you choose can see it." })}
+                    </span>
+                  </button>
+                ))}
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"

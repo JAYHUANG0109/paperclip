@@ -121,6 +121,19 @@ export const companySkillsApi = {
       `/companies/${encodeURIComponent(companyId)}/skills/import`,
       { source },
     ),
+  listMembers: (companyId: string, skillId: string) =>
+    api.get<CompanySkillAccessMember[]>(
+      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/members`,
+    ),
+  addMember: (companyId: string, skillId: string, principalId: string) =>
+    api.post<CompanySkillAccessMember>(
+      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/members`,
+      { principalId },
+    ),
+  removeMember: (companyId: string, skillId: string, principalId: string) =>
+    api.delete<CompanySkillAccessMember>(
+      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/members/${encodeURIComponent(principalId)}`,
+    ),
   scanProjects: (companyId: string, payload: CompanySkillProjectScanRequest = {}) =>
     api.post<CompanySkillProjectScanResult>(
       `/companies/${encodeURIComponent(companyId)}/skills/scan-projects`,
@@ -155,3 +168,12 @@ export const companySkillsApi = {
       payload,
     ),
 };
+
+export interface CompanySkillAccessMember {
+  id: string;
+  companyId: string;
+  skillId: string;
+  principalType: string;
+  principalId: string;
+  createdAt: string;
+}

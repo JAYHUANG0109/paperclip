@@ -5201,5 +5201,12 @@
     "couldNotLoad": "Couldn't load files",
     "searchPlaceholder": "Search files by name or path…",
     "searchAriaLabel": "Search workspace files"
+  },
+  "skillMembers": {
+    "title": "People with access",
+    "empty": "Only you can see this skill. Add people to share it.",
+    "add": "Add person",
+    "searchPlaceholder": "Search people…",
+    "noResults": "No people found"
   }
 }
