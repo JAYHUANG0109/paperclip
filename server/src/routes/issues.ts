@@ -3921,6 +3921,7 @@ export function issueRoutes(
       return;
     }
     assertCompanyAccess(req, issue.companyId);
+    if (!(await assertIssueReadAllowed(req, res, issue))) return;
     const objects = await externalObjectsSvc.listForIssue(issue.id);
     res.json(objects);
   });
@@ -3933,6 +3934,7 @@ export function issueRoutes(
       return;
     }
     assertCompanyAccess(req, issue.companyId);
+    if (!(await assertIssueReadAllowed(req, res, issue))) return;
     const summary = await externalObjectsSvc.getIssueSummary(issue.id);
     res.json(summary);
   });

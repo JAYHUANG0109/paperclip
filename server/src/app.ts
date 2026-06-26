@@ -244,10 +244,10 @@ export async function createApp(
   }));
   api.use(issueTreeControlRoutes(db));
   api.use(fileResourceRoutes(db));
-  api.use(routineRoutes(db, { pluginWorkerManager: workerManager }));
+  api.use(routineRoutes(db, { pluginWorkerManager: workerManager, restrictVisibility }));
   api.use(environmentRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(executionWorkspaceRoutes(db, { pluginWorkerManager: workerManager }));
-  api.use(goalRoutes(db));
+  api.use(goalRoutes(db, { restrictVisibility }));
   api.use(boardChatRoutes(db, { deploymentMode: opts.deploymentMode }));
   api.use(approvalRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(secretRoutes(db));

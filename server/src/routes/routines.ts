@@ -14,7 +14,7 @@ import {
 import { trackRoutineCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
 import { accessService, documentAnnotationService, logActivity, routineService } from "../services/index.js";
-import { assertCompanyAccess, assertPrivilegedMemberView, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, getActorInfo, getVisibleAgentIds, isPrivilegedMemberViewer } from "./authz.js";
 import { forbidden, unauthorized } from "../errors.js";
 import { getTelemetryClient } from "../telemetry.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
@@ -148,10 +148,21 @@ export function routineRoutes(
   router.get("/companies/:companyId/routines", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    assertPrivilegedMemberView(req, companyId, restrictVisibility);
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
     const result = await svc.list(companyId, { projectId });
-    res.json(result);
+    // Per-item visibility (mirrors issues): privileged/agent actors see all;
+    // restricted board members see routines for agents they manage/oversee, plus
+    // their own. Off when the flag is disabled.
+    if (!restrictVisibility || req.actor.type !== "board" || isPrivilegedMemberViewer(req, companyId, true)) {
+      res.json(result);
+      return;
+    }
+    const userId = req.actor.userId ?? null;
+    const visible = userId ? await getVisibleAgentIds(db, companyId, userId) : new Set<string>();
+    res.json(result.filter((r) =>
+      (r.assigneeAgentId && visible.has(r.assigneeAgentId)) ||
+      (userId != null && r.createdByUserId === userId),
+    ));
   });
 
   router.post("/companies/:companyId/routines", validate(createRoutineSchema), async (req, res) => {

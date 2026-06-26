@@ -4,7 +4,7 @@ import { createGoalSchema, updateGoalSchema } from "@paperclipai/shared";
 import { trackGoalCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
 import { goalService, logActivity } from "../services/index.js";
-import { assertCompanyAccess, assertPrivilegedMemberView, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, getActorInfo, getVisibleAgentIds, isPrivilegedMemberViewer } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
 
 export function goalRoutes(db: Db, options: { restrictVisibility?: boolean } = {}) {
@@ -15,9 +15,17 @@ export function goalRoutes(db: Db, options: { restrictVisibility?: boolean } = {
   router.get("/companies/:companyId/goals", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    assertPrivilegedMemberView(req, companyId, restrictVisibility);
     const result = await svc.list(companyId);
-    res.json(result);
+    // Per-item visibility: privileged/agent actors see all; restricted board
+    // members see goals owned by an agent they manage/oversee. Company-level
+    // goals (ownerAgentId = null) have no per-user link → privileged-only.
+    if (!restrictVisibility || req.actor.type !== "board" || isPrivilegedMemberViewer(req, companyId, true)) {
+      res.json(result);
+      return;
+    }
+    const userId = req.actor.userId ?? null;
+    const visible = userId ? await getVisibleAgentIds(db, companyId, userId) : new Set<string>();
+    res.json(result.filter((g) => g.ownerAgentId != null && visible.has(g.ownerAgentId)));
   });
 
   router.get("/goals/:id", async (req, res) => {
