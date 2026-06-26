@@ -273,7 +273,8 @@ export function SidebarAgents({ streamlined: _streamlined }: { streamlined?: boo
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialogActions();
-  const { isMobile, setSidebarOpen } = useSidebar();
+  const { isMobile, setSidebarOpen, collapsed: sidebarCollapsed, peeking } = useSidebar();
+  const rail = sidebarCollapsed && !peeking;
   const { pushToast } = useToastActions();
   const location = useLocation();
 
@@ -530,11 +531,11 @@ export function SidebarAgents({ streamlined: _streamlined }: { streamlined?: boo
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] font-semibold text-foreground/70 transition-colors hover:text-foreground"
                 aria-expanded={!collapsed}
               >
-                {collapsed ? (
+                {!rail && (collapsed ? (
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 ) : (
                   <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                )}
+                ))}
                 <Folder className="h-3.5 w-3.5 shrink-0" />
                 <span className="flex-1 truncate text-left">{label}</span>
                 <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">

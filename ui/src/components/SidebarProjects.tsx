@@ -529,7 +529,7 @@ export function SidebarProjects() {
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] font-semibold text-foreground/70 transition-colors hover:text-foreground"
                       aria-expanded={!collapsed}
                     >
-                      {collapsed ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
+                      {!rail && (collapsed ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />)}
                       <Folder className="h-3.5 w-3.5 shrink-0" />
                       <span className="flex-1 truncate text-left">{label}</span>
                       <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{group.projects.length}</span>
