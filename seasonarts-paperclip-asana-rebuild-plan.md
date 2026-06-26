@@ -304,7 +304,7 @@ The Wiki **UI** (sidebar + page) is already owner/admin-gated via slot `minRole`
 
 Four features inspired by Joanna's KLC build, to be built **more polished**, bilingual, sequentially. Build order locked with Jay.
 
-### 10A. Skill approval workflow (審核) — **IN PROGRESS / first**
+### 10A. Skill approval workflow (審核) — ✅ DONE
 When a non-privileged user creates or uploads a **public** (company-scoped) skill, it must be reviewed before it becomes visible company-wide.
 - Routing rules:
   - 創辦人 唐老師 (Tang) approves **all** public-skill submissions.
@@ -314,15 +314,15 @@ When a non-privileged user creates or uploads a **public** (company-scoped) skil
 - 技能道場-style review queue UI (全部 / 審核中 / 已通過 / 已駁回), bilingual.
 - Pending public skills are hidden from the Skills Store for everyone except the creator + reviewers until approved.
 
-### 10B. Leaderboard (排行榜 & 獎項)
+### 10B. Leaderboard (排行榜 & 獎項) — ✅ DONE
 - Score = approved-minutes-saved × monthly run count × team bonus (≥3 ppl ×2.0) × bounty bonus (90d ×1.3).
 - **Minutes saved** = each skill's declared mins/use × times agents ran it this month (needs per-skill run tracking).
 - Monthly + lifetime tabs; awards (月冠軍/終身分鐘勳章/最佳跨部門貢獻獎/懸賞獵人獎/病毒擴散獎/新秀獎) revealed by a monthly rollup.
 
-### 10C. Bounty board (懸賞看板)
+### 10C. Bounty board (懸賞看板) — ✅ DONE
 - Post a work/need; others claim it; completing it grants the claimer a 90-day +30% bounty bonus. Open / in-progress / done columns.
 
-### 10D. Virtual office (虛擬辦公室)
+### 10D. Virtual office (虛擬辦公室) — ✅ DONE
 - Live, interactive, well-designed grid of every user's agent with live status (待命/工作中) + skill counts. More polished than Joanna's.
 
 **Dependencies:** 10A extends Phase 5 sharing (done). 10B needs per-skill run tracking (build alongside). 10C/10D are self-contained.

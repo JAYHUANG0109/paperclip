@@ -21,6 +21,7 @@ import {
   CalendarDays,
   Trophy,
   Lightbulb,
+  Building2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "@/lib/router";
@@ -182,6 +183,7 @@ export function Sidebar() {
           <SidebarNavItem to="/calendar" label={t("nav.calendar", { defaultValue: "Calendar" })} icon={CalendarDays} />
           <SidebarNavItem to="/leaderboard" label={t("nav.leaderboard", { defaultValue: "Leaderboard" })} icon={Trophy} />
           <SidebarNavItem to="/bounties" label={t("nav.bounties", { defaultValue: "Bounties" })} icon={Lightbulb} />
+          <SidebarNavItem to="/office" label={t("nav.office", { defaultValue: "Virtual Office" })} icon={Building2} />
           <SidebarNavItem to="/routines" label={t("nav.routines", { defaultValue: "Routines" })} icon={Repeat} />
           <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />
           <SidebarNavItem to="/artifacts" label={t("nav.artifacts", { defaultValue: "Artifacts" })} icon={Package} />

@@ -4523,6 +4523,18 @@ export function companySkillService(db: Db) {
     return skill;
   }
 
+  // Per-agent skill count for the virtual office (reuses the same resolver as the
+  // skills list's attachedAgentCount, but keyed by agent).
+  async function agentSkillCounts(companyId: string): Promise<Record<string, number>> {
+    const [skills, agentRows] = await Promise.all([listFull(companyId), agents.list(companyId)]);
+    const refs = skills.map((sk) => ({ id: sk.id, key: sk.key, slug: sk.slug, name: sk.name }));
+    const out: Record<string, number> = {};
+    for (const agent of agentRows) {
+      out[agent.id] = resolveDesiredSkillKeys(refs, agent.adapterConfig as Record<string, unknown>).length;
+    }
+    return out;
+  }
+
   // ---- Skill sharing: private-scope access ----
   async function listSkillAccessMembers(companyId: string, skillId: string) {
     return db
@@ -4598,6 +4610,7 @@ export function companySkillService(db: Db) {
 
   return {
     list,
+    agentSkillCounts,
     listSkillAccessMembers,
     setApprovalStatus,
     listPendingApprovals,

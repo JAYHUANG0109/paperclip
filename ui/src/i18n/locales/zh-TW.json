@@ -40,7 +40,8 @@
     "artifacts": "產物",
     "newTask": "新增任務",
     "leaderboard": "排行榜",
-    "bounties": "懸賞看板"
+    "bounties": "懸賞看板",
+    "office": "虛擬辦公室"
   },
   "sort": {
     "top": "置頂",
@@ -5272,5 +5273,20 @@
     "cancel": "取消",
     "empty": "目前沒有懸賞。",
     "minutesShort": "分"
+  },
+  "office": {
+    "title": "虛擬辦公室",
+    "subtitle": "AI 團隊正在辦公室裡工作 ✨",
+    "colleagues": "位同事",
+    "working": "工作中",
+    "teamMinutes": "團隊節省（分鐘）",
+    "idle": "待命",
+    "busy": "工作中",
+    "skills": "技能",
+    "viewAgent": "查看代理人",
+    "wake": "喚醒",
+    "officeName": "辦公室",
+    "paused": "已暫停",
+    "error": "需要注意"
   }
 }

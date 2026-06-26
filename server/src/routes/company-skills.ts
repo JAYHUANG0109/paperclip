@@ -817,6 +817,13 @@ export function companySkillRoutes(db: Db) {
     },
   );
 
+  // ---- Virtual office: per-agent skill counts ----
+  router.get("/companies/:companyId/agent-skill-counts", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.agentSkillCounts(companyId));
+  });
+
   // ---- Leaderboard (排行榜) ----
   const leaderboard = leaderboardService(db);
 

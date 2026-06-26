@@ -40,7 +40,8 @@
     "artifacts": "Artifacts",
     "newTask": "New Task",
     "leaderboard": "Leaderboard",
-    "bounties": "Bounties"
+    "bounties": "Bounties",
+    "office": "Virtual Office"
   },
   "sort": {
     "top": "Top",
@@ -5272,5 +5273,20 @@
     "cancel": "Cancel",
     "empty": "No bounties yet.",
     "minutesShort": "m"
+  },
+  "office": {
+    "title": "Virtual Office",
+    "subtitle": "The AI team at work ✨",
+    "colleagues": "colleagues",
+    "working": "Working",
+    "teamMinutes": "Team minutes saved",
+    "idle": "Idle",
+    "busy": "Working",
+    "skills": "skills",
+    "viewAgent": "View agent",
+    "wake": "Wake",
+    "officeName": "Office",
+    "paused": "Paused",
+    "error": "Needs attention"
   }
 }

@@ -23,6 +23,7 @@ import { Issues } from "./pages/Issues";
 import { MyCalendar } from "./pages/MyCalendar";
 import { Leaderboard } from "./pages/Leaderboard";
 import { Bounties } from "./pages/Bounties";
+import { VirtualOffice } from "./pages/VirtualOffice";
 import { Search } from "./pages/Search";
 import { IssueDetail } from "./pages/IssueDetail";
 import { IssueChatLongThreadPerf } from "./pages/IssueChatLongThreadPerf";
@@ -136,6 +137,7 @@ function boardRoutes() {
       <Route path="calendar" element={<MyCalendar />} />
       <Route path="leaderboard" element={<Leaderboard />} />
       <Route path="bounties" element={<Bounties />} />
+      <Route path="office" element={<VirtualOffice />} />
       <Route path="search" element={<Search />} />
       <Route path="issues/all" element={<Navigate to="/issues" replace />} />
       <Route path="issues/active" element={<Navigate to="/issues" replace />} />
@@ -401,6 +403,7 @@ export function App() {
           <Route path="calendar" element={<UnprefixedBoardRedirect />} />
           <Route path="leaderboard" element={<UnprefixedBoardRedirect />} />
           <Route path="bounties" element={<UnprefixedBoardRedirect />} />
+          <Route path="office" element={<UnprefixedBoardRedirect />} />
           <Route path="u/:userSlug" element={<UnprefixedBoardRedirect />} />
           <Route path="skills/*" element={<UnprefixedBoardRedirect />} />
           <Route path="settings" element={<LegacySettingsRedirect />} />
