@@ -39,7 +39,8 @@
     "conferenceRoom": "會議室",
     "artifacts": "產物",
     "newTask": "新增任務",
-    "leaderboard": "排行榜"
+    "leaderboard": "排行榜",
+    "bounties": "懸賞看板"
   },
   "sort": {
     "top": "置頂",
@@ -5252,5 +5253,24 @@
     "awardRookieDesc": "首次 skill 表現最佳",
     "noWinner": "本月暫無得主",
     "formula": "計分公式：已審核分鐘 × 月使用次數 × 團隊加成（≥3 人 ×2.0）× 懸賞加成（90 天內 ×1.3）"
+  },
+  "bounties": {
+    "title": "懸賞看板",
+    "subtitle": "想要某件事被自動化？貼出來讓訓練家認領 — 完成者享 90 天 +30% 懸賞加成。",
+    "post": "貼一個懸賞",
+    "open": "開放認領",
+    "claimed": "進行中",
+    "done": "完成",
+    "claim": "我要認領",
+    "complete": "標記完成",
+    "claimedBy": "認領",
+    "postedBy": "張貼者",
+    "estMinutes": "預估分鐘",
+    "newTitle": "你需要自動化什麼？",
+    "newDescription": "描述任務、資料來源，以及「完成」的標準。",
+    "create": "張貼",
+    "cancel": "取消",
+    "empty": "目前沒有懸賞。",
+    "minutesShort": "分"
   }
 }

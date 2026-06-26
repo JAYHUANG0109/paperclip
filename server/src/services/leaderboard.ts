@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { companySkills, companySkillUsage } from "@paperclipai/db";
+import { bountyService } from "./bounties.js";
 
 // Scoring (mirrors the intended formula):
 //   score = minutesSaved × teamBonus × bountyBonus
@@ -9,6 +10,8 @@ import { companySkills, companySkillUsage } from "@paperclipai/db";
 //   bountyBonus  = 1.0 for now (activates with the bounty board, Phase 10C)
 const TEAM_BONUS_THRESHOLD = 3;
 const TEAM_BONUS = 2.0;
+const BOUNTY_BONUS = 1.3;
+const BOUNTY_WINDOW_DAYS = 90;
 
 export interface LeaderboardEntry {
   userId: string;
@@ -44,6 +47,9 @@ export function leaderboardService(db: Db) {
   }
 
   async function compute(companyId: string, periodMonth: string | null): Promise<LeaderboardResult> {
+    const bounties = bountyService(db);
+    const sinceMs = Date.now() - BOUNTY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const bountyUsers = await bounties.recentCompleters(companyId, sinceMs);
     const [skills, usage] = await Promise.all([
       db
         .select({
@@ -88,7 +94,11 @@ export function leaderboardService(db: Db) {
       byUser.set(skill.createdByUserId, entry);
     }
 
-    const entries = [...byUser.values()].map((e) => ({ ...e, score: Math.round(e.minutesSaved) }));
+    const entries = [...byUser.values()].map((e) => {
+      const hasBounty = bountyUsers.has(e.userId);
+      const score = Math.round(e.minutesSaved * (hasBounty ? BOUNTY_BONUS : 1.0));
+      return { ...e, bountyCount: hasBounty ? 1 : 0, score };
+    });
     entries.sort((a, b) => b.score - a.score || b.runCount - a.runCount);
     return { period: periodMonth ?? "lifetime", entries };
   }

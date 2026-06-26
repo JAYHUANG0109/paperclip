@@ -834,6 +834,13 @@
 			"when": 1782366105990,
 			"tag": "9008_skill_usage",
 			"breakpoints": true
+		},
+		{
+			"idx": 9009,
+			"version": "7",
+			"when": 1782366106990,
+			"tag": "9009_skill_bounties",
+			"breakpoints": true
 		}
 	]
 }

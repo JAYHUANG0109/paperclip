@@ -39,7 +39,8 @@
     "conferenceRoom": "Conference Room",
     "artifacts": "Artifacts",
     "newTask": "New Task",
-    "leaderboard": "Leaderboard"
+    "leaderboard": "Leaderboard",
+    "bounties": "Bounties"
   },
   "sort": {
     "top": "Top",
@@ -5252,5 +5253,24 @@
     "awardRookieDesc": "Best first-skill performance",
     "noWinner": "No winner yet this month",
     "formula": "Score = approved minutes × monthly uses × team bonus (≥3 ppl ×2.0) × bounty bonus (90d ×1.3)"
+  },
+  "bounties": {
+    "title": "Bounty Board",
+    "subtitle": "Want something automated? Post it for trainers to claim — finishers get a 90-day +30% bounty bonus.",
+    "post": "Post a bounty",
+    "open": "Open",
+    "claimed": "In progress",
+    "done": "Done",
+    "claim": "Claim it",
+    "complete": "Mark complete",
+    "claimedBy": "Claimed by",
+    "postedBy": "Posted by",
+    "estMinutes": "Estimated minutes",
+    "newTitle": "What do you need automated?",
+    "newDescription": "Describe the task, data sources, and what 'done' looks like.",
+    "create": "Post",
+    "cancel": "Cancel",
+    "empty": "No bounties yet.",
+    "minutesShort": "m"
   }
 }
