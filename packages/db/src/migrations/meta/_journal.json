@@ -841,6 +841,13 @@
 			"when": 1782366106990,
 			"tag": "9009_skill_bounties",
 			"breakpoints": true
+		},
+		{
+			"idx": 9010,
+			"version": "7",
+			"when": 1782366107990,
+			"tag": "9010_monthly_awards",
+			"breakpoints": true
 		}
 	]
 }

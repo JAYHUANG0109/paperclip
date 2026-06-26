@@ -40,13 +40,17 @@ export function Leaderboard() {
   const rest = entries.slice(3);
 
   const awards = useMemo(() => [
-    { key: "awardChampion", emoji: "🏆" },
-    { key: "awardLifetime", emoji: "💎" },
-    { key: "awardCrossDept", emoji: "🌐" },
-    { key: "awardBounty", emoji: "🎯" },
-    { key: "awardViral", emoji: "🦠" },
-    { key: "awardRookie", emoji: "🌟" },
+    { key: "awardChampion", awardKey: "champion", emoji: "🏆" },
+    { key: "awardLifetime", awardKey: "lifetime", emoji: "💎" },
+    { key: "awardCrossDept", awardKey: "crossDept", emoji: "🌐" },
+    { key: "awardBounty", awardKey: "bounty", emoji: "🎯" },
+    { key: "awardViral", awardKey: "viral", emoji: "🦠" },
+    { key: "awardRookie", awardKey: "rookie", emoji: "🌟" },
   ], []);
+  const winnerByKey = useMemo(
+    () => new Map((data?.awards ?? []).filter((a) => a.winnerName).map((a) => [a.awardKey, a])),
+    [data],
+  );
 
   return (
     <div className="w-full max-w-6xl space-y-6">
@@ -126,7 +130,16 @@ export function Leaderboard() {
                 <span className="text-xl">{a.emoji}</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{t(`leaderboard.${a.key}Desc`, { defaultValue: "" })}</p>
-              <p className="mt-3 text-xs italic text-muted-foreground">{t("leaderboard.noWinner", { defaultValue: "No winner yet this month" })}</p>
+              {winnerByKey.get(a.awardKey) ? (
+                <p className="mt-3 text-sm font-semibold text-foreground">
+                  {winnerByKey.get(a.awardKey)!.winnerName}
+                  {winnerByKey.get(a.awardKey)!.value > 0 && (
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">· {winnerByKey.get(a.awardKey)!.value.toLocaleString()}</span>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-3 text-xs italic text-muted-foreground">{t("leaderboard.noWinner", { defaultValue: "No winner yet this month" })}</p>
+              )}
             </div>
           ))}
         </div>

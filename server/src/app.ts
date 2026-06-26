@@ -15,6 +15,7 @@ import { healthRoutes } from "./routes/health.js";
 import { companyRoutes } from "./routes/companies.js";
 import { companySkillRoutes } from "./routes/company-skills.js";
 import { bountyRoutes } from "./routes/bounties.js";
+import { leaderboardService } from "./services/leaderboard.js";
 import { teamsCatalogRoutes } from "./routes/teams-catalog.js";
 import { agentRoutes } from "./routes/agents.js";
 import { projectRoutes } from "./routes/projects.js";
@@ -516,6 +517,32 @@ export async function createApp(
     wikiDistillTimer.unref?.();
     void runWikiDistillation();
   }
+
+  // Monthly leaderboard rollup: a daily idempotent check that freezes the
+  // PREVIOUS completed month's award winners for every company. Re-running is
+  // safe (upsert), so a daily cadence reliably catches the month boundary.
+  let monthlyRollupTimer: ReturnType<typeof setInterval> | null = null;
+  const previousMonthKey = (now: Date): string => {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    d.setUTCMonth(d.getUTCMonth() - 1);
+    return d.toISOString().slice(0, 7);
+  };
+  const runMonthlyRollups = async () => {
+    try {
+      const leaderboard = leaderboardService(db);
+      const period = previousMonthKey(new Date());
+      const rows = await db.select({ id: companies.id }).from(companies);
+      for (const c of rows) {
+        await leaderboard.runMonthlyRollup(c.id, period);
+      }
+      logger.info({ period, companies: rows.length }, "monthly leaderboard rollup complete");
+    } catch (err) {
+      logger.error({ err }, "scheduled monthly rollup failed");
+    }
+  };
+  monthlyRollupTimer = setInterval(() => { void runMonthlyRollups(); }, 24 * 60 * 60 * 1000);
+  monthlyRollupTimer.unref?.();
+  void runMonthlyRollups();
   void toolDispatcher.initialize().catch((err) => {
     logger.error({ err }, "Failed to initialize plugin tool dispatcher");
   });

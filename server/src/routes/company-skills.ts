@@ -840,10 +840,30 @@ export function companySkillRoutes(db: Db) {
           .from(authUsers).where(inArray(authUsers.id, userIds))
       : [];
     const nameById = new Map(users.map((u) => [u.id, u.name ?? u.email ?? u.id.slice(0, 8)]));
+    // Frozen awards for the requested month (lifetime view → current month).
+    const awardsMonth = period ?? new Date().toISOString().slice(0, 7);
+    const awards = await leaderboard.listAwards(companyId, awardsMonth);
     res.json({
       period: result.period,
       entries: result.entries.map((e) => ({ ...e, displayName: nameById.get(e.userId) ?? e.userId.slice(0, 8) })),
+      awards,
     });
+  });
+
+  // Manually run the monthly rollup (admin) — freezes that month's award winners.
+  router.post("/companies/:companyId/leaderboard/rollup", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    await assertCanMutateCompanySkills(req, companyId);
+    if (!isPrivilegedMemberViewer(req, companyId, true)) {
+      res.status(403).json({ error: "Only owners/admins can run the rollup" });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const period = typeof body.period === "string" && /^\d{4}-\d{2}$/.test(body.period)
+      ? body.period
+      : new Date().toISOString().slice(0, 7);
+    const winners = await leaderboard.runMonthlyRollup(companyId, period);
+    res.json({ period, winners });
   });
 
   // Record one use of a skill (agents/automations call this when they use a skill).

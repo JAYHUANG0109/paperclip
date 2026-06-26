@@ -1,6 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { companySkills, companySkillUsage } from "@paperclipai/db";
+import { companySkills, companySkillUsage, monthlyAwards, skillBounties, authUsers } from "@paperclipai/db";
 import { bountyService } from "./bounties.js";
 
 // Scoring (mirrors the intended formula):
@@ -124,5 +124,108 @@ export function leaderboardService(db: Db) {
     return row ?? null;
   }
 
-  return { compute, recordUsage };
+  async function resolveNames(userIds: string[]): Promise<Map<string, string>> {
+    const ids = [...new Set(userIds.filter(Boolean))];
+    if (!ids.length) return new Map();
+    const rows = await db
+      .select({ id: authUsers.id, name: authUsers.name, email: authUsers.email })
+      .from(authUsers)
+      .where(inArray(authUsers.id, ids));
+    return new Map(rows.map((u) => [u.id, u.name ?? u.email ?? u.id.slice(0, 8)]));
+  }
+
+  // Compute the 6 monthly award winners from current data + usage + bounties,
+  // then upsert them into monthly_awards (idempotent per company+month+award).
+  async function runMonthlyRollup(companyId: string, periodMonth: string) {
+    const monthStart = new Date(`${periodMonth}-01T00:00:00.000Z`);
+    const monthEndExclusive = new Date(monthStart);
+    monthEndExclusive.setUTCMonth(monthEndExclusive.getUTCMonth() + 1);
+
+    const [monthResult, lifetimeResult, skills, usageRows, doneBounties] = await Promise.all([
+      compute(companyId, periodMonth),
+      compute(companyId, null),
+      db.select({ id: companySkills.id, createdByUserId: companySkills.createdByUserId, categories: companySkills.categories, createdAt: companySkills.createdAt, approvalStatus: companySkills.approvalStatus })
+        .from(companySkills).where(eq(companySkills.companyId, companyId)),
+      db.select({ skillId: companySkillUsage.skillId, distinctUsers: sql<number>`count(distinct ${companySkillUsage.usedByUserId})::int` })
+        .from(companySkillUsage)
+        .where(and(eq(companySkillUsage.companyId, companyId), eq(companySkillUsage.periodMonth, periodMonth)))
+        .groupBy(companySkillUsage.skillId),
+      db.select({ claimedByUserId: skillBounties.claimedByUserId, completedAt: skillBounties.completedAt })
+        .from(skillBounties).where(and(eq(skillBounties.companyId, companyId), eq(skillBounties.status, "done"))),
+    ]);
+
+    const skillById = new Map(skills.map((sk) => [sk.id, sk]));
+
+    // champion: top monthly score
+    const champion = monthResult.entries[0] ?? null;
+    // lifetime: top lifetime score
+    const lifetime = lifetimeResult.entries[0] ?? null;
+    // crossDept: creator whose APPROVED skills span the most distinct categories (departments proxy)
+    const catsByUser = new Map<string, Set<string>>();
+    for (const sk of skills) {
+      if (!sk.createdByUserId || sk.approvalStatus !== "approved") continue;
+      const set = catsByUser.get(sk.createdByUserId) ?? new Set<string>();
+      for (const c of sk.categories ?? []) set.add(c);
+      catsByUser.set(sk.createdByUserId, set);
+    }
+    let crossDept: { userId: string; value: number } | null = null;
+    for (const [userId, set] of catsByUser) {
+      if (!crossDept || set.size > crossDept.value) crossDept = { userId, value: set.size };
+    }
+    // bounty: most bounties completed this month
+    const bountyCounts = new Map<string, number>();
+    for (const b of doneBounties) {
+      if (!b.claimedByUserId || !b.completedAt) continue;
+      if (b.completedAt < monthStart || b.completedAt >= monthEndExclusive) continue;
+      bountyCounts.set(b.claimedByUserId, (bountyCounts.get(b.claimedByUserId) ?? 0) + 1);
+    }
+    let bounty: { userId: string; value: number } | null = null;
+    for (const [userId, n] of bountyCounts) if (!bounty || n > bounty.value) bounty = { userId, value: n };
+    // viral: single skill used by the most distinct people → its creator
+    let viral: { userId: string; value: number } | null = null;
+    for (const u of usageRows) {
+      const sk = skillById.get(u.skillId);
+      if (!sk?.createdByUserId) continue;
+      if (!viral || u.distinctUsers > viral.value) viral = { userId: sk.createdByUserId, value: u.distinctUsers };
+    }
+    // rookie: among creators whose EARLIEST skill was created this month, the highest monthly score
+    const earliestByUser = new Map<string, Date>();
+    for (const sk of skills) {
+      if (!sk.createdByUserId) continue;
+      const cur = earliestByUser.get(sk.createdByUserId);
+      if (!cur || sk.createdAt < cur) earliestByUser.set(sk.createdByUserId, sk.createdAt);
+    }
+    const rookieCandidates = monthResult.entries.filter((e) => {
+      const earliest = earliestByUser.get(e.userId);
+      return earliest && earliest >= monthStart && earliest < monthEndExclusive;
+    });
+    const rookie = rookieCandidates[0] ?? null;
+
+    const winners: { awardKey: string; userId: string | null; value: number; detail: string | null }[] = [
+      { awardKey: "champion", userId: champion?.userId ?? null, value: champion?.score ?? 0, detail: null },
+      { awardKey: "lifetime", userId: lifetime?.userId ?? null, value: lifetime?.score ?? 0, detail: null },
+      { awardKey: "crossDept", userId: crossDept?.userId ?? null, value: crossDept?.value ?? 0, detail: null },
+      { awardKey: "bounty", userId: bounty?.userId ?? null, value: bounty?.value ?? 0, detail: null },
+      { awardKey: "viral", userId: viral?.userId ?? null, value: viral?.value ?? 0, detail: null },
+      { awardKey: "rookie", userId: rookie?.userId ?? null, value: rookie?.score ?? 0, detail: null },
+    ];
+
+    const names = await resolveNames(winners.map((w) => w.userId).filter((x): x is string => Boolean(x)));
+    for (const w of winners) {
+      await db.insert(monthlyAwards)
+        .values({ companyId, periodMonth, awardKey: w.awardKey, winnerUserId: w.userId, winnerName: w.userId ? names.get(w.userId) ?? null : null, value: w.value, detail: w.detail })
+        .onConflictDoUpdate({
+          target: [monthlyAwards.companyId, monthlyAwards.periodMonth, monthlyAwards.awardKey],
+          set: { winnerUserId: w.userId, winnerName: w.userId ? names.get(w.userId) ?? null : null, value: w.value, detail: w.detail, updatedAt: new Date() },
+        });
+    }
+    return winners.map((w) => ({ ...w, winnerName: w.userId ? names.get(w.userId) ?? null : null }));
+  }
+
+  async function listAwards(companyId: string, periodMonth: string) {
+    return db.select().from(monthlyAwards)
+      .where(and(eq(monthlyAwards.companyId, companyId), eq(monthlyAwards.periodMonth, periodMonth)));
+  }
+
+  return { compute, recordUsage, runMonthlyRollup, listAwards };
 }

@@ -12,9 +12,18 @@ export interface LeaderboardEntry {
   score: number;
 }
 
+export interface MonthlyAward {
+  awardKey: string;
+  winnerUserId: string | null;
+  winnerName: string | null;
+  value: number;
+  detail: string | null;
+}
+
 export interface LeaderboardResult {
   period: string;
   entries: LeaderboardEntry[];
+  awards?: MonthlyAward[];
 }
 
 export const leaderboardApi = {
