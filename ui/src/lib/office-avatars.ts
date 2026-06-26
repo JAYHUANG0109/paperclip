@@ -31,10 +31,13 @@ export function resolveGender(agent: { name?: string | null; urlKey?: string | n
 
 // Returns the ordered list of image srcs to try before falling back to DiceBear.
 // The component tries each in order, advancing on load error.
-export function resolveAvatarSources(agent: { name?: string | null; urlKey?: string | null }): string[] {
+export function resolveAvatarSources(agent: { name?: string | null; urlKey?: string | null; metadata?: Record<string, unknown> | null }): string[] {
   const h = haystack(agent);
   const custom = CUSTOM_AVATARS.find((c) => h.includes(c.match.toLowerCase()));
   const sources: string[] = [];
+  // Uploaded avatar (per-agent, set in Settings / office) wins over everything.
+  const uploaded = agent.metadata && typeof agent.metadata.officeAvatarUrl === "string" ? agent.metadata.officeAvatarUrl : null;
+  if (uploaded) sources.push(uploaded);
   if (custom) sources.push(custom.src);
   sources.push(GENDER_IMAGE[resolveGender(agent)]);
   return sources;

@@ -2546,6 +2546,30 @@ export function agentRoutes(
     res.status(201).json(agent);
   });
 
+  // Office avatar: stored in agent.metadata.officeAvatarUrl (no schema change).
+  // Anyone who can update the agent (its manager/owner/admin) may set it.
+  router.put("/agents/:id/office-avatar", async (req, res) => {
+    const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    await assertCanUpdateAgent(req, existing);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const url = typeof body.url === "string" ? body.url.trim() : "";
+    // Only accept our own asset content paths (or clear with empty string).
+    if (url && !/^\/api\/assets\/[\w-]+\/content/.test(url)) {
+      res.status(400).json({ error: "url must be an uploaded asset content path" });
+      return;
+    }
+    const nextMetadata = { ...(existing.metadata ?? {}) } as Record<string, unknown>;
+    if (url) nextMetadata.officeAvatarUrl = url;
+    else delete nextMetadata.officeAvatarUrl;
+    const updated = await svc.update(id, { metadata: nextMetadata });
+    res.json(updated);
+  });
+
   router.patch("/agents/:id/permissions", validate(updateAgentPermissionsSchema), async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);

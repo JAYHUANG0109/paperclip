@@ -5292,6 +5292,7 @@
     "minutes": "minutes",
     "status": "status",
     "lastActive": "Last active",
-    "noAccess": "You don't manage this agent"
+    "noAccess": "You don't manage this agent",
+    "uploadAvatar": "Change avatar"
   }
 }

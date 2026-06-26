@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Wrench, Zap, Building2, ExternalLink, Clock, Trophy, Lock } from "lucide-react";
+import { Wrench, Zap, Building2, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { agentsApi } from "../api/agents";
+import { assetsApi } from "../api/assets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { leaderboardApi, type LeaderboardEntry } from "../api/leaderboard";
 import { OfficeAvatar } from "../components/OfficeAvatar";
@@ -105,6 +106,8 @@ export function VirtualOffice() {
 
       <AgentModal
         agent={activeAgent}
+        companyId={selectedCompanyId ?? ""}
+        canManage={activeAgent ? canViewAgent(activeAgent.id) : false}
         canView={activeAgent ? canViewAgent(activeAgent.id) : false}
         working={activeAgent ? workingAgentIds.has(activeAgent.id) : false}
         skillCount={activeAgent ? skillCounts?.[activeAgent.id] ?? 0 : 0}
@@ -204,8 +207,10 @@ function Desk({ agent, working, skillCount, floatDelay, onOpen }: {
   );
 }
 
-function AgentModal({ agent, canView, working, skillCount, leaderboard, onClose }: {
+function AgentModal({ agent, companyId, canManage, canView, working, skillCount, leaderboard, onClose }: {
   agent: Agent | null;
+  companyId: string;
+  canManage: boolean;
   canView: boolean;
   working: boolean;
   skillCount: number;
@@ -214,6 +219,18 @@ function AgentModal({ agent, canView, working, skillCount, leaderboard, onClose 
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const asset = await assetsApi.uploadImage(companyId, file, "office-avatar");
+      return agentsApi.setOfficeAvatar(agent!.id, asset.contentPath, companyId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["office-agents", companyId] });
+    },
+  });
+
   if (!agent) return null;
   const status = statusInfo(agent, working, t);
   const lastSeen = agent.lastHeartbeatAt ? new Date(agent.lastHeartbeatAt).toLocaleString() : null;
@@ -224,10 +241,30 @@ function AgentModal({ agent, canView, working, skillCount, leaderboard, onClose 
         {/* Hero */}
         <div className="flex items-center gap-4">
           <div className={cn(
-            "flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 bg-background",
+            "relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 bg-background",
             working ? "border-emerald-400/70" : "border-border",
           )}>
             <OfficeAvatar agent={agent} size={72} animated={false} />
+            {canManage && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={upload.isPending}
+                  title={t("office.uploadAvatar", { defaultValue: "Change avatar" })}
+                  className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent"
+                >
+                  {upload.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = ""; }}
+                />
+              </>
+            )}
           </div>
           <div className="min-w-0">
             <div className="truncate text-lg font-bold">{agent.name}</div>

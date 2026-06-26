@@ -235,6 +235,8 @@ export const agentsApi = {
     api.get<Record<string, number>>(`/companies/${encodeURIComponent(companyId)}/agent-skill-counts`),
   myVisibleAgents: (companyId: string) =>
     api.get<{ privileged: boolean; agentIds: string[] }>(`/companies/${encodeURIComponent(companyId)}/my-visible-agents`),
+  setOfficeAvatar: (id: string, url: string, companyId?: string) =>
+    api.put<Agent>(agentPath(id, companyId, "/office-avatar"), { url }),
 };
 
 export interface AvailableSkill {

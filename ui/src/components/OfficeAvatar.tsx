@@ -4,7 +4,7 @@ import { resolveAvatarSources, resolveGender } from "../lib/office-avatars";
 import { cn } from "../lib/utils";
 
 interface Props {
-  agent: { id: string; name?: string | null; urlKey?: string | null };
+  agent: { id: string; name?: string | null; urlKey?: string | null; metadata?: Record<string, unknown> | null };
   size?: number;
   className?: string;
   animated?: boolean;
