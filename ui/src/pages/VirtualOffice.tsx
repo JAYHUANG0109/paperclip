@@ -8,7 +8,7 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { agentsApi } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
 import { leaderboardApi, type LeaderboardEntry } from "../api/leaderboard";
-import { CartoonAvatar } from "../components/CartoonAvatar";
+import { OfficeAvatar } from "../components/OfficeAvatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { agentUrl } from "../lib/utils";
@@ -153,7 +153,7 @@ function Desk({ agent, working, skillCount, floatDelay, onOpen }: {
               "flex h-16 w-16 items-center justify-center rounded-full border-2 bg-background transition-shadow group-hover:shadow-lg",
               working ? "border-emerald-400/70" : "border-border",
             )}>
-              <CartoonAvatar seed={agent.id} size={56} />
+              <OfficeAvatar agent={agent} size={56} />
             </div>
             {working && (
               <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
@@ -210,7 +210,7 @@ function AgentModal({ agent, working, skillCount, leaderboard, onClose }: {
             "flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 bg-background",
             working ? "border-emerald-400/70" : "border-border",
           )}>
-            <CartoonAvatar seed={agent.id} size={72} animated={false} />
+            <OfficeAvatar agent={agent} size={72} animated={false} />
           </div>
           <div className="min-w-0">
             <div className="truncate text-lg font-bold">{agent.name}</div>
