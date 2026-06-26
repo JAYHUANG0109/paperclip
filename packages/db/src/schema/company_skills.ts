@@ -36,6 +36,7 @@ export const companySkills = pgTable(
     homepageUrl: text("homepage_url"),
     categories: text("categories").array().notNull().default([]),
     sharingScope: text("sharing_scope").$type<CompanySkillSharingScope>().notNull().default("company"),
+    createdByUserId: text("created_by_user_id"),
     publicShareToken: text("public_share_token"),
     forkedFromSkillId: uuid("forked_from_skill_id").references((): AnyPgColumn => companySkills.id, { onDelete: "set null" }),
     forkedFromCompanyId: uuid("forked_from_company_id").references(() => companies.id, { onDelete: "set null" }),

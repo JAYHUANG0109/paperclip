@@ -887,6 +887,7 @@ function CategoryNav({
   active: string | null;
   onSelect: (slug: string | null) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <nav className="flex flex-col gap-0.5 px-2">
       <button
@@ -897,7 +898,7 @@ function CategoryNav({
           active == null ? "bg-accent/60 font-medium text-foreground" : "text-muted-foreground",
         )}
       >
-        <span>All</span>
+        <span>{t("companySkills.sidebarAll", { defaultValue: "All" })}</span>
         <span className="text-xs text-muted-foreground">{total}</span>
       </button>
       {categories.map((category) => (
@@ -1091,7 +1092,7 @@ export function DiscoveryGrid({
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onImport}>
                 <Globe className="mr-2 h-4 w-4" />
-                {t("companySkills.importFromPath", { defaultValue: "Import from path or URL" })}
+                {t("companySkills.importFromPath", { defaultValue: "Upload file or URL" })}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1269,11 +1270,12 @@ function NewSkillWizard({
   error: string | null;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<SkillCreateDraft>(initialDraft);
   const [slugDirty, setSlugDirty] = useState(initialDraft.slug.trim().length > 0);
   const categoryDraft = draft.categories.join(", ");
-  const steps = ["Basics", "Design", "Content", "Review"];
+  const steps = [t("companySkills.stepBasics", { defaultValue: "Basics" }), t("companySkills.stepDesign", { defaultValue: "Design" }), t("companySkills.stepContent", { defaultValue: "Content" }), t("companySkills.stepReview", { defaultValue: "Review" })];
 
   useEffect(() => {
     setStep(0);
@@ -1326,7 +1328,7 @@ function NewSkillWizard({
       {draft.forkedFromName ? (
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           <GitFork className="h-3.5 w-3.5" />
-          Forking {draft.forkedFromName}
+          {t("companySkills.forking", { defaultValue: "Forking" })} {draft.forkedFromName}
         </div>
       ) : null}
 
@@ -1344,7 +1346,7 @@ function NewSkillWizard({
                   : draft.markdown,
               });
             }}
-            placeholder="Skill name"
+            placeholder={t("companySkills.skillNamePlaceholder", { defaultValue: "Skill name" })}
             className="h-9"
           />
           <Input
@@ -1354,7 +1356,7 @@ function NewSkillWizard({
               setSlugDirty(nextSlug.length > 0);
               patchDraft({ slug: nextSlug });
             }}
-            placeholder="skill-shortname"
+            placeholder={t("companySkills.slugPlaceholder", { defaultValue: "skill-shortname" })}
             className="h-9 font-mono"
           />
           <Textarea
@@ -1369,7 +1371,7 @@ function NewSkillWizard({
                   : draft.markdown,
               });
             }}
-            placeholder="One-line promise for the skill"
+            placeholder={t("companySkills.shortDescriptionPlaceholder", { defaultValue: "One-line promise for the skill" })}
             className="min-h-20"
           />
         </div>
@@ -1449,17 +1451,17 @@ function NewSkillWizard({
       ) : (
         <div className="space-y-4 text-sm">
           <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-y-2">
-            <span className="text-muted-foreground">Name</span>
-            <span>{draft.name || "Untitled"}</span>
-            <span className="text-muted-foreground">Slug</span>
+            <span className="text-muted-foreground">{t("companySkills.fieldName", { defaultValue: "Name" })}</span>
+            <span>{draft.name || t("companySkills.untitled", { defaultValue: "Untitled" })}</span>
+            <span className="text-muted-foreground">{t("companySkills.fieldSlug", { defaultValue: "Slug" })}</span>
             <span className="font-mono">{effectiveSlug || "skill"}</span>
-            <span className="text-muted-foreground">Scope</span>
-            <span>{draft.sharingScope === "private" ? "Private" : "Company"}</span>
-            <span className="text-muted-foreground">Categories</span>
-            <span>{draft.categories.length ? draft.categories.join(", ") : "none"}</span>
+            <span className="text-muted-foreground">{t("companySkills.fieldScope", { defaultValue: "Scope" })}</span>
+            <span>{draft.sharingScope === "private" ? t("companySkills.scopePrivate", { defaultValue: "Private" }) : t("companySkills.scopePublic", { defaultValue: "Public" })}</span>
+            <span className="text-muted-foreground">{t("companySkills.fieldCategories", { defaultValue: "Categories" })}</span>
+            <span>{draft.categories.length ? draft.categories.join(", ") : t("companySkills.none", { defaultValue: "none" })}</span>
           </div>
           <div className="space-y-2">
-            <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">Sharing</label>
+            <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("companySkills.sharing", { defaultValue: "Sharing" })}</label>
             <div className="grid gap-2 sm:grid-cols-3">
               {(["company", "private"] as const).map((scope) => (
                 <button
@@ -1471,9 +1473,9 @@ function NewSkillWizard({
                     draft.sharingScope === scope ? "border-foreground bg-accent/50" : "border-border",
                   )}
                 >
-                  <span className="block font-medium">{scope === "company" ? "Company" : "Private"}</span>
+                  <span className="block font-medium">{scope === "company" ? t("companySkills.scopePublic", { defaultValue: "Public" }) : t("companySkills.scopePrivate", { defaultValue: "Private" })}</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    {scope === "company" ? "Visible inside this company." : "Only visible in your library."}
+                    {scope === "company" ? t("companySkills.scopePublicDesc", { defaultValue: "Visible to everyone in this company." }) : t("companySkills.scopePrivateDesc", { defaultValue: "Only you and people you choose can see it." })}
                   </span>
                 </button>
               ))}
@@ -1482,8 +1484,8 @@ function NewSkillWizard({
                 disabled
                 className="rounded-md border border-dashed border-border px-3 py-2 text-left text-sm text-muted-foreground"
               >
-                <span className="block font-medium">Public link</span>
-                <span className="mt-1 block text-xs">Coming later.</span>
+                <span className="block font-medium">{t("companySkills.publicLink", { defaultValue: "Public link" })}</span>
+                <span className="mt-1 block text-xs">{t("companySkills.publicLinkComingLater", { defaultValue: "Coming later." })}</span>
               </button>
             </div>
           </div>
@@ -1498,19 +1500,19 @@ function NewSkillWizard({
 
       <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={isPending}>
-          Cancel
+          {t("companySkills.cancel", { defaultValue: "Cancel" })}
         </Button>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={isPending || step === 0}>
-            Back
+            {t("companySkills.back", { defaultValue: "Back" })}
           </Button>
           {step < steps.length - 1 ? (
             <Button size="sm" onClick={() => setStep((value) => Math.min(steps.length - 1, value + 1))} disabled={!nameValid}>
-              Next
+              {t("companySkills.next", { defaultValue: "Next" })}
             </Button>
           ) : (
             <Button size="sm" onClick={submit} disabled={isPending || !nameValid}>
-              {isPending ? "Creating..." : draft.forkedFromSkillId ? "Create fork" : "Create skill"}
+              {isPending ? t("companySkills.creating", { defaultValue: "Creating..." }) : draft.forkedFromSkillId ? t("companySkills.createForkBtn", { defaultValue: "Create fork" }) : t("companySkills.createSkillBtn", { defaultValue: "Create skill" })}
             </Button>
           )}
         </div>
@@ -4578,11 +4580,11 @@ export function CompanySkills() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="flex max-h-[85vh] flex-col overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>{createDraft.forkedFromSkillId ? "Fork skill" : "Create a new skill"}</DialogTitle>
+            <DialogTitle>{createDraft.forkedFromSkillId ? t("companySkills.wizardForkTitle", { defaultValue: "Fork skill" }) : t("companySkills.wizardCreateTitle", { defaultValue: "Create a new skill" })}</DialogTitle>
             <DialogDescription>
               {createDraft.forkedFromSkillId
                 ? "Review the fork metadata and create an editable company copy."
-                : "Create an editable company skill in the Paperclip workspace."}
+                : t("companySkills.wizardCreateSubtitle", { defaultValue: "Create an editable company skill in the Paperclip workspace." })}
             </DialogDescription>
           </DialogHeader>
           <NewSkillWizard
@@ -4598,9 +4600,9 @@ export function CompanySkills() {
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t("companySkills.importTitle", { defaultValue: "Import a skill" })}</DialogTitle>
+            <DialogTitle>{t("companySkills.importTitle", { defaultValue: "Add a skill" })}</DialogTitle>
             <DialogDescription>
-              {t("companySkills.importSubtitle", { defaultValue: "Paste a local path, GitHub URL, or skills.sh command to import a skill into this company." })}
+              {t("companySkills.importSubtitle", { defaultValue: "Upload files, or paste a GitHub URL / skills.sh command to add a skill to this company." })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

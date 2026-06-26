@@ -813,6 +813,13 @@
 			"when": 1782366102990,
 			"tag": "9005_aromatic_khan",
 			"breakpoints": true
+		},
+		{
+			"idx": 9006,
+			"version": "7",
+			"when": 1782366103990,
+			"tag": "9006_skill_sharing",
+			"breakpoints": true
 		}
 	]
 }

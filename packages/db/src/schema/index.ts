@@ -24,6 +24,7 @@ export { agentWakeupRequests } from "./agent_wakeup_requests.js";
 export { projects } from "./projects.js";
 export { projectMemberships } from "./project_memberships.js";
 export { projectAccessMembers } from "./project_access_members.js";
+export { companySkillAccessMembers } from "./company_skill_access_members.js";
 export { projectSections } from "./project_sections.js";
 export { customFields, customFieldSettings, customFieldValues } from "./custom_fields.js";
 export { projectWorkspaces } from "./project_workspaces.js";
