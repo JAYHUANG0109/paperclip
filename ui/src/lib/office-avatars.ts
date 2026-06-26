@@ -13,7 +13,7 @@ const CUSTOM_AVATARS: { match: string; src: string }[] = [
 
 // Agents whose name/urlKey contains one of these is MALE; everyone else FEMALE.
 // (Per 四季 setup: Frank, 育銘, 坤源, 智偉, 忠泰 are male.)
-const MALE_HINTS = ["frank", "育銘", "坤源", "智偉", "忠泰"];
+const MALE_HINTS = ["frank", "育銘", "坤源", "智偉", "忠泰", "資訊專員", "j_資訊"];
 
 const GENDER_IMAGE: Record<Gender, string> = {
   male: "/office-avatars/male.png",

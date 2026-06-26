@@ -148,15 +148,23 @@ function Desk({ agent, working, skillCount, floatDelay, onOpen }: {
           onClick={onOpen}
           className="group flex flex-col items-center gap-1 rounded-lg p-2 text-center transition-transform hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <div className="relative" style={{ animationDelay: `${floatDelay}s` }}>
+          <div className="relative h-16 w-16">
+            {/* Circular pedestal behind the avatar */}
             <div className={cn(
-              "flex h-16 w-16 items-center justify-center rounded-full border-2 bg-background transition-shadow group-hover:shadow-lg",
+              "absolute inset-0 rounded-full border-2 bg-background transition-shadow group-hover:shadow-lg",
               working ? "border-emerald-400/70" : "border-border",
-            )}>
-              <OfficeAvatar agent={agent} size={56} />
+            )} />
+            {/* Avatar is larger than the pedestal and bottom-anchored so the
+                head pokes above the rim (sticker look). Float animation on the
+                wrapper so it bobs as one piece. */}
+            <div
+              className="office-avatar-idle absolute inset-x-0 -top-3 flex justify-center"
+              style={{ animationDelay: `${floatDelay}s` }}
+            >
+              <OfficeAvatar agent={agent} size={72} animated={false} className="drop-shadow-sm" />
             </div>
             {working && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
                 <Zap className="h-2.5 w-2.5" />
               </span>
             )}
