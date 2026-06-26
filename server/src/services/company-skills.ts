@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { companies, companySkillComments, companySkillStars, companySkillVersions, companySkills } from "@paperclipai/db";
+import { companies, companySkillAccessMembers, companySkillComments, companySkillStars, companySkillVersions, companySkills } from "@paperclipai/db";
 import { readPaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import type { PaperclipDesiredSkillEntry, PaperclipSkillEntry } from "@paperclipai/adapter-utils/server-utils";
 import type {
@@ -312,6 +312,7 @@ function selectCompanySkillColumns() {
     homepageUrl: companySkills.homepageUrl,
     categories: companySkills.categories,
     sharingScope: companySkills.sharingScope,
+    createdByUserId: companySkills.createdByUserId,
     publicShareToken: companySkills.publicShareToken,
     forkedFromSkillId: companySkills.forkedFromSkillId,
     forkedFromCompanyId: companySkills.forkedFromCompanyId,
@@ -2259,8 +2260,17 @@ export function companySkillService(db: Db) {
     }
   }
 
-  async function list(companyId: string, query: CompanySkillListQuery = {}): Promise<CompanySkillListItem[]> {
+  async function list(
+    companyId: string,
+    query: CompanySkillListQuery = {},
+    viewer?: { userId?: string | null; isPrivileged?: boolean },
+  ): Promise<CompanySkillListItem[]> {
     await ensureSkillInventoryCurrent(companyId);
+    // Private-scope visibility: non-privileged users only see private skills they
+    // created or were granted access to. Privileged viewers (owner/admin) see all.
+    const visiblePrivateIds = viewer && !viewer.isPrivileged && viewer.userId
+      ? await visiblePrivateSkillIdsForUser(companyId, viewer.userId)
+      : null;
     const rows = await db
       .select({
         id: companySkills.id,
@@ -2282,6 +2292,7 @@ export function companySkillService(db: Db) {
         homepageUrl: companySkills.homepageUrl,
         categories: companySkills.categories,
         sharingScope: companySkills.sharingScope,
+        createdByUserId: companySkills.createdByUserId,
         publicShareToken: companySkills.publicShareToken,
         forkedFromSkillId: companySkills.forkedFromSkillId,
         forkedFromCompanyId: companySkills.forkedFromCompanyId,
@@ -2301,6 +2312,10 @@ export function companySkillService(db: Db) {
     const q = query.q?.trim().toLowerCase() ?? "";
     const categories = new Set((query.categories ?? []).map(normalizeCategorySlug).filter((value): value is string => Boolean(value)));
     const filtered = rows.filter((skill) => {
+      // Hide private skills from users who aren't the creator / an access member.
+      if (skill.sharingScope === "private" && viewer && !viewer.isPrivileged) {
+        if (!viewer.userId || !visiblePrivateIds || !visiblePrivateIds.has(skill.id)) return false;
+      }
       if (query.scope && skill.sharingScope !== query.scope) return false;
       if (categories.size > 0 && !skill.categories.some((category) => categories.has(category))) return false;
       if (q) {
@@ -3161,6 +3176,7 @@ export function companySkillService(db: Db) {
         homepageUrl: normalizeStoreText(input.homepageUrl, 2000) ?? forkSource?.homepageUrl ?? created.homepageUrl,
         categories: input.categories ? normalizeCategoryList(input.categories) : forkSource?.categories ?? created.categories,
         sharingScope,
+        createdByUserId: actor?.type === "user" ? actor.userId ?? null : null,
         forkedFromSkillId: forkSource?.id ?? null,
         forkedFromCompanyId: forkSource?.companyId ?? null,
         updatedAt: new Date(),
@@ -4448,8 +4464,53 @@ export function companySkillService(db: Db) {
     return skill;
   }
 
+  // ---- Skill sharing: private-scope access ----
+  async function listSkillAccessMembers(companyId: string, skillId: string) {
+    return db
+      .select()
+      .from(companySkillAccessMembers)
+      .where(and(eq(companySkillAccessMembers.companyId, companyId), eq(companySkillAccessMembers.skillId, skillId)))
+      .orderBy(asc(companySkillAccessMembers.createdAt));
+  }
+
+  async function addSkillAccessMember(companyId: string, skillId: string, principalId: string) {
+    const [row] = await db
+      .insert(companySkillAccessMembers)
+      .values({ companyId, skillId, principalType: "user", principalId })
+      .onConflictDoNothing()
+      .returning();
+    return row ?? null;
+  }
+
+  async function removeSkillAccessMember(companyId: string, skillId: string, principalId: string) {
+    return db
+      .delete(companySkillAccessMembers)
+      .where(and(
+        eq(companySkillAccessMembers.skillId, skillId),
+        eq(companySkillAccessMembers.principalType, "user"),
+        eq(companySkillAccessMembers.principalId, principalId),
+      ))
+      .returning()
+      .then((rows) => rows[0] ?? null);
+  }
+
+  // Set of private skill ids a user may see (creator + explicit members).
+  async function visiblePrivateSkillIdsForUser(companyId: string, userId: string): Promise<Set<string>> {
+    const [owned, member] = await Promise.all([
+      db.select({ id: companySkills.id }).from(companySkills)
+        .where(and(eq(companySkills.companyId, companyId), eq(companySkills.createdByUserId, userId))),
+      db.select({ id: companySkillAccessMembers.skillId }).from(companySkillAccessMembers)
+        .where(and(eq(companySkillAccessMembers.companyId, companyId), eq(companySkillAccessMembers.principalType, "user"), eq(companySkillAccessMembers.principalId, userId))),
+    ]);
+    return new Set<string>([...owned.map((r) => r.id), ...member.map((r) => r.id)]);
+  }
+
   return {
     list,
+    listSkillAccessMembers,
+    addSkillAccessMember,
+    removeSkillAccessMember,
+    visiblePrivateSkillIdsForUser,
     listFull,
     getById,
     getByKey,

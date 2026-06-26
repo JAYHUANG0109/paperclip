@@ -25,7 +25,7 @@ import {
   readCatalogSkillFile,
 } from "../services/skills-catalog.js";
 import { forbidden } from "../errors.js";
-import { assertAuthenticated, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertAuthenticated, assertCompanyAccess, getActorInfo, isPrivilegedMemberViewer } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
 
 type SkillTelemetryInput = {
@@ -144,6 +144,9 @@ export function companySkillRoutes(db: Db) {
   router.get("/companies/:companyId/skills", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    const viewer = req.actor.type === "board"
+      ? { userId: req.actor.userId ?? null, isPrivileged: isPrivilegedMemberViewer(req, companyId, true) }
+      : { isPrivileged: true }; // agents resolve skills via assignment; no privacy filter
     const result = await svc.list(companyId, companySkillListQuerySchema.parse({
       q: firstQueryString(req.query.q),
       sort: firstQueryString(req.query.sort),
@@ -153,7 +156,7 @@ export function companySkillRoutes(db: Db) {
         ...queryStringArray(req.query["categories[]"]),
       ],
       scope: firstQueryString(req.query.scope),
-    }));
+    }), viewer);
     res.json(result);
   });
 
@@ -173,6 +176,39 @@ export function companySkillRoutes(db: Db) {
       return;
     }
     res.json(result);
+  });
+
+  // ---- Skill sharing: private-access members ----
+  router.get("/companies/:companyId/skills/:skillId/members", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await svc.listSkillAccessMembers(companyId, skillId));
+  });
+
+  router.post("/companies/:companyId/skills/:skillId/members", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    await assertCanMutateCompanySkills(req, companyId);
+    const principalId = String((req.body as Record<string, unknown>)?.principalId ?? "").trim();
+    if (!principalId) {
+      res.status(400).json({ error: "principalId is required" });
+      return;
+    }
+    res.status(201).json(await svc.addSkillAccessMember(companyId, skillId, principalId));
+  });
+
+  router.delete("/companies/:companyId/skills/:skillId/members/:principalId", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    const principalId = req.params.principalId as string;
+    await assertCanMutateCompanySkills(req, companyId);
+    const removed = await svc.removeSkillAccessMember(companyId, skillId, principalId);
+    if (!removed) {
+      res.status(404).json({ error: "Member not found" });
+      return;
+    }
+    res.json(removed);
   });
 
   router.get("/companies/:companyId/skills/:skillId/versions", async (req, res) => {
