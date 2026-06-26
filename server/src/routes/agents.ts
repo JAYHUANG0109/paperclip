@@ -1860,6 +1860,21 @@ export function agentRoutes(
     },
   );
 
+  // The agents the current viewer may open the detail page for (virtual office
+  // "查看代理人" gate). Privileged viewers (owner/admin/instance) → all; others
+  // → the agents they manage/oversee (joined + reports-to subtree).
+  router.get("/companies/:companyId/my-visible-agents", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    if (isPrivilegedAgentViewer(req, companyId)) {
+      res.json({ privileged: true, agentIds: [] });
+      return;
+    }
+    const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    const ids = userId ? [...(await visibleAgentIds(companyId, userId))] : [];
+    res.json({ privileged: false, agentIds: ids });
+  });
+
   router.get("/companies/:companyId/agents", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);

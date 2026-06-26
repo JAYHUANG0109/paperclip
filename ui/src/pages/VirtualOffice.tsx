@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Wrench, Zap, Building2, ExternalLink, Clock, Trophy } from "lucide-react";
+import { Wrench, Zap, Building2, ExternalLink, Clock, Trophy, Lock } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -46,6 +46,13 @@ export function VirtualOffice() {
     queryFn: () => leaderboardApi.get(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const { data: viewable } = useQuery({
+    queryKey: ["office-viewable-agents", selectedCompanyId],
+    queryFn: () => agentsApi.myVisibleAgents(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const canViewAgent = (agentId: string) =>
+    Boolean(viewable?.privileged) || (viewable?.agentIds ?? []).includes(agentId);
 
   const workingAgentIds = useMemo(() => new Set((liveRuns ?? []).map((r) => r.agentId)), [liveRuns]);
   const visibleAgents = useMemo(() => (agents ?? []).filter((a) => a.status !== "terminated"), [agents]);
@@ -98,6 +105,7 @@ export function VirtualOffice() {
 
       <AgentModal
         agent={activeAgent}
+        canView={activeAgent ? canViewAgent(activeAgent.id) : false}
         working={activeAgent ? workingAgentIds.has(activeAgent.id) : false}
         skillCount={activeAgent ? skillCounts?.[activeAgent.id] ?? 0 : 0}
         score={activeAgent && activeAgent.metadata ? null : null}
@@ -196,8 +204,9 @@ function Desk({ agent, working, skillCount, floatDelay, onOpen }: {
   );
 }
 
-function AgentModal({ agent, working, skillCount, leaderboard, onClose }: {
+function AgentModal({ agent, canView, working, skillCount, leaderboard, onClose }: {
   agent: Agent | null;
+  canView: boolean;
   working: boolean;
   skillCount: number;
   score: number | null;
@@ -248,14 +257,21 @@ function AgentModal({ agent, working, skillCount, leaderboard, onClose }: {
           <p className="mt-3 line-clamp-3 text-xs text-muted-foreground">{agent.capabilities}</p>
         )}
 
-        <Link
-          to={agentUrl(agent)}
-          onClick={onClose}
-          className="mt-4 flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-        >
-          <ExternalLink className="h-4 w-4" />
-          {t("office.viewAgent", { defaultValue: "View agent" })}
-        </Link>
+        {canView ? (
+          <Link
+            to={agentUrl(agent)}
+            onClick={onClose}
+            className="mt-4 flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            <ExternalLink className="h-4 w-4" />
+            {t("office.viewAgent", { defaultValue: "View agent" })}
+          </Link>
+        ) : (
+          <div className="mt-4 flex items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
+            <Lock className="h-3.5 w-3.5" />
+            {t("office.noAccess", { defaultValue: "You don't manage this agent" })}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

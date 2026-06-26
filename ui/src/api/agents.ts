@@ -233,6 +233,8 @@ export const agentsApi = {
     api.get<{ skills: AvailableSkill[] }>("/skills/available"),
   skillCounts: (companyId: string) =>
     api.get<Record<string, number>>(`/companies/${encodeURIComponent(companyId)}/agent-skill-counts`),
+  myVisibleAgents: (companyId: string) =>
+    api.get<{ privileged: boolean; agentIds: string[] }>(`/companies/${encodeURIComponent(companyId)}/my-visible-agents`),
 };
 
 export interface AvailableSkill {

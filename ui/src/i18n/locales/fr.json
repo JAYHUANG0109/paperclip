@@ -5291,6 +5291,7 @@
     "clickForMore": "Click for details",
     "minutes": "minutes",
     "status": "status",
-    "lastActive": "Last active"
+    "lastActive": "Last active",
+    "noAccess": "You don't manage this agent"
   }
 }

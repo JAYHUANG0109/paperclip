@@ -5291,6 +5291,7 @@
     "clickForMore": "點擊查看詳情",
     "minutes": "分鐘",
     "status": "狀態",
-    "lastActive": "最後活動"
+    "lastActive": "最後活動",
+    "noAccess": "您未管理此代理人"
   }
 }
