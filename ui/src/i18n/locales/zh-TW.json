@@ -2285,7 +2285,11 @@
     "rejected": "技能已駁回",
     "pendingBadge": "審核中",
     "tabPending": "待審核",
-    "minutesPerUseLabel": "每次使用省下的分鐘（用於排行榜計分）"
+    "minutesPerUseLabel": "每次使用省下的分鐘（用於排行榜計分）",
+    "scopeTeam": "團隊",
+    "scopeTeamDesc": "僅您選擇的團隊成員可見。",
+    "chooseTeams": "分享給團隊",
+    "noTeams": "您目前不屬於任何團隊。"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",

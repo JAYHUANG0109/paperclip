@@ -134,6 +134,8 @@ export const companySkillsApi = {
     api.delete<CompanySkillAccessMember>(
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/members/${encodeURIComponent(principalId)}`,
     ),
+  myTeams: (companyId: string) =>
+    api.get<{ teams: string[] }>(`/companies/${encodeURIComponent(companyId)}/my-teams`),
   pendingApprovals: (companyId: string) =>
     api.get<CompanySkill[]>(`/companies/${encodeURIComponent(companyId)}/skills/pending-approvals`),
   approve: (companyId: string, skillId: string) =>

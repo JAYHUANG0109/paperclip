@@ -4,7 +4,7 @@ export const companySkillSourceTypeSchema = z.enum(["local_path", "github", "url
 export const companySkillTrustLevelSchema = z.enum(["markdown_only", "assets", "scripts_executables"]);
 export const companySkillCompatibilitySchema = z.enum(["compatible", "unknown", "invalid"]);
 export const companySkillSourceBadgeSchema = z.enum(["paperclip", "github", "local", "url", "catalog", "skills_sh"]);
-export const companySkillSharingScopeSchema = z.enum(["private", "company", "public_link"]);
+export const companySkillSharingScopeSchema = z.enum(["private", "company", "team", "public_link"]);
 export const companySkillListSortSchema = z.enum(["alphabetical", "recent", "installs", "stars", "agents", "forks"]);
 
 export const companySkillFileInventoryEntrySchema = z.object({
@@ -259,6 +259,8 @@ export const companySkillCreateSchema = z.object({
   homepageUrl: z.string().nullable().optional(),
   categories: z.array(z.string().min(1)).optional(),
   sharingScope: companySkillSharingScopeSchema.optional(),
+  sharingTeams: z.array(z.string().min(1)).optional(),
+  minutesPerUse: z.number().int().min(0).optional(),
   forkedFromSkillId: z.string().uuid().nullable().optional(),
 });
 

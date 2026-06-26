@@ -6,7 +6,7 @@ export type CompanySkillCompatibility = "compatible" | "unknown" | "invalid";
 
 export type CompanySkillSourceBadge = "paperclip" | "github" | "local" | "url" | "catalog" | "skills_sh";
 
-export type CompanySkillSharingScope = "private" | "company" | "public_link";
+export type CompanySkillSharingScope = "private" | "company" | "team" | "public_link";
 export type CompanySkillApprovalStatus = "approved" | "pending" | "rejected" | "revision";
 
 export type CompanySkillListSort = "alphabetical" | "recent" | "installs" | "stars" | "agents" | "forks";
@@ -41,6 +41,7 @@ export interface CompanySkill {
   homepageUrl: string | null;
   categories: string[];
   sharingScope: CompanySkillSharingScope;
+  sharingTeams: string[];
   publicShareToken: string | null;
   forkedFromSkillId: string | null;
   forkedFromCompanyId: string | null;
@@ -80,6 +81,7 @@ export interface CompanySkillListItem {
   homepageUrl: string | null;
   categories: string[];
   sharingScope: CompanySkillSharingScope;
+  sharingTeams: string[];
   publicShareToken: string | null;
   forkedFromSkillId: string | null;
   forkedFromCompanyId: string | null;
@@ -320,6 +322,7 @@ export interface CompanySkillCreateRequest {
   homepageUrl?: string | null;
   categories?: string[];
   sharingScope?: CompanySkillSharingScope;
+  sharingTeams?: string[];
   minutesPerUse?: number;
   forkedFromSkillId?: string | null;
 }

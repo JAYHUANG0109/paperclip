@@ -2285,7 +2285,11 @@
     "rejected": "Skill rejected",
     "pendingBadge": "審核中",
     "tabPending": "Pending",
-    "minutesPerUseLabel": "minutes saved per use (powers the leaderboard)"
+    "minutesPerUseLabel": "minutes saved per use (powers the leaderboard)",
+    "scopeTeam": "Team",
+    "scopeTeamDesc": "Only people in the team(s) you choose.",
+    "chooseTeams": "Share with teams",
+    "noTeams": "You don't belong to any team yet."
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",

@@ -1238,6 +1238,7 @@ type SkillCreateDraft = {
   categories: string[];
   markdown: string;
   sharingScope: Exclude<CompanySkillSharingScope, "public_link">;
+  sharingTeams: string[];
   minutesPerUse: number;
   forkedFromSkillId: string | null;
   forkedFromName: string | null;
@@ -1254,6 +1255,7 @@ function buildBlankSkillDraft(): SkillCreateDraft {
     markdown: defaultSkillMarkdown("", ""),
     sharingScope: "company",
     minutesPerUse: 0,
+    sharingTeams: [],
     forkedFromSkillId: null,
     forkedFromName: null,
   };
@@ -1272,6 +1274,7 @@ function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft {
     markdown: skill.markdown.replace(/^name:\s*.*$/m, `name: ${name}`),
     sharingScope: "company",
     minutesPerUse: 0,
+    sharingTeams: [],
     forkedFromSkillId: skill.id,
     forkedFromName: skill.name,
   };
@@ -1283,12 +1286,14 @@ function NewSkillWizard({
   isPending,
   error,
   onCancel,
+  availableTeams,
 }: {
   initialDraft: SkillCreateDraft;
   onCreate: (payload: CompanySkillCreateRequest) => void;
   isPending: boolean;
   error: string | null;
   onCancel: () => void;
+  availableTeams: string[];
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
@@ -1323,6 +1328,7 @@ function NewSkillWizard({
       tagline: draft.tagline.trim() || null,
       categories: draft.categories,
       sharingScope: draft.sharingScope,
+      sharingTeams: draft.sharingScope === "team" ? draft.sharingTeams : [],
       minutesPerUse: draft.minutesPerUse,
       forkedFromSkillId: draft.forkedFromSkillId,
     });
@@ -1497,7 +1503,7 @@ function NewSkillWizard({
           <div className="space-y-2">
             <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("companySkills.sharing", { defaultValue: "Sharing" })}</label>
             <div className="grid gap-2 sm:grid-cols-3">
-              {(["company", "private"] as const).map((scope) => (
+              {(["company", "team", "private"] as const).map((scope) => (
                 <button
                   key={scope}
                   type="button"
@@ -1507,21 +1513,52 @@ function NewSkillWizard({
                     draft.sharingScope === scope ? "border-foreground bg-accent/50" : "border-border",
                   )}
                 >
-                  <span className="block font-medium">{scope === "company" ? t("companySkills.scopePublic", { defaultValue: "Public" }) : t("companySkills.scopePrivate", { defaultValue: "Private" })}</span>
+                  <span className="block font-medium">
+                    {scope === "company"
+                      ? t("companySkills.scopePublic", { defaultValue: "Public" })
+                      : scope === "team"
+                        ? t("companySkills.scopeTeam", { defaultValue: "Team" })
+                        : t("companySkills.scopePrivate", { defaultValue: "Private" })}
+                  </span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    {scope === "company" ? t("companySkills.scopePublicDesc", { defaultValue: "Visible to everyone in this company." }) : t("companySkills.scopePrivateDesc", { defaultValue: "Only you and people you choose can see it." })}
+                    {scope === "company"
+                      ? t("companySkills.scopePublicDesc", { defaultValue: "Visible to everyone in this company." })
+                      : scope === "team"
+                        ? t("companySkills.scopeTeamDesc", { defaultValue: "Only people in the team(s) you choose." })
+                        : t("companySkills.scopePrivateDesc", { defaultValue: "Only you and people you choose can see it." })}
                   </span>
                 </button>
               ))}
-              <button
-                type="button"
-                disabled
-                className="rounded-md border border-dashed border-border px-3 py-2 text-left text-sm text-muted-foreground"
-              >
-                <span className="block font-medium">{t("companySkills.publicLink", { defaultValue: "Public link" })}</span>
-                <span className="mt-1 block text-xs">{t("companySkills.publicLinkComingLater", { defaultValue: "Coming later." })}</span>
-              </button>
             </div>
+            {draft.sharingScope === "team" && (
+              <div className="rounded-md border border-border p-3">
+                <div className="mb-2 text-xs font-medium text-muted-foreground">
+                  {t("companySkills.chooseTeams", { defaultValue: "Share with teams" })}
+                </div>
+                {availableTeams.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{t("companySkills.noTeams", { defaultValue: "You don't belong to any team yet." })}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableTeams.map((team) => {
+                      const selected = draft.sharingTeams.includes(team);
+                      return (
+                        <button
+                          key={team}
+                          type="button"
+                          onClick={() => patchDraft({ sharingTeams: selected ? draft.sharingTeams.filter((x) => x !== team) : [...draft.sharingTeams, team] })}
+                          className={cn(
+                            "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                            selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring",
+                          )}
+                        >
+                          {team}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -3738,7 +3775,8 @@ export function CompanySkills() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadScope, setUploadScope] = useState<"company" | "private">("company");
+  const [uploadScope, setUploadScope] = useState<"company" | "team" | "private">("company");
+  const [uploadTeams, setUploadTeams] = useState<string[]>([]);
   const uploadFilesRef = useRef<HTMLInputElement | null>(null);
   const uploadFolderRef = useRef<HTMLInputElement | null>(null);
   const parsedRoute = useMemo(() => parseSkillRoute(routePath), [routePath]);
@@ -4069,7 +4107,7 @@ export function CompanySkills() {
       const name = readField("name") ?? fallbackName;
       const description = readField("description");
 
-      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope });
+      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [] });
 
       // Write every other file (skip SKILL.md itself; skip obviously-binary by extension).
       const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|woff2?|ttf|otf|mp4|mov|mp3|wav)$/i;
@@ -4204,6 +4242,12 @@ export function CompanySkills() {
     queryFn: () => accessApi.getCurrentBoardAccess(),
     enabled: !!selectedCompanyId,
   });
+  const { data: myTeamsData } = useQuery({
+    queryKey: ["my-teams", selectedCompanyId],
+    queryFn: () => companySkillsApi.myTeams(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const availableTeams = myTeamsData?.teams ?? [];
   const canReviewSkills = Boolean(
     boardAccessForReview?.isInstanceAdmin ||
     boardAccessForReview?.memberships?.find(
@@ -4696,6 +4740,7 @@ export function CompanySkills() {
             </DialogDescription>
           </DialogHeader>
           <NewSkillWizard
+            availableTeams={availableTeams}
             initialDraft={createDraft}
             onCreate={(payload) => createSkill.mutate(payload)}
             isPending={createSkill.isPending}
@@ -4760,7 +4805,7 @@ export function CompanySkills() {
               </p>
               {/* Sharing scope for the uploaded skill */}
               <div className="mb-2.5 flex gap-2">
-                {(["company", "private"] as const).map((scope) => (
+                {(["company", "team", "private"] as const).map((scope) => (
                   <button
                     key={scope}
                     type="button"
@@ -4773,16 +4818,42 @@ export function CompanySkills() {
                     <span className="block font-medium">
                       {scope === "company"
                         ? t("companySkills.scopePublic", { defaultValue: "Public" })
-                        : t("companySkills.scopePrivate", { defaultValue: "Private" })}
-                    </span>
-                    <span className="mt-0.5 block text-[11px]">
-                      {scope === "company"
-                        ? t("companySkills.scopePublicDesc", { defaultValue: "Visible to everyone in this company." })
-                        : t("companySkills.scopePrivateDesc", { defaultValue: "Only you and people you choose can see it." })}
+                        : scope === "team"
+                          ? t("companySkills.scopeTeam", { defaultValue: "Team" })
+                          : t("companySkills.scopePrivate", { defaultValue: "Private" })}
                     </span>
                   </button>
                 ))}
               </div>
+              {uploadScope === "team" && (
+                <div className="mb-2.5 rounded-md border border-border p-2.5">
+                  <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                    {t("companySkills.chooseTeams", { defaultValue: "Share with teams" })}
+                  </div>
+                  {availableTeams.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground">{t("companySkills.noTeams", { defaultValue: "You don't belong to any team yet." })}</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {availableTeams.map((team) => {
+                        const selected = uploadTeams.includes(team);
+                        return (
+                          <button
+                            key={team}
+                            type="button"
+                            onClick={() => setUploadTeams((cur) => selected ? cur.filter((x) => x !== team) : [...cur, team])}
+                            className={cn(
+                              "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+                              selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring",
+                            )}
+                          >
+                            {team}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"

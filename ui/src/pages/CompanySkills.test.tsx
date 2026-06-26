@@ -146,6 +146,7 @@ function makeDetail(currentVersion: CompanySkillVersion): CompanySkillDetail {
     homepageUrl: null,
     categories: [],
     sharingScope: "private",
+    sharingTeams: [],
     createdByUserId: null,
     minutesPerUse: 0,
     approvalStatus: "approved",

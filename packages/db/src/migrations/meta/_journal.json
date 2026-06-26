@@ -848,6 +848,13 @@
 			"when": 1782366107990,
 			"tag": "9010_monthly_awards",
 			"breakpoints": true
+		},
+		{
+			"idx": 9011,
+			"version": "7",
+			"when": 1782366108990,
+			"tag": "9011_skill_teams",
+			"breakpoints": true
 		}
 	]
 }

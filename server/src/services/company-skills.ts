@@ -2,9 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { companies, companySkillAccessMembers, companySkillComments, companySkillStars, companySkillVersions, companySkills } from "@paperclipai/db";
+import { agents as agentsTable, agentMemberships, companies, companySkillAccessMembers, companySkillComments, companySkillStars, companySkillVersions, companySkills } from "@paperclipai/db";
 import { readPaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import type { PaperclipDesiredSkillEntry, PaperclipSkillEntry } from "@paperclipai/adapter-utils/server-utils";
 import type {
@@ -90,6 +90,7 @@ type CompanySkillListDbRow = Pick<
   | "categories"
   | "sharingScope"
   | "createdByUserId"
+  | "sharingTeams"
   | "minutesPerUse"
   | "approvalStatus"
   | "publicShareToken"
@@ -125,6 +126,7 @@ type CompanySkillListRow = Pick<
   | "categories"
   | "sharingScope"
   | "createdByUserId"
+  | "sharingTeams"
   | "minutesPerUse"
   | "approvalStatus"
   | "publicShareToken"
@@ -320,6 +322,7 @@ function selectCompanySkillColumns() {
     categories: companySkills.categories,
     sharingScope: companySkills.sharingScope,
     createdByUserId: companySkills.createdByUserId,
+    sharingTeams: companySkills.sharingTeams,
     minutesPerUse: companySkills.minutesPerUse,
     approvalStatus: companySkills.approvalStatus,
     approvalNote: companySkills.approvalNote,
@@ -1357,12 +1360,12 @@ function normalizeApprovalStatus(value: unknown): CompanySkillApprovalStatus {
 }
 
 function normalizeSharingScope(value: unknown): CompanySkillSharingScope {
-  return value === "private" || value === "public_link" || value === "company" ? value : "company";
+  return value === "private" || value === "public_link" || value === "company" || value === "team" ? value : "company";
 }
 
 function normalizeMutableSharingScope(value: unknown): CompanySkillSharingScope | null {
   if (value === undefined || value === null) return null;
-  if (value === "private" || value === "company") return value;
+  if (value === "private" || value === "company" || value === "team") return value;
   if (value === "public_link") {
     throw unprocessable("Public skill sharing is not available in this version.");
   }
@@ -2132,6 +2135,7 @@ function toCompanySkillListItem(skill: CompanySkillListRow, attachedAgentCount: 
     forkCount: skill.forkCount,
     currentVersionId: skill.currentVersionId,
     createdByUserId: skill.createdByUserId,
+    sharingTeams: skill.sharingTeams ?? [],
     minutesPerUse: skill.minutesPerUse ?? 0,
     approvalStatus: skill.approvalStatus,
     approvalNote: null,
@@ -2297,6 +2301,9 @@ export function companySkillService(db: Db) {
     const visiblePrivateIds = viewer && !viewer.isPrivileged && viewer.userId
       ? await visiblePrivateSkillIdsForUser(companyId, viewer.userId)
       : null;
+    const viewerTeams = viewer && !viewer.isPrivileged && viewer.userId
+      ? await getUserTeams(companyId, viewer.userId)
+      : null;
     const rows = await db
       .select({
         id: companySkills.id,
@@ -2319,6 +2326,7 @@ export function companySkillService(db: Db) {
         categories: companySkills.categories,
         sharingScope: companySkills.sharingScope,
         createdByUserId: companySkills.createdByUserId,
+        sharingTeams: companySkills.sharingTeams,
         minutesPerUse: companySkills.minutesPerUse,
         approvalStatus: companySkills.approvalStatus,
         publicShareToken: companySkills.publicShareToken,
@@ -2343,6 +2351,12 @@ export function companySkillService(db: Db) {
       // Hide private skills from users who aren't the creator / an access member.
       if (skill.sharingScope === "private" && viewer && !viewer.isPrivileged) {
         if (!viewer.userId || !visiblePrivateIds || !visiblePrivateIds.has(skill.id)) return false;
+      }
+      // Team-scoped skills: visible only to the creator or members of a shared team.
+      if (skill.sharingScope === "team" && viewer && !viewer.isPrivileged) {
+        const isCreator = viewer.userId && skill.createdByUserId === viewer.userId;
+        const sharesTeam = viewerTeams && (skill.sharingTeams ?? []).some((teamName) => viewerTeams.has(teamName));
+        if (!isCreator && !sharesTeam) return false;
       }
       // Hide not-yet-approved public skills from everyone except reviewers (owner/admin)
       // and the submitter themselves.
@@ -3227,6 +3241,7 @@ export function companySkillService(db: Db) {
         sharingScope,
         createdByUserId: actor?.type === "user" ? actor.userId ?? null : null,
         minutesPerUse: Math.max(0, Math.min(100000, Math.round(input.minutesPerUse ?? 0))),
+        sharingTeams: sharingScope === "team" ? (input.sharingTeams ?? []).filter((t) => typeof t === "string" && t.trim()).slice(0, 50) : [],
         approvalStatus: computeApprovalStatus(input, actor, options.isPrivileged ?? false),
         submittedAt: computeApprovalStatus(input, actor, options.isPrivileged ?? false) === "pending" ? new Date() : null,
         forkedFromSkillId: forkSource?.id ?? null,
@@ -3899,6 +3914,7 @@ export function companySkillService(db: Db) {
       categories: normalizeCategoryList([catalogSkill.category, ...catalogSkill.tags]),
       sharingScope: "company",
       createdByUserId: null,
+      sharingTeams: [],
       minutesPerUse: 0,
       approvalStatus: "approved" as const,
       approvalNote: null,
@@ -4598,6 +4614,30 @@ export function companySkillService(db: Db) {
   }
 
   // Set of private skill ids a user may see (creator + explicit members).
+  // The set of team names a user belongs to: the union of metadata.teams across
+  // every agent the user has joined. Used for team-scoped skill visibility and
+  // to populate the "share with team" multiselect.
+  async function getUserTeams(companyId: string, userId: string): Promise<Set<string>> {
+    const joined = await db
+      .select({ agentId: agentMemberships.agentId })
+      .from(agentMemberships)
+      .where(and(eq(agentMemberships.companyId, companyId), eq(agentMemberships.userId, userId), eq(agentMemberships.state, "joined")));
+    const agentIds = joined.map((r) => r.agentId);
+    if (!agentIds.length) return new Set();
+    const rows = await db
+      .select({ metadata: agentsTable.metadata })
+      .from(agentsTable)
+      .where(and(eq(agentsTable.companyId, companyId), inArray(agentsTable.id, agentIds)));
+    const out = new Set<string>();
+    for (const r of rows) {
+      const md = r.metadata as Record<string, unknown> | null;
+      if (!md) continue;
+      const teams = Array.isArray(md.teams) ? md.teams : typeof md.team === "string" ? [md.team] : [];
+      for (const t of teams) if (typeof t === "string" && t.trim()) out.add(t.trim());
+    }
+    return out;
+  }
+
   async function visiblePrivateSkillIdsForUser(companyId: string, userId: string): Promise<Set<string>> {
     const [owned, member] = await Promise.all([
       db.select({ id: companySkills.id }).from(companySkills)
@@ -4617,6 +4657,7 @@ export function companySkillService(db: Db) {
     addSkillAccessMember,
     removeSkillAccessMember,
     visiblePrivateSkillIdsForUser,
+    getUserTeams,
     listFull,
     getById,
     getByKey,

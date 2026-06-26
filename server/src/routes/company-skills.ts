@@ -817,6 +817,16 @@ export function companySkillRoutes(db: Db) {
     },
   );
 
+  // The teams the current user can share a skill with (their joined agents''' teams).
+  router.get("/companies/:companyId/my-teams", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    if (!userId) { res.json({ teams: [] }); return; }
+    const teams = await svc.getUserTeams(companyId, userId);
+    res.json({ teams: [...teams].sort() });
+  });
+
   // ---- Virtual office: per-agent skill counts ----
   router.get("/companies/:companyId/agent-skill-counts", async (req, res) => {
     const companyId = req.params.companyId as string;
