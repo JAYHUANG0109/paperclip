@@ -37,6 +37,7 @@ export const companySkills = pgTable(
     categories: text("categories").array().notNull().default([]),
     sharingScope: text("sharing_scope").$type<CompanySkillSharingScope>().notNull().default("company"),
     createdByUserId: text("created_by_user_id"),
+    minutesPerUse: integer("minutes_per_use").notNull().default(0),
     approvalStatus: text("approval_status").notNull().default("approved"),
     approvalNote: text("approval_note"),
     reviewedByUserId: text("reviewed_by_user_id"),

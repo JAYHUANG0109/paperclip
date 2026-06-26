@@ -147,6 +147,7 @@ function makeDetail(currentVersion: CompanySkillVersion): CompanySkillDetail {
     categories: [],
     sharingScope: "private",
     createdByUserId: null,
+    minutesPerUse: 0,
     approvalStatus: "approved",
     approvalNote: null,
     reviewedByUserId: null,

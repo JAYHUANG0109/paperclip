@@ -827,6 +827,13 @@
 			"when": 1782366104990,
 			"tag": "9007_skill_approval",
 			"breakpoints": true
+		},
+		{
+			"idx": 9008,
+			"version": "7",
+			"when": 1782366105990,
+			"tag": "9008_skill_usage",
+			"breakpoints": true
 		}
 	]
 }

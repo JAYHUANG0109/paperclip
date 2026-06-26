@@ -38,7 +38,8 @@
     "calendar": "行事曆",
     "conferenceRoom": "會議室",
     "artifacts": "產物",
-    "newTask": "新增任務"
+    "newTask": "新增任務",
+    "leaderboard": "排行榜"
   },
   "sort": {
     "top": "置頂",
@@ -2281,7 +2282,8 @@
     "approved": "技能已核准",
     "rejected": "技能已駁回",
     "pendingBadge": "審核中",
-    "tabPending": "待審核"
+    "tabPending": "待審核",
+    "minutesPerUseLabel": "每次使用省下的分鐘（用於排行榜計分）"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",
@@ -5221,5 +5223,34 @@
     "add": "新增人員",
     "searchPlaceholder": "搜尋人員…",
     "noResults": "找不到人員"
+  },
+  "leaderboard": {
+    "title": "排行榜 & 獎項",
+    "subtitle": "計分公式：已審核分鐘 × 月使用次數 × 團隊加成 × 懸賞加成",
+    "tabMonth": "本月",
+    "tabLifetime": "終身累積",
+    "hallOfFame": "本月殿堂",
+    "minutesSaved": "省下分鐘",
+    "skills": "技能",
+    "beneficiaries": "受惠",
+    "bounties": "懸賞",
+    "rookie": "新手",
+    "noData": "本期尚無分數。已審核的技能會在他人使用時累積點數。",
+    "awardsTitle": "月度獎項",
+    "awardsNote": "（月底由 monthly_rollup cron 揭曉）",
+    "awardChampion": "月冠軍",
+    "awardChampionDesc": "本月省下分鐘最多",
+    "awardLifetime": "終身分鐘勳章",
+    "awardLifetimeDesc": "本月跨越累計門檻",
+    "awardCrossDept": "最佳跨部門貢獻獎",
+    "awardCrossDeptDesc": "skill 涵蓋最多部門",
+    "awardBounty": "懸賞獵人獎",
+    "awardBountyDesc": "本月完成最多懸賞",
+    "awardViral": "病毒擴散獎",
+    "awardViralDesc": "單一 skill 月內最多人用",
+    "awardRookie": "新秀獎",
+    "awardRookieDesc": "首次 skill 表現最佳",
+    "noWinner": "本月暫無得主",
+    "formula": "計分公式：已審核分鐘 × 月使用次數 × 團隊加成（≥3 人 ×2.0）× 懸賞加成（90 天內 ×1.3）"
   }
 }

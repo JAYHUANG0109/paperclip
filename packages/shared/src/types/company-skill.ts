@@ -50,6 +50,7 @@ export interface CompanySkill {
   currentVersionId: string | null;
   metadata: Record<string, unknown> | null;
   createdByUserId: string | null;
+  minutesPerUse: number;
   approvalStatus: CompanySkillApprovalStatus;
   approvalNote: string | null;
   reviewedByUserId: string | null;
@@ -99,6 +100,7 @@ export interface CompanySkillListItem {
   packageName: string | null;
   packageVersion: string | null;
   createdByUserId: string | null;
+  minutesPerUse: number;
   approvalStatus: CompanySkillApprovalStatus;
   approvalNote: string | null;
   reviewedByUserId: string | null;
@@ -318,6 +320,7 @@ export interface CompanySkillCreateRequest {
   homepageUrl?: string | null;
   categories?: string[];
   sharingScope?: CompanySkillSharingScope;
+  minutesPerUse?: number;
   forkedFromSkillId?: string | null;
 }
 

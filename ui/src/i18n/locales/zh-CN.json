@@ -38,7 +38,8 @@
     "calendar": "Calendar",
     "conferenceRoom": "Conference Room",
     "artifacts": "Artifacts",
-    "newTask": "New Task"
+    "newTask": "New Task",
+    "leaderboard": "Leaderboard"
   },
   "sort": {
     "top": "Top",
@@ -2281,7 +2282,8 @@
     "approved": "Skill approved",
     "rejected": "Skill rejected",
     "pendingBadge": "審核中",
-    "tabPending": "Pending"
+    "tabPending": "Pending",
+    "minutesPerUseLabel": "minutes saved per use (powers the leaderboard)"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",
@@ -5221,5 +5223,34 @@
     "add": "Add person",
     "searchPlaceholder": "Search people…",
     "noResults": "No people found"
+  },
+  "leaderboard": {
+    "title": "Leaderboard & Awards",
+    "subtitle": "Score = approved minutes × monthly uses × team bonus × bounty bonus",
+    "tabMonth": "This month",
+    "tabLifetime": "Lifetime",
+    "hallOfFame": "Hall of Fame",
+    "minutesSaved": "Minutes saved",
+    "skills": "Skills",
+    "beneficiaries": "Beneficiaries",
+    "bounties": "Bounties",
+    "rookie": "Rookie",
+    "noData": "No scores yet this period. Approved skills earn points as people use them.",
+    "awardsTitle": "Monthly awards",
+    "awardsNote": "(revealed by the monthly rollup)",
+    "awardChampion": "Monthly Champion",
+    "awardChampionDesc": "Most minutes saved this month",
+    "awardLifetime": "Lifetime Minutes Medal",
+    "awardLifetimeDesc": "Crossed the lifetime threshold this month",
+    "awardCrossDept": "Best Cross-Department",
+    "awardCrossDeptDesc": "Skill covering the most departments",
+    "awardBounty": "Bounty Hunter",
+    "awardBountyDesc": "Most bounties completed this month",
+    "awardViral": "Viral Spread",
+    "awardViralDesc": "One skill used by the most people this month",
+    "awardRookie": "Rookie of the Month",
+    "awardRookieDesc": "Best first-skill performance",
+    "noWinner": "No winner yet this month",
+    "formula": "Score = approved minutes × monthly uses × team bonus (≥3 ppl ×2.0) × bounty bonus (90d ×1.3)"
   }
 }

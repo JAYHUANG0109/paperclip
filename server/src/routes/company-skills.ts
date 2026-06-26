@@ -1,5 +1,8 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
+import { authUsers } from "@paperclipai/db";
+import { inArray } from "drizzle-orm";
+import { leaderboardService } from "../services/leaderboard.js";
 import {
   catalogSkillListQuerySchema,
   companySkillCommentCreateSchema,
@@ -813,6 +816,44 @@ export function companySkillRoutes(db: Db) {
       res.json(result);
     },
   );
+
+  // ---- Leaderboard (排行榜) ----
+  const leaderboard = leaderboardService(db);
+
+  router.get("/companies/:companyId/leaderboard", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const periodParam = typeof req.query.period === "string" ? req.query.period : null;
+    const period = periodParam && /^\d{4}-\d{2}$/.test(periodParam) ? periodParam : null; // null = lifetime
+    const result = await leaderboard.compute(companyId, period);
+    // Resolve display names for the ranked users.
+    const userIds = result.entries.map((e) => e.userId).filter(Boolean);
+    const users = userIds.length
+      ? await db.select({ id: authUsers.id, name: authUsers.name, email: authUsers.email })
+          .from(authUsers).where(inArray(authUsers.id, userIds))
+      : [];
+    const nameById = new Map(users.map((u) => [u.id, u.name ?? u.email ?? u.id.slice(0, 8)]));
+    res.json({
+      period: result.period,
+      entries: result.entries.map((e) => ({ ...e, displayName: nameById.get(e.userId) ?? e.userId.slice(0, 8) })),
+    });
+  });
+
+  // Record one use of a skill (agents/automations call this when they use a skill).
+  router.post("/companies/:companyId/skills/:skillId/record-usage", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    assertCompanyAccess(req, companyId);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const periodMonth = typeof body.periodMonth === "string" && /^\d{4}-\d{2}$/.test(body.periodMonth)
+      ? body.periodMonth
+      : new Date().toISOString().slice(0, 7);
+    const usedByUserId = req.actor.type === "board" ? req.actor.userId ?? null : (typeof body.usedByUserId === "string" ? body.usedByUserId : null);
+    const usedByAgentId = req.actor.type === "agent" ? req.actor.agentId ?? null : (typeof body.usedByAgentId === "string" ? body.usedByAgentId : null);
+    const increment = typeof body.increment === "number" && body.increment > 0 ? Math.min(1000, Math.round(body.increment)) : 1;
+    const row = await leaderboard.recordUsage(companyId, skillId, periodMonth, usedByUserId, usedByAgentId, increment);
+    res.json(row);
+  });
 
   return router;
 }

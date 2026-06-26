@@ -1238,6 +1238,7 @@ type SkillCreateDraft = {
   categories: string[];
   markdown: string;
   sharingScope: Exclude<CompanySkillSharingScope, "public_link">;
+  minutesPerUse: number;
   forkedFromSkillId: string | null;
   forkedFromName: string | null;
 };
@@ -1252,6 +1253,7 @@ function buildBlankSkillDraft(): SkillCreateDraft {
     categories: [],
     markdown: defaultSkillMarkdown("", ""),
     sharingScope: "company",
+    minutesPerUse: 0,
     forkedFromSkillId: null,
     forkedFromName: null,
   };
@@ -1269,6 +1271,7 @@ function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft {
     categories: skill.categories,
     markdown: skill.markdown.replace(/^name:\s*.*$/m, `name: ${name}`),
     sharingScope: "company",
+    minutesPerUse: 0,
     forkedFromSkillId: skill.id,
     forkedFromName: skill.name,
   };
@@ -1320,6 +1323,7 @@ function NewSkillWizard({
       tagline: draft.tagline.trim() || null,
       categories: draft.categories,
       sharingScope: draft.sharingScope,
+      minutesPerUse: draft.minutesPerUse,
       forkedFromSkillId: draft.forkedFromSkillId,
     });
   }
@@ -1391,6 +1395,19 @@ function NewSkillWizard({
             placeholder={t("companySkills.shortDescriptionPlaceholder", { defaultValue: "One-line promise for the skill" })}
             className="min-h-20"
           />
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              value={draft.minutesPerUse || ""}
+              onChange={(event) => patchDraft({ minutesPerUse: Math.max(0, Number(event.target.value) || 0) })}
+              placeholder="0"
+              className="h-9 w-28"
+            />
+            <span className="text-xs text-muted-foreground">
+              {t("companySkills.minutesPerUseLabel", { defaultValue: "minutes saved per use (powers the leaderboard)" })}
+            </span>
+          </div>
         </div>
       ) : step === 1 ? (
         <div className="space-y-4">

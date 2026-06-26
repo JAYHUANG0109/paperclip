@@ -90,6 +90,7 @@ type CompanySkillListDbRow = Pick<
   | "categories"
   | "sharingScope"
   | "createdByUserId"
+  | "minutesPerUse"
   | "approvalStatus"
   | "publicShareToken"
   | "forkedFromSkillId"
@@ -124,6 +125,7 @@ type CompanySkillListRow = Pick<
   | "categories"
   | "sharingScope"
   | "createdByUserId"
+  | "minutesPerUse"
   | "approvalStatus"
   | "publicShareToken"
   | "forkedFromSkillId"
@@ -318,6 +320,7 @@ function selectCompanySkillColumns() {
     categories: companySkills.categories,
     sharingScope: companySkills.sharingScope,
     createdByUserId: companySkills.createdByUserId,
+    minutesPerUse: companySkills.minutesPerUse,
     approvalStatus: companySkills.approvalStatus,
     approvalNote: companySkills.approvalNote,
     reviewedByUserId: companySkills.reviewedByUserId,
@@ -2129,6 +2132,7 @@ function toCompanySkillListItem(skill: CompanySkillListRow, attachedAgentCount: 
     forkCount: skill.forkCount,
     currentVersionId: skill.currentVersionId,
     createdByUserId: skill.createdByUserId,
+    minutesPerUse: skill.minutesPerUse ?? 0,
     approvalStatus: skill.approvalStatus,
     approvalNote: null,
     reviewedByUserId: null,
@@ -2315,6 +2319,7 @@ export function companySkillService(db: Db) {
         categories: companySkills.categories,
         sharingScope: companySkills.sharingScope,
         createdByUserId: companySkills.createdByUserId,
+        minutesPerUse: companySkills.minutesPerUse,
         approvalStatus: companySkills.approvalStatus,
         publicShareToken: companySkills.publicShareToken,
         forkedFromSkillId: companySkills.forkedFromSkillId,
@@ -3221,6 +3226,7 @@ export function companySkillService(db: Db) {
         categories: input.categories ? normalizeCategoryList(input.categories) : forkSource?.categories ?? created.categories,
         sharingScope,
         createdByUserId: actor?.type === "user" ? actor.userId ?? null : null,
+        minutesPerUse: Math.max(0, Math.min(100000, Math.round(input.minutesPerUse ?? 0))),
         approvalStatus: computeApprovalStatus(input, actor, options.isPrivileged ?? false),
         submittedAt: computeApprovalStatus(input, actor, options.isPrivileged ?? false) === "pending" ? new Date() : null,
         forkedFromSkillId: forkSource?.id ?? null,
@@ -3893,6 +3899,7 @@ export function companySkillService(db: Db) {
       categories: normalizeCategoryList([catalogSkill.category, ...catalogSkill.tags]),
       sharingScope: "company",
       createdByUserId: null,
+      minutesPerUse: 0,
       approvalStatus: "approved" as const,
       approvalNote: null,
       reviewedByUserId: null,
