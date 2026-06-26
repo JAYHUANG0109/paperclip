@@ -5287,6 +5287,10 @@
     "wake": "喚醒",
     "officeName": "辦公室",
     "paused": "已暫停",
-    "error": "需要注意"
+    "error": "需要注意",
+    "clickForMore": "點擊查看詳情",
+    "minutes": "分鐘",
+    "status": "狀態",
+    "lastActive": "最後活動"
   }
 }

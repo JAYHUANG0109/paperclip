@@ -5287,6 +5287,10 @@
     "wake": "Wake",
     "officeName": "Office",
     "paused": "Paused",
-    "error": "Needs attention"
+    "error": "Needs attention",
+    "clickForMore": "Click for details",
+    "minutes": "minutes",
+    "status": "status",
+    "lastActive": "Last active"
   }
 }

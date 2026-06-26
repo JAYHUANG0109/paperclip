@@ -1330,3 +1330,16 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
 .status-fill {
   background-color: var(--sc);
 }
+
+/* Virtual office: gentle idle float for cartoon avatars (each desk offset by
+   a per-card animation-delay so the room feels alive, not synchronized). */
+@keyframes office-avatar-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.office-avatar-idle {
+  animation: office-avatar-float 3.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .office-avatar-idle { animation: none; }
+}
