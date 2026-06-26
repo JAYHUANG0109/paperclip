@@ -26,6 +26,8 @@ env:
 jobs:
   build-and-sign:
     runs-on: ubuntu-22.04
+    # Publishes to the upstream ghcr.io/paperclipai registry; skip on forks.
+    if: github.repository_owner == 'paperclipai'
     steps:
       - uses: actions/checkout@v7
 
