@@ -7,6 +7,7 @@ export type CompanySkillCompatibility = "compatible" | "unknown" | "invalid";
 export type CompanySkillSourceBadge = "paperclip" | "github" | "local" | "url" | "catalog" | "skills_sh";
 
 export type CompanySkillSharingScope = "private" | "company" | "public_link";
+export type CompanySkillApprovalStatus = "approved" | "pending" | "rejected" | "revision";
 
 export type CompanySkillListSort = "alphabetical" | "recent" | "installs" | "stars" | "agents" | "forks";
 
@@ -48,6 +49,12 @@ export interface CompanySkill {
   forkCount: number;
   currentVersionId: string | null;
   metadata: Record<string, unknown> | null;
+  createdByUserId: string | null;
+  approvalStatus: CompanySkillApprovalStatus;
+  approvalNote: string | null;
+  reviewedByUserId: string | null;
+  reviewedAt: Date | null;
+  submittedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -91,6 +98,12 @@ export interface CompanySkillListItem {
   originHash: string | null;
   packageName: string | null;
   packageVersion: string | null;
+  createdByUserId: string | null;
+  approvalStatus: CompanySkillApprovalStatus;
+  approvalNote: string | null;
+  reviewedByUserId: string | null;
+  reviewedAt: Date | null;
+  submittedAt: Date | null;
 }
 
 export interface CompanySkillUsageAgent {

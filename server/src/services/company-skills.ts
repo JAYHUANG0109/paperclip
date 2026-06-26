@@ -34,6 +34,7 @@ import type {
   CompanySkillProjectScanResult,
   CompanySkillProjectScanSkipped,
   CompanySkillSharingScope,
+  CompanySkillApprovalStatus,
   CompanySkillSourceBadge,
   CompanySkillSourceType,
   CompanySkillTrustLevel,
@@ -88,6 +89,8 @@ type CompanySkillListDbRow = Pick<
   | "homepageUrl"
   | "categories"
   | "sharingScope"
+  | "createdByUserId"
+  | "approvalStatus"
   | "publicShareToken"
   | "forkedFromSkillId"
   | "forkedFromCompanyId"
@@ -120,6 +123,8 @@ type CompanySkillListRow = Pick<
   | "homepageUrl"
   | "categories"
   | "sharingScope"
+  | "createdByUserId"
+  | "approvalStatus"
   | "publicShareToken"
   | "forkedFromSkillId"
   | "forkedFromCompanyId"
@@ -313,6 +318,11 @@ function selectCompanySkillColumns() {
     categories: companySkills.categories,
     sharingScope: companySkills.sharingScope,
     createdByUserId: companySkills.createdByUserId,
+    approvalStatus: companySkills.approvalStatus,
+    approvalNote: companySkills.approvalNote,
+    reviewedByUserId: companySkills.reviewedByUserId,
+    reviewedAt: companySkills.reviewedAt,
+    submittedAt: companySkills.submittedAt,
     publicShareToken: companySkills.publicShareToken,
     forkedFromSkillId: companySkills.forkedFromSkillId,
     forkedFromCompanyId: companySkills.forkedFromCompanyId,
@@ -1306,6 +1316,7 @@ function toCompanySkill(row: CompanySkillRow): CompanySkill {
     forkCount: Math.max(0, row.forkCount ?? 0),
     currentVersionId: row.currentVersionId ?? null,
     metadata: isPlainRecord(row.metadata) ? row.metadata : null,
+    approvalStatus: normalizeApprovalStatus(row.approvalStatus),
   };
 }
 
@@ -1334,7 +1345,12 @@ function toCompanySkillListRow(row: CompanySkillListDbRow): CompanySkillListRow 
     forkCount: Math.max(0, row.forkCount ?? 0),
     currentVersionId: row.currentVersionId ?? null,
     metadata: isPlainRecord(row.metadata) ? row.metadata : null,
+    approvalStatus: normalizeApprovalStatus(row.approvalStatus),
   };
+}
+
+function normalizeApprovalStatus(value: unknown): CompanySkillApprovalStatus {
+  return value === "pending" || value === "rejected" || value === "revision" || value === "approved" ? value : "approved";
 }
 
 function normalizeSharingScope(value: unknown): CompanySkillSharingScope {
@@ -2112,6 +2128,12 @@ function toCompanySkillListItem(skill: CompanySkillListRow, attachedAgentCount: 
     installCount: skill.installCount,
     forkCount: skill.forkCount,
     currentVersionId: skill.currentVersionId,
+    createdByUserId: skill.createdByUserId,
+    approvalStatus: skill.approvalStatus,
+    approvalNote: null,
+    reviewedByUserId: null,
+    reviewedAt: null,
+    submittedAt: null,
     createdAt: skill.createdAt,
     updatedAt: skill.updatedAt,
     attachedAgentCount,
@@ -2293,6 +2315,7 @@ export function companySkillService(db: Db) {
         categories: companySkills.categories,
         sharingScope: companySkills.sharingScope,
         createdByUserId: companySkills.createdByUserId,
+        approvalStatus: companySkills.approvalStatus,
         publicShareToken: companySkills.publicShareToken,
         forkedFromSkillId: companySkills.forkedFromSkillId,
         forkedFromCompanyId: companySkills.forkedFromCompanyId,
@@ -2315,6 +2338,11 @@ export function companySkillService(db: Db) {
       // Hide private skills from users who aren't the creator / an access member.
       if (skill.sharingScope === "private" && viewer && !viewer.isPrivileged) {
         if (!viewer.userId || !visiblePrivateIds || !visiblePrivateIds.has(skill.id)) return false;
+      }
+      // Hide not-yet-approved public skills from everyone except reviewers (owner/admin)
+      // and the submitter themselves.
+      if (skill.approvalStatus && skill.approvalStatus !== "approved" && viewer && !viewer.isPrivileged) {
+        if (!viewer.userId || skill.createdByUserId !== viewer.userId) return false;
       }
       if (query.scope && skill.sharingScope !== query.scope) return false;
       if (categories.size > 0 && !skill.categories.some((category) => categories.has(category))) return false;
@@ -3084,10 +3112,26 @@ export function companySkillService(db: Db) {
     return toCompanySkill(row);
   }
 
+  function skillApprovalEnabled(): boolean {
+    return process.env.PAPERCLIP_SKILL_APPROVAL === "true";
+  }
+
+  // A public (company-scoped) skill submitted by a non-privileged user needs
+  // owner/admin approval before it becomes visible company-wide.
+  function computeApprovalStatus(input: CompanySkillCreateRequest, actor: SkillActor | null, isPrivileged: boolean): "approved" | "pending" {
+    if (!skillApprovalEnabled()) return "approved";
+    const scope = input.sharingScope ?? "company";
+    if (scope !== "company") return "approved"; // private skills are access-gated, no review
+    if (actor?.type !== "user") return "approved"; // agent/system creations
+    if (isPrivileged) return "approved"; // owners/admins publish directly
+    return "pending";
+  }
+
   async function createLocalSkill(
     companyId: string,
     input: CompanySkillCreateRequest,
     actor: SkillActor | null = null,
+    options: { isPrivileged?: boolean } = {},
   ): Promise<CompanySkill> {
     const slug = normalizeSkillSlug(input.slug ?? input.name) ?? "skill";
     const key = `company/${companyId}/${slug}`;
@@ -3177,6 +3221,8 @@ export function companySkillService(db: Db) {
         categories: input.categories ? normalizeCategoryList(input.categories) : forkSource?.categories ?? created.categories,
         sharingScope,
         createdByUserId: actor?.type === "user" ? actor.userId ?? null : null,
+        approvalStatus: computeApprovalStatus(input, actor, options.isPrivileged ?? false),
+        submittedAt: computeApprovalStatus(input, actor, options.isPrivileged ?? false) === "pending" ? new Date() : null,
         forkedFromSkillId: forkSource?.id ?? null,
         forkedFromCompanyId: forkSource?.companyId ?? null,
         updatedAt: new Date(),
@@ -3846,6 +3892,12 @@ export function companySkillService(db: Db) {
       homepageUrl: null,
       categories: normalizeCategoryList([catalogSkill.category, ...catalogSkill.tags]),
       sharingScope: "company",
+      createdByUserId: null,
+      approvalStatus: "approved" as const,
+      approvalNote: null,
+      reviewedByUserId: null,
+      reviewedAt: null,
+      submittedAt: null,
       publicShareToken: null,
       forkedFromSkillId: null,
       forkedFromCompanyId: null,
@@ -4494,6 +4546,38 @@ export function companySkillService(db: Db) {
       .then((rows) => rows[0] ?? null);
   }
 
+  // ---- Skill approval (review queue) ----
+  async function setApprovalStatus(
+    companyId: string,
+    skillId: string,
+    status: "approved" | "rejected" | "pending",
+    reviewerUserId: string | null,
+    note: string | null,
+  ) {
+    const [row] = await db
+      .update(companySkills)
+      .set({
+        approvalStatus: status,
+        approvalNote: note,
+        reviewedByUserId: status === "pending" ? null : reviewerUserId,
+        reviewedAt: status === "pending" ? null : new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(companySkills.id, skillId), eq(companySkills.companyId, companyId)))
+      .returning();
+    return row ?? null;
+  }
+
+  // Pending public skills awaiting review (for the review queue).
+  async function listPendingApprovals(companyId: string) {
+    const rows = await db
+      .select(selectCompanySkillColumns())
+      .from(companySkills)
+      .where(and(eq(companySkills.companyId, companyId), eq(companySkills.approvalStatus, "pending")))
+      .orderBy(asc(companySkills.submittedAt));
+    return rows.map((row) => toCompanySkill(row));
+  }
+
   // Set of private skill ids a user may see (creator + explicit members).
   async function visiblePrivateSkillIdsForUser(companyId: string, userId: string): Promise<Set<string>> {
     const [owned, member] = await Promise.all([
@@ -4508,6 +4592,8 @@ export function companySkillService(db: Db) {
   return {
     list,
     listSkillAccessMembers,
+    setApprovalStatus,
+    listPendingApprovals,
     addSkillAccessMember,
     removeSkillAccessMember,
     visiblePrivateSkillIdsForUser,

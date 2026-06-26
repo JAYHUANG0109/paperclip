@@ -24,6 +24,7 @@ import type {
 } from "@paperclipai/shared";
 import { companySkillsApi } from "../api/companySkills";
 import { agentsApi } from "../api/agents";
+import { accessApi } from "../api/access";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
@@ -545,6 +546,7 @@ export type DiscoveryCard = {
   updatedAt: number;
   sourceBadge?: CompanySkillSourceBadge | null;
   sourceLabel?: string | null;
+  approvalStatus?: string;
 };
 
 // Stable palette used to auto-assign an accent colour to a skill when the
@@ -685,6 +687,7 @@ function buildDiscoveryCards(
       forkCount: skill.forkCount ?? 0,
       installed: true,
       required,
+      approvalStatus: skill.approvalStatus,
       forkedFrom: Boolean(skill.forkedFromSkillId),
       updatedAt: new Date(skill.updatedAt).getTime() || 0,
       sourceBadge: skill.sourceBadge,
@@ -791,6 +794,7 @@ function SkillCategoryChip({ label }: { label: string }) {
 }
 
 function SkillCard({ card, onOpen }: { card: DiscoveryCard; onOpen: (card: DiscoveryCard) => void }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -855,6 +859,18 @@ function SkillCard({ card, onOpen }: { card: DiscoveryCard; onOpen: (card: Disco
           ) : null}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-1">
+          {card.approvalStatus && card.approvalStatus !== "approved" ? (
+            <span className={cn(
+              "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px]",
+              card.approvalStatus === "rejected"
+                ? "border-red-500/30 bg-red-500/10 text-red-400"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-500",
+            )}>
+              {card.approvalStatus === "rejected"
+                ? t("companySkills.statusRejected", { defaultValue: "Rejected" })
+                : t("companySkills.statusPending", { defaultValue: "In review" })}
+            </span>
+          ) : null}
           {card.installed ? (
             <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-300">
               Installed
@@ -2588,6 +2604,9 @@ export function SkillDetailPage({
   onFork,
   onUpdateSharingScope,
   updateSharingPending,
+  canReview,
+  onApprove,
+  onReject,
   onDelete,
   deletePending,
 }: {
@@ -2626,11 +2645,15 @@ export function SkillDetailPage({
   starPending: boolean;
   onFork: () => void;
   onUpdateSharingScope: (scope: Exclude<CompanySkillSharingScope, "public_link">) => void;
+  canReview?: boolean;
+  onApprove?: (skillId: string) => void;
+  onReject?: (skillId: string, note?: string) => void;
   updateSharingPending: boolean;
   onDelete: () => void;
   deletePending: boolean;
 }) {
   const [diffOpen, setDiffOpen] = useState(false);
+  const { t } = useTranslation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Top-level description is clamped to four lines; "View all" expands it. We
   // only surface the toggle when the text actually overflows the clamp.
@@ -2951,6 +2974,32 @@ export function SkillDetailPage({
 
   return (
     <div className="min-h-[calc(100vh-12rem)]">
+      {/* Approval review banner: shown when the skill is awaiting / was refused review. */}
+      {detail.approvalStatus && detail.approvalStatus !== "approved" ? (
+        <div className={cn(
+          "flex flex-wrap items-center gap-3 border-b px-4 py-3 text-sm",
+          detail.approvalStatus === "rejected"
+            ? "border-red-500/30 bg-red-500/10 text-red-500"
+            : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+        )}>
+          <span className="font-medium">
+            {detail.approvalStatus === "rejected"
+              ? t("companySkills.statusRejected", { defaultValue: "Rejected" })
+              : t("companySkills.statusPending", { defaultValue: "In review" })}
+          </span>
+          {detail.approvalNote ? <span className="text-xs opacity-80">{detail.approvalNote}</span> : null}
+          {canReview ? (
+            <div className="ml-auto flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => onReject?.(detail.id)}>
+                {t("companySkills.reject", { defaultValue: "Reject" })}
+              </Button>
+              <Button size="sm" onClick={() => onApprove?.(detail.id)}>
+                {t("companySkills.approve", { defaultValue: "Approve" })}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="border-b border-border px-4 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -3934,11 +3983,19 @@ export function CompanySkills() {
       setCreateDialogOpen(false);
       setCreateError(null);
       setCreateDraft(buildBlankSkillDraft());
-      pushToast({
-        tone: "success",
-        title: skill.forkedFromSkillId ? "Skill fork created" : "Skill created",
-        body: `${skill.name} is now editable in the Paperclip workspace.`,
-      });
+      if (skill.approvalStatus === "pending") {
+        pushToast({
+          tone: "success",
+          title: t("companySkills.submittedForReview", { defaultValue: "Submitted for review." }),
+          body: skill.name,
+        });
+      } else {
+        pushToast({
+          tone: "success",
+          title: skill.forkedFromSkillId ? "Skill fork created" : "Skill created",
+          body: `${skill.name} is now editable in the Paperclip workspace.`,
+        });
+      }
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to create skill.";
@@ -4122,6 +4179,33 @@ export function CompanySkills() {
         title: "Star failed",
         body: error instanceof Error ? error.message : "Failed to update star.",
       });
+    },
+  });
+
+  const { data: boardAccessForReview } = useQuery({
+    queryKey: queryKeys.access.currentBoardAccess,
+    queryFn: () => accessApi.getCurrentBoardAccess(),
+    enabled: !!selectedCompanyId,
+  });
+  const canReviewSkills = Boolean(
+    boardAccessForReview?.isInstanceAdmin ||
+    boardAccessForReview?.memberships?.find(
+      (m: { companyId: string; membershipRole: string | null }) =>
+        m.companyId === selectedCompanyId && (m.membershipRole === "owner" || m.membershipRole === "admin"),
+    ),
+  );
+  const approveSkill = useMutation({
+    mutationFn: (skillId: string) => companySkillsApi.approve(selectedCompanyId!, skillId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId!) });
+      pushToast({ tone: "success", title: t("companySkills.approved", { defaultValue: "Skill approved" }) });
+    },
+  });
+  const rejectSkill = useMutation({
+    mutationFn: ({ skillId, note }: { skillId: string; note?: string }) => companySkillsApi.reject(selectedCompanyId!, skillId, note),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId!) });
+      pushToast({ tone: "success", title: t("companySkills.rejected", { defaultValue: "Skill rejected" }) });
     },
   });
 
@@ -4798,6 +4882,9 @@ export function CompanySkills() {
           starPending={toggleStar.isPending}
           onFork={() => activeDetail && openCreateWizard(buildForkSkillDraft(activeDetail))}
           onUpdateSharingScope={(sharingScope) => activeDetail && updateSkillSettings.mutate({ skillId: activeDetail.id, sharingScope })}
+          canReview={canReviewSkills}
+          onApprove={(skillId) => approveSkill.mutate(skillId)}
+          onReject={(skillId, note) => rejectSkill.mutate({ skillId, note })}
           updateSharingPending={updateSkillSettings.isPending}
           onDelete={openDeleteDialog}
           deletePending={deleteSkill.isPending}

@@ -348,6 +348,7 @@ export type {
   CompanySkillCompatibility,
   CompanySkillSourceBadge,
   CompanySkillSharingScope,
+  CompanySkillApprovalStatus,
   CompanySkillListSort,
   CompanySkillFileInventoryEntry,
   CompanySkillVersionFileInventoryEntry,

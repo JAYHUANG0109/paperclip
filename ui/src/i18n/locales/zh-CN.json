@@ -2268,7 +2268,20 @@
     "untitled": "Untitled",
     "none": "none",
     "forking": "Forking",
-    "sidebarAll": "All"
+    "sidebarAll": "All",
+    "pendingReview": "Pending review",
+    "approve": "Approve",
+    "reject": "Reject",
+    "statusPending": "In review",
+    "statusRejected": "Rejected",
+    "statusApproved": "Approved",
+    "rejectPrompt": "Reason for rejection (optional)",
+    "reviewQueueEmpty": "Nothing waiting for review.",
+    "submittedForReview": "Submitted for review. An owner/admin will approve it before it goes company-wide.",
+    "approved": "Skill approved",
+    "rejected": "Skill rejected",
+    "pendingBadge": "審核中",
+    "tabPending": "Pending"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",

@@ -2268,7 +2268,20 @@
     "untitled": "未命名",
     "none": "無",
     "forking": "正在分叉",
-    "sidebarAll": "全部"
+    "sidebarAll": "全部",
+    "pendingReview": "待審核",
+    "approve": "核准",
+    "reject": "駁回",
+    "statusPending": "審核中",
+    "statusRejected": "已駁回",
+    "statusApproved": "已通過",
+    "rejectPrompt": "駁回原因（選填）",
+    "reviewQueueEmpty": "目前沒有待審核的技能。",
+    "submittedForReview": "已送出審核。需經負責人／管理員核准後才會對全公司開放。",
+    "approved": "技能已核准",
+    "rejected": "技能已駁回",
+    "pendingBadge": "審核中",
+    "tabPending": "待審核"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",

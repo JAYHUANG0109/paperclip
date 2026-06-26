@@ -820,6 +820,13 @@
 			"when": 1782366103990,
 			"tag": "9006_skill_sharing",
 			"breakpoints": true
+		},
+		{
+			"idx": 9007,
+			"version": "7",
+			"when": 1782366104990,
+			"tag": "9007_skill_approval",
+			"breakpoints": true
 		}
 	]
 }

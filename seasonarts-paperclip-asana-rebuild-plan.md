@@ -297,3 +297,32 @@ The Wiki **UI** (sidebar + page) is already owner/admin-gated via slot `minRole`
 **EN —** All green — open source, full control. The only true costs are engineering time, migration discipline, and (for Phase 5) authorization-test rigor + upstream-merge maintenance.
 
 **中文 —** 全部可改——開源、完全掌控。唯一真正的成本是工程時間、migration 紀律，以及（Phase 5）授權測試的嚴謹度與上游合併維護。
+
+---
+
+## Phase 10 — Engagement & Governance suite (added 2026-06, KLC-parity++)
+
+Four features inspired by Joanna's KLC build, to be built **more polished**, bilingual, sequentially. Build order locked with Jay.
+
+### 10A. Skill approval workflow (審核) — **IN PROGRESS / first**
+When a non-privileged user creates or uploads a **public** (company-scoped) skill, it must be reviewed before it becomes visible company-wide.
+- Routing rules:
+  - 創辦人 唐老師 (Tang) approves **all** public-skill submissions.
+  - 惠君 (Betty) **also** reviews submissions from **資訊部 (IT)** and **人才發展部 (Talent Dev)**.
+- Skill gains an approval status: `pending` → `approved` / `rejected` (+ `revision`).
+- Private skills (creator + chosen members) need no approval.
+- 技能道場-style review queue UI (全部 / 審核中 / 已通過 / 已駁回), bilingual.
+- Pending public skills are hidden from the Skills Store for everyone except the creator + reviewers until approved.
+
+### 10B. Leaderboard (排行榜 & 獎項)
+- Score = approved-minutes-saved × monthly run count × team bonus (≥3 ppl ×2.0) × bounty bonus (90d ×1.3).
+- **Minutes saved** = each skill's declared mins/use × times agents ran it this month (needs per-skill run tracking).
+- Monthly + lifetime tabs; awards (月冠軍/終身分鐘勳章/最佳跨部門貢獻獎/懸賞獵人獎/病毒擴散獎/新秀獎) revealed by a monthly rollup.
+
+### 10C. Bounty board (懸賞看板)
+- Post a work/need; others claim it; completing it grants the claimer a 90-day +30% bounty bonus. Open / in-progress / done columns.
+
+### 10D. Virtual office (虛擬辦公室)
+- Live, interactive, well-designed grid of every user's agent with live status (待命/工作中) + skill counts. More polished than Joanna's.
+
+**Dependencies:** 10A extends Phase 5 sharing (done). 10B needs per-skill run tracking (build alongside). 10C/10D are self-contained.

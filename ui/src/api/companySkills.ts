@@ -134,6 +134,12 @@ export const companySkillsApi = {
     api.delete<CompanySkillAccessMember>(
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/members/${encodeURIComponent(principalId)}`,
     ),
+  pendingApprovals: (companyId: string) =>
+    api.get<CompanySkill[]>(`/companies/${encodeURIComponent(companyId)}/skills/pending-approvals`),
+  approve: (companyId: string, skillId: string) =>
+    api.post<CompanySkill>(`/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/approve`, {}),
+  reject: (companyId: string, skillId: string, note?: string) =>
+    api.post<CompanySkill>(`/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/reject`, { note }),
   scanProjects: (companyId: string, payload: CompanySkillProjectScanRequest = {}) =>
     api.post<CompanySkillProjectScanResult>(
       `/companies/${encodeURIComponent(companyId)}/skills/scan-projects`,

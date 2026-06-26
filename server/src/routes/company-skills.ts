@@ -166,6 +166,18 @@ export function companySkillRoutes(db: Db) {
     res.json(await svc.categoryCounts(companyId));
   });
 
+  router.get("/companies/:companyId/skills/pending-approvals", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const pending = await svc.listPendingApprovals(companyId);
+    if (isPrivilegedMemberViewer(req, companyId, true)) {
+      res.json(pending);
+      return;
+    }
+    const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    res.json(pending.filter((s) => s.createdByUserId === userId));
+  });
+
   router.get("/companies/:companyId/skills/:skillId", async (req, res) => {
     const companyId = req.params.companyId as string;
     const skillId = req.params.skillId as string;
@@ -176,6 +188,38 @@ export function companySkillRoutes(db: Db) {
       return;
     }
     res.json(result);
+  });
+
+  // ---- Skill approval (review queue) ----
+  router.post("/companies/:companyId/skills/:skillId/approve", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    await assertCanMutateCompanySkills(req, companyId);
+    if (!isPrivilegedMemberViewer(req, companyId, true)) {
+      res.status(403).json({ error: "Only owners/admins can review skills" });
+      return;
+    }
+    const reviewerUserId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    const row = await svc.setApprovalStatus(companyId, skillId, "approved", reviewerUserId, null);
+    if (!row) { res.status(404).json({ error: "Skill not found" }); return; }
+    res.json(row);
+  });
+
+  router.post("/companies/:companyId/skills/:skillId/reject", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    await assertCanMutateCompanySkills(req, companyId);
+    if (!isPrivilegedMemberViewer(req, companyId, true)) {
+      res.status(403).json({ error: "Only owners/admins can review skills" });
+      return;
+    }
+    const reviewerUserId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    const note = typeof (req.body as Record<string, unknown>)?.note === "string"
+      ? ((req.body as Record<string, unknown>).note as string)
+      : null;
+    const row = await svc.setApprovalStatus(companyId, skillId, "rejected", reviewerUserId, note);
+    if (!row) { res.status(404).json({ error: "Skill not found" }); return; }
+    res.json(row);
   });
 
   // ---- Skill sharing: private-access members ----
@@ -435,7 +479,7 @@ export function companySkillRoutes(db: Db) {
     async (req, res) => {
       const companyId = req.params.companyId as string;
       await assertCanMutateCompanySkills(req, companyId);
-      const result = await svc.createLocalSkill(companyId, req.body, skillActor(req));
+      const result = await svc.createLocalSkill(companyId, req.body, skillActor(req), { isPrivileged: isPrivilegedMemberViewer(req, companyId, true) });
 
       const actor = getActorInfo(req);
       await logActivity(db, {
