@@ -2234,7 +2234,13 @@
     "dropHere": "Drop files here or click to browse",
     "createNewSkill": "Create new skill",
     "browseCatalog": "Browse catalog",
-    "importFromPath": "Import from path or URL"
+    "importFromPath": "Import from path or URL",
+    "uploadNoSkillMd": "No SKILL.md found",
+    "uploadNoSkillMdBody": "The selection must include a SKILL.md file.",
+    "uploadSuccess": "Skill uploaded",
+    "uploadSuccessBody": "{{name}} is now editable in the Paperclip workspace.",
+    "uploadSuccessSkipped": "{{name}} created. {{count}} binary/dotfile(s) skipped.",
+    "uploadFailed": "Upload failed"
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",

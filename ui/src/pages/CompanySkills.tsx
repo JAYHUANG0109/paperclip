@@ -93,6 +93,8 @@ import {
   GitFork,
   Github,
   Globe,
+  Upload,
+  FolderUp,
   HelpCircle,
   LayoutGrid,
   Link2,
@@ -3661,6 +3663,9 @@ export function CompanySkills() {
   const [createDraft, setCreateDraft] = useState<SkillCreateDraft>(() => buildBlankSkillDraft());
   const [createError, setCreateError] = useState<string | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const uploadFilesRef = useRef<HTMLInputElement | null>(null);
+  const uploadFolderRef = useRef<HTMLInputElement | null>(null);
   const parsedRoute = useMemo(() => parseSkillRoute(routePath), [routePath]);
   const routeSkillToken = parsedRoute.skillToken;
   const selectedPath = parsedRoute.filePath;
@@ -3936,6 +3941,88 @@ export function CompanySkills() {
       });
     },
   });
+
+  // Feature: upload a skill from local files/folders. Reads SKILL.md + supporting
+  // text files in the browser, creates the skill, then writes the rest via updateFile.
+  // Uses existing endpoints (create + updateFile) — no backend change needed.
+  async function handleUploadSkillFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0 || !selectedCompanyId) return;
+    const files = Array.from(fileList);
+
+    // Locate the SKILL.md (case-insensitive). Folder uploads expose webkitRelativePath.
+    const relPath = (f: File) => (f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name);
+    const skillMd = files.find((f) => relPath(f).toLowerCase().endsWith("skill.md"));
+    if (!skillMd) {
+      pushToast({
+        tone: "error",
+        title: t("companySkills.uploadNoSkillMd", { defaultValue: "No SKILL.md found" }),
+        body: t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection must include a SKILL.md file." }),
+      });
+      return;
+    }
+
+    // Strip the common top-level folder prefix so paths are relative to the skill root.
+    const skillRootPrefix = (() => {
+      const p = relPath(skillMd);
+      const idx = p.toLowerCase().lastIndexOf("skill.md");
+      return p.slice(0, idx); // e.g. "my-skill/" or ""
+    })();
+    const toSkillRelative = (f: File) => {
+      const p = relPath(f);
+      return p.startsWith(skillRootPrefix) ? p.slice(skillRootPrefix.length) : p;
+    };
+
+    setUploading(true);
+    try {
+      const markdown = await skillMd.text();
+      // Parse YAML frontmatter for name/description/slug (best-effort).
+      const fm = /^---\s*\n([\s\S]*?)\n---/.exec(markdown);
+      const readField = (key: string): string | null => {
+        if (!fm) return null;
+        const m = new RegExp(`^${key}\\s*:\\s*(.+)$`, "m").exec(fm[1]!);
+        return m ? m[1]!.trim().replace(/^["']|["']$/g, "") : null;
+      };
+      const fallbackName = (skillRootPrefix.replace(/\/$/, "") || skillMd.name).split("/").pop() || "Uploaded skill";
+      const name = readField("name") ?? fallbackName;
+      const description = readField("description");
+
+      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown });
+
+      // Write every other file (skip SKILL.md itself; skip obviously-binary by extension).
+      const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|woff2?|ttf|otf|mp4|mov|mp3|wav)$/i;
+      const supporting = files.filter((f) => f !== skillMd && !toSkillRelative(f).toLowerCase().endsWith("skill.md"));
+      let skipped = 0;
+      for (const f of supporting) {
+        const rel = toSkillRelative(f);
+        if (!rel || rel.startsWith(".")) { skipped++; continue; }
+        if (BINARY_EXT.test(rel)) { skipped++; continue; }
+        const content = await f.text();
+        await companySkillsApi.updateFile(selectedCompanyId, created.id, rel, content);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId) });
+      setImportDialogOpen(false);
+      navigate(routeForSkill(created));
+      pushToast({
+        tone: "success",
+        title: t("companySkills.uploadSuccess", { defaultValue: "Skill uploaded" }),
+        body: skipped > 0
+          ? t("companySkills.uploadSuccessSkipped", { defaultValue: "{{name}} created. {{count}} binary/dotfile(s) skipped.", name: created.name, count: skipped })
+          : t("companySkills.uploadSuccessBody", { defaultValue: "{{name}} is now editable in the Paperclip workspace.", name: created.name }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Upload failed.";
+      pushToast({
+        tone: "error",
+        title: t("companySkills.uploadFailed", { defaultValue: "Upload failed" }),
+        body: message,
+      });
+    } finally {
+      setUploading(false);
+      if (uploadFilesRef.current) uploadFilesRef.current.value = "";
+      if (uploadFolderRef.current) uploadFolderRef.current.value = "";
+    }
+  }
 
   const scanProjects = useMutation({
     mutationFn: () => companySkillsApi.scanProjects(selectedCompanyId!),
@@ -4552,6 +4639,53 @@ export function CompanySkills() {
               </span>
               <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             </a>
+
+            {/* Upload from local files / folder (no path needed) */}
+            <div className="rounded-md border border-dashed border-border px-3 py-3">
+              <div className="mb-2 text-sm font-medium text-foreground">
+                {t("companySkills.uploadFiles", { defaultValue: "Upload files" })}
+              </div>
+              <p className="mb-2.5 text-xs text-muted-foreground">
+                {t("companySkills.uploadSubtitle", { defaultValue: "Drop a SKILL.md (and its supporting files) to create a skill directly." })}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploading}
+                  onClick={() => uploadFilesRef.current?.click()}
+                >
+                  {uploading ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
+                  {t("companySkills.uploadFiles", { defaultValue: "Upload files" })}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploading}
+                  onClick={() => uploadFolderRef.current?.click()}
+                >
+                  {uploading ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FolderUp className="mr-1.5 h-3.5 w-3.5" />}
+                  {t("companySkills.uploadFolder", { defaultValue: "Upload a folder" })}
+                </Button>
+              </div>
+              <input
+                ref={uploadFilesRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(event) => handleUploadSkillFiles(event.target.files)}
+              />
+              <input
+                ref={uploadFolderRef}
+                type="file"
+                // @ts-expect-error non-standard but widely supported folder-picker attribute
+                webkitdirectory=""
+                directory=""
+                multiple
+                className="hidden"
+                onChange={(event) => handleUploadSkillFiles(event.target.files)}
+              />
+            </div>
           </div>
         </DialogContent>
       </Dialog>

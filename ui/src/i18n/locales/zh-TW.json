@@ -2234,7 +2234,13 @@
     "dropHere": "拖放檔案至此或點擊瀏覽",
     "createNewSkill": "建立新技能",
     "browseCatalog": "瀏覽目錄",
-    "importFromPath": "從路徑或 URL 匯入"
+    "importFromPath": "從路徑或 URL 匯入",
+    "uploadNoSkillMd": "找不到 SKILL.md",
+    "uploadNoSkillMdBody": "選擇的內容必須包含 SKILL.md 檔案。",
+    "uploadSuccess": "技能已上傳",
+    "uploadSuccessBody": "{{name}} 現在可在 Paperclip 工作區中編輯。",
+    "uploadSuccessSkipped": "已建立 {{name}}。已略過 {{count}} 個二進位/隱藏檔案。",
+    "uploadFailed": "上傳失敗"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",
