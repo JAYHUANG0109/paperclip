@@ -224,12 +224,12 @@ export function Artifacts() {
         { label: `${selectedGroup.issue.identifier} · ${selectedGroup.title}` },
       ]);
     } else {
-      setBreadcrumbs([{ label: "Artifacts" }]);
+      setBreadcrumbs([{ label: t("artifacts.title", { defaultValue: "Artifacts" }) }]);
     }
   }, [setBreadcrumbs, viewingSelectedStack, selectedGroup]);
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={Package} message="Select a company to view artifacts." />;
+    return <EmptyState icon={Package} message={t("artifacts.selectCompany", { defaultValue: "Select a company to view artifacts." })} />;
   }
 
   const showGroupCards = viewingStackList;
@@ -237,15 +237,15 @@ export function Artifacts() {
 
   const emptyMessage = showGroupCards
     ? searching
-      ? "No artifact stacks match this search."
-      : "No artifact stacks yet."
+      ? t("artifacts.emptyStacksSearch", { defaultValue: "No artifact stacks match this search." })
+      : t("artifacts.emptyStacks", { defaultValue: "No artifact stacks yet." })
     : searching
-      ? "No artifacts match this search."
+      ? t("artifacts.emptyArtifactsSearch", { defaultValue: "No artifacts match this search." })
       : viewingSelectedStack
-        ? "No artifacts in this stack match the current filters."
+        ? t("artifacts.emptyStackFiltered", { defaultValue: "No artifacts in this stack match the current filters." })
         : kind === "all"
-          ? "No artifacts yet. Outputs attached to issues will appear here."
-          : "No artifacts of this type yet.";
+          ? t("artifacts.emptyArtifacts", { defaultValue: "No artifacts yet. Outputs attached to issues will appear here." })
+          : t("artifacts.emptyArtifactsType", { defaultValue: "No artifacts of this type yet." });
 
   return (
     <div className="w-full max-w-6xl space-y-5">
@@ -279,7 +279,7 @@ export function Artifacts() {
                 variant="outline"
                 size="icon"
                 aria-label={`Group artifacts (currently ${artifactGroupByLabel(groupBy)})`}
-                title="Group artifacts"
+                title={t("artifacts.groupArtifacts", { defaultValue: "Group artifacts" })}
                 data-testid="artifact-group-control"
                 data-group-by={groupBy}
                 className={cn("h-8 w-8 shrink-0", grouping && "bg-accent")}
@@ -288,7 +288,7 @@ export function Artifacts() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuLabel>Group by</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("artifacts.groupByLabel", { defaultValue: "Group by" })}</DropdownMenuLabel>
               {ARTIFACT_GROUP_OPTIONS.map((option) => (
                 <DropdownMenuItem
                   key={option.value}
@@ -297,7 +297,7 @@ export function Artifacts() {
                   onSelect={() => selectGroupBy(option.value)}
                   className="justify-between"
                 >
-                  {option.label}
+                  {t(`artifacts.group.${option.value}`, { defaultValue: option.label })}
                   {groupBy === option.value ? <Check className="h-3.5 w-3.5" /> : null}
                 </DropdownMenuItem>
               ))}
@@ -319,7 +319,7 @@ export function Artifacts() {
                     : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                 )}
               >
-                {filter.label}
+                {t(`artifacts.kind.${filter.value}`, { defaultValue: filter.label })}
               </button>
             ))}
           </div>
@@ -334,7 +334,7 @@ export function Artifacts() {
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            All stacks
+            {t("artifacts.allStacks", { defaultValue: "All stacks" })}
           </Link>
           {selectedGroup ? (
             <span className="truncate text-muted-foreground">
