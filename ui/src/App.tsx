@@ -78,6 +78,7 @@ import {
   shouldRedirectCompanylessRouteToOnboarding,
 } from "./lib/onboarding-route";
 import { normalizeRememberedInstanceSettingsPath } from "./lib/instance-settings";
+import { SHOW_LEADERBOARD, SHOW_BOUNTIES } from "./lib/feature-flags";
 
 function boardRoutes() {
   return (
@@ -135,8 +136,8 @@ function boardRoutes() {
       <Route path="workspaces" element={<Workspaces />} />
       <Route path="issues" element={<Issues />} />
       <Route path="calendar" element={<MyCalendar />} />
-      <Route path="leaderboard" element={<Leaderboard />} />
-      <Route path="bounties" element={<Bounties />} />
+      <Route path="leaderboard" element={SHOW_LEADERBOARD ? <Leaderboard /> : <Navigate to="../dashboard" replace />} />
+      <Route path="bounties" element={SHOW_BOUNTIES ? <Bounties /> : <Navigate to="../dashboard" replace />} />
       <Route path="office" element={<VirtualOffice />} />
       <Route path="search" element={<Search />} />
       <Route path="issues/all" element={<Navigate to="/issues" replace />} />

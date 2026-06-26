@@ -43,6 +43,7 @@ import { PluginSlotOutlet } from "@/plugins/slots";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
 import { useTranslation } from "@/i18n";
+import { SHOW_LEADERBOARD, SHOW_BOUNTIES } from "@/lib/feature-flags";
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -181,8 +182,8 @@ export function Sidebar() {
         <SidebarSection label={t("nav.work", { defaultValue: "Work" })}>
           <SidebarNavItem to="/issues" label={t("nav.issues", { defaultValue: "Tasks" })} icon={CircleDot} />
           <SidebarNavItem to="/calendar" label={t("nav.calendar", { defaultValue: "Calendar" })} icon={CalendarDays} />
-          <SidebarNavItem to="/leaderboard" label={t("nav.leaderboard", { defaultValue: "Leaderboard" })} icon={Trophy} />
-          <SidebarNavItem to="/bounties" label={t("nav.bounties", { defaultValue: "Bounties" })} icon={Lightbulb} />
+          {SHOW_LEADERBOARD && <SidebarNavItem to="/leaderboard" label={t("nav.leaderboard", { defaultValue: "Leaderboard" })} icon={Trophy} />}
+          {SHOW_BOUNTIES && <SidebarNavItem to="/bounties" label={t("nav.bounties", { defaultValue: "Bounties" })} icon={Lightbulb} />}
           <SidebarNavItem to="/office" label={t("nav.office", { defaultValue: "Virtual Office" })} icon={Building2} />
           <SidebarNavItem to="/routines" label={t("nav.routines", { defaultValue: "Routines" })} icon={Repeat} />
           <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />
