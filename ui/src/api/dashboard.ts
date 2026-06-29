@@ -54,7 +54,7 @@ export interface GoogleCalendarEventDto {
   dateKey: string;
   allDay: boolean;
   htmlLink: string | null;
-  isOwnerOrAttendee: boolean;
+  isInvitedAttendee: boolean;
 }
 
 export interface GoogleCalendarResponse {

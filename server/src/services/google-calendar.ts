@@ -34,8 +34,15 @@ export interface GoogleCalendarEvent {
   dateKey: string;
   allDay: boolean;
   htmlLink: string | null;
-  /** True when the caller is the creator/organizer or a real attendee. */
-  isOwnerOrAttendee: boolean;
+  /**
+   * True only when the caller is a genuine *invited attendee* of the event.
+   * We deliberately do NOT count creator/organizer here: the team keeps one
+   * shared calendar that the user's account owns, so Google reports
+   * `organizer.self`/`creator.self` = true for EVERY event on it — a useless
+   * signal that would make every event look like "mine". Real per-person
+   * relevance comes from the title-name match instead (see `eventIsMine`).
+   */
+  isInvitedAttendee: boolean;
 }
 
 export type GoogleCalendarResult =
@@ -166,10 +173,50 @@ function toDateKey(start: { date?: string; dateTime?: string } | undefined): str
   return null;
 }
 
+/** A single calendar can hold far more than one page of events in a window
+ * (the team's shared calendar has dozens of events per day). Page through
+ * `nextPageToken` up to this many pages so we don't silently drop everything
+ * past the first 250 events — while still bounding worst-case payload/latency. */
+const MAX_PAGES_PER_CALENDAR = 12; // 12 × 250 = up to 3000 events/calendar.
+
+/**
+ * Fetch every event for one calendar within [timeMin, timeMax], following
+ * `nextPageToken` until the calendar is exhausted or the page cap is hit.
+ * Returns whatever it gathered (per-calendar failures degrade to fewer pages,
+ * never throw — the caller skips empty calendars).
+ */
+async function fetchCalendarEvents(
+  token: string,
+  calId: string,
+  range: { timeMin: string; timeMax: string },
+): Promise<RawEvent[]> {
+  const out: RawEvent[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES_PER_CALENDAR; page++) {
+    const qs = new URLSearchParams({
+      timeMin: range.timeMin,
+      timeMax: range.timeMax,
+      singleEvents: "true",
+      orderBy: "startTime",
+      maxResults: "250",
+    });
+    if (pageToken) qs.set("pageToken", pageToken);
+    const data = await googleGet<{ items?: RawEvent[]; nextPageToken?: string }>(
+      token,
+      `${CALENDAR_API}/calendars/${encodeURIComponent(calId)}/events?${qs.toString()}`,
+    );
+    if (!data) break;
+    if (data.items?.length) out.push(...data.items);
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+  return out;
+}
+
 /**
  * Fetch the user's events across ALL accessible calendars within [timeMin,
  * timeMax]. Per-calendar failures are skipped rather than failing the whole
- * request. Returns up to a sane cap to bound payload size.
+ * request. Each calendar is paged to completion (see MAX_PAGES_PER_CALENDAR).
  */
 export async function getCalendarEventsForUser(
   db: Db,
@@ -187,22 +234,9 @@ export async function getCalendarEventsForUser(
   if (!list) return { connected: false, reason: "auth_required" };
   const calendars = (list.items ?? []).filter((c) => c.id && !c.deleted);
 
-  const params = (calId: string) =>
-    new URLSearchParams({
-      timeMin: range.timeMin,
-      timeMax: range.timeMax,
-      singleEvents: "true",
-      orderBy: "startTime",
-      maxResults: "250",
-    }).toString() + `&calendarId=${encodeURIComponent(calId)}`;
-
   const perCalendar = await Promise.all(
     calendars.map(async (cal) => {
-      const data = await googleGet<{ items?: RawEvent[] }>(
-        token,
-        `${CALENDAR_API}/calendars/${encodeURIComponent(cal.id)}/events?` + params(cal.id),
-      );
-      const items = data?.items ?? [];
+      const items = await fetchCalendarEvents(token, cal.id, range);
       return items
         .filter((ev) => ev.id && ev.status !== "cancelled")
         .map((ev): GoogleCalendarEvent | null => {
@@ -221,9 +255,8 @@ export async function getCalendarEventsForUser(
             dateKey,
             allDay: Boolean(ev.start?.date),
             htmlLink: ev.htmlLink ?? null,
-            isOwnerOrAttendee: Boolean(
-              ev.creator?.self || ev.organizer?.self || ev.attendees?.some((a) => a.self),
-            ),
+            // Only a real invite counts — NOT organizer/creator (see field doc).
+            isInvitedAttendee: Boolean(ev.attendees?.some((a) => a.self)),
           };
         })
         .filter((e): e is GoogleCalendarEvent => e !== null);
@@ -236,35 +269,58 @@ export async function getCalendarEventsForUser(
 
 /**
  * Auto-derive default name aliases from a user's display name for title matching.
- * Handles the common Chinese pattern (surname + given name) plus the full name and
- * any Latin/preferred name. Callers merge these with the user's saved overrides.
+ *
+ * The team formats display names as `部門_姓名 暱稱` — e.g.
+ * "數位資訊部_陳偉誠 Frank", "仁美校園長_王姿雅 雅雅". Event titles, however, use
+ * only the bare given name / nickname ("…偉誠、睦傑、雅雅"). So we:
+ *   1. drop the `部門_` prefix (keep the segment after the last underscore),
+ *   2. pull out each CJK run and each Latin run separately (handles a mixed
+ *      "陳偉誠 Frank"), and
+ *   3. for each CJK run, also add the given name (drop a 1- or 2-char surname).
+ * Callers merge these with the user's saved overrides, and the per-user editor
+ * still covers cases the title uses a nickname we can't infer (e.g. 唐姐).
  */
 export function deriveNameAliases(name: string | null | undefined): string[] {
   const out = new Set<string>();
   const full = (name ?? "").trim();
   if (!full) return [];
-  out.add(full);
-  // CJK full name like 黃睦傑 → also add given name (drop 1-char surname, or
-  // 2-char compound surname when length >= 4).
-  const cjk = /^[一-鿿]+$/.test(full);
-  if (cjk) {
-    if (full.length >= 2) out.add(full.slice(1)); // given name (single-char surname)
-    if (full.length >= 4) out.add(full.slice(2)); // given name (compound surname)
-  } else {
-    // Latin name: add each whitespace-separated part of length >= 2.
-    for (const part of full.split(/\s+/)) {
-      if (part.length >= 2) out.add(part);
+
+  // Strip a leading "部門_" style prefix: keep the segment after the last "_".
+  const segment = full.includes("_") ? full.slice(full.lastIndexOf("_") + 1).trim() : full;
+
+  // Candidate runs: the whole segment, each whitespace token, and each maximal
+  // CJK / Latin run (so "陳偉誠 Frank" and even "陳偉誠Frank" both split cleanly).
+  const candidates = [segment, ...segment.split(/\s+/)];
+  for (const m of segment.matchAll(/[一-鿿]+/g)) candidates.push(m[0]);
+  for (const m of segment.matchAll(/[A-Za-z][A-Za-z'’-]*/g)) candidates.push(m[0]);
+
+  for (const cand of candidates) {
+    const c = cand.trim();
+    if (!c) continue;
+    out.add(c);
+    // Pure-CJK run → also add the given name: drop a 1-char surname, or a
+    // 2-char compound surname when the name is long enough.
+    if (/^[一-鿿]+$/.test(c)) {
+      if (c.length >= 2) out.add(c.slice(1));
+      if (c.length >= 4) out.add(c.slice(2));
     }
   }
+  // Keep aliases ≥ 2 chars — a single CJK character matches far too much.
   return [...out].filter((a) => a.length >= 2);
 }
 
-/** Whether an event is "mine": genuine owner/attendee OR a title alias match. */
+/**
+ * Whether an event is "mine": the caller is a genuine invited attendee, OR the
+ * event title contains one of the caller's name-aliases. The team encodes
+ * attendees as plain text in the title (one shared calendar, no real invitees),
+ * so the title match is the primary signal — see `isInvitedAttendee`'s doc for
+ * why owner/organizer is intentionally ignored.
+ */
 export function eventIsMine(
   event: GoogleCalendarEvent,
   aliases: string[],
 ): boolean {
-  if (event.isOwnerOrAttendee) return true;
+  if (event.isInvitedAttendee) return true;
   const title = event.title.toLowerCase();
   return aliases.some((alias) => {
     const a = alias.trim().toLowerCase();

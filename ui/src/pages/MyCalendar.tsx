@@ -265,11 +265,14 @@ export function MyCalendar() {
   });
 
   // The user's own Google Calendar events across all calendars they can see
-  // (read-only, fetched with their own SSO token). `connected:false` →
-  // re-consent needed; surfaced as a banner below.
+  // (read-only, fetched with their own SSO token). `mine: true` filters to only
+  // events that concern THIS user (title contains their name, or they're a real
+  // invitee) — the team shares one busy calendar, so showing everything buries
+  // each person's handful of relevant items. `connected:false` → re-consent
+  // needed; surfaced as a banner below.
   const { data: google } = useQuery({
-    queryKey: ["google-calendar", selectedCompanyId ?? "__none__"],
-    queryFn: () => dashboardApi.googleCalendar(selectedCompanyId!),
+    queryKey: ["google-calendar", "mine", selectedCompanyId ?? "__none__"],
+    queryFn: () => dashboardApi.googleCalendar(selectedCompanyId!, { mine: true }),
     enabled: !!selectedCompanyId,
     staleTime: 60_000,
   });
