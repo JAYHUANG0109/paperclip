@@ -27,8 +27,9 @@ export interface FounderItem {
   review: string | null; // agent's DRAFT 批閱 — never auto-submitted
   prep: string | null; // agent's meeting prep brief (會議)
   triage: "now" | "evening" | null; // 15:30+ runs tag: 現在可先處理 / 留待晚上
-  decision: FounderDecision | null; // founder's verdict on the draft 批閱
+  decision: FounderDecision | null; // founder's verdict on the draft 批閱 (review items)
   decisionNote: string | null; // founder's comment / suggestion / regards (optional)
+  closed: boolean; // 結案 — used by meetings/reminders (no draft to approve, just "done")
 }
 
 export interface FounderDigest {
@@ -45,14 +46,23 @@ export interface FounderDigest {
 
 const EMPTY: FounderDigest["categories"] = { urgent: [], meetings: [], nonUrgent: [], reminders: [] };
 
-// The founder daily-calendar console is a bespoke customization for the founder
-// (唐富美) and Jay (the test/preview account) ONLY. Every other user keeps the
-// normal dashboard (daily/weekly Asana tasks + summaries). This allowlist gates
-// the READ so even if some other agent ever produced a founderDigest, it would
-// never surface for a non-founder. Overridable via PAPERCLIP_FOUNDER_EMAILS
-// (comma-separated) for the rollout. Mirrors the resolveLocale email-allowlist
-// pattern.
-const DEFAULT_FOUNDER_EMAILS = ["tang@seasonart.org", "jay20020109@seasonart.org"];
+// The daily-calendar console is a bespoke customization for a small set of
+// leaders, NOT the whole org. Every other user keeps the normal dashboard
+// (daily/weekly Asana tasks + summaries). This allowlist gates the READ so even
+// if some other agent ever produced a founderDigest, it would never surface for
+// a non-allowlisted user. The exact same 4-block UI serves two variants — the
+// difference is only which Asana project each user's OWN agent reads from (see
+// the agent AGENTS.md "daily pipeline"):
+//   • 創辦人 唐富美 — 創辦人每日行事曆 project
+//   • 仁美校園長 吳家秀 (Renee) + 王姿雅 (雅雅) — 仁美｜園長待決議與提醒 project
+//   • Jay — test/preview account
+// Overridable via PAPERCLIP_FOUNDER_EMAILS (comma-separated) for the rollout.
+const DEFAULT_FOUNDER_EMAILS = [
+  "tang@seasonart.org",
+  "jay20020109@seasonart.org",
+  "reneew@seasonart.org", // 仁美校園長 吳家秀 Renee
+  "ziya@seasonart.org", // 仁美校園長 王姿雅 雅雅
+];
 
 function founderEmails(): Set<string> {
   const raw = process.env.PAPERCLIP_FOUNDER_EMAILS?.trim();
@@ -90,6 +100,7 @@ function sanitizeItem(raw: unknown): FounderItem | null {
     triage: t.triage === "now" || t.triage === "evening" ? t.triage : null,
     decision,
     decisionNote: str(t.decisionNote),
+    closed: t.closed === true,
   };
 }
 
@@ -137,25 +148,19 @@ export async function getFounderDigestForUser(db: Db, companyId: string, email: 
   return null;
 }
 
-/**
- * Optimistically record the founder's decision (+ optional note) on a 待批閱
- * item in the stored digest. `decision: null` reverts it to undecided. The real
- * Asana write is routed through the agent (see the dashboard route).
- */
-export async function setFounderItemDecision(
+/** Optimistically patch one item (matched by gid) across all four categories. */
+async function patchFounderItem(
   db: Db,
   agentId: string,
   gid: string,
-  decision: FounderDecision | null,
-  note: string | null,
+  patch: Partial<FounderItem>,
 ): Promise<FounderDigest | null> {
   const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
   const md = row?.metadata && typeof row.metadata === "object" ? { ...(row.metadata as Record<string, unknown>) } : null;
   if (!md) return null;
   const digest = md.founderDigest as FounderDigest | undefined;
   if (!digest?.categories) return null;
-  const apply = (list: FounderItem[]) =>
-    (list ?? []).map((t) => (t.gid === gid ? { ...t, decision, decisionNote: note } : t));
+  const apply = (list: FounderItem[]) => (list ?? []).map((t) => (t.gid === gid ? { ...t, ...patch } : t));
   const next: FounderDigest = {
     ...digest,
     categories: {
@@ -168,6 +173,34 @@ export async function setFounderItemDecision(
   md.founderDigest = next;
   await db.update(agents).set({ metadata: md, updatedAt: new Date() }).where(eq(agents.id, agentId));
   return next;
+}
+
+/**
+ * Optimistically record the founder's decision (+ optional note) on a 待批閱
+ * item in the stored digest. `decision: null` reverts it to undecided. The real
+ * Asana write is routed through the agent (see the dashboard route).
+ */
+export function setFounderItemDecision(
+  db: Db,
+  agentId: string,
+  gid: string,
+  decision: FounderDecision | null,
+  note: string | null,
+): Promise<FounderDigest | null> {
+  return patchFounderItem(db, agentId, gid, { decision, decisionNote: note });
+}
+
+/**
+ * Optimistically mark a meeting/reminder item 結案 (or reopen). The real Asana
+ * write (e.g. complete-task) is routed through the agent.
+ */
+export function setFounderItemClosed(
+  db: Db,
+  agentId: string,
+  gid: string,
+  closed: boolean,
+): Promise<FounderDigest | null> {
+  return patchFounderItem(db, agentId, gid, { closed });
 }
 
 export const FOUNDER_EMPTY_CATEGORIES = EMPTY;

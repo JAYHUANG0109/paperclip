@@ -33,6 +33,7 @@ export interface FounderItem {
   triage: "now" | "evening" | null;
   decision: FounderDecision | null;
   decisionNote: string | null;
+  closed: boolean;
 }
 export interface FounderDigest {
   generatedAt: string | null;
@@ -102,5 +103,11 @@ export const dashboardApi = {
     api.post<{ ok: boolean; digest: FounderDigest | null }>(
       `/companies/${companyId}/founder-digest/items/${encodeURIComponent(gid)}/decision`,
       { decision, note },
+    ),
+  // 結案 (or reopen) a meeting/reminder item.
+  closeFounderItem: (companyId: string, gid: string, closed: boolean) =>
+    api.post<{ ok: boolean; digest: FounderDigest | null }>(
+      `/companies/${companyId}/founder-digest/items/${encodeURIComponent(gid)}/close`,
+      { closed },
     ),
 };

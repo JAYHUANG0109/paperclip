@@ -32,31 +32,44 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
     staleTime: 60_000,
   });
 
+  // Optimistically patch one item (by gid) across the four categories in the cache.
+  const optimisticPatch = async (gid: string, patch: Partial<FounderItem>) => {
+    await queryClient.cancelQueries({ queryKey: KEY(companyId) });
+    const prev = queryClient.getQueryData<FounderDigest>(KEY(companyId));
+    if (prev?.categories) {
+      const apply = (l: FounderItem[]) => (l ?? []).map((it) => (it.gid === gid ? { ...it, ...patch } : it));
+      queryClient.setQueryData<FounderDigest>(KEY(companyId), {
+        ...prev,
+        categories: {
+          urgent: apply(prev.categories.urgent),
+          meetings: apply(prev.categories.meetings),
+          nonUrgent: apply(prev.categories.nonUrgent),
+          reminders: apply(prev.categories.reminders),
+        },
+      });
+    }
+    return { prev };
+  };
+  const rollback = (_e: unknown, _v: unknown, ctx: { prev?: FounderDigest } | undefined) =>
+    ctx?.prev && queryClient.setQueryData(KEY(companyId), ctx.prev);
+  const settle = (res: { digest: FounderDigest | null } | undefined) =>
+    res?.digest && queryClient.setQueryData(KEY(companyId), res.digest);
+
   const decide = useMutation({
     mutationFn: ({ gid, decision, note }: { gid: string; decision: FounderDecision | null; note?: string }) =>
       dashboardApi.decideFounderItem(companyId, gid, decision, note),
-    onMutate: async ({ gid, decision, note }) => {
-      await queryClient.cancelQueries({ queryKey: KEY(companyId) });
-      const prev = queryClient.getQueryData<FounderDigest>(KEY(companyId));
-      if (prev?.categories) {
-        const apply = (l: FounderItem[]) =>
-          (l ?? []).map((it) => (it.gid === gid ? { ...it, decision, decisionNote: note?.trim() || null } : it));
-        queryClient.setQueryData<FounderDigest>(KEY(companyId), {
-          ...prev,
-          categories: {
-            urgent: apply(prev.categories.urgent),
-            meetings: apply(prev.categories.meetings),
-            nonUrgent: apply(prev.categories.nonUrgent),
-            reminders: apply(prev.categories.reminders),
-          },
-        });
-      }
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => ctx?.prev && queryClient.setQueryData(KEY(companyId), ctx.prev),
-    onSettled: (res) => res?.digest && queryClient.setQueryData(KEY(companyId), res.digest),
+    onMutate: ({ gid, decision, note }) => optimisticPatch(gid, { decision, decisionNote: note?.trim() || null }),
+    onError: rollback,
+    onSettled: settle,
   });
-  const pendingGid = decide.isPending ? decide.variables?.gid : undefined;
+  const close = useMutation({
+    mutationFn: ({ gid, closed }: { gid: string; closed: boolean }) => dashboardApi.closeFounderItem(companyId, gid, closed),
+    onMutate: ({ gid, closed }) => optimisticPatch(gid, { closed }),
+    onError: rollback,
+    onSettled: settle,
+  });
+  const pendingGid =
+    (decide.isPending ? decide.variables?.gid : undefined) ?? (close.isPending ? close.variables?.gid : undefined);
 
   const cats = data?.categories;
   const total = cats ? cats.urgent.length + cats.meetings.length + cats.nonUrgent.length + cats.reminders.length : 0;
@@ -87,19 +100,17 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
       <div className="grid gap-4 lg:grid-cols-2">
         {CATS.map((c) => {
           const items = cats[c.key];
-          // Review blocks (急件 / 非急件) get an approval progress bar: how many
-          // draft 批閱 you've cleared. Meetings/reminders have no done-state, so
-          // they show just their count.
+          // Every block now shows a progress bar of items the founder has cleared:
+          // review blocks count any verdict (decision); meetings/reminders count 結案.
           const isReview = c.kind === "review";
           const total = items.length;
-          // Progress = items the founder has acted on (any decision), not just approvals.
-          const handledCount = isReview ? items.filter((it) => it.decision).length : 0;
-          const pct = isReview && total > 0 ? Math.round((handledCount / total) * 100) : 0;
+          const handledCount = items.filter((it) => (isReview ? !!it.decision : it.closed)).length;
+          const pct = total > 0 ? Math.round((handledCount / total) * 100) : 0;
           return (
             <Card key={c.key} className={cn("border-l-4", c.accent)}>
               <CardHeader className="flex flex-row items-center justify-between gap-2 px-5 pt-5 pb-2">
                 <CardTitle className="text-base">{c.title}</CardTitle>
-                {isReview && total > 0 ? (
+                {total > 0 ? (
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {t("founder.handledProgress", { done: handledCount, total, defaultValue: "{{done}}/{{total}} handled" })}
                   </span>
@@ -107,7 +118,7 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
                   <span className="text-xs tabular-nums text-muted-foreground">{total}</span>
                 )}
               </CardHeader>
-              {isReview && total > 0 && (
+              {total > 0 && (
                 <div
                   className="mx-5 mb-1 h-1.5 overflow-hidden rounded-full bg-muted"
                   role="progressbar"
@@ -130,6 +141,7 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
                         kind={c.kind}
                         pending={pendingGid === it.gid}
                         onDecide={(decision, note) => decide.mutate({ gid: it.gid, decision, note })}
+                        onClose={(closed) => close.mutate({ gid: it.gid, closed })}
                       />
                     ))}
                   </ul>
@@ -197,11 +209,13 @@ function FounderRow({
   kind,
   pending,
   onDecide,
+  onClose,
 }: {
   item: FounderItem;
   kind: "review" | "meeting" | "reminder";
   pending: boolean;
   onDecide: (decision: FounderDecision | null, note?: string) => void;
+  onClose: (closed: boolean) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -231,12 +245,12 @@ function FounderRow({
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
         {item.permalinkUrl ? (
-          <a href={item.permalinkUrl} target="_blank" rel="noreferrer" className="group min-w-0 flex-1 hover:underline">
+          <a href={item.permalinkUrl} target="_blank" rel="noreferrer" className={cn("group min-w-0 flex-1 hover:underline", item.closed && "text-muted-foreground line-through")}>
             {item.name}
             <ExternalLink className="ml-1 inline h-3 w-3 align-text-top text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
           </a>
         ) : (
-          <span className="min-w-0 flex-1">{item.name}</span>
+          <span className={cn("min-w-0 flex-1", item.closed && "text-muted-foreground line-through")}>{item.name}</span>
         )}
         {isReview && item.triage && !item.decision && (
           <span
@@ -284,6 +298,32 @@ function FounderRow({
               </button>
             ))}
           </div>
+        ))}
+        {!isReview && (item.closed ? (
+          // 已結案 → badge + quiet reopen.
+          <div className="flex shrink-0 items-center gap-1">
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+              <Check className="h-3 w-3" />{t("founder.closed", { defaultValue: "已結案" })}
+            </span>
+            <button
+              type="button"
+              onClick={() => onClose(false)}
+              disabled={pending}
+              aria-label={t("founder.reopen", { defaultValue: "Reopen" })}
+              className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onClose(true)}
+            disabled={pending}
+            className="shrink-0 rounded-md border border-primary/50 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("founder.close", { defaultValue: "結案" })}
+          </button>
         ))}
       </div>
 

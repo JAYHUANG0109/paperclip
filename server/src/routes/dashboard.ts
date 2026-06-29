@@ -15,6 +15,7 @@ import {
   writeFounderDigestForAgent,
   getFounderDigestForUser,
   setFounderItemDecision,
+  setFounderItemClosed,
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
@@ -268,6 +269,35 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       reason: "founder-review-item",
       payload: { directive: "founder-review-item", taskGid: gid, decision, note },
       idempotencyKey: `founder-review:${gid}:${decision ?? "reset"}:${Math.floor(Date.now() / 60000)}`,
+      requestedByActorType: "user",
+      requestedByActorId: userId ?? null,
+    });
+    res.json({ ok: true, digest });
+  });
+
+  // Mark a meeting/reminder item 結案 (done) or reopen it. Unlike 待批閱 items
+  // (which carry a 3-way verdict), meetings/reminders have no draft to approve —
+  // 結案 just clears them off the founder's board. Routes the real Asana write
+  // (e.g. complete-task) through the caller's own agent.
+  router.post("/companies/:companyId/founder-digest/items/:gid/close", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const gid = req.params.gid as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account to act on Asana." });
+      return;
+    }
+    const closed = (req.body as { closed?: unknown })?.closed !== false; // default true
+    const digest = await setFounderItemClosed(db, agentId, gid, closed);
+    await heartbeat.wakeup(agentId, {
+      source: "on_demand",
+      triggerDetail: "manual",
+      reason: "founder-close-item",
+      payload: { directive: "founder-close-item", taskGid: gid, closed },
+      idempotencyKey: `founder-close:${gid}:${closed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
       requestedByActorType: "user",
       requestedByActorId: userId ?? null,
     });

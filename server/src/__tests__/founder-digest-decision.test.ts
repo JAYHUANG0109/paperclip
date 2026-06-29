@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import {
   writeFounderDigestForAgent,
   setFounderItemDecision,
+  setFounderItemClosed,
   type FounderDigest,
 } from "../services/founder-digest.js";
 
@@ -63,5 +64,25 @@ describe("founder-digest decisions", () => {
     await setFounderItemDecision(db, agentId, "1", "approved", null);
     const d = await read();
     expect(d.categories.urgent.find((i) => i.gid === "3")?.decision).toBe("changes_requested");
+  });
+
+  it("marks a meeting/reminder item 結案 and can reopen it", async () => {
+    await writeFounderDigestForAgent(db, "c", agentId, {
+      categories: {
+        meetings: [{ gid: "m1", name: "今日會議" }],
+        reminders: [{ gid: "r1", name: "提醒一則", closed: true }],
+      },
+    });
+    let d = await read();
+    expect(d.categories.meetings[0]?.closed).toBe(false); // default
+    expect(d.categories.reminders[0]?.closed).toBe(true); // honoured from agent output
+
+    await setFounderItemClosed(db, agentId, "m1", true);
+    d = await read();
+    expect(d.categories.meetings.find((i) => i.gid === "m1")?.closed).toBe(true);
+
+    await setFounderItemClosed(db, agentId, "m1", false);
+    d = await read();
+    expect(d.categories.meetings.find((i) => i.gid === "m1")?.closed).toBe(false);
   });
 });

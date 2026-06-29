@@ -5699,6 +5699,9 @@
     "rejected": "已拒絕",
     "confirm": "確認",
     "reset": "撤回決定",
+    "close": "結案",
+    "closed": "已結案",
+    "reopen": "重新開啟",
     "notePlaceholder": "留言 / 建議（選填）— 將張貼為 Asana 評論",
     "yourNote": "您的留言",
     "summary": "AI 摘要",
@@ -5707,7 +5710,8 @@
     "source": "來自 Asana",
     "triageNow": "現在可先處理",
     "triageEvening": "留待晚上",
-    "handledProgress": "{{done}}/{{total}} 已處理"
+    "handledProgress": "{{done}}/{{total}} 已處理",
+    "approvedProgress": "{{done}}/{{total}} 已核准"
   },
   "sidebarShell": {
     "resize": "調整側邊欄大小"
