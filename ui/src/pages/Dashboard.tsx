@@ -14,14 +14,18 @@ import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { MetricCard } from "../components/MetricCard";
+import { AsanaTasksSection } from "../components/AsanaTasksSection";
+import { MyScheduleSection } from "../components/MyScheduleSection";
+import { FounderDigestSection } from "../components/FounderDigestSection";
+import { TaskSummaryCard } from "../components/TaskSummaryCard";
 import { EmptyState } from "../components/EmptyState";
 import { StatusIcon } from "../components/StatusIcon";
 
 import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
-import { cn, formatCents } from "../lib/utils";
-import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle } from "lucide-react";
+import { cn } from "../lib/utils";
+import { Bot, CircleDot, ShieldCheck, LayoutDashboard, PauseCircle, ListTodo } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -86,6 +90,28 @@ export function Dashboard() {
     enabled: !!selectedCompanyId,
   });
 
+  // Per-user Asana digest — same query key as AsanaTasksSection so it's shared,
+  // not a second fetch. Drives the personal "outstanding tasks" metric.
+  const { data: asanaDigest } = useQuery({
+    queryKey: ["asana-digest", selectedCompanyId],
+    queryFn: () => dashboardApi.asanaDigest(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 60_000,
+  });
+
+  // Founder daily-calendar digest — same query key as FounderDigestSection so
+  // it's shared, not a second fetch. When the caller has a populated founder
+  // digest, the dashboard switches to "founder mode": the 4 priority blocks +
+  // the founder status bar REPLACE the generic task block + metric tiles.
+  const { data: founderDigest } = useQuery({
+    queryKey: ["founder-digest", selectedCompanyId],
+    queryFn: () => dashboardApi.founderDigest(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 60_000,
+  });
+  const fc = founderDigest?.categories;
+  const founderMode = !!fc && fc.urgent.length + fc.meetings.length + fc.nonUrgent.length + fc.reminders.length > 0;
+
   const userProfileMap = useMemo(
     () => buildCompanyUserProfileMap(companyMembers?.users),
     [companyMembers?.users],
@@ -93,6 +119,13 @@ export function Dashboard() {
 
   const recentIssues = issues ? getRecentIssues(issues) : [];
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 10), [activity]);
+
+  // Personal "outstanding tasks" = incomplete Asana tasks in the caller's own digest.
+  const dailyOpen = (asanaDigest?.daily ?? []).filter((tk) => !tk.completed).length;
+  const weeklyOpen = (asanaDigest?.weekly ?? []).filter((tk) => !tk.completed).length;
+  const outstandingTasks = dailyOpen + weeklyOpen;
+  // Low-access members who can see only one agent don't need an "agents enabled: 1" tile.
+  const showAgentsCard = (agents?.length ?? 0) > 1;
 
   useEffect(() => {
     for (const timer of activityAnimationTimersRef.current) {
@@ -228,6 +261,24 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* Founder daily console (創辦人每日行事曆) — 4 priority blocks + founder
+          status bar. Founder-only (Jay + 創辦人); renders nothing for everyone
+          else, who keep the normal tasks + summaries below unchanged. In founder
+          mode it sits ABOVE the daily/weekly tasks (which we keep), and only the
+          generic 4 metric tiles are swapped out for the founder status bar. */}
+      <FounderDigestSection companyId={selectedCompanyId!} />
+
+      {/* My tasks (Asana) — daily/weekly tasks, kept for everyone (incl. founder
+          mode), directly under the founder blocks and above the summaries. */}
+      <AsanaTasksSection companyId={selectedCompanyId!} />
+
+      {/* My Schedule (Google Calendar) — the caller's own events, matched by title
+          name-aliases (the team types attendees into titles). Read-only. */}
+      <MyScheduleSection companyId={selectedCompanyId!} />
+
+      {/* Daily / weekly "tasks done" summaries (hidden until one is generated). */}
+      <TaskSummaryCard companyId={selectedCompanyId!} />
+
       <ActiveAgentsPanel companyId={selectedCompanyId!} />
 
       {data && (
@@ -251,18 +302,21 @@ export function Dashboard() {
             </div>
           ) : null}
 
+          {!founderMode && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-1 sm:gap-2">
-            <MetricCard
-              icon={Bot}
-              value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
-              label={t("dashboard.agentsEnabled")}
-              to="/agents"
-              description={
-                <span>
-                  {t("dashboard.agentsDesc", { running: data.agents.running, paused: data.agents.paused, errors: data.agents.error })}
-                </span>
-              }
-            />
+            {showAgentsCard && (
+              <MetricCard
+                icon={Bot}
+                value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
+                label={t("dashboard.agentsEnabled")}
+                to="/agents"
+                description={
+                  <span>
+                    {t("dashboard.agentsDesc", { running: data.agents.running, paused: data.agents.paused, errors: data.agents.error })}
+                  </span>
+                }
+              />
+            )}
             <MetricCard
               icon={CircleDot}
               value={data.tasks.inProgress}
@@ -275,15 +329,12 @@ export function Dashboard() {
               }
             />
             <MetricCard
-              icon={DollarSign}
-              value={formatCents(data.costs.monthSpendCents)}
-              label={t("dashboard.monthSpend")}
-              to="/costs"
+              icon={ListTodo}
+              value={outstandingTasks}
+              label={t("dashboard.outstandingTasks", { defaultValue: "Outstanding tasks" })}
               description={
                 <span>
-                  {data.costs.monthBudgetCents > 0
-                    ? t("dashboard.budgetUtil", { percent: data.costs.monthUtilizationPercent, budget: formatCents(data.costs.monthBudgetCents) })
-                    : t("dashboard.unlimitedBudget")}
+                  {t("dashboard.outstandingDesc", { today: dailyOpen, week: weeklyOpen, defaultValue: "Today {{today}} · This week {{week}}" })}
                 </span>
               }
             />
@@ -301,6 +352,7 @@ export function Dashboard() {
               }
             />
           </div>
+          )}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <ChartCard title={t("dashboard.runActivity")} subtitle={t("dashboard.last14Days")}>

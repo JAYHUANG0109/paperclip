@@ -26,8 +26,11 @@ import { ProviderQuotaCard } from "../components/ProviderQuotaCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
-import { useDateRange, PRESET_KEYS, PRESET_LABELS } from "../hooks/useDateRange";
+import { useDateRange, PRESET_KEYS } from "../hooks/useDateRange";
 import { queryKeys } from "../lib/queryKeys";
+import { agentsApi } from "../api/agents";
+import { TeamFilterBar } from "../components/TeamFilterBar";
+import { useAgentTeamFilter, agentTeams, listAllTeams } from "../lib/agent-teams";
 import { billingTypeDisplayName, cn, formatCents, formatTokens, providerDisplayName } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -291,6 +294,27 @@ export function Costs() {
     }
     return map;
   }, [spendData?.byAgentModel]);
+
+  // Team filter for the by-agent list: agents carry their team(s) in
+  // metadata.teams; join the cost rows against the agent roster so the shared
+  // TeamFilterBar (same control used on Agents / Virtual Office) narrows the list.
+  const { data: costAgents } = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+    enabled: !!selectedCompanyId,
+  });
+  const teamFilter = useAgentTeamFilter(selectedCompanyId);
+  const allTeams = useMemo(() => listAllTeams(costAgents ?? []), [costAgents]);
+  const agentTeamsById = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const a of costAgents ?? []) m.set(a.id, agentTeams(a));
+    return m;
+  }, [costAgents]);
+  const visibleByAgent = useMemo(() => {
+    const rows = spendData?.byAgent ?? [];
+    if (teamFilter.selected.length === 0) return rows;
+    return rows.filter((r) => (agentTeamsById.get(r.agentId) ?? []).some((tm) => teamFilter.selected.includes(tm)));
+  }, [spendData?.byAgent, agentTeamsById, teamFilter.selected]);
 
   const { data: providerData } = useQuery({
     queryKey: queryKeys.usageByProvider(companyId, from || undefined, to || undefined),
@@ -558,7 +582,7 @@ export function Costs() {
                   size="sm"
                   onClick={() => setPreset(key)}
                 >
-                  {PRESET_LABELS[key]}
+                  {t(`costs.preset.${key}`)}
                 </Button>
               ))}
             </div>
@@ -584,10 +608,10 @@ export function Costs() {
 
           <div className="grid gap-3 lg:grid-cols-4">
             <MetricTile
-              label={t("costs.inferenceSpend")}
-              value={formatCents(spendData?.summary.spendCents ?? 0)}
-              subtitle={t("costs.inferenceSpendSubtitle", { tokens: formatTokens(inferenceTokenTotal) })}
-              icon={DollarSign}
+              label={t("costs.usage")}
+              value={formatTokens(inferenceTokenTotal)}
+              subtitle={`${t("costs.inferenceSpend")} · ${formatCents(spendData?.summary.spendCents ?? 0)}`}
+              icon={Coins}
             />
             <MetricTile
               label={t("costs.budget")}
@@ -669,7 +693,7 @@ export function Costs() {
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div>
                         <div className="text-3xl font-semibold tabular-nums">
-                          {formatCents(spendData?.summary.spendCents ?? 0)}
+                          {formatTokens(inferenceTokenTotal)}
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
                           {spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
@@ -678,9 +702,9 @@ export function Costs() {
                         </div>
                       </div>
                       <div className="border border-border px-4 py-3 text-right">
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("costs.usage")}</div>
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("costs.inferenceSpend")}</div>
                         <div className="mt-1 text-lg font-medium tabular-nums">
-                          {formatTokens(inferenceTokenTotal)}
+                          {formatCents(spendData?.summary.spendCents ?? 0)}
                         </div>
                       </div>
                     </div>
@@ -721,12 +745,24 @@ export function Costs() {
                   <CardHeader className="px-5 pt-5 pb-2">
                     <CardTitle className="text-base">{t("costs.byAgent")}</CardTitle>
                     <CardDescription>{t("costs.byAgentDesc")}</CardDescription>
+                    {allTeams.length > 0 && (
+                      <div className="pt-2">
+                        <TeamFilterBar
+                          teams={allTeams}
+                          selected={teamFilter.selected}
+                          onToggle={teamFilter.toggle}
+                          onClear={teamFilter.clear}
+                        />
+                      </div>
+                    )}
                   </CardHeader>
                   <CardContent className="space-y-2 px-5 pb-5 pt-2">
                     {(spendData?.byAgent.length ?? 0) === 0 ? (
                       <p className="text-sm text-muted-foreground">{t("costs.noCostEvents")}</p>
+                    ) : visibleByAgent.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">{t("costs.noAgentsMatchFilter", { defaultValue: "No agents match the selected teams." })}</p>
                     ) : (
-                      spendData?.byAgent.map((row) => {
+                      visibleByAgent.map((row) => {
                         const modelRows = agentModelRows.get(row.agentId) ?? [];
                         const isExpanded = expandedAgents.has(row.agentId);
                         const hasBreakdown = modelRows.length > 0;
@@ -748,7 +784,7 @@ export function Costs() {
                                 {row.agentStatus === "terminated" ? <StatusBadge status="terminated" /> : null}
                               </div>
                               <div className="text-right text-sm tabular-nums">
-                                <div className="font-medium">{formatCents(row.costCents)}</div>
+                                <div className="font-medium">{formatTokens(row.inputTokens + row.cachedInputTokens + row.outputTokens)}</div>
                                 <div className="text-xs text-muted-foreground">
                                   {t("costs.inOutTokens", { in: formatTokens(row.inputTokens + row.cachedInputTokens), out: formatTokens(row.outputTokens) })}
                                 </div>
@@ -765,7 +801,9 @@ export function Costs() {
                             {isExpanded && modelRows.length > 0 ? (
                               <div className="mt-3 space-y-2 border-l border-border pl-4">
                                 {modelRows.map((modelRow) => {
-                                  const sharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
+                                  const rowTokens = row.inputTokens + row.cachedInputTokens + row.outputTokens;
+                                  const modelTokens = modelRow.inputTokens + modelRow.cachedInputTokens + modelRow.outputTokens;
+                                  const sharePct = rowTokens > 0 ? Math.round((modelTokens / rowTokens) * 100) : 0;
                                   return (
                                     <div
                                       key={`${modelRow.provider}:${modelRow.model}:${modelRow.billingType}`}
@@ -783,11 +821,11 @@ export function Costs() {
                                       </div>
                                       <div className="text-right tabular-nums">
                                         <div className="font-medium">
-                                          {formatCents(modelRow.costCents)}
+                                          {t("costs.tokensShort", { tokens: formatTokens(modelTokens) })}
                                           <span className="ml-1 font-normal text-muted-foreground">({sharePct}%)</span>
                                         </div>
                                         <div className="text-muted-foreground">
-                                          {t("costs.tokensShort", { tokens: formatTokens(modelRow.inputTokens + modelRow.cachedInputTokens + modelRow.outputTokens) })}
+                                          {formatCents(modelRow.costCents)}
                                         </div>
                                       </div>
                                     </div>

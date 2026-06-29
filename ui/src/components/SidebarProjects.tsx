@@ -15,7 +15,7 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
-import { useSidebar } from "../context/SidebarContext";
+import { useSidebar, usePeekLock } from "../context/SidebarContext";
 import { authApi } from "../api/auth";
 import { projectsApi } from "../api/projects";
 import { SIDEBAR_SCROLL_RESET_STATE } from "../lib/navigation-scroll";
@@ -148,6 +148,9 @@ function ProjectItem({
   const { t } = useTranslation();
   const routeRef = projectRouteRef(project);
   const { summary: externalObjectsSummary } = useProjectExternalObjectSummary(project.id);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Hold the collapsed-rail peek open while this item's action menu is open.
+  usePeekLock(menuOpen);
 
   const link = (
     <NavLink
@@ -170,7 +173,7 @@ function ProjectItem({
       <ProjectTile color={project.color ?? null} icon={project.icon ?? null} size="xs" />
       <span className={rail ? SIDEBAR_RAIL_HIDDEN_LABEL : "flex-1 truncate"}>{project.name}</span>
       {!rail ? <ExternalObjectStatusSummary summary={externalObjectsSummary} compact /> : null}
-      {!rail && project.pauseReason === "budget" ? <BudgetSidebarMarker title="Project paused by budget" /> : null}
+      {!rail && project.pauseReason === "budget" ? <BudgetSidebarMarker title={t("sidebarProjects.pausedByBudget", { defaultValue: "Project paused by budget" })} /> : null}
     </NavLink>
   );
 
@@ -203,7 +206,7 @@ function ProjectItem({
         </NavLink>
 
         {!rail && (
-        <DropdownMenu>
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -532,7 +535,9 @@ export function SidebarProjects() {
                       {!rail && (collapsed ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />)}
                       <Folder className="h-3.5 w-3.5 shrink-0" />
                       <span className="flex-1 truncate text-left">{label}</span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{group.projects.length}</span>
+                      {!rail && (
+                        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{group.projects.length}</span>
+                      )}
                     </button>
                     {!collapsed && group.projects.map((project: Project) => renderProject(project))}
                   </div>

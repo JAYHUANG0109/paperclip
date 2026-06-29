@@ -564,7 +564,9 @@
     "recentActivity": "Recent Activity",
     "recentTasks": "Recent Tasks",
     "noTasks": "No tasks yet.",
-    "restrictedOverview": "The org-wide overview is available to company admins. Your own agents are shown below."
+    "restrictedOverview": "The org-wide overview is available to company admins. Your own agents are shown below.",
+    "outstandingTasks": "Outstanding tasks",
+    "outstandingDesc": "Today {{today}} · This week {{week}}"
   },
   "agentsPanel": {
     "title": "Agents",
@@ -588,7 +590,8 @@
     "kind": {
       "suggestTasks": "Suggested tasks",
       "askUserQuestions": "Ask user questions",
-      "requestConfirmation": "Confirmation"
+      "requestConfirmation": "Confirmation",
+      "requestCheckboxConfirmation": "Checkbox confirmation"
     },
     "questionCount_one": "1 question",
     "questionCount_other": "{{count}} questions",
@@ -667,8 +670,25 @@
       "decline": "Decline",
       "declineReasonRequired": "A decline reason is required.",
       "cancelDecline": "Cancel decline",
-      "saving": "Saving..."
-    }
+      "saving": "Saving...",
+      "imageUploadError": "Couldn't upload that image. Try again.",
+      "uploading": "Uploading...",
+      "attachScreenshots": "Attach screenshots"
+    },
+    "typeYourAnswer": "Type your answer",
+    "checkbox": {
+      "confirmedNone": "Confirmed with no options selected",
+      "selected": "Selected",
+      "showLess": "Show less",
+      "selectAll": "Select all",
+      "clearSelection": "Clear selection",
+      "selectableOptions": "Selectable options",
+      "confirmSelected": "Confirm selected",
+      "requestChanges": "Request changes",
+      "reasonRequired": "A reason is required."
+    },
+    "resolvedByPrefix": "Resolved by",
+    "titleCheckboxConfirmation": "Checkbox confirmation requested"
   },
   "agents": {
     "selectCompany": "Select a company to view agents.",
@@ -681,7 +701,10 @@
     "newAgent": "New Agent",
     "count_one": "{{count}} agent",
     "count_other": "{{count}} agents",
-    "empty": "Create your first agent to get started."
+    "empty": "Create your first agent to get started.",
+    "teams": "Teams",
+    "filterByTeam": "Filter by team",
+    "allTeams": "All teams"
   },
   "timeline": {
     "requestedFollowUp": "requested follow-up",
@@ -1220,7 +1243,11 @@
     "resume": "Resume",
     "upload": "Upload",
     "ok": "OK",
-    "or": "or"
+    "or": "or",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "openInNewTab": "Open in new tab",
+    "deleting": "Deleting..."
   },
   "orgChart": {
     "breadcrumb": "Org Chart",
@@ -1417,7 +1444,8 @@
     "at": "at",
     "atMinute": "at minute",
     "on": "on",
-    "onDay": "on day"
+    "onDay": "on day",
+    "cronExpression": "Cron expression"
   },
   "agentConfig": {
     "unsavedChanges": "Unsaved changes",
@@ -1473,7 +1501,36 @@
       "warnings": "Warnings",
       "failed": "Failed",
       "hint": "Hint: {{hint}}"
-    }
+    },
+    "teams": "Teams / 團隊",
+    "teamsHint": "Comma-separated team names. An agent can belong to multiple teams (e.g. 資訊部, 領導與總部).",
+    "teamsPlaceholder": "資訊部, 領導與總部",
+    "comingSoon": "Coming soon",
+    "experimental": "Experimental",
+    "model": "Model",
+    "defaultModel": "Default",
+    "selectModelRequired": "Select model (required)",
+    "selectModel": "Select model",
+    "searchModelsCreatable": "Search models... (type to create)",
+    "searchModels": "Search models...",
+    "detecting": "Detecting...",
+    "reDetectFromConfig": "Re-detect from config",
+    "detectFromConfig": "Detect from config",
+    "refreshing": "Refreshing...",
+    "refreshModels": "Refresh models",
+    "badgeCurrent": "current",
+    "badgeDetected": "detected",
+    "badgeConfig": "config",
+    "useManualModel": "Use manual model",
+    "noModelDetectedHint": "No model detected yet. Enter a provider/model manually.",
+    "noModelsFound": "No models found.",
+    "noAdapterDefault": "No adapter default — choose a cheaper model",
+    "cheapModel": "Cheap model",
+    "cheapModelDesc": "Used when a run requests the cheap profile (e.g. routine summaries). The primary model stays unchanged.",
+    "noExplicitCheapPrefix": "No explicit cheap model selected — runtime falls back to",
+    "noCheapNoDefault": "No cheap model selected and the adapter has no default. Cheap-lane runs will continue on the primary model with a fallback note.",
+    "thinkingEffort": "Thinking effort",
+    "auto": "Auto"
   },
   "agentDetail": {
     "source": {
@@ -1699,7 +1756,14 @@
       "revoke": "Revoke",
       "revokedKeys": "Revoked Keys",
       "revoked": "Revoked {{date}}"
-    }
+    },
+    "invocation": "Invocation",
+    "adapterLabel": "Adapter: ",
+    "details": "Details",
+    "commandNotes": "Command notes",
+    "prompt": "Prompt",
+    "context": "Context",
+    "environment": "Environment"
   },
   "projectDetail": {
     "addDescription": "Add a description...",
@@ -1729,7 +1793,15 @@
     "loadingWorkspaces": "Loading workspaces...",
     "team": "Team",
     "teamPlaceholder": "e.g. IT",
-    "noTeam": "No team"
+    "noTeam": "No team",
+    "changeIconColor": "Change project icon and color",
+    "icon": "Icon",
+    "searchIcons": "Search icons...",
+    "noIconsMatch": "No icons match",
+    "color": "Color",
+    "resetToNeutral": "Reset to neutral gray",
+    "neutralDefault": "Neutral (default)",
+    "dismissMembershipNotice": "Dismiss project membership notice"
   },
   "issuesList": {
     "newIssueInGroup": "New issue in {{group}}",
@@ -2289,7 +2361,57 @@
     "scopeTeam": "Team",
     "scopeTeamDesc": "Only people in the team(s) you choose.",
     "chooseTeams": "Share with teams",
-    "noTeams": "You don't belong to any team yet."
+    "noTeams": "You don't belong to any team yet.",
+    "color": "Color",
+    "categories": "Categories",
+    "selectCatalogSkill": "Select a catalog skill to inspect.",
+    "hash": "Hash",
+    "copiedHash": "Copied hash",
+    "copyContentHash": "Copy content hash",
+    "installSkill": "Install skill",
+    "replaceExistingSkill": "Replace existing skill",
+    "installing": "Installing…",
+    "update": "Update",
+    "replace": "Replace",
+    "install": "Install",
+    "trust": "Trust",
+    "compatibility": "Compatibility",
+    "compatible": "Compatible",
+    "requires": "Requires",
+    "roles": "Roles",
+    "any": "any",
+    "provenance": "Provenance",
+    "existingSkillPrefix": "An existing skill with key",
+    "isInstalled": "is installed",
+    "installingWillOverwrite": "Installing will overwrite the catalog content.",
+    "installingWillReplace": "Installing will replace the existing skill.",
+    "advanced": "Advanced",
+    "forceReplaceSameKey": "Force replace existing same-key skill",
+    "version": "Version",
+    "diffSkillFiles": "Diff · skill files",
+    "diffOld": "Old",
+    "diffInitial": "Initial",
+    "diffNew": "New",
+    "bothSidesSameVersion": "Both sides are the same version.",
+    "files": "Files",
+    "noOverviewYet": "No overview yet.",
+    "forkThisSkill": "Fork this skill",
+    "agents": "Agents",
+    "updates": "Updates",
+    "upToDatePeriod": "Up to date.",
+    "settings": "Settings",
+    "discard": "Discard",
+    "saving": "Saving…",
+    "saveChanges": "Save changes",
+    "sharingCompany": "Company — visible inside this company",
+    "sharingPrivate": "Private — only visible in your library",
+    "detachBeforeRemoving": "Detach this skill from all agents before removing it.",
+    "locallyModified": "Locally modified",
+    "locallyModifiedTooltip": "You have edited this skill after installing. Updates from the catalog will overwrite your changes.",
+    "removingSkill": "Removing...",
+    "addSkillSourceDesc": "Paste a local path, GitHub URL, or `skills.sh` command into the field first.",
+    "browseSkillsShDesc": "Find install commands and paste one here.",
+    "searchGitHubDesc": "Look for repositories with `SKILL.md`, then paste the repo URL here."
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",
@@ -2474,7 +2596,16 @@
     "noAccessEvents": "No access events recorded yet. Each runtime resolution writes a redacted entry here.",
     "defaultVault": "Default vault",
     "vault": "Vault",
-    "selectCompanyToManage": "Select a company to manage secrets."
+    "selectCompanyToManage": "Select a company to manage secrets.",
+    "awsDiscoveryNeedsListSecrets": "AWS discovery needs ListSecrets permission",
+    "awsDiscoveryFailed": "AWS discovery failed",
+    "awsListSecretsNeeded": "Discovery needs secretsmanager:ListSecrets in the selected region for the Paperclip server runtime/provider credential path.",
+    "awsArnAlternative": "If you already know the exact AWS Secrets Manager ARN, paste/link that ARN instead of using discovery. Exact-resource DescribeSecret and runtime read permissions are still required.",
+    "detailRegion": "Region",
+    "detailOperation": "Operation",
+    "detailVaultContext": "Vault context",
+    "safeErrorDetails": "Safe request/error details",
+    "optionalParens": "(optional)"
   },
   "propertiesPanel": {
     "title": "Properties"
@@ -2860,6 +2991,14 @@
       "finance": "Finance"
     },
     "selectDateRange": "Select a start and end date to load data.",
+    "preset": {
+      "mtd": "Month to Date",
+      "7d": "Last 7 Days",
+      "30d": "Last 30 Days",
+      "ytd": "Year to Date",
+      "all": "All Time",
+      "custom": "Custom"
+    },
     "inferenceLedger": "Inference ledger",
     "inferenceLedgerDesc": "Request-scoped inference spend for the selected period.",
     "budgetAmount": "Budget {{amount}}",
@@ -2868,6 +3007,7 @@
     "utilizationConsumed": "{{percent}}% of monthly budget consumed in this range.",
     "byAgent": "By agent",
     "byAgentDesc": "What each agent consumed in the selected period.",
+    "noAgentsMatchFilter": "No agents match the selected teams.",
     "noCostEvents": "No cost events yet.",
     "inOutTokens": "in {{in}} · out {{out}}",
     "apiRuns": "{{count}} api",
@@ -3823,7 +3963,8 @@
       "resumed": "Agent resumed",
       "pauseFailed": "Could not pause agent",
       "resumeFailed": "Could not resume agent"
-    }
+    },
+    "ungrouped": "Ungrouped"
   },
   "devRestart": {
     "justNow": "just now",
@@ -4045,7 +4186,14 @@
     "copyTitle": "Click to copy worktree name"
   },
   "agentActions": {
-    "runNow": "Run now"
+    "runNow": "Run now",
+    "clearErrorAria": "Clear error and return agent to idle",
+    "clearError": "Clear error",
+    "assignTask": "Assign Task",
+    "duplicateAgent": "Duplicate Agent",
+    "copyAgentId": "Copy Agent ID",
+    "resetSessions": "Reset Sessions",
+    "terminate": "Terminate"
   },
   "issueSiblingNav": {
     "navAria": "Sub-issue navigation",
@@ -4775,7 +4923,34 @@
     "createIssue": "Create Issue",
     "taskTitle": "Task title",
     "createTask": "Create Task",
-    "createSubTask": "Create Sub-Task"
+    "createSubTask": "Create Sub-Task",
+    "addDescription": "Add description...",
+    "claudeOptions": "Claude options",
+    "codexOptions": "Codex options",
+    "opencodeOptions": "OpenCode options",
+    "agentOptions": "Agent options",
+    "newSubTask": "New sub-task",
+    "newTask": "New task",
+    "lowTrustReviewAgent": "Low-trust review agent",
+    "addReviewerApproverWatchdog": "Add reviewer, approver, or watchdog",
+    "watchdog": "Watchdog",
+    "configureWatchdog": "Configure watchdog",
+    "setWatchdog": "Set watchdog",
+    "watchdogAgent": "Watchdog agent",
+    "selectAgent": "Select agent",
+    "noWatchdogAgent": "No watchdog agent",
+    "searchAgents": "Search agents...",
+    "noAgentsFound": "No agents found.",
+    "instructions": "Instructions",
+    "optionalParen": "(optional)",
+    "watchdogInstructionsPlaceholder": "What should the watchdog watch for and how should it keep work moving?",
+    "subTaskOf": "Sub-task of",
+    "executionWorkspaceHint": "Control whether this task runs in the shared workspace, a new isolated workspace, or an existing one.",
+    "lanePrimaryHint": "Runs on the agent's primary model.",
+    "laneCustomHint": "Override the model and effort for this task only.",
+    "upload": "Upload",
+    "assignedBacklogNote": "Assigning implies executable intent — leave status as Backlog only to deliberately park this. The assignee will not be woken until status moves to Todo or In Progress.",
+    "lowTrustNote": "Low-trust review agent. It can only act inside its assigned review boundary; issue, project, or run policy defines the concrete scope."
   },
   "routineDetail": {
     "concurrencyDesc": {
@@ -5059,7 +5234,50 @@
     "getStarted": "Get started",
     "createTeamLead": "Create your team lead",
     "tellAboutTeamSub": "We'll use this to set up your lead agent and plan which agents to add.",
-    "nameTeamSub": "What should we call your team?"
+    "nameTeamSub": "What should we call your team?",
+    "review": "Review",
+    "nameLeadPrefix": "Name your lead. They'll help drive",
+    "nameLeadMiddle": "toward its mission. We default to",
+    "nameLeadSuffix": "rename it to anything you like.",
+    "connectModelSub": "Pick the adapter and model your lead will run on, then check the environment.",
+    "capsuleSlot": "an empty slot for an agent",
+    "capsuleConfigured": "your team lead, taking shape",
+    "capsuleOnline": "is online and ready to work!",
+    "q1Placeholder": "e.g. We create educational YouTube content about AI",
+    "workflowsPlaceholder": "e.g. Manual content creation, spreadsheet tracking, email outreach",
+    "painPointsPlaceholder": "e.g. Can't produce content fast enough, no time for social media",
+    "automatePlaceholder": "e.g. Social media scheduling and content repurposing",
+    "generateMissionFromAnswers": "Generate mission from answers",
+    "backToStart": "← Back to start",
+    "missionGuidesPrefix": "Your mission guides everything — your lead agent, who you bring on, and the work",
+    "missionGuidesSuffix": "takes on.",
+    "howDefineMission": "How would you like to define your mission?",
+    "typeItDirectly": "Type it directly",
+    "answerFewQuestions": "Answer a few questions",
+    "qWhatWorkOn": "What does your team work on?",
+    "qWhoServe": "Who do you serve?",
+    "whoServePlaceholder": "e.g. Non-technical professionals curious about AI tools",
+    "qBottleneck": "What's your biggest bottleneck right now?",
+    "bottleneckPlaceholder": "e.g. Can't produce content fast enough across multiple channels",
+    "qSuccess": "What would success look like in 6 months?",
+    "successPlaceholder": "e.g. Publishing daily content across 4 platforms with a team of AI agents",
+    "generateMyMission": "Generate my mission",
+    "draftMission": "Here's your draft mission — edit it however you like:",
+    "backToQuestions": "← Back to questions",
+    "changeMissionLater": "You can always change your mission later in settings.",
+    "changeTeamName": "← Change team name",
+    "nameLabel": "Name",
+    "defaultModel": "Default",
+    "adapterEnvCheck": "Adapter environment check",
+    "adapterEnvCheckDesc": "Runs a live probe that asks the adapter CLI to respond with hello.",
+    "claudeFailedPrefix": "Claude failed while",
+    "claudeFailedSuffix": "is set. You can clear it in this adapter config and retry the probe.",
+    "unsetAnthropicApiKey": "Unset ANTHROPIC_API_KEY",
+    "promptLabel": "Prompt:",
+    "ifLoginRequiredPrefix": "If login is required, run",
+    "ifLoginRequiredSuffix": "and retry.",
+    "agentCreated": "Agent created",
+    "hintPrefix": "Hint:"
   },
   "myIssues": {
     "title": "My Issues",
@@ -5075,7 +5293,7 @@
   },
   "calendar": {
     "myCalendar": "My Calendar",
-    "myCalendarHint": "Deadlines of issues assigned to you and your agents.",
+    "myCalendarHint": "Deadlines for your issues and Asana tasks (yours and your agents').",
     "today": "Today",
     "prevMonth": "Previous month",
     "nextMonth": "Next month",
@@ -5100,7 +5318,12 @@
     "overdue": "Overdue",
     "todaySection": "Today",
     "prevWeek": "Previous week",
-    "nextWeek": "Next week"
+    "nextWeek": "Next week",
+    "searchPlaceholder": "Search by title…",
+    "google": {
+      "connectHint": "Connect Google Calendar to see your events here.",
+      "connect": "Connect Google Calendar"
+    }
   },
   "projectStatus": {
     "backlog": "Backlog",
@@ -5130,6 +5353,15 @@
   "issueInteraction": {
     "kind": {
       "plan": "Plan"
+    },
+    "planDecomp": {
+      "completed": "Completed",
+      "inFlight": "In flight",
+      "title": "Plan decomposition",
+      "agentFallback": "agent",
+      "idempotentTitle": "Repeat attempts with this fingerprint reuse this record instead of creating new children",
+      "idempotentClaim": "Idempotent claim",
+      "planDocument": "Plan document"
     }
   },
   "projectMembers": {
@@ -5210,7 +5442,126 @@
     "installBlocked": "Install blocked",
     "agentsImported": "Agents imported",
     "projectsImported": "Projects imported",
-    "skillsResolved": "Skills resolved"
+    "skillsResolved": "Skills resolved",
+    "trust": {
+      "markdownOnly": {
+        "label": "Markdown only",
+        "tip": "Contains only markdown and references. No executable content."
+      },
+      "assets": {
+        "label": "Assets",
+        "tip": "Includes static assets (images, fixtures). No executable content."
+      },
+      "scripts": {
+        "label": "Scripts",
+        "tip": "Includes executable scripts that were security-reviewed before bundling."
+      },
+      "externalSources": {
+        "label": "External sources",
+        "tip": "References external sources resolved at install time."
+      }
+    },
+    "compat": {
+      "compatible": "Compatible",
+      "unknown": "Unknown compat",
+      "invalid": "Invalid"
+    },
+    "provenanceTip": "Catalog package provenance",
+    "source": {
+      "unsupportedInBrowserInstall": "unsupported in browser install",
+      "unpinned": "unpinned"
+    },
+    "rootAgent": "root agent",
+    "noAgentsInTeam": "No agents in this team.",
+    "skill": {
+      "resolved": "resolved",
+      "external": "external"
+    },
+    "secretsEnvInputs": "Secrets & env inputs",
+    "required": "required",
+    "pinned": "Pinned",
+    "unpinned": "Unpinned",
+    "unsupportedInBrowserInstall": "Unsupported in browser install",
+    "reinstallLatest": "Re-install latest",
+    "installTeam": "Install team",
+    "installed": "Installed",
+    "cannotInstallInvalid": "This team cannot be installed — the package manifest is invalid.",
+    "requiresPermissions": "Requires board operator or agent-create permissions.",
+    "agents": "Agents",
+    "projects": "Projects",
+    "routines": "Routines",
+    "requiredSkills": "Required skills",
+    "agentHierarchy": "Agent hierarchy",
+    "files": "Files",
+    "step": {
+      "targetManager": "Target manager",
+      "sourcePolicy": "Source policy",
+      "prerequisiteSkills": "Prerequisite skills",
+      "preview": "Preview"
+    },
+    "failedToLoadPreview": "Failed to load install preview.",
+    "installFailedShort": "Install failed.",
+    "installFailed": "Install failed",
+    "installFailedHint": "Partial state is not rolled back. Review the company activity log before retrying.",
+    "confirmInstallExecutables": "Confirm — install with executables",
+    "installWithExecutables": "Install with executables",
+    "targetManagerHelp": "This team's root agents need a manager in your company. Pick the agent who will become their parent. Internal team hierarchy is preserved.",
+    "useAsFullCompany": "Use this team as a full-company package (no target manager)",
+    "sourceCode": {
+      "pinned": "pinned",
+      "unpinnedReference": "unpinned reference",
+      "notInstallable": "not installable from the browser"
+    },
+    "policy": {
+      "external": {
+        "label": "Allow external sources",
+        "description": "Resolve github/url skill and team sources at install time."
+      },
+      "unpinned": {
+        "label": "Allow unpinned optional sources",
+        "description": "Permit optional sources that are not pinned to a ref or checksum."
+      },
+      "localPath": {
+        "label": "Allow local-path sources",
+        "description": "Required for local_path / agent_package sources. Development use only."
+      }
+    },
+    "localPathWarning": "This team has local-path sources. Enable “Allow local-path sources” to continue, or install it from the CLI.",
+    "skillAction": {
+      "alreadyInPackage": "Bundled in package",
+      "catalogInstall": "Will install from catalog",
+      "externalImport": "Will import from source",
+      "blocked": "Blocked"
+    },
+    "skillPlanIntro": "Before agents are imported, the catalog resolves the skills they depend on. This is the resolution plan.",
+    "preparingPreview": "Preparing preview…",
+    "starterTasks": "Starter tasks",
+    "adapterNote": "Each imported agent defaults to its package adapter; override here before install. Deeper per-adapter model config is editable on the agent after install.",
+    "requiredPlaceholder": "Required",
+    "optionalPlaceholder": "Optional",
+    "hideValue": "Hide value",
+    "showValue": "Show value",
+    "provenancePrefix": "Imported entities are stamped with",
+    "contentHash": "content hash",
+    "provenanceSuffix": "and an activity event is recorded for preview and install.",
+    "installingHint": "Resolving skills, importing agents, projects, and routines. This may take a moment.",
+    "viewImportedAgents": "View imported agents →",
+    "viewImportedProjects": "View imported projects →",
+    "viewRoutines": "View routines →",
+    "viewActivityLog": "View activity log →",
+    "updateAvailableOutOfDate": "Update available — installed team is out of date",
+    "orgChart": "Org Chart",
+    "bundled": "Bundled",
+    "optional": "Optional",
+    "kind": "Kind",
+    "category": "Category",
+    "risk": "Risk",
+    "resetFilters": "Reset filters",
+    "failedToLoad": "Failed to load team catalog.",
+    "noCatalogConfigured": "No team catalog configured.",
+    "noTeamsMatch": "No teams match this filter.",
+    "backToCatalog": "Back to catalog",
+    "selectTeam": "Select a team to view details."
   },
   "workspaceFileBrowser": {
     "currentFolder": "Current folder",
@@ -5257,7 +5608,18 @@
     "awardRookie": "Rookie of the Month",
     "awardRookieDesc": "Best first-skill performance",
     "noWinner": "No winner yet this month",
-    "formula": "Score = approved minutes × monthly uses × team bonus (≥3 ppl ×2.0) × bounty bonus (90d ×1.3)"
+    "formula": "Score = approved minutes × monthly uses × team bonus (≥3 ppl ×2.0) × bounty bonus (90d ×1.3)",
+    "score": "Score",
+    "rank": "Rank",
+    "person": "Person",
+    "runs": "Runs",
+    "searchPeople": "Search people",
+    "noMatch": "No one matches your search.",
+    "fullRanking": "Full ranking",
+    "tierChampion": "Champion",
+    "tierRunnerUp": "Runner-up",
+    "tierThird": "Third place",
+    "minutesUsed": "Minutes used"
   },
   "bounties": {
     "title": "Bounty Board",
@@ -5276,7 +5638,10 @@
     "create": "Post",
     "cancel": "Cancel",
     "empty": "No bounties yet.",
-    "minutesShort": "m"
+    "minutesShort": "m",
+    "statTotal": "Total",
+    "minutesUpForGrabs": "Minutes up for grabs",
+    "reward": "Reward"
   },
   "office": {
     "title": "Virtual Office",
@@ -5297,6 +5662,533 @@
     "status": "status",
     "lastActive": "Last active",
     "noAccess": "You don't manage this agent",
-    "uploadAvatar": "Change avatar"
+    "uploadAvatar": "Change avatar",
+    "open": "Open office",
+    "browseAgents": "Browse agents"
+  },
+  "asana": {
+    "myTasks": "My tasks (Asana)",
+    "today": "Today",
+    "thisWeek": "This week",
+    "noToday": "Nothing due today. 🎉",
+    "noWeek": "No tasks this week.",
+    "updatedAt": "Updated",
+    "sample": "Sample",
+    "progressDone": "{{done}}/{{total}} done",
+    "markComplete": "Mark complete",
+    "markIncomplete": "Mark incomplete",
+    "toggleDetails": "Toggle details",
+    "detailStatus": "Status",
+    "statusDone": "Completed",
+    "statusOpen": "Open",
+    "detailProject": "Project",
+    "detailPriority": "Priority",
+    "detailDue": "Due",
+    "detailLink": "Link",
+    "openInAsana": "Open in Asana",
+    "detailDescription": "Description"
+  },
+  "founder": {
+    "pendingApproval": "Awaiting your approval",
+    "noItems": "Nothing here.",
+    "approved": "Approved",
+    "approve": "Approve",
+    "summary": "AI summary",
+    "draftReview": "Draft review (read before approving)",
+    "meetingPrep": "Meeting prep",
+    "source": "From Asana",
+    "triageNow": "Can handle now",
+    "triageEvening": "Leave for evening",
+    "approvedProgress": "{{done}}/{{total}} approved"
+  },
+  "sidebarShell": {
+    "resize": "Resize sidebar"
+  },
+  "docAnnotation": {
+    "you": "You",
+    "failedCreateComment": "Failed to create comment.",
+    "failedAddReply": "Failed to add reply.",
+    "failedUpdateStatus": "Failed to update comment status.",
+    "closePanel": "Close annotation panel",
+    "writeComment": "Write a comment…",
+    "posting": "Posting…",
+    "comment": "Comment",
+    "reply": "Reply…",
+    "reopen": "Reopen",
+    "resolve": "Resolve",
+    "sending": "Sending…",
+    "replyAction": "Reply",
+    "moreActions": "More actions",
+    "moreThreadActions": "More thread actions",
+    "copyLink": "Copy link",
+    "agentSuffix": "agent",
+    "openThread": "Open annotation thread",
+    "anchorMoved": "Anchor moved — needs review",
+    "selectionActions": "Selection actions",
+    "addCommentOnSelection": "Add comment on selection (⌘⇧M)"
+  },
+  "chatComposer": {
+    "messagePlaceholder": "Message…",
+    "sendMessage": "Send message",
+    "dropToAttach": "Drop to attach",
+    "uploading": "Uploading…",
+    "uploadFailed": "Upload failed",
+    "insertedInline": "Inserted inline",
+    "attached": "Attached",
+    "attachFiles": "Attach files"
+  },
+  "workspaceFiles": {
+    "unavailableRemoteTitle": "Remote workspace preview not supported",
+    "unavailableRemoteBody": "This workspace is hosted remotely and is not available for inline preview yet.",
+    "unavailableNoWorkspaceTitle": "No workspace yet",
+    "unavailableNoWorkspaceBody": "This issue does not have a workspace to browse. Files appear here once a run creates one.",
+    "unavailableArchivedTitle": "Workspace is no longer available",
+    "unavailableArchivedBody": "The isolated worktree for this issue has been cleaned up, so files cannot be previewed.",
+    "unavailableGenericTitle": "Workspace unavailable",
+    "unavailableGenericBody": "These workspace files can't be browsed right now.",
+    "currentFolder": "Current folder",
+    "loadingFolder": "Loading folder…",
+    "loadMoreFolder": "Load more from this folder",
+    "workspaceFiles": "Workspace files",
+    "announceLoading": "Loading workspace files…",
+    "announceError": "Unable to load workspace files.",
+    "announceNoMatch": "No matching files.",
+    "noCompanyTitle": "No company selected",
+    "noCompanyBody": "Choose a company before browsing another project workspace.",
+    "loadingProjectWorkspacesTitle": "Loading project workspaces",
+    "loadingProjectWorkspacesBody": "Registered workspaces will appear here.",
+    "noProjectWorkspacesTitle": "No project workspaces",
+    "noProjectWorkspacesBody": "No same-company project has a registered workspace to browse.",
+    "couldntLoadTitle": "Couldn't load files",
+    "couldntLoad404": "Workspace browsing isn't available for this issue.",
+    "couldntLoadGeneric": "Something went wrong loading workspace files.",
+    "noRecentlyChanged": "No recently changed files yet",
+    "trySearching": "Try searching by name or path."
+  },
+  "routineSidebar": {
+    "navLabel": "Routine sections",
+    "unsavedChanges": "Unsaved changes",
+    "sectionLabel": "Routine section"
+  },
+  "issueChat": {
+    "pausedByBudget": "It was paused by a budget hard stop.",
+    "pausedBySystem": "It was paused by the system.",
+    "pausedManually": "It was paused manually.",
+    "rendererError": "Chat renderer hit an internal state error.",
+    "rendererErrorBody": "Showing a safe fallback transcript instead of crashing the tasks page.",
+    "noMessageContent": "No message content.",
+    "working": "Working",
+    "worked": "Worked",
+    "copyFailed": "Copy failed",
+    "unableToCopyText": "Unable to copy text",
+    "toolInput": "Input",
+    "toolResult": "Result",
+    "deferredWake": "\\u23f8 Deferred wake",
+    "queued": "Queued",
+    "followUp": "Follow-up",
+    "interrupting": "Interrupting...",
+    "interrupt": "Interrupt",
+    "commentDeleted": "Comment deleted",
+    "sending": "Sending...",
+    "copyMessage": "Copy message",
+    "unableToCopyMessage": "Unable to copy message",
+    "deleteComment": "Delete comment",
+    "deleteCommentTitle": "Delete comment?",
+    "deleteCommentDescription": "This will replace the comment with a deleted-comment marker.",
+    "stopRun": "Stop run",
+    "stopping": "Stopping...",
+    "agent": "Agent",
+    "moreActions": "More actions",
+    "viewRun": "View run",
+    "updatedThisTask": "updated this task",
+    "hideConfirmation": "Hide confirmation",
+    "expiredConfirmation": "Expired confirmation",
+    "unableToCopyNotice": "Unable to copy system notice",
+    "unableToCopyNoticeLink": "Unable to copy system notice link",
+    "copyLink": "Copy link",
+    "copyLinkToNotice": "Copy link to system notice",
+    "copyNoticeText": "Copy notice text",
+    "copyNotice": "Copy system notice",
+    "noAssigneeSelected": "No assignee selected",
+    "noAssigneeBody": "Pick an assignee or click Send again to post without one.",
+    "fileTypeNotAttachable": "This file type cannot be attached here",
+    "uploadFailed": "Upload failed",
+    "dropToUpload": "Drop to upload",
+    "dropToUploadHint": "Images insert into the reply. Other files are added to this task.",
+    "reply": "Reply",
+    "uploadingToTask": "Uploading to task",
+    "insertedInline": "Inserted inline",
+    "attachedToTask": "Attached to task",
+    "attachFile": "Attach file",
+    "cyclesModes": "Cmd/Ctrl+. cycles modes",
+    "assignee": "Assignee",
+    "noAssignee": "No assignee",
+    "searchAssignees": "Search assignees...",
+    "noAssigneesFound": "No assignees found.",
+    "posting": "Posting...",
+    "send": "Send",
+    "noRunOutput": "No run output yet.",
+    "emptyConversation": "This task conversation is empty. Start with a message below.",
+    "legacyRecoveryTask": "Legacy recovery task",
+    "legacyRecoveryBody": "Legacy recovery task. Newer recovery actions live on the source task"
+  },
+  "agentBubble": {
+    "helpful": "Helpful",
+    "needsWork": "Needs work",
+    "whatCouldBeBetter": "What could have been better?",
+    "addShortNote": "Add a short note",
+    "saveNote": "Save note",
+    "sharingPrefTitle": "Save your feedback sharing preference",
+    "sharingPrefDescription": "Choose whether voted AI outputs can be shared with Paperclip Labs. This answer becomes the default for future thumbs up and thumbs down votes.",
+    "sharingPrefAlwaysLocal": "This vote is always saved locally.",
+    "sharingPrefChooseAllow": "Choose Always allow to share this vote and future voted AI outputs. Choose Don't allow to keep this vote and future votes local.",
+    "sharingPrefChangeLater": "You can change this later in Instance Settings > General.",
+    "readTerms": "Read our terms of service",
+    "dontAllow": "Don't allow",
+    "alwaysAllow": "Always allow",
+    "copyMessage": "Copy message",
+    "moreActions": "More actions"
+  },
+  "fileViewer": {
+    "denialPolicyTitle": "Viewer blocked for this file",
+    "denialPolicyBody": "This file is not available through the viewer because it may contain sensitive data.",
+    "denialOutsideTitle": "Path is outside the workspace",
+    "denialOutsideBody": "The viewer can only open files that live under the issue's workspace.",
+    "denialArchivedTitle": "Workspace is no longer available",
+    "denialArchivedBody": "The isolated worktree for this issue has been cleaned up, so files cannot be previewed.",
+    "denialRemoteTitle": "Remote workspace preview not supported",
+    "denialRemoteBody": "This workspace is hosted remotely and is not available for inline preview yet.",
+    "denialTooLargeTitle": "File is too large to preview",
+    "denialTooLargeBody": "This file exceeds the supported preview size.",
+    "denialUnsupportedTitle": "Preview not supported for this file type",
+    "denialUnsupportedBody": "This file does not have a text, image, or video preview available.",
+    "denialGenericTitle": "Can't preview this file",
+    "denialGenericBody": "The viewer was unable to load this file.",
+    "loadingDetails": "Loading file details",
+    "imageUnavailable": "Image preview unavailable",
+    "videoUnavailable": "Video preview unavailable",
+    "markdownPreviewMode": "Markdown preview mode",
+    "showRenderedMarkdown": "Show rendered Markdown",
+    "renderedMarkdown": "Rendered Markdown",
+    "showRawMarkdown": "Show raw Markdown",
+    "rawMarkdown": "Raw Markdown",
+    "loadingPreview": "Loading file preview",
+    "loadingPreviewEllipsis": "Loading file preview...",
+    "unableToLoad": "Unable to load file.",
+    "unableToLoadContent": "Unable to load file content.",
+    "copyFailed": "Copy failed",
+    "contentsUnavailable": "File contents unavailable",
+    "copiedFileData": "Copied file data",
+    "copiedContents": "Copied contents",
+    "copiedLink": "Copied link",
+    "browseWorkspace": "Browse workspace",
+    "browseDescription": "Search and preview files from this issue's workspace.",
+    "backToFiles": "Back to files",
+    "copiedFileContents": "Copied file contents",
+    "copyFileContents": "Copy file contents",
+    "copiedFileViewLink": "Copied file view link",
+    "copyFileViewLink": "Copy link to this file view",
+    "copyLink": "Copy link",
+    "closeViewer": "Close file viewer",
+    "resizeFileTree": "Resize file tree",
+    "notFoundTitle": "File not found",
+    "notFoundBody": "That file was not found in the active workspace.",
+    "tryProjectWorkspace": "Try project workspace",
+    "noWorkspaceTitle": "No workspace available",
+    "noWorkspaceBody": "This issue does not have a workspace that supports preview yet.",
+    "remoteComingSoonTitle": "Remote workspace preview coming soon",
+    "remoteComingSoonBody": "This workspace is hosted remotely; inline previews are not supported yet."
+  },
+  "envVar": {
+    "secretNamePrompt": "Secret name",
+    "createFailed": "Failed to create secret",
+    "keyPlaceholder": "KEY",
+    "bindingMode": "Binding mode",
+    "plain": "Plain",
+    "secret": "Secret",
+    "selectSecret": "Select secret...",
+    "version": "Version",
+    "latest": "latest",
+    "createFromPlainTitle": "Create secret from current plain value",
+    "new": "New",
+    "valuePlaceholder": "value",
+    "sealTitle": "Store value as secret and replace with reference",
+    "seal": "Seal",
+    "recentlyUsed": "Recently used:",
+    "runsWillFail": "Runs will fail until you remap or re-enable.",
+    "bottomHint": "Set KEY to the env var name the process expects, for example GH_TOKEN. Choose Secret to resolve a stored value at run start. PAPERCLIP_* variables are injected automatically."
+  },
+  "issueAttachments": {
+    "deleteAttachment": "Delete attachment",
+    "attachmentLabel": "Attachment",
+    "loadingPreview": "Loading preview...",
+    "previewError": "Could not load markdown preview.",
+    "title": "Attachments",
+    "deleteQuestion": "Delete?",
+    "deleteConfirm": "Delete this attachment? This cannot be undone."
+  },
+  "sidebar": {
+    "keepExpanded": "Keep sidebar expanded",
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "unread": "unread"
+  },
+  "trustPreset": {
+    "boundaryProject": "Project",
+    "boundaryRootIssue": "Root issue",
+    "boundaryIssue": "Issue",
+    "heading": "Trust",
+    "presetLabel": "Trust preset",
+    "presetHint": "Choose how broadly this agent can read and act on Paperclip work objects.",
+    "containmentActive": "Containment active",
+    "containmentNotConfigured": "Containment not configured",
+    "containmentActiveDesc": "This agent can only read and mutate work inside its assigned review boundary. Raw output is quarantined from higher-trust agents until a trusted reviewer promotes it.",
+    "containmentNotConfiguredDesc": "This agent is set to low-trust review, but no project, root issue, or issue scope is set in the core policy. Add a scope before this agent can run without denial.",
+    "boundaryType": "Boundary type",
+    "noProjectsAvailable": "No projects available",
+    "noIssuesAvailable": "No issues available",
+    "selectBoundary": "Select boundary",
+    "clearBoundary": "Clear boundary",
+    "managedByEe": "Managed by EE/API",
+    "multiBoundaryPrompt": "Want to set more than one containment boundary?",
+    "getPaperclipEe": "Get Paperclip EE.",
+    "viewPolicy": "View policy",
+    "rowPreset": "Preset",
+    "lowTrustReviewV1": "Low-trust review v1",
+    "rowRawOutput": "Raw output",
+    "quarantinedFromHigherTrust": "Quarantined from higher-trust agents",
+    "rowProjects": "Projects",
+    "rowRootIssue": "Root issue",
+    "rowExplicitIssues": "Explicit issues",
+    "rowAllowedAgents": "Allowed agents",
+    "rowAllowedTools": "Allowed tools",
+    "rowAllowedSecrets": "Allowed secrets",
+    "rowPromotionTarget": "Promotion target",
+    "rowEeFields": "EE fields",
+    "customAdvancedPreserved": "Custom advanced policy fields preserved",
+    "advancedEditableNote": "Advanced permissions remain editable through the EE permissions extension when installed."
+  },
+  "activityFeed": {
+    "system": "System",
+    "board": "Board",
+    "unknown": "Unknown",
+    "earlier": "Earlier",
+    "otherActivity": "Other activity",
+    "emptyNoAgents": "No agents set up yet. Add an agent to get started.",
+    "emptyAllPaused": "All agents are paused. Resume agents from the sidebar to see activity.",
+    "emptyRunning": "Your agents are running — activity will appear here shortly.",
+    "title": "Agent Feed",
+    "subtitle": "Live activity from your agents",
+    "groupByTaskAria": "group by task",
+    "groupByTask": "Group by task",
+    "showFlat": "Show flat",
+    "filterByAria": "filter by",
+    "filterBy": "Filter by",
+    "showAllActivity": "Show all activity",
+    "emptyFallback": "Activity from your agents will appear here."
+  },
+  "artifactCard": {
+    "image": "Image",
+    "document": "Document",
+    "text": "Text",
+    "file": "File",
+    "openInNewTab": "Open file in new tab",
+    "downloadFile": "Download file"
+  },
+  "issueOutput": {
+    "taskOutputs": "Task outputs",
+    "output": "Output",
+    "alsoProduced": "Also produced",
+    "fileDetailsUnavailable": "File details unavailable"
+  },
+  "routineSections": {
+    "runs": {
+      "dateWindow": {
+        "any": "Any time",
+        "24h": "Last 24h",
+        "7d": "Last 7d",
+        "30d": "Last 30d"
+      },
+      "source": "Source",
+      "status": "Status",
+      "date": "Date",
+      "emptyMessage": "No runs yet. Trigger a run from the header or wait for the schedule.",
+      "runNow": "Run now",
+      "filterBySource": "Filter by source",
+      "sourcePrefix": "Source:",
+      "any": "any",
+      "filterByStatus": "Filter by status",
+      "statusPrefix": "Status:",
+      "filterByDate": "Filter by date",
+      "datePrefix": "Date:",
+      "noMatch": "No runs match these filters.",
+      "clearFilters": "Clear filters",
+      "runFallback": "Run"
+    },
+    "activity": {
+      "earlier": "Earlier",
+      "empty": "No activity yet."
+    },
+    "concurrency": {
+      "coalesceIfActive": {
+        "title": "Coalesce if active",
+        "description": "Keep one follow-up run queued while an active run is still working."
+      },
+      "alwaysEnqueue": {
+        "title": "Always enqueue",
+        "description": "Queue every trigger occurrence, even if several runs stack up."
+      },
+      "skipIfActive": {
+        "title": "Skip if active",
+        "description": "Drop overlapping trigger occurrences while the routine is already active."
+      }
+    },
+    "catchUp": {
+      "skipMissed": {
+        "title": "Skip missed",
+        "description": "Ignore schedule windows that were missed while paused."
+      },
+      "enqueueMissedWithCap": {
+        "title": "Enqueue missed with cap",
+        "description": "Catch up missed schedule windows in capped batches after recovery."
+      }
+    },
+    "signingMode": {
+      "bearer": "Expect a shared bearer token in the Authorization header.",
+      "hmacSha256": "Expect an HMAC SHA-256 signature over the request using the shared secret.",
+      "githubHmac": "Accept GitHub-style X-Hub-Signature-256 header (HMAC over raw body, no timestamp).",
+      "none": "No authentication — the webhook URL itself acts as a shared secret."
+    },
+    "overview": {
+      "for": "For",
+      "assignee": "Assignee",
+      "noAssignee": "No assignee",
+      "searchAssignees": "Search assignees...",
+      "noAssigneesFound": "No assignees found.",
+      "in": "in",
+      "project": "Project",
+      "noProject": "No project",
+      "searchProjects": "Search projects...",
+      "noProjectsFound": "No projects found.",
+      "defaultAgentRequired": "Default agent required. This routine can stay as a draft and still run manually, but automation stays paused until you assign a default agent.",
+      "addInstructions": "Add instructions...",
+      "triggers": "Triggers",
+      "none": "None",
+      "noSchedule": "No schedule",
+      "secrets": "Secrets",
+      "manageBoundSecrets": "Manage bound secrets",
+      "lastRun": "Last run",
+      "noRuns": "No runs",
+      "triggerARun": "Trigger a run",
+      "noRunsAria": "No runs. Open runs.",
+      "recentActivity": "Recent activity",
+      "noActivityYet": "No activity yet.",
+      "viewAllActivity": "View all activity"
+    },
+    "triggers": {
+      "noneYet": "No triggers yet",
+      "newTrigger": "New trigger",
+      "addTrigger": "Add trigger",
+      "kind": "Kind",
+      "comingSoon": " — COMING SOON",
+      "schedule": "Schedule",
+      "signingMode": "Signing mode",
+      "replayWindow": "Replay window (seconds)",
+      "adding": "Adding...",
+      "emptyMessage": "No triggers yet.",
+      "addSchedule": "Add a schedule"
+    },
+    "variables": {
+      "hintPrefix": "Variables are auto-detected from",
+      "hintSuffix": "in the title & instructions. The variable name is read-only — rename by editing the placeholder.",
+      "editInstructions": "Edit instructions"
+    },
+    "secrets": {
+      "intro": "Routine secrets apply to every task this routine creates. They override matching keys in project and agent env.",
+      "reserved": "names are reserved.",
+      "saveNow": "Save this now. Paperclip will not show the secret value again.",
+      "webhookUrl": "Webhook URL",
+      "url": "URL",
+      "webhookSecret": "Webhook secret",
+      "secret": "Secret"
+    },
+    "delivery": {
+      "concurrency": "Concurrency",
+      "concurrencyPolicy": "Concurrency policy",
+      "catchUp": "Catch-up",
+      "catchUpPolicy": "Catch-up policy",
+      "next5Fires": "Next 5 fires",
+      "noPreview": "No enabled schedule trigger to preview. Add a schedule in Triggers to see how this policy treats upcoming fires."
+    }
+  },
+  "interruptHandoff": {
+    "agentPrefix": "Agent ",
+    "userPrefix": "User ",
+    "noAssigneePrefix": "No assignee — ",
+    "unassigned": "Unassigned",
+    "wake": "Wake",
+    "insertMention": "Insert mention",
+    "dismissSuggestion": "Dismiss suggestion",
+    "handOffTo": "Hand off to",
+    "whatThisAffects": "What this affects",
+    "nothingLive": "Nothing live to pause — no agent run is in flight or queued. This records a hold so new work won't start until you resume.",
+    "noTasksAffected": "No tasks are affected."
+  },
+  "boardChat": {
+    "typing": "typing",
+    "breadcrumb": "Conference Room",
+    "status": {
+      "connecting": "Connecting...",
+      "thinking": "Thinking..."
+    },
+    "error": {
+      "noResponse": "The board assistant couldn't respond. Please try again.",
+      "unavailable": "The board assistant is unavailable right now. Please try again in a moment."
+    },
+    "noCompany": {
+      "title": "No company selected",
+      "body": "Select a company to start chatting with your board concierge."
+    },
+    "yourCompany": "Your company",
+    "chatHistory": "chat history",
+    "newChat": "new chat",
+    "welcome": {
+      "prompt": "Here are a few things I can help you put on paper right now. Pick one below and I'll draft it for you using everything you told us."
+    },
+    "chip": {
+      "companyBrief": {
+        "label": "Draft a Company Brief"
+      },
+      "hiringPlan": {
+        "label": "Create a hiring plan"
+      },
+      "first30Days": {
+        "label": "Outline our first 30 days",
+        "prompt": "Outline our first 30 days. Break it into weekly priorities with who owns what."
+      },
+      "introPitch": {
+        "label": "Write an intro pitch"
+      }
+    },
+    "assistant": "Assistant",
+    "jumpToLatest": "Jump to latest messages",
+    "composerPlaceholder": "Ask anything about your company...",
+    "sendMessage": "Send message",
+    "resizeSplit": "Resize board chat and agent feed",
+    "openAgentFeed": "Open agent feed"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read"
+  },
+  "schedule": {
+    "title": "My Schedule",
+    "likelyRelated": "likely related",
+    "nameMatching": "Calendar name matching",
+    "upcoming": "Upcoming",
+    "empty": "Nothing coming up with your name on it.",
+    "aliasHint": "Names to match in event titles (comma-separated). Events whose title contains any of these show up as yours.",
+    "aliasPlaceholder": "e.g. 黃睦傑, 睦傑, Jay",
+    "aliasReset": "Reset to defaults"
   }
 }

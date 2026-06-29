@@ -70,6 +70,14 @@ const MOCK_DETAIL: CompanySkillDetail = {
     authorUserId: null,
     createdAt: NOW,
   },
+  sharingTeams: [],
+  createdByUserId: null,
+  minutesPerUse: 0,
+  approvalStatus: "approved",
+  approvalNote: null,
+  reviewedByUserId: null,
+  reviewedAt: null,
+  submittedAt: null,
   starredByCurrentActor: true,
 };
 

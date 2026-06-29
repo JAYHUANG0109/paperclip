@@ -24,6 +24,80 @@ function resolveAppLocale(): string {
 const isChinese = resolveAppLocale().toLowerCase().startsWith("zh");
 function tx(en: string, zh: string): string { return isChinese ? zh : en; }
 
+// Inline-style pages can't use CSS media queries, so detect a narrow viewport in
+// JS and switch layout (side-by-side → stacked) accordingly.
+function useNarrow(breakpoint = 900): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < breakpoint
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+  return narrow;
+}
+
+// Shared team filter, persisted in the SAME localStorage key the core app's
+// Agents/Office pages use (see ui/src/lib/agent-teams.ts), so a selection made
+// on any of the three views moves all of them together. Both sides dispatch a
+// custom event for same-window sync; the storage event covers other tabs.
+// NOTE: these two constants must mirror agent-teams.ts. Both files are local-
+// only (not upstream), so keeping them in sync is the only maintenance cost.
+const TEAM_FILTER_KEY_PREFIX = "paperclip.agentTeamFilter.";
+const TEAM_FILTER_EVENT = "paperclip:agent-team-filter";
+
+function teamFilterKey(companyId?: string): string {
+  return `${TEAM_FILTER_KEY_PREFIX}${companyId ?? "none"}`;
+}
+
+function readTeamFilter(companyId?: string): string[] {
+  try {
+    const raw = localStorage.getItem(teamFilterKey(companyId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function useSharedTeamFilter(companyId?: string): {
+  selected: string[];
+  setSelected: (next: string[]) => void;
+} {
+  const [selected, setSel] = useState<string[]>(() => readTeamFilter(companyId));
+  useEffect(() => {
+    setSel(readTeamFilter(companyId));
+  }, [companyId]);
+  useEffect(() => {
+    const key = teamFilterKey(companyId);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === key) setSel(readTeamFilter(companyId));
+    };
+    const onCustom = () => setSel(readTeamFilter(companyId));
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(TEAM_FILTER_EVENT, onCustom);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(TEAM_FILTER_EVENT, onCustom);
+    };
+  }, [companyId]);
+  const setSelected = (next: string[]) => {
+    setSel(next);
+    try {
+      localStorage.setItem(teamFilterKey(companyId), JSON.stringify(next));
+    } catch {
+      /* storage may be unavailable */
+    }
+    window.dispatchEvent(new CustomEvent(TEAM_FILTER_EVENT, { detail: { companyId: companyId ?? null } }));
+  };
+  return { selected, setSelected };
+}
+
 type HealthData = {
   status: "ok" | "degraded" | "error";
   checkedAt: string;
@@ -54,7 +128,7 @@ type Assignment = {
   updatedAt: string;
 };
 
-type AgentOption = { id: string; name: string; urlKey?: string };
+type AgentOption = { id: string; name: string; urlKey?: string; teams?: string[] };
 
 type AssignmentsData = {
   companyId: string;
@@ -64,6 +138,40 @@ type AssignmentsData = {
 };
 
 const cell: React.CSSProperties = { padding: "8px 10px", textAlign: "left" };
+// Custom dropdown chevron — the native <select> arrow ignores padding (the
+// browser pins it to the border), so we hide it and draw our own where we want.
+const SELECT_CHEVRON =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+  );
+
+const selectControl: React.CSSProperties = {
+  cursor: "pointer",
+  width: "100%",
+  boxSizing: "border-box",
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  backgroundImage: `url("${SELECT_CHEVRON}")`,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 12px center",
+  backgroundSize: "12px",
+  paddingRight: 34
+};
+
+function teamChip(active: boolean): React.CSSProperties {
+  return {
+    borderRadius: 999,
+    border: "1px solid var(--border, #3a3a3a)",
+    padding: "4px 11px",
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: "pointer",
+    background: active ? "var(--accent, #3b82f6)" : "transparent",
+    color: active ? "#fff" : "inherit"
+  };
+}
 const button: React.CSSProperties = {
   padding: "6px 12px",
   borderRadius: 6,
@@ -86,12 +194,29 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
   const [agentId, setAgentId] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Shared with the Agents page + Virtual Office, so the team filter is the same
+  // selection everywhere.
+  const { selected: teamFilter, setSelected: setTeamFilter } = useSharedTeamFilter(companyId);
+  const narrow = useNarrow(900);
 
   if (loading) return <div>{tx("Loading assignments…", "載入指派中…")}</div>;
   if (error) return <div>{tx("Failed to load:", "載入失敗：")} {error.message}</div>;
 
   const agents = data?.agents ?? [];
   const assignments = data?.assignments ?? [];
+
+  // Team lookup per agent + the full team list, so the admin can filter a long
+  // assignment roster by team instead of scanning one big pile.
+  const teamsByAgent = new Map<string, string[]>(agents.map((a) => [a.id, a.teams ?? []]));
+  const allTeams = Array.from(new Set(agents.flatMap((a) => a.teams ?? []))).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
+  const toggleTeam = (team: string) =>
+    setTeamFilter(teamFilter.includes(team) ? teamFilter.filter((t) => t !== team) : [...teamFilter, team]);
+  const visibleAssignments =
+    teamFilter.length === 0
+      ? assignments
+      : assignments.filter((a) => (teamsByAgent.get(a.agentId) ?? []).some((t) => teamFilter.includes(t)));
 
   async function add() {
     setFormError(null);
@@ -128,7 +253,7 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
   }
 
   return (
-    <div style={{ display: "grid", gap: 18, maxWidth: 760 }}>
+    <div style={{ display: "grid", gap: 18, maxWidth: 1160 }}>
       <div style={{ display: "grid", gap: 6 }}>
         <strong style={{ fontSize: 16 }}>{tx("Google Chat — agent assignments", "Google Chat — 代理指派")}</strong>
         <div style={{ fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
@@ -147,68 +272,119 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
         </div>
       </div>
 
-      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border, #3a3a3a)" }}>
-            <th style={cell}>{tx("Email", "電子郵件")}</th>
-            <th style={cell}>{tx("Agent", "代理")}</th>
-            <th style={cell} />
-          </tr>
-        </thead>
-        <tbody>
-          {assignments.length === 0 && (
-            <tr>
-              <td style={{ ...cell, opacity: 0.6 }} colSpan={3}>
-                {tx("No assignments yet.", "尚無指派。")}
-              </td>
-            </tr>
-          )}
-          {assignments.map((a) => (
-            <tr key={a.email} style={{ borderBottom: "1px solid var(--border, #2a2a2a)" }}>
-              <td style={cell}>{a.email}</td>
-              <td style={cell}>{a.agentName ?? a.agentId}</td>
-              <td style={{ ...cell, textAlign: "right" }}>
-                <button style={button} disabled={busy} onClick={() => void remove(a.email)}>
-                  {tx("Remove", "移除")}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>{tx("Add assignment", "新增指派")}</strong>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            type="email"
-            placeholder="person@seasonart.org"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ ...button, cursor: "text", minWidth: 240 }}
-          />
-          <select
-            value={agentId}
-            onChange={(e) => setAgentId(e.target.value)}
-            style={{ ...button, cursor: "pointer", minWidth: 200 }}
-          >
-            <option value="">{tx("Select agent…", "選擇代理…")}</option>
-            {agents.map((ag) => (
-              <option key={ag.id} value={ag.id}>
-                {ag.name}
-                {ag.urlKey ? ` (${ag.urlKey})` : ""}
-              </option>
-            ))}
-          </select>
-          <button
-            style={{ ...button, fontWeight: 600 }}
-            disabled={busy}
-            onClick={() => void add()}
-          >
-            {busy ? tx("Saving…", "儲存中…") : tx("Add", "新增")}
+      {/* Team filter chips — keep a long assignment roster navigable. "All
+          teams" clears the filter; multiple teams can be active at once. */}
+      {allTeams.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          <button type="button" onClick={() => setTeamFilter([])} style={teamChip(teamFilter.length === 0)}>
+            {tx("All teams", "所有團隊")}
           </button>
+          {allTeams.map((team) => (
+            <button
+              key={team}
+              type="button"
+              onClick={() => toggleTeam(team)}
+              aria-pressed={teamFilter.includes(team)}
+              style={teamChip(teamFilter.includes(team))}
+            >
+              {team}
+            </button>
+          ))}
         </div>
-        {formError && <div style={{ color: "#e06c6c", fontSize: 12 }}>{formError}</div>}
+      )}
+
+      {/* Two-pane: assignments list (left) + add form (right). The form is
+          sticky so it stays in view no matter how long the list grows — no more
+          scrolling to the bottom to add someone. On narrow screens the form
+          drops below the list. */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: narrow ? "column" : "row",
+          gap: 18,
+          alignItems: "flex-start"
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0, width: narrow ? "100%" : undefined }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border, #3a3a3a)" }}>
+                <th style={cell}>{tx("Email", "電子郵件")}</th>
+                <th style={cell}>{tx("Agent", "代理")}</th>
+                <th style={cell} />
+              </tr>
+            </thead>
+            <tbody>
+              {visibleAssignments.length === 0 && (
+                <tr>
+                  <td style={{ ...cell, opacity: 0.6 }} colSpan={3}>
+                    {assignments.length === 0
+                      ? tx("No assignments yet.", "尚無指派。")
+                      : tx("No assignments in the selected team(s).", "所選團隊沒有指派。")}
+                  </td>
+                </tr>
+              )}
+              {visibleAssignments.map((a) => (
+                <tr key={a.email} style={{ borderBottom: "1px solid var(--border, #2a2a2a)" }}>
+                  <td style={cell}>{a.email}</td>
+                  <td style={cell}>{a.agentName ?? a.agentId}</td>
+                  <td style={{ ...cell, textAlign: "right" }}>
+                    <button style={button} disabled={busy} onClick={() => void remove(a.email)}>
+                      {tx("Remove", "移除")}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          style={{
+            width: narrow ? "100%" : 320,
+            flexShrink: 0,
+            position: narrow ? "static" : "sticky",
+            top: 12,
+            display: "grid",
+            gap: 10,
+            border: "1px solid var(--border, #3a3a3a)",
+            borderRadius: 10,
+            padding: 16,
+            boxSizing: "border-box"
+          }}
+        >
+          <strong style={{ fontSize: 13 }}>{tx("Add assignment", "新增指派")}</strong>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input
+              type="email"
+              placeholder="person@seasonart.org"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{ ...button, cursor: "text", width: "100%", boxSizing: "border-box" }}
+            />
+            <select
+              value={agentId}
+              onChange={(e) => setAgentId(e.target.value)}
+              style={{ ...button, ...selectControl }}
+            >
+              <option value="">{tx("Select agent…", "選擇代理…")}</option>
+              {agents.map((ag) => (
+                <option key={ag.id} value={ag.id}>
+                  {ag.name}
+                  {ag.urlKey ? ` (${ag.urlKey})` : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              style={{ ...button, fontWeight: 600, width: "100%", boxSizing: "border-box" }}
+              disabled={busy}
+              onClick={() => void add()}
+            >
+              {busy ? tx("Saving…", "儲存中…") : tx("Add", "新增")}
+            </button>
+          </div>
+          {formError && <div style={{ color: "#e06c6c", fontSize: 12 }}>{formError}</div>}
+        </div>
       </div>
     </div>
   );
@@ -294,9 +470,11 @@ export function ChatLogsPage(_props: PluginPageProps) {
     border,
     borderRadius: 8,
     overflow: "hidden",
-    height: "70vh",
-    minHeight: 440,
-    maxWidth: 1000
+    // Fill the available page: nearly full viewport height (minus header/chrome)
+    // and full width, instead of the previous small 1000px / 70vh box.
+    height: "calc(100vh - 210px)",
+    minHeight: 520,
+    width: "100%"
   };
   const avatarStyle: React.CSSProperties = {
     width: 34,
@@ -333,7 +511,7 @@ export function ChatLogsPage(_props: PluginPageProps) {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "grid", gap: 6, maxWidth: 1000 }}>
+      <div style={{ display: "grid", gap: 6 }}>
         <strong style={{ fontSize: 16 }}>Google Chat — 聊天紀錄 (Chat Logs)</strong>
         <div style={{ fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
           唯讀檢視每位同仁與其 AI 代理在 Google Chat 上的對話。點左側人員即可查看。

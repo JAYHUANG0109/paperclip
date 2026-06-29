@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CompanySecret, EnvBinding, SecretVersionSelector } from "@paperclipai/shared";
+import { useTranslation } from "@/i18n";
 import { AlertCircle, KeyRound, X } from "lucide-react";
 import { cn } from "../lib/utils";
 import {
@@ -105,6 +106,7 @@ export function EnvVarEditor({
    */
   recentlyUsedSecrets?: CompanySecret[];
 }) {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<Row[]>(() => toRows(value));
   const [sealError, setSealError] = useState<string | null>(null);
   const valueRef = useRef(value);
@@ -207,7 +209,7 @@ export function EnvVarEditor({
     if (!key || plain.length === 0) return;
 
     const suggested = defaultSecretName(key) || "secret";
-    const name = window.prompt("Secret name", suggested)?.trim();
+    const name = window.prompt(t("envVar.secretNamePrompt", { defaultValue: "Secret name" }), suggested)?.trim();
     if (!name) return;
 
     try {
@@ -215,7 +217,7 @@ export function EnvVarEditor({
       const created = await onCreateSecret(name, plain);
       updateRow(index, { source: "secret", secretId: created.id });
     } catch (error) {
-      setSealError(error instanceof Error ? error.message : "Failed to create secret");
+      setSealError(error instanceof Error ? error.message : t("envVar.createFailed", { defaultValue: "Failed to create secret" }));
     }
   }
 
@@ -231,7 +233,7 @@ export function EnvVarEditor({
           <div key={index} className="flex items-center gap-1.5">
             <input
               className={cn(inputClass, "flex-[2]")}
-              placeholder="KEY"
+              placeholder={t("envVar.keyPlaceholder", { defaultValue: "KEY" })}
               value={row.key}
               onChange={(event) => updateRow(index, { key: event.target.value })}
             />
@@ -244,12 +246,12 @@ export function EnvVarEditor({
                 })
               }
             >
-              <SelectTrigger className={cn(selectTriggerClass, "flex-[1]")} aria-label="Binding mode">
+              <SelectTrigger className={cn(selectTriggerClass, "flex-[1]")} aria-label={t("envVar.bindingMode", { defaultValue: "Binding mode" })}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="plain">Plain</SelectItem>
-                <SelectItem value="secret">Secret</SelectItem>
+                <SelectItem value="plain">{t("envVar.plain", { defaultValue: "Plain" })}</SelectItem>
+                <SelectItem value="secret">{t("envVar.secret", { defaultValue: "Secret" })}</SelectItem>
               </SelectContent>
             </Select>
             {row.source === "secret" ? (
@@ -261,7 +263,7 @@ export function EnvVarEditor({
                   }
                 >
                   <SelectTrigger
-                    aria-label="Secret"
+                    aria-label={t("envVar.secret", { defaultValue: "Secret" })}
                     className={cn(
                       selectTriggerClass,
                       "flex-[3]",
@@ -270,12 +272,12 @@ export function EnvVarEditor({
                         "border-destructive text-destructive",
                     )}
                   >
-                    <SelectValue placeholder="Select secret..." />
+                    <SelectValue placeholder={t("envVar.selectSecret", { defaultValue: "Select secret..." })} />
                   </SelectTrigger>
                   <SelectContent>
                     {row.secretId && !secrets.some((s) => s.id === row.secretId) ? (
                       <SelectItem value={row.secretId}>
-                        Missing ({row.secretId.slice(0, 8)}…)
+                        {t("envVar.missingSecret", { defaultValue: "Missing ({{id}}…)", id: row.secretId.slice(0, 8) })}
                       </SelectItem>
                     ) : null}
                     {secrets.map((secret) => (
@@ -295,11 +297,11 @@ export function EnvVarEditor({
                   }
                   disabled={!row.secretId}
                 >
-                  <SelectTrigger className={cn(selectTriggerClass, "flex-[1]")} aria-label="Version">
+                  <SelectTrigger className={cn(selectTriggerClass, "flex-[1]")} aria-label={t("envVar.version", { defaultValue: "Version" })}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="latest">latest</SelectItem>
+                    <SelectItem value="latest">{t("envVar.latest", { defaultValue: "latest" })}</SelectItem>
                     {(() => {
                       const selected = secrets.find((s) => s.id === row.secretId);
                       if (!selected) return null;
@@ -320,16 +322,16 @@ export function EnvVarEditor({
                   className="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent/50 transition-colors shrink-0"
                   onClick={() => sealRow(index)}
                   disabled={!row.key.trim() || !row.plainValue}
-                  title="Create secret from current plain value"
+                  title={t("envVar.createFromPlainTitle", { defaultValue: "Create secret from current plain value" })}
                 >
-                  New
+                  {t("envVar.new", { defaultValue: "New" })}
                 </button>
               </>
             ) : (
               <>
                 <input
                   className={cn(inputClass, "flex-[3]")}
-                  placeholder="value"
+                  placeholder={t("envVar.valuePlaceholder", { defaultValue: "value" })}
                   value={row.plainValue}
                   onChange={(event) => updateRow(index, { plainValue: event.target.value })}
                 />
@@ -338,9 +340,9 @@ export function EnvVarEditor({
                   className="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent/50 transition-colors shrink-0"
                   onClick={() => sealRow(index)}
                   disabled={!row.key.trim() || !row.plainValue}
-                  title="Store value as secret and replace with reference"
+                  title={t("envVar.sealTitle", { defaultValue: "Store value as secret and replace with reference" })}
                 >
-                  Seal
+                  {t("envVar.seal", { defaultValue: "Seal" })}
                 </button>
               </>
             )}
@@ -370,7 +372,7 @@ export function EnvVarEditor({
           <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
             <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70">
               <KeyRound className="h-3 w-3" />
-              Recently used:
+              {t("envVar.recentlyUsed", { defaultValue: "Recently used:" })}
             </span>
             {quick.map((secret) => (
               <button
@@ -378,7 +380,7 @@ export function EnvVarEditor({
                 type="button"
                 onClick={() => bindRecentSecret(secret)}
                 className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-                title={`Bind ${secret.name}`}
+                title={t("envVar.bindSecret", { defaultValue: "Bind {{name}}", name: secret.name })}
               >
                 + {secret.name}
               </button>
@@ -403,7 +405,7 @@ export function EnvVarEditor({
           <p className="text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-start gap-1">
             <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
             <span>
-              {issues.length} secret binding{issues.length === 1 ? "" : "s"} need attention:{" "}
+              {t("envVar.bindingsNeedAttention", { defaultValue: "{{count}} secret binding(s) need attention:", count: issues.length })}{" "}
               {issues.map((issue, idx) => (
                 <span key={idx} className="font-mono">
                   {issue.key}
@@ -411,14 +413,14 @@ export function EnvVarEditor({
                   {idx < issues.length - 1 ? ", " : ""}
                 </span>
               ))}
-              . Runs will fail until you remap or re-enable.
+              {". "}
+              {t("envVar.runsWillFail", { defaultValue: "Runs will fail until you remap or re-enable." })}
             </span>
           </p>
         );
       })()}
       <p className="text-[11px] text-muted-foreground/60">
-        Set KEY to the env var name the process expects, for example GH_TOKEN. Choose Secret to resolve a stored
-        value at run start. PAPERCLIP_* variables are injected automatically.
+        {t("envVar.bottomHint", { defaultValue: "Set KEY to the env var name the process expects, for example GH_TOKEN. Choose Secret to resolve a stored value at run start. PAPERCLIP_* variables are injected automatically." })}
       </p>
     </div>
   );

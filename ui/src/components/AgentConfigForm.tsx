@@ -1491,6 +1491,7 @@ function AdapterTypeDropdown({
   onChange: (type: string) => void;
   disabledTypes: Set<string>;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const selectedDisplay = getAdapterDisplay(value);
   const adapterList = useMemo(
@@ -1538,7 +1539,7 @@ function AdapterTypeDropdown({
               {item.experimental && <ExperimentalBadge />}
             </span>
             {item.comingSoon && (
-              <span className="text-[10px] text-muted-foreground">Coming soon</span>
+              <span className="text-[10px] text-muted-foreground">{t("agentConfig.comingSoon", { defaultValue: "Coming soon" })}</span>
             )}
           </button>
         ))}
@@ -1548,9 +1549,10 @@ function AdapterTypeDropdown({
 }
 
 function ExperimentalBadge() {
+  const { t } = useTranslation();
   return (
     <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:text-amber-200">
-      Experimental
+      {t("agentConfig.experimental", { defaultValue: "Experimental" })}
     </span>
   );
 }
@@ -1592,6 +1594,7 @@ function ModelDropdown({
   emptyDetectHint?: string;
   defaultLabel?: string;
 }) {
+  const { t } = useTranslation();
   const [modelSearch, setModelSearch] = useState("");
   const [detectingModel, setDetectingModel] = useState(false);
   const selected = models.find((m) => m.id === value);
@@ -1664,7 +1667,7 @@ function ModelDropdown({
   }
 
   return (
-    <Field label="Model" hint={help.model}>
+    <Field label={t("agentConfig.model", { defaultValue: "Model" })} hint={help.model}>
       <Popover
         open={open}
         onOpenChange={(nextOpen) => {
@@ -1678,7 +1681,7 @@ function ModelDropdown({
               {selected
                 ? selected.label
                 : value
-                  || (allowDefault ? (defaultLabel ?? "Default") : required ? "Select model (required)" : "Select model")}
+                  || (allowDefault ? (defaultLabel ?? t("agentConfig.defaultModel", { defaultValue: "Default" })) : required ? t("agentConfig.selectModelRequired", { defaultValue: "Select model (required)" }) : t("agentConfig.selectModel", { defaultValue: "Select model" }))}
             </span>
             <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </button>
@@ -1687,7 +1690,7 @@ function ModelDropdown({
           <div className="relative mb-1">
             <input
               className="w-full px-2 py-1.5 pr-6 text-xs bg-transparent outline-none border-b border-border placeholder:text-muted-foreground/50"
-              placeholder={creatable ? "Search models... (type to create)" : "Search models..."}
+              placeholder={creatable ? t("agentConfig.searchModelsCreatable", { defaultValue: "Search models... (type to create)" }) : t("agentConfig.searchModels", { defaultValue: "Search models..." })}
               value={modelSearch}
               onChange={(e) => setModelSearch(e.target.value)}
               autoFocus
@@ -1718,7 +1721,7 @@ function ModelDropdown({
                 <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                 <path d="M3 3v5h5" />
               </svg>
-              {detectingModel ? "Detecting..." : detectedModel ? (detectModelLabel?.replace(/^Detect\b/, "Re-detect") ?? "Re-detect from config") : (detectModelLabel ?? "Detect from config")}
+              {detectingModel ? t("agentConfig.detecting", { defaultValue: "Detecting..." }) : detectedModel ? (detectModelLabel?.replace(/^Detect\b/, "Re-detect") ?? t("agentConfig.reDetectFromConfig", { defaultValue: "Re-detect from config" })) : (detectModelLabel ?? t("agentConfig.detectFromConfig", { defaultValue: "Detect from config" }))}
             </button>
           )}
           {onRefreshModels && !modelSearch.trim() && (
@@ -1736,7 +1739,7 @@ function ModelDropdown({
                 <path d="M21 12a9 9 0 0 1-15.28 6.36L3 16" />
                 <path d="M8 16H3v5" />
               </svg>
-              {refreshingModels ? "Refreshing..." : "Refresh models"}
+              {refreshingModels ? t("agentConfig.refreshing", { defaultValue: "Refreshing..." }) : t("agentConfig.refreshModels", { defaultValue: "Refresh models" })}
             </button>
           )}
           {value && (!models.some((m) => m.id === value) || promotedModelIds.has(value)) && (
@@ -1753,7 +1756,7 @@ function ModelDropdown({
                 {models.find((m) => m.id === value)?.label ?? value}
               </span>
               <span className="shrink-0 ml-auto text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">
-                current
+                {t("agentConfig.badgeCurrent", { defaultValue: "current" })}
               </span>
             </button>
           )}
@@ -1772,7 +1775,7 @@ function ModelDropdown({
                 {models.find((m) => m.id === detectedModel)?.label ?? detectedModel}
               </span>
               <span className="shrink-0 ml-auto text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/20">
-                detected
+                {t("agentConfig.badgeDetected", { defaultValue: "detected" })}
               </span>
             </button>
           )}
@@ -1796,7 +1799,7 @@ function ModelDropdown({
                     {entry?.label ?? candidate}
                   </span>
                   <span className="shrink-0 ml-auto text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/20">
-                    config
+                    {t("agentConfig.badgeConfig", { defaultValue: "config" })}
                   </span>
                 </button>
               );
@@ -1814,7 +1817,7 @@ function ModelDropdown({
                   onOpenChange(false);
                 }}
               >
-                Default
+                {t("agentConfig.defaultModel", { defaultValue: "Default" })}
               </button>
             )}
             {canCreateManualModel && (
@@ -1827,7 +1830,7 @@ function ModelDropdown({
                   setModelSearch("");
                 }}
               >
-                <span>Use manual model</span>
+                <span>{t("agentConfig.useManualModel", { defaultValue: "Use manual model" })}</span>
                 <span className="text-xs font-mono text-muted-foreground">{manualModel}</span>
               </button>
             )}
@@ -1862,8 +1865,8 @@ function ModelDropdown({
               <div className="px-2 py-2 space-y-2">
                 <p className="text-xs text-muted-foreground">
                   {onDetectModel
-                    ? (emptyDetectHint ?? "No model detected yet. Enter a provider/model manually.")
-                    : "No models found."}
+                    ? (emptyDetectHint ?? t("agentConfig.noModelDetectedHint", { defaultValue: "No model detected yet. Enter a provider/model manually." }))
+                    : t("agentConfig.noModelsFound", { defaultValue: "No models found." })}
                 </p>
               </div>
             )}
@@ -1895,16 +1898,17 @@ function CheapModelSection({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const placeholderHint = adapterDefaultModel
-    ? `Adapter default · ${adapterDefaultModel}`
-    : "No adapter default — choose a cheaper model";
+    ? t("agentConfig.adapterDefaultModel", { defaultValue: "Adapter default · {{model}}", model: adapterDefaultModel })
+    : t("agentConfig.noAdapterDefault", { defaultValue: "No adapter default — choose a cheaper model" });
   return (
     <div className="rounded-md border border-border/70 bg-muted/20 p-3 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Cheap model</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("agentConfig.cheapModel", { defaultValue: "Cheap model" })}</div>
           <p className="text-xs text-muted-foreground">
-            Used when a run requests the cheap profile (e.g. routine summaries). The primary model stays unchanged.
+            {t("agentConfig.cheapModelDesc", { defaultValue: "Used when a run requests the cheap profile (e.g. routine summaries). The primary model stays unchanged." })}
           </p>
         </div>
         <ToggleSwitch checked={enabled} onCheckedChange={onEnabledChange} />
@@ -1928,12 +1932,12 @@ function CheapModelSection({
       ) : null}
       {enabled && !model && adapterDefaultModel ? (
         <p className="text-[11px] text-muted-foreground">
-          No explicit cheap model selected — runtime falls back to <code>{adapterDefaultModel}</code>.
+          {t("agentConfig.noExplicitCheapPrefix", { defaultValue: "No explicit cheap model selected — runtime falls back to" })} <code>{adapterDefaultModel}</code>.
         </p>
       ) : null}
       {enabled && !model && !adapterDefaultModel ? (
         <p className="text-[11px] text-amber-500">
-          No cheap model selected and the adapter has no default. Cheap-lane runs will continue on the primary model with a fallback note.
+          {t("agentConfig.noCheapNoDefault", { defaultValue: "No cheap model selected and the adapter has no default. Cheap-lane runs will continue on the primary model with a fallback note." })}
         </p>
       ) : null}
     </div>
@@ -1953,14 +1957,15 @@ function ThinkingEffortDropdown({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const selected = options.find((option) => option.id === value) ?? options[0];
 
   return (
-    <Field label="Thinking effort" hint={help.thinkingEffort}>
+    <Field label={t("agentConfig.thinkingEffort", { defaultValue: "Thinking effort" })} hint={help.thinkingEffort}>
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
           <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
-            <span className={cn(!value && "text-muted-foreground")}>{selected?.label ?? "Auto"}</span>
+            <span className={cn(!value && "text-muted-foreground")}>{selected?.label ?? t("agentConfig.auto", { defaultValue: "Auto" })}</span>
             <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </button>
         </PopoverTrigger>

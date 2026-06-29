@@ -1,4 +1,4 @@
-import { useTranslation } from "@/i18n";
+import { t, useTranslation } from "@/i18n";
 import {
   useEffect,
   useId,
@@ -79,28 +79,28 @@ export function describeUnavailable(reason: string): { title: string; body: stri
   if (lower.includes("remote")) {
     return {
       icon: <Cloud aria-hidden="true" className="h-5 w-5 text-muted-foreground" />,
-      title: "Remote workspace preview not supported",
-      body: "This workspace is hosted remotely and is not available for inline preview yet.",
+      title: t("workspaceFiles.unavailableRemoteTitle", { defaultValue: "Remote workspace preview not supported" }),
+      body: t("workspaceFiles.unavailableRemoteBody", { defaultValue: "This workspace is hosted remotely and is not available for inline preview yet." }),
     };
   }
   if (lower.includes("no_workspace") || lower.includes("no_local")) {
     return {
       icon: <FolderOpen aria-hidden="true" className="h-5 w-5 text-muted-foreground" />,
-      title: "No workspace yet",
-      body: "This issue does not have a workspace to browse. Files appear here once a run creates one.",
+      title: t("workspaceFiles.unavailableNoWorkspaceTitle", { defaultValue: "No workspace yet" }),
+      body: t("workspaceFiles.unavailableNoWorkspaceBody", { defaultValue: "This issue does not have a workspace to browse. Files appear here once a run creates one." }),
     };
   }
   if (lower.includes("archiv") || lower.includes("cleaned") || lower.includes("unavailable")) {
     return {
       icon: <FolderOpen aria-hidden="true" className="h-5 w-5 text-muted-foreground" />,
-      title: "Workspace is no longer available",
-      body: "The isolated worktree for this issue has been cleaned up, so files cannot be previewed.",
+      title: t("workspaceFiles.unavailableArchivedTitle", { defaultValue: "Workspace is no longer available" }),
+      body: t("workspaceFiles.unavailableArchivedBody", { defaultValue: "The isolated worktree for this issue has been cleaned up, so files cannot be previewed." }),
     };
   }
   return {
     icon: <AlertTriangle aria-hidden="true" className="h-5 w-5 text-amber-500" />,
-    title: "Workspace unavailable",
-    body: "These workspace files can't be browsed right now.",
+    title: t("workspaceFiles.unavailableGenericTitle", { defaultValue: "Workspace unavailable" }),
+    body: t("workspaceFiles.unavailableGenericBody", { defaultValue: "These workspace files can't be browsed right now." }),
   };
 }
 
@@ -129,7 +129,7 @@ function WorkspaceFileBreadcrumbs({
   if (!rootLabel && segments.length === 0) return null;
 
   return (
-    <nav aria-label="Current folder" className="min-w-0 overflow-hidden text-[11px] text-muted-foreground">
+    <nav aria-label={t("workspaceFiles.currentFolder", { defaultValue: "Current folder" })} className="min-w-0 overflow-hidden text-[11px] text-muted-foreground">
       <ol className="flex min-w-0 items-center gap-1 overflow-hidden">
         {rootLabel ? (
           <li className="min-w-0 shrink">
@@ -390,7 +390,7 @@ function WorkspaceFileTree({
                   style={{ paddingLeft: `${1 + (node.depth + 1) * 0.875}rem` }}
                 >
                   <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
-                  <span>Loading folder…</span>
+                  <span>{t("workspaceFiles.loadingFolder", { defaultValue: "Loading folder…" })}</span>
                 </div>
               ) : null}
               {truncated ? (
@@ -401,7 +401,7 @@ function WorkspaceFileTree({
                   style={{ paddingLeft: `${1 + (node.depth + 1) * 0.875}rem` }}
                 >
                   <span className="h-3.5 w-3.5 shrink-0" />
-                  <span>Load more from this folder</span>
+                  <span>{t("workspaceFiles.loadMoreFolder", { defaultValue: "Load more from this folder" })}</span>
                 </button>
               ) : null}
             </>
@@ -425,7 +425,7 @@ function WorkspaceFileTree({
   }
 
   return (
-    <div role="tree" id={listboxId} aria-label="Workspace files" className="space-y-0.5 py-1">
+    <div role="tree" id={listboxId} aria-label={t("workspaceFiles.workspaceFiles", { defaultValue: "Workspace files" })} className="space-y-0.5 py-1">
       {nodes.map(renderNode)}
     </div>
   );
@@ -790,12 +790,12 @@ export function WorkspaceFileBrowser({
   ]);
 
   const announcement = useMemo(() => {
-    if (listQuery.isFetching) return "Loading workspace files…";
-    if (listQuery.isError) return "Unable to load workspace files.";
+    if (listQuery.isFetching) return t("workspaceFiles.announceLoading", { defaultValue: "Loading workspace files…" });
+    if (listQuery.isError) return t("workspaceFiles.announceError", { defaultValue: "Unable to load workspace files." });
     if (data?.state === "unavailable") return describeUnavailable(data.unavailableReason ?? "").title;
-    if (items.length === 0) return "No matching files.";
-    return `${items.length} item${items.length === 1 ? "" : "s"} found.`;
-  }, [data, items.length, listQuery.isError, listQuery.isFetching]);
+    if (items.length === 0) return t("workspaceFiles.announceNoMatch", { defaultValue: "No matching files." });
+    return t("workspaceFiles.announceCount", { defaultValue: "{{count}} items found.", count: items.length });
+  }, [data, items.length, listQuery.isError, listQuery.isFetching, t]);
 
   function openTypedPath() {
     const value = searchInput.trim();
@@ -930,24 +930,24 @@ export function WorkspaceFileBrowser({
     body = (
       <StateMessage
         icon={<FolderOpen aria-hidden="true" className="h-5 w-5 text-muted-foreground" />}
-        title="No company selected"
-        body="Choose a company before browsing another project workspace."
+        title={t("workspaceFiles.noCompanyTitle", { defaultValue: "No company selected" })}
+        body={t("workspaceFiles.noCompanyBody", { defaultValue: "Choose a company before browsing another project workspace." })}
       />
     );
   } else if (source === "other" && projectsQuery.isFetching && projectsWithWorkspaces.length === 0) {
     body = (
       <StateMessage
         icon={<Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-muted-foreground" />}
-        title="Loading project workspaces"
-        body="Registered workspaces will appear here."
+        title={t("workspaceFiles.loadingProjectWorkspacesTitle", { defaultValue: "Loading project workspaces" })}
+        body={t("workspaceFiles.loadingProjectWorkspacesBody", { defaultValue: "Registered workspaces will appear here." })}
       />
     );
   } else if (source === "other" && !canListFiles) {
     body = (
       <StateMessage
         icon={<FolderOpen aria-hidden="true" className="h-5 w-5 text-muted-foreground" />}
-        title="No project workspaces"
-        body="No same-company project has a registered workspace to browse."
+        title={t("workspaceFiles.noProjectWorkspacesTitle", { defaultValue: "No project workspaces" })}
+        body={t("workspaceFiles.noProjectWorkspacesBody", { defaultValue: "No same-company project has a registered workspace to browse." })}
       />
     );
   } else if (listQuery.isFetching && !data) {
@@ -966,11 +966,11 @@ export function WorkspaceFileBrowser({
     body = (
       <StateMessage
         icon={<AlertTriangle aria-hidden="true" className="h-5 w-5 text-amber-500" />}
-        title="Couldn't load files"
+        title={t("workspaceFiles.couldntLoadTitle", { defaultValue: "Couldn't load files" })}
         body={
           status === 404
-            ? "Workspace browsing isn't available for this issue."
-            : "Something went wrong loading workspace files."
+            ? t("workspaceFiles.couldntLoad404", { defaultValue: "Workspace browsing isn't available for this issue." })
+            : t("workspaceFiles.couldntLoadGeneric", { defaultValue: "Something went wrong loading workspace files." })
         }
       />
     );
@@ -981,8 +981,10 @@ export function WorkspaceFileBrowser({
     body = (
       <StateMessage
         icon={<Search aria-hidden="true" className="h-5 w-5 text-muted-foreground" />}
-        title={isSearch ? `No files match “${q}”` : "No recently changed files yet"}
-        body="Try searching by name or path."
+        title={isSearch
+          ? t("workspaceFiles.noFilesMatch", { defaultValue: "No files match “{{query}}”", query: q })
+          : t("workspaceFiles.noRecentlyChanged", { defaultValue: "No recently changed files yet" })}
+        body={t("workspaceFiles.trySearching", { defaultValue: "Try searching by name or path." })}
       />
     );
   } else {
@@ -1052,10 +1054,10 @@ export function WorkspaceFileBrowser({
               onClick={() => loadMoreFolder(currentFolderKey)}
               className="rounded px-1 py-0.5 text-left hover:bg-accent hover:text-foreground"
             >
-              Load more from this folder
+              {t("workspaceFiles.loadMoreFolder", { defaultValue: "Load more from this folder" })}
             </button>
           ) : (
-            <>Showing first {items.length} — refine the search to narrow.</>
+            <>{t("workspaceFiles.showingFirst", { defaultValue: "Showing first {{count}} — refine the search to narrow.", count: items.length })}</>
           )}
         </div>
       ) : null}

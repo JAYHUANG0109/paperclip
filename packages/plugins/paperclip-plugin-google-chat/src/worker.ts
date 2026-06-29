@@ -35,6 +35,7 @@ import {
   rememberLastUserMessage,
   resolveAgentId,
   resolveCompanyId,
+  redactSecrets,
   setConversationIssue
 } from "./routing.js";
 
@@ -280,24 +281,31 @@ async function routeToAgent(
       const pre = await getDelivered(ctx, existingIssueId);
       pre.sigs.push(commentSignature(inbound.text));
       await saveDelivered(ctx, existingIssueId, pre);
+      // If the follow-up pasted a token, keep the raw value only in the comment
+      // (the agent's capture channel) with a self-destruct directive; everything
+      // else (last-message context, Chat Logs) gets the redacted text.
+      const safeFollow = redactSecrets(inbound.text);
+      const commentBody = safeFollow.hadSecret
+        ? `${inbound.text}\n\n---\n⚠️ 含 Asana 權杖明文。請依 onboarding 指示用 POST /api/companies/${companyId}/connections/asana 儲存後,立即編輯本留言移除明文。`
+        : inbound.text;
       const commentId = await appendToConversation(ctx, {
         issueId: existingIssueId,
         companyId,
-        text: inbound.text
+        text: commentBody
       });
       if (commentId) {
         const delivered = await getDelivered(ctx, existingIssueId);
         delivered.ids.push(commentId);
         await saveDelivered(ctx, existingIssueId, delivered);
       }
-      await rememberLastUserMessage(ctx, existingIssueId, inbound.text);
+      await rememberLastUserMessage(ctx, existingIssueId, safeFollow.text);
       await rememberChatTarget(ctx, existingIssueId, target);
       try {
         await recordConversation(ctx, {
           email: inbound.senderEmail,
           displayName: inbound.senderDisplayName,
           issueId: existingIssueId,
-          text: inbound.text,
+          text: safeFollow.text,
           at: new Date().toISOString()
         });
       } catch {
@@ -325,7 +333,7 @@ async function routeToAgent(
     target
   });
   if (convKey) await setConversationIssue(ctx, convKey, issueId, companyId);
-  await rememberLastUserMessage(ctx, issueId, inbound.text);
+  await rememberLastUserMessage(ctx, issueId, redactSecrets(inbound.text).text);
   await attachInboundFiles(ctx, config, issueId, companyId, inbound);
   ctx.logger.info("Dispatched Chat message to agent", { issueId, agentId, convKey });
   return "⏳ 處理中，請稍候… (Working on it…)";
@@ -403,11 +411,25 @@ const plugin = definePlugin({
         (typeof params.companyId === "string" && params.companyId) || config.companyId
       );
       const agents = await ctx.agents.list({ companyId });
+      // Surface each agent's team(s) (metadata.teams[] or metadata.team) so the
+      // admin UI can filter the assignment list by team — keeps a long roster
+      // navigable instead of one big pile.
+      const teamsOf = (a: (typeof agents)[number]): string[] => {
+        const md = a.metadata as Record<string, unknown> | null;
+        if (!md) return [];
+        const out: string[] = [];
+        if (Array.isArray(md.teams)) {
+          for (const t of md.teams) if (typeof t === "string" && t.trim()) out.push(t.trim());
+        } else if (typeof md.team === "string" && md.team.trim()) {
+          out.push(md.team.trim());
+        }
+        return out;
+      };
       return {
         companyId,
         gateUnassigned: config.gateUnassigned,
         assignments: await listAssignments(ctx),
-        agents: agents.map((a) => ({ id: a.id, name: a.name, urlKey: a.urlKey }))
+        agents: agents.map((a) => ({ id: a.id, name: a.name, urlKey: a.urlKey, teams: teamsOf(a) }))
       };
     });
 

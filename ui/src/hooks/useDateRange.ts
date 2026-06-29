@@ -2,15 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 export type DatePreset = "mtd" | "7d" | "30d" | "ytd" | "all" | "custom";
 
-export const PRESET_LABELS: Record<DatePreset, string> = {
-  mtd: "Month to Date",
-  "7d": "Last 7 Days",
-  "30d": "Last 30 Days",
-  ytd: "Year to Date",
-  all: "All Time",
-  custom: "Custom",
-};
-
+// Preset labels are i18n'd at the render site via t(`costs.preset.${key}`) —
+// keep only the key order here so callers iterate presets in a stable order.
 export const PRESET_KEYS: DatePreset[] = ["mtd", "7d", "30d", "ytd", "all", "custom"];
 
 // note: computeRange is called inside a useMemo that re-evaluates once per minute

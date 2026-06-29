@@ -16,6 +16,8 @@ import { companyRoutes } from "./routes/companies.js";
 import { companySkillRoutes } from "./routes/company-skills.js";
 import { bountyRoutes } from "./routes/bounties.js";
 import { leaderboardService } from "./services/leaderboard.js";
+import { summaryService } from "./services/summaries.js";
+import { notificationService } from "./services/notifications.js";
 import { teamsCatalogRoutes } from "./routes/teams-catalog.js";
 import { agentRoutes } from "./routes/agents.js";
 import { projectRoutes } from "./routes/projects.js";
@@ -32,6 +34,7 @@ import { secretRoutes } from "./routes/secrets.js";
 import { costRoutes } from "./routes/costs.js";
 import { activityRoutes } from "./routes/activity.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
+import { notificationRoutes } from "./routes/notifications.js";
 import { userProfileRoutes } from "./routes/user-profiles.js";
 import { sidebarBadgeRoutes } from "./routes/sidebar-badges.js";
 import { sidebarPreferenceRoutes } from "./routes/sidebar-preferences.js";
@@ -254,6 +257,7 @@ export async function createApp(
   api.use(costRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(activityRoutes(db, { restrictVisibility }));
   api.use(dashboardRoutes(db, { restrictVisibility }));
+  api.use(notificationRoutes(db));
   api.use(userProfileRoutes(db));
   api.use(sidebarBadgeRoutes(db));
   api.use(sidebarPreferenceRoutes(db));
@@ -536,6 +540,12 @@ export async function createApp(
         await leaderboard.runMonthlyRollup(c.id, period);
       }
       logger.info({ period, companies: rows.length }, "monthly leaderboard rollup complete");
+      try {
+        const pruned = await notificationService(db).pruneOlderThan(90);
+        if (pruned > 0) logger.info({ pruned }, "pruned notifications older than 90d");
+      } catch (pruneErr) {
+        logger.warn({ err: pruneErr }, "notification prune failed");
+      }
     } catch (err) {
       logger.error({ err }, "scheduled monthly rollup failed");
     }
@@ -543,6 +553,38 @@ export async function createApp(
   monthlyRollupTimer = setInterval(() => { void runMonthlyRollups(); }, 24 * 60 * 60 * 1000);
   monthlyRollupTimer.unref?.();
   void runMonthlyRollups();
+
+  // "Tasks done" summaries → each user's inbox. Daily after ~17:30 and weekly
+  // (Fri) after ~17:45 Asia/Taipei. A ~5-min idempotent tick: once the local
+  // time passes the threshold the per-user summary is created exactly once
+  // (notification dedupeKey guards re-runs), so this is safe to re-run/restart.
+  let summaryTimer: ReturnType<typeof setInterval> | null = null;
+  const runDueSummaries = async () => {
+    try {
+      const summaries = summaryService(db);
+      const now = new Date();
+      const tp = new Date(now.getTime() + 8 * 60 * 60 * 1000); // Asia/Taipei (UTC+8, no DST)
+      const hour = tp.getUTCHours();
+      const minute = tp.getUTCMinutes();
+      const weekday = tp.getUTCDay(); // 0=Sun .. 6=Sat
+      const pastDaily = hour > 17 || (hour === 17 && minute >= 30);
+      const pastWeekly =
+        (weekday === 5 && (hour > 17 || (hour === 17 && minute >= 45))) ||
+        weekday === 6 ||
+        weekday === 0; // Fri 17:45 onward, plus weekend catch-up (same week, deduped)
+      if (!pastDaily && !pastWeekly) return;
+      const rows = await db.select({ id: companies.id }).from(companies);
+      for (const c of rows) {
+        if (pastDaily) await summaries.generate(c.id, "daily", now);
+        if (pastWeekly) await summaries.generate(c.id, "weekly", now);
+      }
+    } catch (err) {
+      logger.warn({ err }, "scheduled summaries tick failed");
+    }
+  };
+  summaryTimer = setInterval(() => { void runDueSummaries(); }, 5 * 60 * 1000);
+  summaryTimer.unref?.();
+  void runDueSummaries();
   void toolDispatcher.initialize().catch((err) => {
     logger.error({ err }, "Failed to initialize plugin tool dispatcher");
   });
@@ -628,6 +670,10 @@ export async function createApp(
     if (wikiDistillTimer) {
       clearInterval(wikiDistillTimer);
       wikiDistillTimer = null;
+    }
+    if (summaryTimer) {
+      clearInterval(summaryTimer);
+      summaryTimer = null;
     }
     devWatcher?.close();
     viteHtmlRenderer?.dispose();

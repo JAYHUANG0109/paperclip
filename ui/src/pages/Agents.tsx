@@ -17,9 +17,14 @@ import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { relativeTime, cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { PageTabBar } from "../components/PageTabBar";
+import { AgentsOfficeStrip } from "../components/AgentsOfficeStrip";
+import { TeamFilterBar } from "../components/TeamFilterBar";
+import { ViewSwitchButton } from "../components/ViewSwitchButton";
+import { agentMatchesTeams, listAllTeams, useAgentTeamFilter } from "../lib/agent-teams";
+import { sortAgentsByAccessLevel, agentSortTier } from "../lib/agent-order";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Bot, Plus, List, GitBranch, SlidersHorizontal } from "lucide-react";
+import { Bot, Plus, List, GitBranch, Building2 } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 import {
   resourceMembershipState,
@@ -42,9 +47,14 @@ function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean):
   return true;
 }
 
-function filterAgents(agents: Agent[], tab: FilterTab, showTerminated: boolean): Agent[] {
+function filterAgents(
+  agents: Agent[],
+  tab: FilterTab,
+  showTerminated: boolean,
+  teams: string[],
+): Agent[] {
   return agents
-    .filter((a) => matchesFilter(a.status, tab, showTerminated))
+    .filter((a) => matchesFilter(a.status, tab, showTerminated) && agentMatchesTeams(a, teams))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -55,16 +65,25 @@ function getConfiguredModel(agent: Agent): string | null {
   return model.length > 0 ? model : null;
 }
 
-function filterOrgTree(nodes: OrgNode[], tab: FilterTab, showTerminated: boolean): OrgNode[] {
+function filterOrgTree(
+  nodes: OrgNode[],
+  tab: FilterTab,
+  showTerminated: boolean,
+  teamPass: (id: string) => boolean,
+  tierOf: (id: string) => number,
+): OrgNode[] {
   return nodes
     .reduce<OrgNode[]>((acc, node) => {
-      const filteredReports = filterOrgTree(node.reports, tab, showTerminated);
-      if (matchesFilter(node.status, tab, showTerminated) || filteredReports.length > 0) {
+      const filteredReports = filterOrgTree(node.reports, tab, showTerminated, teamPass, tierOf);
+      // A node stays if it itself matches (status + team) OR it has a surviving
+      // descendant — so the reportsTo chain to a matching agent is preserved.
+      if ((matchesFilter(node.status, tab, showTerminated) && teamPass(node.id)) || filteredReports.length > 0) {
         acc.push({ ...node, reports: filteredReports });
       }
       return acc;
     }, [])
-    .sort((a, b) => a.name.localeCompare(b.name));
+    // Siblings: real agents first, then C-suite, then non-user (Wiki); ties by name.
+    .sort((a, b) => tierOf(a.id) - tierOf(b.id) || a.name.localeCompare(b.name));
 }
 
 export function Agents() {
@@ -80,8 +99,10 @@ export function Agents() {
   const [view, setView] = useState<"list" | "org">("org");
   const forceListView = isMobile;
   const effectiveView: "list" | "org" = forceListView ? "list" : view;
-  const [showTerminated, setShowTerminated] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  // Terminated agents stay hidden; the standalone Filters menu was removed in
+  // favor of the team chip bar.
+  const showTerminated = false;
+  const { selected: teamFilter, toggle: toggleTeam, clear: clearTeams } = useAgentTeamFilter(selectedCompanyId);
 
   const { data: agents, isLoading, error } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -137,11 +158,41 @@ export function Agents() {
     return <PageSkeleton variant="list" />;
   }
 
-  const filtered = filterAgents(agents ?? [], tab, showTerminated);
-  const filteredOrg = filterOrgTree(orgTree ?? [], tab, showTerminated);
+  const allTeams = listAllTeams(agents ?? []);
+  const teamPass = (id: string) => {
+    const a = agentMap.get(id);
+    return a ? agentMatchesTeams(a, teamFilter) : teamFilter.length === 0;
+  };
+  // OrgNode carries no metadata, so resolve each node's sort tier via the full
+  // agent record (real → C-suite → non-user) for the org-chart sibling order.
+  const tierOf = (id: string) => {
+    const a = agentMap.get(id);
+    return a ? agentSortTier(a) : 0;
+  };
+  // List + office strip default to access-level (org seniority) order, with
+  // placeholder C-suite agents last. The org-chart view stays hierarchical.
+  const filtered = sortAgentsByAccessLevel(
+    filterAgents(agents ?? [], tab, showTerminated, teamFilter),
+    agents ?? [],
+  );
+  const filteredOrg = filterOrgTree(orgTree ?? [], tab, showTerminated, teamPass, tierOf);
+  const officeAgents = sortAgentsByAccessLevel(
+    (agents ?? []).filter((a) => a.status !== "terminated" && agentMatchesTeams(a, teamFilter)),
+    agents ?? [],
+  );
 
   return (
     <div className="space-y-4">
+      <AgentsOfficeStrip agents={officeAgents} workingIds={new Set(liveRunByAgent.keys())} />
+      {/* Shared controls row: team chip filter (left) + view switch (right).
+          Mirrors the Virtual Office page exactly so the switch is always in the
+          same spot with the same style. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <TeamFilterBar teams={allTeams} selected={teamFilter} onToggle={toggleTeam} onClear={clearTeams} />
+        </div>
+        <ViewSwitchButton to="/office" label={t("office.open", { defaultValue: "Open office" })} icon={Building2} />
+      </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={tab} onValueChange={(v) => navigate(`/agents/${v}`)}>
           <PageTabBar
@@ -156,36 +207,6 @@ export function Agents() {
           />
         </Tabs>
         <div className="flex items-center gap-2">
-          {/* Filters */}
-          <div className="relative">
-            <button
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1.5 text-xs transition-colors border border-border",
-                filtersOpen || showTerminated ? "text-foreground bg-accent" : "text-muted-foreground hover:bg-accent/50"
-              )}
-              onClick={() => setFiltersOpen(!filtersOpen)}
-            >
-              <SlidersHorizontal className="h-3 w-3" />
-              {t("agents.filters")}
-              {showTerminated && <span className="ml-0.5 px-1 bg-foreground/10 rounded text-[10px]">1</span>}
-            </button>
-            {filtersOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-48 border border-border bg-popover shadow-md p-1">
-                <button
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs text-left hover:bg-accent/50 transition-colors"
-                  onClick={() => setShowTerminated(!showTerminated)}
-                >
-                  <span className={cn(
-                    "flex items-center justify-center h-3.5 w-3.5 border border-border rounded-sm",
-                    showTerminated && "bg-foreground"
-                  )}>
-                    {showTerminated && <span className="text-background text-[10px] leading-none">&#10003;</span>}
-                  </span>
-                  {t("agents.showTerminated")}
-                </button>
-              </div>
-            )}
-          </div>
           {/* View toggle */}
           {!forceListView && (
             <div className="flex items-center border border-border">

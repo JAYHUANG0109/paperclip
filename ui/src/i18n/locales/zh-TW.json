@@ -564,7 +564,9 @@
     "recentActivity": "近期活動",
     "recentTasks": "近期任務",
     "noTasks": "尚無任務。",
-    "restrictedOverview": "全機構總覽僅限公司管理員檢視；以下顯示的是您自己的代理。"
+    "restrictedOverview": "全機構總覽僅限公司管理員檢視；以下顯示的是您自己的代理。",
+    "outstandingTasks": "尚未執行任務",
+    "outstandingDesc": "今日 {{today}} · 本週 {{week}}"
   },
   "agentsPanel": {
     "title": "代理",
@@ -588,7 +590,8 @@
     "kind": {
       "suggestTasks": "建議任務",
       "askUserQuestions": "詢問使用者",
-      "requestConfirmation": "確認請求"
+      "requestConfirmation": "確認請求",
+      "requestCheckboxConfirmation": "勾選確認請求"
     },
     "questionCount_one": "1 個問題",
     "questionCount_other": "{{count}} 個問題",
@@ -667,8 +670,25 @@
       "decline": "婉拒",
       "declineReasonRequired": "必須提供婉拒原因。",
       "cancelDecline": "取消婉拒",
-      "saving": "儲存中…"
-    }
+      "saving": "儲存中…",
+      "imageUploadError": "無法上傳該圖片。請再試一次。",
+      "uploading": "上傳中…",
+      "attachScreenshots": "附加螢幕截圖"
+    },
+    "typeYourAnswer": "輸入你的答覆",
+    "checkbox": {
+      "confirmedNone": "已確認，未選取任何選項",
+      "selected": "已選取",
+      "showLess": "顯示較少",
+      "selectAll": "全選",
+      "clearSelection": "清除選取",
+      "selectableOptions": "可選取的選項",
+      "confirmSelected": "確認所選",
+      "requestChanges": "要求修改",
+      "reasonRequired": "必須填寫原因。"
+    },
+    "resolvedByPrefix": "解決者",
+    "titleCheckboxConfirmation": "已要求核取方塊確認"
   },
   "agents": {
     "selectCompany": "請選擇一家公司以檢視助理。",
@@ -681,7 +701,10 @@
     "newAgent": "新增助理",
     "count_one": "{{count}} 個代理",
     "count_other": "{{count}} 個代理",
-    "empty": "建立您的第一個助理以開始使用。"
+    "empty": "建立您的第一個助理以開始使用。",
+    "teams": "團隊",
+    "filterByTeam": "依團隊篩選",
+    "allTeams": "所有團隊"
   },
   "timeline": {
     "requestedFollowUp": "要求後續追蹤",
@@ -1220,7 +1243,11 @@
     "resume": "繼續",
     "upload": "上傳",
     "ok": "確定",
-    "or": "或"
+    "or": "或",
+    "expand": "展開",
+    "collapse": "收合",
+    "openInNewTab": "在新分頁中開啟",
+    "deleting": "刪除中…"
   },
   "orgChart": {
     "breadcrumb": "組織圖",
@@ -1417,7 +1444,8 @@
     "at": "於",
     "atMinute": "於分鐘",
     "on": "於",
-    "onDay": "於日期"
+    "onDay": "於日期",
+    "cronExpression": "cron 運算式"
   },
   "agentConfig": {
     "unsavedChanges": "未儲存的變更",
@@ -1473,7 +1501,36 @@
       "warnings": "警告",
       "failed": "失敗",
       "hint": "提示：{{hint}}"
-    }
+    },
+    "teams": "團隊 / 團隊",
+    "teamsHint": "以逗號分隔的團隊名稱。一位代理人可隸屬於多個團隊（例如：資訊部、領導與總部）。",
+    "teamsPlaceholder": "資訊部, 領導與總部",
+    "comingSoon": "即將推出",
+    "experimental": "實驗性",
+    "model": "模型",
+    "defaultModel": "預設",
+    "selectModelRequired": "選擇模型（必填）",
+    "selectModel": "選擇模型",
+    "searchModelsCreatable": "搜尋模型…（輸入以建立）",
+    "searchModels": "搜尋模型…",
+    "detecting": "偵測中…",
+    "reDetectFromConfig": "從設定重新偵測",
+    "detectFromConfig": "從設定偵測",
+    "refreshing": "重新整理中…",
+    "refreshModels": "重新整理模型",
+    "badgeCurrent": "目前",
+    "badgeDetected": "已偵測",
+    "badgeConfig": "設定",
+    "useManualModel": "使用手動模型",
+    "noModelDetectedHint": "尚未偵測到模型。請手動輸入供應商/模型。",
+    "noModelsFound": "找不到模型。",
+    "noAdapterDefault": "無轉接器預設 — 請選擇較便宜的模型",
+    "cheapModel": "便宜模型",
+    "cheapModelDesc": "當執行要求便宜設定組合時使用（例如：例行作業摘要）。主要模型維持不變。",
+    "noExplicitCheapPrefix": "未選取明確的便宜模型 — 執行階段會改用",
+    "noCheapNoDefault": "未選取便宜模型，且轉接器沒有預設。便宜通道的執行會繼續使用主要模型，並附上備援註記。",
+    "thinkingEffort": "思考運算強度",
+    "auto": "自動"
   },
   "agentDetail": {
     "source": {
@@ -1699,7 +1756,14 @@
       "revoke": "撤銷",
       "revokedKeys": "已撤銷金鑰",
       "revoked": "撤銷於 {{date}}"
-    }
+    },
+    "invocation": "叫用",
+    "adapterLabel": "轉接器： ",
+    "details": "詳細資料",
+    "commandNotes": "指令備註",
+    "prompt": "提示",
+    "context": "情境",
+    "environment": "環境"
   },
   "projectDetail": {
     "addDescription": "新增描述…",
@@ -1729,7 +1793,15 @@
     "loadingWorkspaces": "載入工作區中…",
     "team": "團隊",
     "teamPlaceholder": "例如：資訊部",
-    "noTeam": "無團隊"
+    "noTeam": "無團隊",
+    "changeIconColor": "變更專案圖示與顏色",
+    "icon": "圖示",
+    "searchIcons": "搜尋圖示…",
+    "noIconsMatch": "沒有相符的圖示",
+    "color": "顏色",
+    "resetToNeutral": "重設為中性灰",
+    "neutralDefault": "中性（預設）",
+    "dismissMembershipNotice": "關閉專案成員資格通知"
   },
   "issuesList": {
     "newIssueInGroup": "在 {{group}} 中建立新議題",
@@ -2289,7 +2361,57 @@
     "scopeTeam": "團隊",
     "scopeTeamDesc": "僅您選擇的團隊成員可見。",
     "chooseTeams": "分享給團隊",
-    "noTeams": "您目前不屬於任何團隊。"
+    "noTeams": "您目前不屬於任何團隊。",
+    "color": "顏色",
+    "categories": "類別",
+    "selectCatalogSkill": "選擇要檢視的目錄技能。",
+    "hash": "雜湊",
+    "copiedHash": "已複製雜湊",
+    "copyContentHash": "複製內容雜湊",
+    "installSkill": "安裝技能",
+    "replaceExistingSkill": "取代現有技能",
+    "installing": "安裝中…",
+    "update": "更新",
+    "replace": "取代",
+    "install": "安裝",
+    "trust": "信任",
+    "compatibility": "相容性",
+    "compatible": "相容",
+    "requires": "需要",
+    "roles": "角色",
+    "any": "任何",
+    "provenance": "來源出處",
+    "existingSkillPrefix": "已安裝一個鍵為",
+    "isInstalled": "的現有技能",
+    "installingWillOverwrite": "安裝將覆寫目錄內容。",
+    "installingWillReplace": "安裝將取代現有技能。",
+    "advanced": "進階",
+    "forceReplaceSameKey": "強制取代相同鍵的現有技能",
+    "version": "版本",
+    "diffSkillFiles": "差異 · 技能檔案",
+    "diffOld": "舊",
+    "diffInitial": "初始",
+    "diffNew": "新",
+    "bothSidesSameVersion": "兩側為相同版本。",
+    "files": "檔案",
+    "noOverviewYet": "尚無概觀。",
+    "forkThisSkill": "分支此技能",
+    "agents": "代理人",
+    "updates": "更新",
+    "upToDatePeriod": "已是最新。",
+    "settings": "設定",
+    "discard": "捨棄",
+    "saving": "儲存中…",
+    "saveChanges": "儲存變更",
+    "sharingCompany": "公司 — 在此公司內可見",
+    "sharingPrivate": "私人 — 僅在你的程式庫中可見",
+    "detachBeforeRemoving": "移除此技能前，請先將它從所有代理人卸除。",
+    "locallyModified": "已在本機修改",
+    "locallyModifiedTooltip": "你在安裝後編輯過此技能。來自目錄的更新會覆寫你的變更。",
+    "removingSkill": "移除中…",
+    "addSkillSourceDesc": "請先在欄位中貼上本機路徑、GitHub URL 或 `skills.sh` 指令。",
+    "browseSkillsShDesc": "尋找安裝指令並在此貼上一個。",
+    "searchGitHubDesc": "尋找含有 `SKILL.md` 的儲存庫，然後在此貼上儲存庫 URL。"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",
@@ -2474,7 +2596,16 @@
     "noAccessEvents": "尚未記錄任何存取事件。每次執行時解析都會在此寫入一筆已遮罩的紀錄。",
     "defaultVault": "預設保險庫",
     "vault": "保險庫",
-    "selectCompanyToManage": "請選擇公司以管理密鑰。"
+    "selectCompanyToManage": "請選擇公司以管理密鑰。",
+    "awsDiscoveryNeedsListSecrets": "AWS 探索需要 ListSecrets 權限",
+    "awsDiscoveryFailed": "AWS 探索失敗",
+    "awsListSecretsNeeded": "探索需要在所選區域中對 Paperclip 伺服器執行階段/供應商憑證路徑具備 secretsmanager:ListSecrets 權限。",
+    "awsArnAlternative": "如果你已知道確切的 AWS Secrets Manager ARN，請貼上/連結該 ARN，而非使用探索。仍需要確切資源的 DescribeSecret 與執行階段讀取權限。",
+    "detailRegion": "區域",
+    "detailOperation": "作業",
+    "detailVaultContext": "保險庫情境",
+    "safeErrorDetails": "安全的請求/錯誤詳細資料",
+    "optionalParens": "（選填）"
   },
   "propertiesPanel": {
     "title": "屬性"
@@ -2860,6 +2991,14 @@
       "finance": "財務"
     },
     "selectDateRange": "選擇開始與結束日期以載入資料。",
+    "preset": {
+      "mtd": "本月至今",
+      "7d": "近 7 天",
+      "30d": "近 30 天",
+      "ytd": "今年至今",
+      "all": "全部時間",
+      "custom": "自訂"
+    },
     "inferenceLedger": "推論帳本",
     "inferenceLedgerDesc": "所選期間的請求範圍推論花費。",
     "budgetAmount": "預算 {{amount}}",
@@ -2868,6 +3007,7 @@
     "utilizationConsumed": "此範圍內已使用每月預算的 {{percent}}%。",
     "byAgent": "依代理人",
     "byAgentDesc": "所選期間各代理人的用量。",
+    "noAgentsMatchFilter": "沒有符合所選團隊的代理人。",
     "noCostEvents": "尚無成本事件。",
     "inOutTokens": "輸入 {{in}} · 輸出 {{out}}",
     "apiRuns": "{{count}} 次 API",
@@ -3823,7 +3963,8 @@
       "resumed": "代理已恢復",
       "pauseFailed": "無法暫停代理",
       "resumeFailed": "無法恢復代理"
-    }
+    },
+    "ungrouped": "未分組"
   },
   "devRestart": {
     "justNow": "剛剛",
@@ -4045,7 +4186,14 @@
     "copyTitle": "點擊以複製工作樹名稱"
   },
   "agentActions": {
-    "runNow": "立即執行"
+    "runNow": "立即執行",
+    "clearErrorAria": "清除錯誤並將代理人回復為閒置",
+    "clearError": "清除錯誤",
+    "assignTask": "指派任務",
+    "duplicateAgent": "複製代理人",
+    "copyAgentId": "複製代理人 ID",
+    "resetSessions": "重設工作階段",
+    "terminate": "終止"
   },
   "issueSiblingNav": {
     "navAria": "子議題導覽",
@@ -4775,7 +4923,34 @@
     "createIssue": "建立議題",
     "taskTitle": "任務標題",
     "createTask": "建立任務",
-    "createSubTask": "建立子任務"
+    "createSubTask": "建立子任務",
+    "addDescription": "新增描述…",
+    "claudeOptions": "Claude 選項",
+    "codexOptions": "Codex 選項",
+    "opencodeOptions": "OpenCode 選項",
+    "agentOptions": "代理人選項",
+    "newSubTask": "新增子任務",
+    "newTask": "新增任務",
+    "lowTrustReviewAgent": "低信任審查代理人",
+    "addReviewerApproverWatchdog": "新增審查者、核可者或監看者",
+    "watchdog": "監看者",
+    "configureWatchdog": "設定監看者",
+    "setWatchdog": "設定監看者",
+    "watchdogAgent": "監看者代理人",
+    "selectAgent": "選擇代理人",
+    "noWatchdogAgent": "無監看者代理人",
+    "searchAgents": "搜尋代理人…",
+    "noAgentsFound": "找不到代理人。",
+    "instructions": "指示",
+    "optionalParen": "（選填）",
+    "watchdogInstructionsPlaceholder": "監看者應留意什麼，又該如何讓工作持續推進？",
+    "subTaskOf": "子任務隸屬於",
+    "executionWorkspaceHint": "控制此任務要在共用工作區、新的隔離工作區，還是現有工作區中執行。",
+    "lanePrimaryHint": "在代理人的主要模型上執行。",
+    "laneCustomHint": "僅針對此任務覆寫模型與運算強度。",
+    "upload": "上傳",
+    "assignedBacklogNote": "指派代表可執行的意圖 — 僅在你刻意要擱置時才將狀態保留為「待辦清單」。受指派者在狀態移至「待辦」或「進行中」之前不會被喚醒。",
+    "lowTrustNote": "低信任審查代理人。它只能在其指派的審查邊界內行動；具體範圍由議題、專案或執行政策定義。"
   },
   "routineDetail": {
     "concurrencyDesc": {
@@ -5059,7 +5234,50 @@
     "getStarted": "開始使用",
     "createTeamLead": "建立您的團隊主管",
     "tellAboutTeamSub": "我們會用這些資訊設定您的主管代理人，並規劃要新增哪些代理人。",
-    "nameTeamSub": "我們該如何稱呼您的團隊？"
+    "nameTeamSub": "我們該如何稱呼您的團隊？",
+    "review": "審查",
+    "nameLeadPrefix": "為你的負責人命名。他們將協助推動",
+    "nameLeadMiddle": "朝其使命前進。我們預設為",
+    "nameLeadSuffix": "你可以隨意重新命名。",
+    "connectModelSub": "挑選你的負責人要執行的轉接器與模型，然後檢查環境。",
+    "capsuleSlot": "代理人的空位",
+    "capsuleConfigured": "你的團隊負責人正在成形",
+    "capsuleOnline": "已上線並準備好工作！",
+    "q1Placeholder": "例如：我們製作關於 AI 的教育類 YouTube 內容",
+    "workflowsPlaceholder": "例如：手動內容製作、試算表追蹤、電子郵件推廣",
+    "painPointsPlaceholder": "例如：內容產出速度不夠快、沒時間經營社群媒體",
+    "automatePlaceholder": "例如：社群媒體排程與內容再利用",
+    "generateMissionFromAnswers": "從答覆產生使命",
+    "backToStart": "← 返回開始",
+    "missionGuidesPrefix": "你的使命引導一切 — 你的負責人代理人、你延攬的人，以及所承接的工作",
+    "missionGuidesSuffix": "承接。",
+    "howDefineMission": "你想如何定義你的使命？",
+    "typeItDirectly": "直接輸入",
+    "answerFewQuestions": "回答幾個問題",
+    "qWhatWorkOn": "你的團隊從事什麼工作？",
+    "qWhoServe": "你服務的對象是誰？",
+    "whoServePlaceholder": "例如：對 AI 工具感到好奇的非技術專業人士",
+    "qBottleneck": "你目前最大的瓶頸是什麼？",
+    "bottleneckPlaceholder": "例如：無法在多個管道上快速產出內容",
+    "qSuccess": "六個月後的成功會是什麼樣子？",
+    "successPlaceholder": "例如：以一支 AI 代理人團隊每天在 4 個平台上發布內容",
+    "generateMyMission": "產生我的使命",
+    "draftMission": "這是你的使命草稿 — 可隨意編輯：",
+    "backToQuestions": "← 返回問題",
+    "changeMissionLater": "你之後隨時可以在設定中變更使命。",
+    "changeTeamName": "← 變更團隊名稱",
+    "nameLabel": "名稱",
+    "defaultModel": "預設",
+    "adapterEnvCheck": "轉接器環境檢查",
+    "adapterEnvCheckDesc": "執行即時探測，要求轉接器 CLI 回覆 hello。",
+    "claudeFailedPrefix": "Claude 在",
+    "claudeFailedSuffix": "已設定時失敗。你可以在此轉接器設定中清除它並重試探測。",
+    "unsetAnthropicApiKey": "取消設定 ANTHROPIC_API_KEY",
+    "promptLabel": "提示：",
+    "ifLoginRequiredPrefix": "如需登入，請執行",
+    "ifLoginRequiredSuffix": "然後重試。",
+    "agentCreated": "代理人已建立",
+    "hintPrefix": "提示："
   },
   "myIssues": {
     "title": "我的議題",
@@ -5075,7 +5293,7 @@
   },
   "calendar": {
     "myCalendar": "我的行事曆",
-    "myCalendarHint": "你與你的代理被指派議題的截止日。",
+    "myCalendarHint": "你與你的代理的議題及 Asana 任務截止日。",
     "today": "今天",
     "prevMonth": "上個月",
     "nextMonth": "下個月",
@@ -5100,7 +5318,12 @@
     "overdue": "逾期",
     "todaySection": "今天",
     "prevWeek": "上週",
-    "nextWeek": "下週"
+    "nextWeek": "下週",
+    "searchPlaceholder": "依標題搜尋…",
+    "google": {
+      "connectHint": "連結 Google 日曆即可在此看到你的行程。",
+      "connect": "連結 Google 日曆"
+    }
   },
   "projectStatus": {
     "backlog": "待規劃",
@@ -5130,6 +5353,15 @@
   "issueInteraction": {
     "kind": {
       "plan": "計畫"
+    },
+    "planDecomp": {
+      "completed": "已完成",
+      "inFlight": "進行中",
+      "title": "計畫拆解",
+      "agentFallback": "代理人",
+      "idempotentTitle": "使用此指紋的重複嘗試會重用此記錄，而非建立新的子項目",
+      "idempotentClaim": "冪等宣告",
+      "planDocument": "計畫文件"
     }
   },
   "projectMembers": {
@@ -5210,7 +5442,126 @@
     "installBlocked": "安裝已封鎖",
     "agentsImported": "已匯入代理人",
     "projectsImported": "已匯入專案",
-    "skillsResolved": "技能已解析"
+    "skillsResolved": "技能已解析",
+    "trust": {
+      "markdownOnly": {
+        "label": "僅 Markdown",
+        "tip": "僅包含 Markdown 與參照。無可執行內容。"
+      },
+      "assets": {
+        "label": "資產",
+        "tip": "包含靜態資產（圖片、固定資料）。無可執行內容。"
+      },
+      "scripts": {
+        "label": "指令碼",
+        "tip": "包含在打包前經過安全審查的可執行指令碼。"
+      },
+      "externalSources": {
+        "label": "外部來源",
+        "tip": "參照在安裝時解析的外部來源。"
+      }
+    },
+    "compat": {
+      "compatible": "相容",
+      "unknown": "相容性未知",
+      "invalid": "無效"
+    },
+    "provenanceTip": "目錄套件來源出處",
+    "source": {
+      "unsupportedInBrowserInstall": "瀏覽器安裝不支援",
+      "unpinned": "未釘選"
+    },
+    "rootAgent": "根代理人",
+    "noAgentsInTeam": "此團隊中沒有代理人。",
+    "skill": {
+      "resolved": "已解析",
+      "external": "外部"
+    },
+    "secretsEnvInputs": "密鑰與環境輸入",
+    "required": "必填",
+    "pinned": "已釘選",
+    "unpinned": "未釘選",
+    "unsupportedInBrowserInstall": "瀏覽器安裝不支援",
+    "reinstallLatest": "重新安裝最新版",
+    "installTeam": "安裝團隊",
+    "installed": "已安裝",
+    "cannotInstallInvalid": "此團隊無法安裝 — 套件資訊清單無效。",
+    "requiresPermissions": "需要董事會操作者或代理人建立權限。",
+    "agents": "代理人",
+    "projects": "專案",
+    "routines": "例行作業",
+    "requiredSkills": "必要技能",
+    "agentHierarchy": "代理人階層",
+    "files": "檔案",
+    "step": {
+      "targetManager": "目標管理者",
+      "sourcePolicy": "來源政策",
+      "prerequisiteSkills": "先決技能",
+      "preview": "預覽"
+    },
+    "failedToLoadPreview": "載入安裝預覽失敗。",
+    "installFailedShort": "安裝失敗。",
+    "installFailed": "安裝失敗",
+    "installFailedHint": "部分狀態不會回復。重試前請先檢閱公司活動記錄。",
+    "confirmInstallExecutables": "確認 — 連同可執行內容一起安裝",
+    "installWithExecutables": "連同可執行內容一起安裝",
+    "targetManagerHelp": "此團隊的根代理人在你的公司中需要一位管理者。挑選將成為其上層的代理人。內部團隊階層會被保留。",
+    "useAsFullCompany": "將此團隊作為完整公司套件使用（無目標管理者）",
+    "sourceCode": {
+      "pinned": "已釘選",
+      "unpinnedReference": "未釘選的參照",
+      "notInstallable": "無法從瀏覽器安裝"
+    },
+    "policy": {
+      "external": {
+        "label": "允許外部來源",
+        "description": "在安裝時解析 github/url 技能與團隊來源。"
+      },
+      "unpinned": {
+        "label": "允許未釘選的選用來源",
+        "description": "允許未釘選至 ref 或檢查碼的選用來源。"
+      },
+      "localPath": {
+        "label": "允許本機路徑來源",
+        "description": "local_path / agent_package 來源所需。僅供開發使用。"
+      }
+    },
+    "localPathWarning": "此團隊有本機路徑來源。請啟用「允許本機路徑來源」以繼續，或從 CLI 安裝。",
+    "skillAction": {
+      "alreadyInPackage": "已隨套件打包",
+      "catalogInstall": "將從目錄安裝",
+      "externalImport": "將從來源匯入",
+      "blocked": "已封鎖"
+    },
+    "skillPlanIntro": "在匯入代理人之前，目錄會解析它們所依賴的技能。這是解析計畫。",
+    "preparingPreview": "準備預覽中…",
+    "starterTasks": "入門任務",
+    "adapterNote": "每個匯入的代理人預設使用其套件轉接器；在安裝前於此覆寫。安裝後可在代理人上編輯更深入的各轉接器模型設定。",
+    "requiredPlaceholder": "必填",
+    "optionalPlaceholder": "選填",
+    "hideValue": "隱藏值",
+    "showValue": "顯示值",
+    "provenancePrefix": "匯入的實體會標記",
+    "contentHash": "內容雜湊",
+    "provenanceSuffix": "並為預覽與安裝記錄一個活動事件。",
+    "installingHint": "正在解析技能、匯入代理人、專案與例行作業。這可能需要一點時間。",
+    "viewImportedAgents": "檢視匯入的代理人 →",
+    "viewImportedProjects": "檢視匯入的專案 →",
+    "viewRoutines": "檢視例行作業 →",
+    "viewActivityLog": "檢視活動記錄 →",
+    "updateAvailableOutOfDate": "有可用更新 — 已安裝的團隊已過時",
+    "orgChart": "組織圖",
+    "bundled": "已打包",
+    "optional": "選用",
+    "kind": "種類",
+    "category": "類別",
+    "risk": "風險",
+    "resetFilters": "重設篩選",
+    "failedToLoad": "載入團隊目錄失敗。",
+    "noCatalogConfigured": "未設定團隊目錄。",
+    "noTeamsMatch": "沒有符合此篩選條件的團隊。",
+    "backToCatalog": "返回目錄",
+    "selectTeam": "選擇一個團隊以檢視詳細資料。"
   },
   "workspaceFileBrowser": {
     "currentFolder": "目前資料夾",
@@ -5257,7 +5608,18 @@
     "awardRookie": "新秀獎",
     "awardRookieDesc": "首次 skill 表現最佳",
     "noWinner": "本月暫無得主",
-    "formula": "計分公式：已審核分鐘 × 月使用次數 × 團隊加成（≥3 人 ×2.0）× 懸賞加成（90 天內 ×1.3）"
+    "formula": "計分公式：已審核分鐘 × 月使用次數 × 團隊加成（≥3 人 ×2.0）× 懸賞加成（90 天內 ×1.3）",
+    "score": "分數",
+    "rank": "名次",
+    "person": "成員",
+    "runs": "使用次數",
+    "searchPeople": "搜尋成員",
+    "noMatch": "沒有符合搜尋的成員。",
+    "fullRanking": "完整排名",
+    "tierChampion": "冠軍",
+    "tierRunnerUp": "亞軍",
+    "tierThird": "季軍",
+    "minutesUsed": "已使用分鐘"
   },
   "bounties": {
     "title": "懸賞看板",
@@ -5276,7 +5638,10 @@
     "create": "張貼",
     "cancel": "取消",
     "empty": "目前沒有懸賞。",
-    "minutesShort": "分"
+    "minutesShort": "分",
+    "statTotal": "總數",
+    "minutesUpForGrabs": "可認領分鐘數",
+    "reward": "獎勵"
   },
   "office": {
     "title": "虛擬辦公室",
@@ -5297,6 +5662,533 @@
     "status": "狀態",
     "lastActive": "最後活動",
     "noAccess": "您未管理此代理人",
-    "uploadAvatar": "更換頭像"
+    "uploadAvatar": "更換頭像",
+    "open": "前往辦公室",
+    "browseAgents": "瀏覽代理"
+  },
+  "asana": {
+    "myTasks": "我的任務 (Asana)",
+    "today": "今日",
+    "thisWeek": "本週",
+    "noToday": "今天沒有到期的任務 🎉",
+    "noWeek": "本週沒有任務。",
+    "updatedAt": "更新於",
+    "sample": "範例",
+    "progressDone": "{{done}}/{{total}} 完成",
+    "markComplete": "標記完成",
+    "markIncomplete": "標記未完成",
+    "toggleDetails": "切換詳情",
+    "detailStatus": "狀態",
+    "statusDone": "已完成",
+    "statusOpen": "未完成",
+    "detailProject": "專案",
+    "detailPriority": "優先順序",
+    "detailDue": "截止",
+    "detailLink": "連結",
+    "openInAsana": "在 Asana 開啟",
+    "detailDescription": "說明"
+  },
+  "founder": {
+    "pendingApproval": "待您核准",
+    "noItems": "目前沒有項目。",
+    "approved": "已核准",
+    "approve": "核准",
+    "summary": "AI 摘要",
+    "draftReview": "批閱草稿（核准前請先閱讀）",
+    "meetingPrep": "會議準備",
+    "source": "來自 Asana",
+    "triageNow": "現在可先處理",
+    "triageEvening": "留待晚上",
+    "approvedProgress": "{{done}}/{{total}} 已核准"
+  },
+  "sidebarShell": {
+    "resize": "調整側邊欄大小"
+  },
+  "docAnnotation": {
+    "you": "你",
+    "failedCreateComment": "建立留言失敗。",
+    "failedAddReply": "新增回覆失敗。",
+    "failedUpdateStatus": "更新留言狀態失敗。",
+    "closePanel": "關閉註解面板",
+    "writeComment": "撰寫留言…",
+    "posting": "張貼中…",
+    "comment": "留言",
+    "reply": "回覆…",
+    "reopen": "重新開啟",
+    "resolve": "標記解決",
+    "sending": "傳送中…",
+    "replyAction": "回覆",
+    "moreActions": "更多操作",
+    "moreThreadActions": "更多討論串操作",
+    "copyLink": "複製連結",
+    "agentSuffix": "代理人",
+    "openThread": "開啟註解討論串",
+    "anchorMoved": "錨點已移動 — 需要審查",
+    "selectionActions": "選取操作",
+    "addCommentOnSelection": "對選取內容新增留言（⌘⇧M）"
+  },
+  "chatComposer": {
+    "messagePlaceholder": "訊息…",
+    "sendMessage": "傳送訊息",
+    "dropToAttach": "拖放以附加",
+    "uploading": "上傳中…",
+    "uploadFailed": "上傳失敗",
+    "insertedInline": "已內嵌插入",
+    "attached": "已附加",
+    "attachFiles": "附加檔案"
+  },
+  "workspaceFiles": {
+    "unavailableRemoteTitle": "不支援遠端工作區預覽",
+    "unavailableRemoteBody": "此工作區託管於遠端，目前尚不支援內嵌預覽。",
+    "unavailableNoWorkspaceTitle": "尚無工作區",
+    "unavailableNoWorkspaceBody": "此議題沒有可瀏覽的工作區。當執行建立工作區後，檔案會顯示於此。",
+    "unavailableArchivedTitle": "工作區已不再可用",
+    "unavailableArchivedBody": "此議題的隔離工作樹已被清理，因此無法預覽檔案。",
+    "unavailableGenericTitle": "工作區無法使用",
+    "unavailableGenericBody": "目前無法瀏覽這些工作區檔案。",
+    "currentFolder": "目前資料夾",
+    "loadingFolder": "載入資料夾中…",
+    "loadMoreFolder": "從此資料夾載入更多",
+    "workspaceFiles": "工作區檔案",
+    "announceLoading": "載入工作區檔案中…",
+    "announceError": "無法載入工作區檔案。",
+    "announceNoMatch": "沒有相符的檔案。",
+    "noCompanyTitle": "未選取公司",
+    "noCompanyBody": "瀏覽其他專案工作區前請先選擇公司。",
+    "loadingProjectWorkspacesTitle": "載入專案工作區中",
+    "loadingProjectWorkspacesBody": "已註冊的工作區會顯示於此。",
+    "noProjectWorkspacesTitle": "沒有專案工作區",
+    "noProjectWorkspacesBody": "同公司中沒有任何專案具有可瀏覽的已註冊工作區。",
+    "couldntLoadTitle": "無法載入檔案",
+    "couldntLoad404": "此議題無法使用工作區瀏覽功能。",
+    "couldntLoadGeneric": "載入工作區檔案時發生錯誤。",
+    "noRecentlyChanged": "尚無最近變更的檔案",
+    "trySearching": "請嘗試以名稱或路徑搜尋。"
+  },
+  "routineSidebar": {
+    "navLabel": "例行作業區段",
+    "unsavedChanges": "未儲存的變更",
+    "sectionLabel": "例行作業區段"
+  },
+  "issueChat": {
+    "pausedByBudget": "它因預算硬性停止而暫停。",
+    "pausedBySystem": "它被系統暫停。",
+    "pausedManually": "它被手動暫停。",
+    "rendererError": "對話算繪器發生內部狀態錯誤。",
+    "rendererErrorBody": "顯示安全的備援文字記錄，而非讓任務頁面當機。",
+    "noMessageContent": "沒有訊息內容。",
+    "working": "執行中",
+    "worked": "已執行",
+    "copyFailed": "複製失敗",
+    "unableToCopyText": "無法複製文字",
+    "toolInput": "輸入",
+    "toolResult": "結果",
+    "deferredWake": "\\u23f8 延遲喚醒",
+    "queued": "已排入佇列",
+    "followUp": "後續追蹤",
+    "interrupting": "中斷中…",
+    "interrupt": "中斷",
+    "commentDeleted": "留言已刪除",
+    "sending": "傳送中…",
+    "copyMessage": "複製訊息",
+    "unableToCopyMessage": "無法複製訊息",
+    "deleteComment": "刪除留言",
+    "deleteCommentTitle": "刪除留言？",
+    "deleteCommentDescription": "這會以已刪除留言標記取代該留言。",
+    "stopRun": "停止執行",
+    "stopping": "停止中…",
+    "agent": "代理人",
+    "moreActions": "更多操作",
+    "viewRun": "檢視執行",
+    "updatedThisTask": "更新了此任務",
+    "hideConfirmation": "隱藏確認",
+    "expiredConfirmation": "已過期的確認",
+    "unableToCopyNotice": "無法複製系統通知",
+    "unableToCopyNoticeLink": "無法複製系統通知連結",
+    "copyLink": "複製連結",
+    "copyLinkToNotice": "複製系統通知連結",
+    "copyNoticeText": "複製通知文字",
+    "copyNotice": "複製系統通知",
+    "noAssigneeSelected": "未選取受指派者",
+    "noAssigneeBody": "請挑選受指派者，或再次點按「傳送」以不指派任何人張貼。",
+    "fileTypeNotAttachable": "此檔案類型無法在此附加",
+    "uploadFailed": "上傳失敗",
+    "dropToUpload": "拖放以上傳",
+    "dropToUploadHint": "圖片會插入回覆中，其他檔案則會新增至此任務。",
+    "reply": "回覆",
+    "uploadingToTask": "上傳至任務中",
+    "insertedInline": "已內嵌插入",
+    "attachedToTask": "已附加至任務",
+    "attachFile": "附加檔案",
+    "cyclesModes": "Cmd/Ctrl+. 切換模式",
+    "assignee": "受指派者",
+    "noAssignee": "無受指派者",
+    "searchAssignees": "搜尋受指派者…",
+    "noAssigneesFound": "找不到受指派者。",
+    "posting": "張貼中…",
+    "send": "傳送",
+    "noRunOutput": "尚無執行輸出。",
+    "emptyConversation": "此任務對話是空的。請從下方的訊息開始。",
+    "legacyRecoveryTask": "舊版復原任務",
+    "legacyRecoveryBody": "舊版復原任務。較新的復原操作位於來源任務上"
+  },
+  "agentBubble": {
+    "helpful": "有幫助",
+    "needsWork": "需要改進",
+    "whatCouldBeBetter": "有什麼可以做得更好？",
+    "addShortNote": "新增簡短備註",
+    "saveNote": "儲存備註",
+    "sharingPrefTitle": "儲存你的意見回饋分享偏好",
+    "sharingPrefDescription": "選擇是否可將你評分過的 AI 輸出分享給 Paperclip Labs。此答覆會成為未來按讚與倒讚評分的預設值。",
+    "sharingPrefAlwaysLocal": "此評分一律儲存於本機。",
+    "sharingPrefChooseAllow": "選擇「一律允許」以分享此評分及未來評分過的 AI 輸出。選擇「不允許」則將此評分與未來評分保留在本機。",
+    "sharingPrefChangeLater": "你之後可在「執行個體設定」>「一般」中變更此設定。",
+    "readTerms": "閱讀我們的服務條款",
+    "dontAllow": "不允許",
+    "alwaysAllow": "一律允許",
+    "copyMessage": "複製訊息",
+    "moreActions": "更多操作"
+  },
+  "fileViewer": {
+    "denialPolicyTitle": "此檔案的檢視器已封鎖",
+    "denialPolicyBody": "此檔案無法透過檢視器存取，因為它可能含有敏感資料。",
+    "denialOutsideTitle": "路徑位於工作區之外",
+    "denialOutsideBody": "檢視器只能開啟位於該議題工作區底下的檔案。",
+    "denialArchivedTitle": "工作區已不再可用",
+    "denialArchivedBody": "此議題的隔離工作樹已被清理，因此無法預覽檔案。",
+    "denialRemoteTitle": "不支援遠端工作區預覽",
+    "denialRemoteBody": "此工作區託管於遠端，目前尚不支援內嵌預覽。",
+    "denialTooLargeTitle": "檔案太大無法預覽",
+    "denialTooLargeBody": "此檔案超過支援的預覽大小。",
+    "denialUnsupportedTitle": "不支援此檔案類型的預覽",
+    "denialUnsupportedBody": "此檔案沒有可用的文字、圖片或影片預覽。",
+    "denialGenericTitle": "無法預覽此檔案",
+    "denialGenericBody": "檢視器無法載入此檔案。",
+    "loadingDetails": "載入檔案詳細資料中",
+    "imageUnavailable": "圖片預覽無法使用",
+    "videoUnavailable": "影片預覽無法使用",
+    "markdownPreviewMode": "Markdown 預覽模式",
+    "showRenderedMarkdown": "顯示算繪後的 Markdown",
+    "renderedMarkdown": "算繪後的 Markdown",
+    "showRawMarkdown": "顯示原始 Markdown",
+    "rawMarkdown": "原始 Markdown",
+    "loadingPreview": "載入檔案預覽中",
+    "loadingPreviewEllipsis": "載入檔案預覽中…",
+    "unableToLoad": "無法載入檔案。",
+    "unableToLoadContent": "無法載入檔案內容。",
+    "copyFailed": "複製失敗",
+    "contentsUnavailable": "檔案內容無法使用",
+    "copiedFileData": "已複製檔案資料",
+    "copiedContents": "已複製內容",
+    "copiedLink": "已複製連結",
+    "browseWorkspace": "瀏覽工作區",
+    "browseDescription": "搜尋並預覽此議題工作區中的檔案。",
+    "backToFiles": "返回檔案",
+    "copiedFileContents": "已複製檔案內容",
+    "copyFileContents": "複製檔案內容",
+    "copiedFileViewLink": "已複製檔案檢視連結",
+    "copyFileViewLink": "複製此檔案檢視的連結",
+    "copyLink": "複製連結",
+    "closeViewer": "關閉檔案檢視器",
+    "resizeFileTree": "調整檔案樹大小",
+    "notFoundTitle": "找不到檔案",
+    "notFoundBody": "在使用中的工作區找不到該檔案。",
+    "tryProjectWorkspace": "嘗試專案工作區",
+    "noWorkspaceTitle": "沒有可用的工作區",
+    "noWorkspaceBody": "此議題尚無支援預覽的工作區。",
+    "remoteComingSoonTitle": "遠端工作區預覽即將推出",
+    "remoteComingSoonBody": "此工作區託管於遠端；目前尚不支援內嵌預覽。"
+  },
+  "envVar": {
+    "secretNamePrompt": "密鑰名稱",
+    "createFailed": "建立密鑰失敗",
+    "keyPlaceholder": "KEY",
+    "bindingMode": "繫結模式",
+    "plain": "純文字",
+    "secret": "密鑰",
+    "selectSecret": "選擇密鑰…",
+    "version": "版本",
+    "latest": "最新",
+    "createFromPlainTitle": "從目前的純文字值建立密鑰",
+    "new": "新增",
+    "valuePlaceholder": "值",
+    "sealTitle": "將值儲存為密鑰並以參照取代",
+    "seal": "封存",
+    "recentlyUsed": "最近使用：",
+    "runsWillFail": "在你重新對應或重新啟用之前，執行將會失敗。",
+    "bottomHint": "將 KEY 設為程序預期的環境變數名稱，例如 GH_TOKEN。選擇「密鑰」以在執行開始時解析已儲存的值。PAPERCLIP_* 變數會自動注入。"
+  },
+  "issueAttachments": {
+    "deleteAttachment": "刪除附件",
+    "attachmentLabel": "附件",
+    "loadingPreview": "載入預覽中…",
+    "previewError": "無法載入 Markdown 預覽。",
+    "title": "附件",
+    "deleteQuestion": "刪除？",
+    "deleteConfirm": "刪除此附件？此動作無法復原。"
+  },
+  "sidebar": {
+    "keepExpanded": "保持側邊欄展開",
+    "expand": "展開側邊欄",
+    "collapse": "收合側邊欄",
+    "unread": "未讀"
+  },
+  "trustPreset": {
+    "boundaryProject": "專案",
+    "boundaryRootIssue": "根議題",
+    "boundaryIssue": "議題",
+    "heading": "信任",
+    "presetLabel": "信任預設組合",
+    "presetHint": "選擇此代理人能多廣泛地讀取並操作 Paperclip 工作物件。",
+    "containmentActive": "圍堵已啟用",
+    "containmentNotConfigured": "圍堵未設定",
+    "containmentActiveDesc": "此代理人只能讀取並變更其指派審查邊界內的工作。原始輸出會與較高信任的代理人隔離，直到受信任的審查者將其提升。",
+    "containmentNotConfiguredDesc": "此代理人設為低信任審查，但核心政策中未設定任何專案、根議題或議題範圍。請先新增範圍，此代理人才能在不被拒絕的情況下執行。",
+    "boundaryType": "邊界類型",
+    "noProjectsAvailable": "沒有可用的專案",
+    "noIssuesAvailable": "沒有可用的議題",
+    "selectBoundary": "選擇邊界",
+    "clearBoundary": "清除邊界",
+    "managedByEe": "由 EE/API 管理",
+    "multiBoundaryPrompt": "想設定多個圍堵邊界嗎？",
+    "getPaperclipEe": "取得 Paperclip EE。",
+    "viewPolicy": "檢視政策",
+    "rowPreset": "預設組合",
+    "lowTrustReviewV1": "低信任審查 v1",
+    "rowRawOutput": "原始輸出",
+    "quarantinedFromHigherTrust": "與較高信任的代理人隔離",
+    "rowProjects": "專案",
+    "rowRootIssue": "根議題",
+    "rowExplicitIssues": "明確指定的議題",
+    "rowAllowedAgents": "允許的代理人",
+    "rowAllowedTools": "允許的工具",
+    "rowAllowedSecrets": "允許的密鑰",
+    "rowPromotionTarget": "提升目標",
+    "rowEeFields": "EE 欄位",
+    "customAdvancedPreserved": "已保留自訂進階政策欄位",
+    "advancedEditableNote": "安裝 EE 權限擴充功能後，進階權限仍可透過它編輯。"
+  },
+  "activityFeed": {
+    "system": "系統",
+    "board": "董事會",
+    "unknown": "未知",
+    "earlier": "更早",
+    "otherActivity": "其他活動",
+    "emptyNoAgents": "尚未設定任何代理人。新增代理人以開始使用。",
+    "emptyAllPaused": "所有代理人都已暫停。從側邊欄繼續代理人以查看活動。",
+    "emptyRunning": "你的代理人正在執行 — 活動很快就會顯示於此。",
+    "title": "代理人動態",
+    "subtitle": "來自你代理人的即時活動",
+    "groupByTaskAria": "依任務分組",
+    "groupByTask": "依任務分組",
+    "showFlat": "顯示為平面",
+    "filterByAria": "篩選依據",
+    "filterBy": "篩選依據",
+    "showAllActivity": "顯示所有活動",
+    "emptyFallback": "來自你代理人的活動會顯示於此。"
+  },
+  "artifactCard": {
+    "image": "圖片",
+    "document": "文件",
+    "text": "文字",
+    "file": "檔案",
+    "openInNewTab": "在新分頁中開啟檔案",
+    "downloadFile": "下載檔案"
+  },
+  "issueOutput": {
+    "taskOutputs": "任務輸出",
+    "output": "輸出",
+    "alsoProduced": "也產出了",
+    "fileDetailsUnavailable": "檔案詳細資料無法使用"
+  },
+  "routineSections": {
+    "runs": {
+      "dateWindow": {
+        "any": "任何時間",
+        "24h": "過去 24 小時",
+        "7d": "過去 7 天",
+        "30d": "過去 30 天"
+      },
+      "source": "來源",
+      "status": "狀態",
+      "date": "日期",
+      "emptyMessage": "尚無執行。從標頭觸發執行，或等候排程。",
+      "runNow": "立即執行",
+      "filterBySource": "依來源篩選",
+      "sourcePrefix": "來源：",
+      "any": "任何",
+      "filterByStatus": "依狀態篩選",
+      "statusPrefix": "狀態：",
+      "filterByDate": "依日期篩選",
+      "datePrefix": "日期：",
+      "noMatch": "沒有符合這些篩選條件的執行。",
+      "clearFilters": "清除篩選",
+      "runFallback": "執行"
+    },
+    "activity": {
+      "earlier": "更早",
+      "empty": "尚無活動。"
+    },
+    "concurrency": {
+      "coalesceIfActive": {
+        "title": "若進行中則合併",
+        "description": "在有進行中的執行仍在工作時，僅保留一個後續執行排入佇列。"
+      },
+      "alwaysEnqueue": {
+        "title": "一律排入佇列",
+        "description": "將每次觸發發生都排入佇列，即使多個執行堆疊起來也是如此。"
+      },
+      "skipIfActive": {
+        "title": "若進行中則略過",
+        "description": "在例行作業已在進行中時，捨棄重疊的觸發發生。"
+      }
+    },
+    "catchUp": {
+      "skipMissed": {
+        "title": "略過錯過的",
+        "description": "忽略暫停期間錯過的排程時間窗。"
+      },
+      "enqueueMissedWithCap": {
+        "title": "排入錯過的（含上限）",
+        "description": "在復原後以有上限的批次補做錯過的排程時間窗。"
+      }
+    },
+    "signingMode": {
+      "bearer": "預期 Authorization 標頭中有共用的 bearer token。",
+      "hmacSha256": "預期使用共用密鑰對請求進行的 HMAC SHA-256 簽章。",
+      "githubHmac": "接受 GitHub 風格的 X-Hub-Signature-256 標頭（對原始主體進行 HMAC，無時間戳記）。",
+      "none": "無驗證 — webhook URL 本身即作為共用密鑰。"
+    },
+    "overview": {
+      "for": "給",
+      "assignee": "受指派者",
+      "noAssignee": "無受指派者",
+      "searchAssignees": "搜尋受指派者…",
+      "noAssigneesFound": "找不到受指派者。",
+      "in": "於",
+      "project": "專案",
+      "noProject": "無專案",
+      "searchProjects": "搜尋專案…",
+      "noProjectsFound": "找不到專案。",
+      "defaultAgentRequired": "需要預設代理人。此例行作業可維持為草稿並仍可手動執行，但在你指派預設代理人之前，自動化會保持暫停。",
+      "addInstructions": "新增指示…",
+      "triggers": "觸發器",
+      "none": "無",
+      "noSchedule": "無排程",
+      "secrets": "密鑰",
+      "manageBoundSecrets": "管理已繫結的密鑰",
+      "lastRun": "上次執行",
+      "noRuns": "尚無執行",
+      "triggerARun": "觸發一次執行",
+      "noRunsAria": "尚無執行。開啟執行。",
+      "recentActivity": "最近活動",
+      "noActivityYet": "尚無活動。",
+      "viewAllActivity": "檢視所有活動"
+    },
+    "triggers": {
+      "noneYet": "尚無觸發器",
+      "newTrigger": "新增觸發器",
+      "addTrigger": "新增觸發器",
+      "kind": "種類",
+      "comingSoon": " — 即將推出",
+      "schedule": "排程",
+      "signingMode": "簽章模式",
+      "replayWindow": "重播時間窗（秒）",
+      "adding": "新增中…",
+      "emptyMessage": "尚無觸發器。",
+      "addSchedule": "新增排程"
+    },
+    "variables": {
+      "hintPrefix": "變數會自動從",
+      "hintSuffix": "標題與指示中偵測。變數名稱為唯讀 — 透過編輯預留位置來重新命名。",
+      "editInstructions": "編輯指示"
+    },
+    "secrets": {
+      "intro": "例行作業密鑰適用於此例行作業建立的每個任務。它們會覆寫專案與代理人環境中相符的鍵。",
+      "reserved": "名稱為保留名稱。",
+      "saveNow": "請立即儲存。Paperclip 不會再次顯示此密鑰值。",
+      "webhookUrl": "Webhook URL",
+      "url": "URL",
+      "webhookSecret": "Webhook 密鑰",
+      "secret": "密鑰"
+    },
+    "delivery": {
+      "concurrency": "並行",
+      "concurrencyPolicy": "並行政策",
+      "catchUp": "補做",
+      "catchUpPolicy": "補做政策",
+      "next5Fires": "接下來 5 次觸發",
+      "noPreview": "沒有已啟用的排程觸發器可預覽。在「觸發器」中新增排程，以查看此政策如何處理即將到來的觸發。"
+    }
+  },
+  "interruptHandoff": {
+    "agentPrefix": "代理人 ",
+    "userPrefix": "使用者 ",
+    "noAssigneePrefix": "無受指派者 — ",
+    "unassigned": "未指派",
+    "wake": "喚醒",
+    "insertMention": "插入提及",
+    "dismissSuggestion": "關閉建議",
+    "handOffTo": "交接給",
+    "whatThisAffects": "這會影響什麼",
+    "nothingLive": "沒有進行中的項目可暫停 — 沒有代理人執行正在進行或排入佇列。這會記錄一個保留狀態，在你繼續之前不會開始新工作。",
+    "noTasksAffected": "沒有任務受到影響。"
+  },
+  "boardChat": {
+    "typing": "輸入中",
+    "breadcrumb": "會議室",
+    "status": {
+      "connecting": "連線中…",
+      "thinking": "思考中…"
+    },
+    "error": {
+      "noResponse": "董事會助理無法回覆。請再試一次。",
+      "unavailable": "董事會助理目前無法使用。請稍後再試。"
+    },
+    "noCompany": {
+      "title": "未選取公司",
+      "body": "選擇一間公司以開始與你的董事會管家對話。"
+    },
+    "yourCompany": "你的公司",
+    "chatHistory": "對話記錄",
+    "newChat": "新對話",
+    "welcome": {
+      "prompt": "以下是我現在可以協助你寫下的幾件事。在下方挑選一項，我會運用你告訴我們的一切為你草擬。"
+    },
+    "chip": {
+      "companyBrief": {
+        "label": "草擬公司簡介"
+      },
+      "hiringPlan": {
+        "label": "建立招募計畫"
+      },
+      "first30Days": {
+        "label": "規劃我們的前 30 天",
+        "prompt": "規劃我們的前 30 天。將其拆解為每週優先事項，並標明各項由誰負責。"
+      },
+      "introPitch": {
+        "label": "撰寫一段介紹推銷詞"
+      }
+    },
+    "assistant": "助理",
+    "jumpToLatest": "跳至最新訊息",
+    "composerPlaceholder": "詢問任何關於你公司的事…",
+    "sendMessage": "傳送訊息",
+    "resizeSplit": "調整董事會對話與代理人動態的大小",
+    "openAgentFeed": "開啟代理人動態"
+  },
+  "notifications": {
+    "title": "通知",
+    "markAllRead": "全部標為已讀"
+  },
+  "schedule": {
+    "title": "我的行程",
+    "likelyRelated": "可能相關",
+    "nameMatching": "日曆名稱比對",
+    "upcoming": "即將到來",
+    "empty": "目前沒有標題含你名字的行程。",
+    "aliasHint": "用來比對活動標題的名字（以逗號分隔）。標題含任一名字的活動會顯示為你的行程。",
+    "aliasPlaceholder": "例如：黃睦傑, 睦傑, Jay",
+    "aliasReset": "重設為預設值"
   }
 }

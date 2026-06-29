@@ -911,18 +911,18 @@ function AskUserQuestionsCard({
                   onClick={() =>
                     toggleOption(question.id, OTHER_ANSWER_ID, question.selectionMode)}
                 >
-                  Other
+                  {t("interaction.other")}
                 </button>
                 {otherActiveQuestions[question.id] ? (
                   <Textarea
-                    aria-label={`Other answer for ${question.prompt}`}
+                    aria-label={t("interaction.otherAnswerFor", { prompt: question.prompt, defaultValue: "Other answer for {{prompt}}" })}
                     value={draftOtherAnswers[question.id] ?? ""}
                     onChange={(event) =>
                       setDraftOtherAnswers((current) => ({
                         ...current,
                         [question.id]: event.target.value,
                       }))}
-                    placeholder="Type your answer"
+                    placeholder={t("interaction.typeYourAnswer", { defaultValue: "Type your answer" })}
                     className="min-h-24 bg-background text-sm"
                   />
                 ) : null}
@@ -1236,7 +1236,7 @@ function RequestConfirmationCard({
       }
       if (uploaded.length > 0) setShots((current) => [...current, ...uploaded]);
     } catch {
-      setUploadError("Couldn't upload that image. Try again.");
+      setUploadError(t("interaction.confirm.imageUploadError", { defaultValue: "Couldn't upload that image. Try again." }));
     } finally {
       setUploading(false);
     }
@@ -1363,7 +1363,7 @@ function RequestConfirmationCard({
                           />
                           <button
                             type="button"
-                            aria-label={`Remove ${shot.name}`}
+                            aria-label={t("interaction.confirm.removeScreenshot", { name: shot.name, defaultValue: "Remove {{name}}" })}
                             className="absolute right-0.5 top-0.5 rounded-full bg-background/90 p-0.5 text-foreground opacity-0 transition-opacity group-hover:opacity-100"
                             onClick={() =>
                               setShots((current) => current.filter((_, i) => i !== index))
@@ -1396,12 +1396,12 @@ function RequestConfirmationCard({
                     {uploading ? (
                       <>
                         <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        Uploading...
+                        {t("interaction.confirm.uploading", { defaultValue: "Uploading..." })}
                       </>
                     ) : (
                       <>
                         <ImagePlus className="mr-2 h-3.5 w-3.5" />
-                        Attach screenshots
+                        {t("interaction.confirm.attachScreenshots", { defaultValue: "Attach screenshots" })}
                       </>
                     )}
                   </Button>
@@ -1461,6 +1461,7 @@ function RequestCheckboxConfirmationResolution({
 }: {
   interaction: RequestCheckboxConfirmationInteraction;
 }) {
+  const { t } = useTranslation();
   const target = interaction.payload.target ?? null;
   const [expanded, setExpanded] = useState(false);
 
@@ -1484,15 +1485,15 @@ function RequestCheckboxConfirmationResolution({
         <div className="flex flex-wrap items-center gap-2 text-sm leading-6 text-foreground">
           <span className="font-medium">
             {selectedCount === 0
-              ? "Confirmed with no options selected"
-              : `Confirmed ${selectedCount} of ${totalOptions} ${totalOptions === 1 ? "option" : "options"}`}
+              ? t("interaction.checkbox.confirmedNone", { defaultValue: "Confirmed with no options selected" })
+              : t("interaction.checkbox.confirmedCount", { selected: selectedCount, total: totalOptions, count: totalOptions, defaultValue: "Confirmed {{selected}} of {{total}} options" })}
           </span>
           <RequestConfirmationTargetChip interaction={interaction} target={target} />
         </div>
         {visibleLabels.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {visibleLabels.map((label, index) => (
-              <TaskField key={`${label}-${index}`} label="Selected" value={label} />
+              <TaskField key={`${label}-${index}`} label={t("interaction.checkbox.selected", { defaultValue: "Selected" })} value={label} />
             ))}
             {hasHiddenLabels ? (
               <button
@@ -1504,7 +1505,7 @@ function RequestCheckboxConfirmationResolution({
                 )}
                 aria-expanded={expanded}
               >
-                {expanded ? "Show less" : `+${hiddenCount} more`}
+                {expanded ? t("interaction.checkbox.showLess", { defaultValue: "Show less" }) : t("interaction.checkbox.showMore", { count: hiddenCount, defaultValue: "+{{count}} more" })}
               </button>
             ) : null}
           </div>
@@ -1524,7 +1525,7 @@ function RequestCheckboxConfirmationResolution({
   if (interaction.status === "failed") {
     return (
       <p className="text-sm leading-6 text-muted-foreground">
-        This request could not be resolved. Try again or create a new request.
+        {t("interaction.confirm.failed")}
       </p>
     );
   }
@@ -1592,6 +1593,7 @@ function RequestCheckboxConfirmationCard({
   ) => Promise<void> | void;
   externalReferences?: MarkdownExternalReferenceMap;
 }) {
+  const { t } = useTranslation();
   const options = interaction.payload.options;
   const optionIds = useMemo(() => options.map((option) => option.id), [options]);
   const validOptionIds = useMemo(() => new Set(optionIds), [optionIds]);
@@ -1634,7 +1636,7 @@ function RequestCheckboxConfirmationCard({
   const canReject = !rejectRequiresReason || trimmedRejectReason.length > 0;
   const declineReasonInvalid = rejectRequiresReason && !canReject;
   const declineReasonPlaceholder =
-    interaction.payload.declineReasonPlaceholder ?? "Optional: tell the agent what you'd change.";
+    interaction.payload.declineReasonPlaceholder ?? t("interaction.confirm.declinePlaceholderChange");
 
   const selectedCount = selectedOptionIds.size;
   const totalOptions = options.length;
@@ -1644,13 +1646,9 @@ function RequestCheckboxConfirmationCard({
   const selectionValid = !belowMin && !aboveMax;
 
   const validationMessage = belowMin
-    ? minSelected === 1
-      ? "Select at least 1 option."
-      : `Select at least ${minSelected} options.`
+    ? t("interaction.checkbox.selectAtLeast", { count: minSelected, defaultValue: "Select at least {{count}} options." })
     : aboveMax && maxSelected != null
-      ? maxSelected === 1
-        ? "Select at most 1 option."
-        : `Select at most ${maxSelected} options.`
+      ? t("interaction.checkbox.selectAtMost", { count: maxSelected, defaultValue: "Select at most {{count}} options." })
       : null;
 
   function toggleOption(optionId: string, checked: boolean) {
@@ -1682,7 +1680,7 @@ function RequestCheckboxConfirmationCard({
     try {
       await onAcceptInteraction(interaction, undefined, [...selectedOptionIds]);
     } catch {
-      setActionError("Try again");
+      setActionError(t("interaction.confirm.tryAgain"));
     } finally {
       setWorking(null);
     }
@@ -1697,7 +1695,7 @@ function RequestCheckboxConfirmationCard({
       await onRejectInteraction(interaction, trimmedRejectReason || undefined);
       setRejecting(false);
     } catch {
-      setActionError("Try again");
+      setActionError(t("interaction.confirm.tryAgain"));
     } finally {
       setWorking(null);
     }
@@ -1712,12 +1710,14 @@ function RequestCheckboxConfirmationCard({
   }
 
   const selectionSummary = totalOptions > 0 && selectedCount === totalOptions
-    ? `All ${totalOptions} options selected`
-    : `${selectedCount} of ${totalOptions} ${totalOptions === 1 ? "option" : "options"} selected`;
+    ? t("interaction.checkbox.allSelected", { count: totalOptions, defaultValue: "All {{count}} options selected" })
+    : t("interaction.checkbox.someSelected", { selected: selectedCount, total: totalOptions, count: totalOptions, defaultValue: "{{selected}} of {{total}} options selected" });
   const boundsHint = maxSelected != null
-    ? `Pick ${minSelected === maxSelected ? `exactly ${maxSelected}` : `${minSelected}-${maxSelected}`}.`
+    ? (minSelected === maxSelected
+        ? t("interaction.checkbox.pickExactly", { count: maxSelected, defaultValue: "Pick exactly {{count}}." })
+        : t("interaction.checkbox.pickRange", { min: minSelected, max: maxSelected, defaultValue: "Pick {{min}}-{{max}}." }))
     : minSelected > 0
-      ? `Pick at least ${minSelected}.`
+      ? t("interaction.checkbox.pickAtLeast", { count: minSelected, defaultValue: "Pick at least {{count}}." })
       : null;
 
   return (
@@ -1748,7 +1748,7 @@ function RequestCheckboxConfirmationCard({
               disabled={working !== null || selectedCount === totalOptions || (maxSelected != null && selectedCount >= maxSelected)}
               onClick={handleSelectAll}
             >
-              Select all
+              {t("interaction.checkbox.selectAll", { defaultValue: "Select all" })}
             </Button>
             <Button
               size="sm"
@@ -1756,14 +1756,14 @@ function RequestCheckboxConfirmationCard({
               disabled={working !== null || selectedCount === 0}
               onClick={handleClearSelection}
             >
-              Clear selection
+              {t("interaction.checkbox.clearSelection", { defaultValue: "Clear selection" })}
             </Button>
           </div>
         </div>
 
         <div
           role="group"
-          aria-label="Selectable options"
+          aria-label={t("interaction.checkbox.selectableOptions", { defaultValue: "Selectable options" })}
           className="max-h-80 overflow-y-auto rounded-sm border border-border/70"
         >
           {options.map((option) => {
@@ -1796,10 +1796,10 @@ function RequestCheckboxConfirmationCard({
             {working === "accept" ? (
               <>
                 <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                Confirming...
+                {t("interaction.confirm.confirming")}
               </>
             ) : (
-              interaction.payload.acceptLabel ?? "Confirm selected"
+              interaction.payload.acceptLabel ?? t("interaction.checkbox.confirmSelected", { defaultValue: "Confirm selected" })
             )}
           </Button>
           <Button
@@ -1815,7 +1815,7 @@ function RequestCheckboxConfirmationCard({
               setRejecting((current) => !current);
             }}
           >
-            {interaction.payload.rejectLabel ?? "Request changes"}
+            {interaction.payload.rejectLabel ?? t("interaction.checkbox.requestChanges", { defaultValue: "Request changes" })}
           </Button>
         </div>
 
@@ -1833,7 +1833,7 @@ function RequestCheckboxConfirmationCard({
               )}
             />
             {rejectAttempted && declineReasonInvalid ? (
-              <p className="text-xs text-destructive">A reason is required.</p>
+              <p className="text-xs text-destructive">{t("interaction.checkbox.reasonRequired", { defaultValue: "A reason is required." })}</p>
             ) : null}
             <div className="flex flex-wrap justify-end gap-2">
               <Button
@@ -1845,7 +1845,7 @@ function RequestCheckboxConfirmationCard({
                   setRejectAttempted(false);
                 }}
               >
-                Cancel
+                {t("common.cancel", { defaultValue: "Cancel" })}
               </Button>
               <Button
                 size="sm"
@@ -1856,10 +1856,10 @@ function RequestCheckboxConfirmationCard({
                 {working === "reject" ? (
                   <>
                     <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                    Saving...
+                    {t("interaction.confirm.saving")}
                   </>
                 ) : (
-                  interaction.payload.rejectLabel ?? "Request changes"
+                  interaction.payload.rejectLabel ?? t("interaction.checkbox.requestChanges", { defaultValue: "Request changes" })
                 )}
               </Button>
             </div>
@@ -1956,7 +1956,7 @@ export function IssueThreadInteractionCard({
             </div>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Created {formatDateTime(interaction.createdAt)}
+            {t("interaction.createdAt", { time: formatDateTime(interaction.createdAt), defaultValue: "Created {{time}}" })}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -1999,8 +1999,8 @@ export function IssueThreadInteractionCard({
 
       {resolvedByLabel ? (
         <div className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-          Resolved by <span className="font-medium text-foreground">{resolvedByLabel}</span>
-          {interaction.resolvedAt ? ` on ${formatShortDate(interaction.resolvedAt)}` : ""}
+          {t("interaction.resolvedByPrefix", { defaultValue: "Resolved by" })} <span className="font-medium text-foreground">{resolvedByLabel}</span>
+          {interaction.resolvedAt ? t("interaction.resolvedOn", { date: formatShortDate(interaction.resolvedAt), defaultValue: " on {{date}}" }) : ""}
         </div>
       ) : null}
     </div>

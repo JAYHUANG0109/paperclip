@@ -3,4 +3,6 @@ export interface SidebarBadges {
   approvals: number;
   failedRuns: number;
   joinRequests: number;
+  /** Unread in-app notifications (e.g. Asana digest refreshed). Optional/additive. */
+  notifications?: number;
 }

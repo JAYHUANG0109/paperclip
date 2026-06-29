@@ -5,6 +5,8 @@ import { agentsApi, type OrgNode } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
+import { TeamFilterBar } from "../components/TeamFilterBar";
+import { useAgentTeamFilter, agentMatchesTeams, listAllTeams } from "../lib/agent-teams";
 import { agentUrl } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
@@ -194,6 +196,9 @@ export function OrgChart() {
     for (const a of agents ?? []) m.set(a.id, a);
     return m;
   }, [agents]);
+
+  const teamFilter = useAgentTeamFilter(selectedCompanyId);
+  const allTeams = useMemo(() => listAllTeams(agents ?? []), [agents]);
 
   useEffect(() => {
     setBreadcrumbs([{ label: t("orgChart.breadcrumb") }]);
@@ -457,6 +462,16 @@ export function OrgChart() {
             {t("orgChart.exportCompany")}
           </Button>
         </Link>
+        {allTeams.length > 0 && (
+          <div className="ml-auto">
+            <TeamFilterBar
+              teams={allTeams}
+              selected={teamFilter.selected}
+              onToggle={teamFilter.toggle}
+              onClear={teamFilter.clear}
+            />
+          </div>
+        )}
       </div>
       <div
         ref={containerRef}
@@ -562,17 +577,22 @@ export function OrgChart() {
           {allNodes.map((node) => {
             const agent = agentMap.get(node.id);
             const dotColor = statusDotColor[node.status] ?? defaultDotColor;
+            const dimmed =
+              teamFilter.selected.length > 0 &&
+              !(agent && agentMatchesTeams(agent, teamFilter.selected));
 
             return (
               <div
                 key={node.id}
                 data-org-card
-                className="absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none"
+                className="absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color,opacity] duration-150 cursor-pointer select-none"
                 style={{
                   left: node.x,
                   top: node.y,
                   width: CARD_W,
                   minHeight: CARD_H,
+                  opacity: dimmed ? 0.2 : 1,
+                  pointerEvents: dimmed ? "none" : undefined,
                 }}
                 onClick={() => navigate(agent ? agentUrl(agent) : `/agents/${node.id}`)}
                 onClickCapture={(e) => {

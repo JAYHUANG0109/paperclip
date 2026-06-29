@@ -166,7 +166,7 @@ export function CompanyPatternIcon({
   logoUrl,
   brandColor,
   className,
-  logoFit = "cover",
+  logoFit = "contain",
 }: CompanyPatternIconProps) {
   const initial = companyName.trim().charAt(0).toUpperCase() || "?";
   const [imageError, setImageError] = useState(false);
@@ -182,7 +182,11 @@ export function CompanyPatternIcon({
   return (
     <div
       className={cn(
-        "relative flex items-center justify-center w-11 h-11 text-base font-semibold text-white overflow-hidden",
+        "relative flex items-center justify-center w-11 h-11 text-base font-semibold text-white",
+        // A real (transparent-bg) logo is shown whole, never clipped by the
+        // container's rounded/circular shape; only the generated fallback
+        // pattern and initial are clipped to the shape.
+        logo ? "overflow-visible" : "overflow-hidden",
         className,
       )}
     >

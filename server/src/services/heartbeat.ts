@@ -58,6 +58,7 @@ import { conflict, HttpError, notFound } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { publishLiveEvent } from "./live-events.js";
 import { getRunLogStore, type RunLogHandle } from "./run-log-store.js";
+import { skillUsageTelemetry } from "./skill-usage-telemetry.js";
 import { getServerAdapter, listAdapterModelProfiles, runningProcesses } from "../adapters/index.js";
 import type {
   AdapterExecutionResult,
@@ -3486,6 +3487,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
   });
 
   const runLogStore = getRunLogStore();
+  const skillUsage = skillUsageTelemetry(db);
   const secretsSvc = secretService(db);
   const companySkills = companySkillService(db);
   const issuesSvc = issueService(db);
@@ -9828,6 +9830,16 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       let logSummary: { bytes: number; sha256?: string; compressed: boolean } | null = null;
       if (handle) {
         logSummary = await runLogStore.finalize(handle);
+        // Record real per-skill usage from the transcript (fire-and-forget; idempotent).
+        void skillUsage.recordRunSkillUsage({
+          runId,
+          companyId: run.companyId,
+          agentId: run.agentId,
+          logStore: handle.store,
+          logRef: handle.logRef,
+          sizeBytes: logSummary?.bytes ?? null,
+          finishedAt: new Date(),
+        });
       }
       const finalLogBytes = logSummary?.bytes;
       if (outputProgressState.pending && typeof finalLogBytes === "number") {
@@ -10087,6 +10099,15 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         } catch (finalizeErr) {
           logger.warn({ err: finalizeErr, runId }, "failed to finalize run log after error");
         }
+        void skillUsage.recordRunSkillUsage({
+          runId,
+          companyId: run.companyId,
+          agentId: run.agentId,
+          logStore: handle.store,
+          logRef: handle.logRef,
+          sizeBytes: logSummary?.bytes ?? null,
+          finishedAt: new Date(),
+        });
       }
       const finalLogBytes = logSummary?.bytes;
       if (outputProgressState.pending && typeof finalLogBytes === "number") {

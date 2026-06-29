@@ -31,6 +31,23 @@ export interface ProjectCalendarEvent {
   urlKey?: string | null;
 }
 
+export interface AsanaCalendarEvent {
+  gid: string;
+  name: string;
+  date: string; // YYYY-MM-DD (Asana due date)
+  permalinkUrl?: string | null;
+  completed?: boolean;
+}
+
+export interface GoogleCalendarEvent {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD (local date key)
+  htmlLink?: string | null;
+  allDay?: boolean;
+  calendarName?: string | null;
+}
+
 /**
  * Month-grid calendar that plots issues on their dueDate.
  * Reused by the top-level "My Calendar" page and the per-project Issues calendar view.
@@ -39,9 +56,13 @@ export interface ProjectCalendarEvent {
 export function IssueCalendar({
   issues,
   projectEvents = [],
+  asanaEvents = [],
+  googleEvents = [],
 }: {
   issues: CalendarIssue[];
   projectEvents?: ProjectCalendarEvent[];
+  asanaEvents?: AsanaCalendarEvent[];
+  googleEvents?: GoogleCalendarEvent[];
 }) {
   const { t } = useTranslation();
   const [cursor, setCursor] = useState(() => {
@@ -72,6 +93,30 @@ export function IssueCalendar({
     }
     return map;
   }, [projectEvents]);
+
+  const asanaByDay = useMemo(() => {
+    const map = new Map<string, AsanaCalendarEvent[]>();
+    for (const ev of asanaEvents) {
+      if (!ev.date) continue;
+      const key = ev.date.slice(0, 10);
+      const list = map.get(key);
+      if (list) list.push(ev);
+      else map.set(key, [ev]);
+    }
+    return map;
+  }, [asanaEvents]);
+
+  const googleByDay = useMemo(() => {
+    const map = new Map<string, GoogleCalendarEvent[]>();
+    for (const ev of googleEvents) {
+      if (!ev.date) continue;
+      const key = ev.date.slice(0, 10);
+      const list = map.get(key);
+      if (list) list.push(ev);
+      else map.set(key, [ev]);
+    }
+    return map;
+  }, [googleEvents]);
 
   const { weeks, monthLabel } = useMemo(() => {
     const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -143,6 +188,8 @@ export function IssueCalendar({
           const isToday = key === todayKey;
           const dayIssues = issuesByDay.get(key) ?? [];
           const dayProjects = projectsByDay.get(key) ?? [];
+          const dayAsana = asanaByDay.get(key) ?? [];
+          const dayGoogle = googleByDay.get(key) ?? [];
           return (
             <div
               key={key}
@@ -198,6 +245,47 @@ export function IssueCalendar({
                       defaultValue: "+{{count}} more",
                       count: dayIssues.length - 4,
                     })}
+                  </div>
+                )}
+                {dayAsana.slice(0, 3).map((ev) => {
+                  const Chip = ev.permalinkUrl ? "a" : "div";
+                  return (
+                    <Chip
+                      key={ev.gid}
+                      {...(ev.permalinkUrl ? { href: ev.permalinkUrl, target: "_blank", rel: "noreferrer" } : {})}
+                      title={ev.name}
+                      className={cn(
+                        "flex items-center gap-1 rounded bg-sky-500/15 px-1 py-0.5 text-[11px] text-sky-700 no-underline transition-colors hover:bg-sky-500/25 dark:text-sky-300",
+                        ev.completed && "line-through opacity-70",
+                      )}
+                    >
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />
+                      <span className="truncate">{ev.name}</span>
+                    </Chip>
+                  );
+                })}
+                {dayAsana.length > 3 && (
+                  <div className="px-1 text-[10px] text-sky-600/80 dark:text-sky-400/80">
+                    {t("calendar.moreCount", { defaultValue: "+{{count}} more", count: dayAsana.length - 3 })}
+                  </div>
+                )}
+                {dayGoogle.slice(0, 3).map((ev) => {
+                  const Chip = ev.htmlLink ? "a" : "div";
+                  return (
+                    <Chip
+                      key={ev.id}
+                      {...(ev.htmlLink ? { href: ev.htmlLink, target: "_blank", rel: "noreferrer" } : {})}
+                      title={ev.calendarName ? `${ev.title} · ${ev.calendarName}` : ev.title}
+                      className="flex items-center gap-1 rounded bg-emerald-500/15 px-1 py-0.5 text-[11px] text-emerald-700 no-underline transition-colors hover:bg-emerald-500/25 dark:text-emerald-300"
+                    >
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span className="truncate">{ev.title}</span>
+                    </Chip>
+                  );
+                })}
+                {dayGoogle.length > 3 && (
+                  <div className="px-1 text-[10px] text-emerald-600/80 dark:text-emerald-400/80">
+                    {t("calendar.moreCount", { defaultValue: "+{{count}} more", count: dayGoogle.length - 3 })}
                   </div>
                 )}
               </div>

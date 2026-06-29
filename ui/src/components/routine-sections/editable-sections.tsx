@@ -9,6 +9,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
+import { useTranslation } from "@/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,45 +38,54 @@ import { EnvVarEditor } from "../EnvVarEditor";
 import { createDefaultNewTrigger, useRoutineDetail } from "./context";
 import type { EnvBinding, RoutineDetail as RoutineDetailType } from "@paperclipai/shared";
 
-const concurrencyPolicyOptions = [
-  {
-    value: "coalesce_if_active",
-    title: "Coalesce if active",
-    description: "Keep one follow-up run queued while an active run is still working.",
-  },
-  {
-    value: "always_enqueue",
-    title: "Always enqueue",
-    description: "Queue every trigger occurrence, even if several runs stack up.",
-  },
-  {
-    value: "skip_if_active",
-    title: "Skip if active",
-    description: "Drop overlapping trigger occurrences while the routine is already active.",
-  },
-];
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
-const catchUpPolicyOptions = [
-  {
-    value: "skip_missed",
-    title: "Skip missed",
-    description: "Ignore schedule windows that were missed while paused.",
-  },
-  {
-    value: "enqueue_missed_with_cap",
-    title: "Enqueue missed with cap",
-    description: "Catch up missed schedule windows in capped batches after recovery.",
-  },
-];
+function buildConcurrencyPolicyOptions(t: TranslateFn) {
+  return [
+    {
+      value: "coalesce_if_active",
+      title: t("routineSections.concurrency.coalesceIfActive.title", { defaultValue: "Coalesce if active" }),
+      description: t("routineSections.concurrency.coalesceIfActive.description", { defaultValue: "Keep one follow-up run queued while an active run is still working." }),
+    },
+    {
+      value: "always_enqueue",
+      title: t("routineSections.concurrency.alwaysEnqueue.title", { defaultValue: "Always enqueue" }),
+      description: t("routineSections.concurrency.alwaysEnqueue.description", { defaultValue: "Queue every trigger occurrence, even if several runs stack up." }),
+    },
+    {
+      value: "skip_if_active",
+      title: t("routineSections.concurrency.skipIfActive.title", { defaultValue: "Skip if active" }),
+      description: t("routineSections.concurrency.skipIfActive.description", { defaultValue: "Drop overlapping trigger occurrences while the routine is already active." }),
+    },
+  ];
+}
+
+function buildCatchUpPolicyOptions(t: TranslateFn) {
+  return [
+    {
+      value: "skip_missed",
+      title: t("routineSections.catchUp.skipMissed.title", { defaultValue: "Skip missed" }),
+      description: t("routineSections.catchUp.skipMissed.description", { defaultValue: "Ignore schedule windows that were missed while paused." }),
+    },
+    {
+      value: "enqueue_missed_with_cap",
+      title: t("routineSections.catchUp.enqueueMissedWithCap.title", { defaultValue: "Enqueue missed with cap" }),
+      description: t("routineSections.catchUp.enqueueMissedWithCap.description", { defaultValue: "Catch up missed schedule windows in capped batches after recovery." }),
+    },
+  ];
+}
 
 const triggerKinds = ["schedule", "webhook"];
 const signingModes = ["bearer", "hmac_sha256", "github_hmac", "none"];
-const signingModeDescriptions: Record<string, string> = {
-  bearer: "Expect a shared bearer token in the Authorization header.",
-  hmac_sha256: "Expect an HMAC SHA-256 signature over the request using the shared secret.",
-  github_hmac: "Accept GitHub-style X-Hub-Signature-256 header (HMAC over raw body, no timestamp).",
-  none: "No authentication — the webhook URL itself acts as a shared secret.",
-};
+function signingModeDescription(t: TranslateFn, mode: string): string {
+  const map: Record<string, string> = {
+    bearer: t("routineSections.signingMode.bearer", { defaultValue: "Expect a shared bearer token in the Authorization header." }),
+    hmac_sha256: t("routineSections.signingMode.hmacSha256", { defaultValue: "Expect an HMAC SHA-256 signature over the request using the shared secret." }),
+    github_hmac: t("routineSections.signingMode.githubHmac", { defaultValue: "Accept GitHub-style X-Hub-Signature-256 header (HMAC over raw body, no timestamp)." }),
+    none: t("routineSections.signingMode.none", { defaultValue: "No authentication — the webhook URL itself acts as a shared secret." }),
+  };
+  return map[mode] ?? "";
+}
 const SIGNING_MODES_WITHOUT_REPLAY_WINDOW = new Set(["github_hmac", "none"]);
 
 export function OverviewSection({
@@ -83,6 +93,7 @@ export function OverviewSection({
 }: {
   defaultDescriptionAnnotationsOpen?: boolean;
 } = {}) {
+  const { t } = useTranslation();
   const ctx = useRoutineDetail();
   const {
     routine,
@@ -126,16 +137,16 @@ export function OverviewSection({
       {/* Assignment row */}
       <div className="overflow-x-auto overscroll-x-contain">
         <div className="inline-flex min-w-full flex-wrap items-center gap-2 text-sm text-muted-foreground sm:min-w-max sm:flex-nowrap">
-          <span>For</span>
+          <span>{t("routineSections.overview.for", { defaultValue: "For" })}</span>
           <InlineEntitySelector
             ref={assigneeSelectorRef}
             value={editDraft.assigneeAgentId}
             options={assigneeOptions}
             recentOptionIds={recentAssigneeIds}
-            placeholder="Assignee"
-            noneLabel="No assignee"
-            searchPlaceholder="Search assignees..."
-            emptyMessage="No assignees found."
+            placeholder={t("routineSections.overview.assignee", { defaultValue: "Assignee" })}
+            noneLabel={t("routineSections.overview.noAssignee", { defaultValue: "No assignee" })}
+            searchPlaceholder={t("routineSections.overview.searchAssignees", { defaultValue: "Search assignees..." })}
+            emptyMessage={t("routineSections.overview.noAssigneesFound", { defaultValue: "No assignees found." })}
             onChange={(assigneeAgentId) =>
               setEditDraft((current) => ({ ...current, assigneeAgentId }))
             }
@@ -157,7 +168,7 @@ export function OverviewSection({
                   <span className="truncate">{option.label}</span>
                 )
               ) : (
-                <span className="text-muted-foreground">Assignee</span>
+                <span className="text-muted-foreground">{t("routineSections.overview.assignee", { defaultValue: "Assignee" })}</span>
               )
             }
             renderOption={(option) => {
@@ -173,16 +184,16 @@ export function OverviewSection({
               );
             }}
           />
-          <span>in</span>
+          <span>{t("routineSections.overview.in", { defaultValue: "in" })}</span>
           <InlineEntitySelector
             ref={projectSelectorRef}
             value={editDraft.projectId}
             options={projectOptions}
             recentOptionIds={recentProjectIds}
-            placeholder="Project"
-            noneLabel="No project"
-            searchPlaceholder="Search projects..."
-            emptyMessage="No projects found."
+            placeholder={t("routineSections.overview.project", { defaultValue: "Project" })}
+            noneLabel={t("routineSections.overview.noProject", { defaultValue: "No project" })}
+            searchPlaceholder={t("routineSections.overview.searchProjects", { defaultValue: "Search projects..." })}
+            emptyMessage={t("routineSections.overview.noProjectsFound", { defaultValue: "No projects found." })}
             onChange={(projectId) => setEditDraft((current) => ({ ...current, projectId }))}
             onConfirm={() => descriptionEditorRef.current?.focus()}
             renderTriggerValue={(option) =>
@@ -195,7 +206,7 @@ export function OverviewSection({
                   <span className="truncate">{option.label}</span>
                 </>
               ) : (
-                <span className="text-muted-foreground">Project</span>
+                <span className="text-muted-foreground">{t("routineSections.overview.project", { defaultValue: "Project" })}</span>
               )
             }
             renderOption={(option) => {
@@ -217,8 +228,7 @@ export function OverviewSection({
 
       {!routine.assigneeAgentId ? (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-900 dark:text-amber-200">
-          Default agent required. This routine can stay as a draft and still run manually, but
-          automation stays paused until you assign a default agent.
+          {t("routineSections.overview.defaultAgentRequired", { defaultValue: "Default agent required. This routine can stay as a draft and still run manually, but automation stays paused until you assign a default agent." })}
         </div>
       ) : null}
 
@@ -252,7 +262,7 @@ export function OverviewSection({
               ref={descriptionEditorRef}
               value={editDraft.description}
               onChange={(description) => setEditDraft((current) => ({ ...current, description }))}
-              placeholder="Add instructions..."
+              placeholder={t("routineSections.overview.addInstructions", { defaultValue: "Add instructions..." })}
               bordered={false}
               contentClassName="min-h-[120px] text-[15px] leading-7"
               mentions={mentionOptions}
@@ -268,7 +278,7 @@ export function OverviewSection({
             ref={descriptionEditorRef}
             value={editDraft.description}
             onChange={(description) => setEditDraft((current) => ({ ...current, description }))}
-            placeholder="Add instructions..."
+            placeholder={t("routineSections.overview.addInstructions", { defaultValue: "Add instructions..." })}
             bordered={false}
             contentClassName="min-h-[120px] text-[15px] leading-7"
             mentions={mentionOptions}
@@ -296,37 +306,37 @@ export function OverviewSection({
       <div className="grid gap-3 sm:grid-cols-3">
         <SummaryCard
           icon={Clock3}
-          label="Triggers"
-          value={activeTriggers === 0 ? "None" : `${activeTriggers} active`}
-          hint={nextFire ? `Next fire ${nextFire}` : "No schedule"}
+          label={t("routineSections.overview.triggers", { defaultValue: "Triggers" })}
+          value={activeTriggers === 0 ? t("routineSections.overview.none", { defaultValue: "None" }) : t("routineSections.overview.activeCount", { defaultValue: "{{count}} active", count: activeTriggers })}
+          hint={nextFire ? t("routineSections.overview.nextFire", { defaultValue: "Next fire {{time}}", time: nextFire }) : t("routineSections.overview.noSchedule", { defaultValue: "No schedule" })}
           to={() => navigateToSection("triggers")}
-          ariaLabel={`${activeTriggers} triggers. Open triggers.`}
+          ariaLabel={t("routineSections.overview.triggersAria", { defaultValue: "{{count}} triggers. Open triggers.", count: activeTriggers })}
         />
         <SummaryCard
           icon={KeyRound}
-          label="Secrets"
-          value={boundSecrets === 0 ? "None" : `${boundSecrets} bound`}
-          hint="Manage bound secrets"
+          label={t("routineSections.overview.secrets", { defaultValue: "Secrets" })}
+          value={boundSecrets === 0 ? t("routineSections.overview.none", { defaultValue: "None" }) : t("routineSections.overview.boundCount", { defaultValue: "{{count}} bound", count: boundSecrets })}
+          hint={t("routineSections.overview.manageBoundSecrets", { defaultValue: "Manage bound secrets" })}
           to={() => navigateToSection("secrets")}
-          ariaLabel={`${boundSecrets} secrets bound. Open secrets.`}
+          ariaLabel={t("routineSections.overview.secretsAria", { defaultValue: "{{count}} secrets bound. Open secrets.", count: boundSecrets })}
         />
         <SummaryCard
           icon={Play}
-          label="Last run"
-          value={lastRun ? lastRun.status.replaceAll("_", " ") : "No runs"}
-          hint={lastRun ? timeAgo(lastRun.triggeredAt) : "Trigger a run"}
+          label={t("routineSections.overview.lastRun", { defaultValue: "Last run" })}
+          value={lastRun ? lastRun.status.replaceAll("_", " ") : t("routineSections.overview.noRuns", { defaultValue: "No runs" })}
+          hint={lastRun ? timeAgo(lastRun.triggeredAt) : t("routineSections.overview.triggerARun", { defaultValue: "Trigger a run" })}
           to={() => navigateToSection("runs")}
-          ariaLabel={lastRun ? `Last run ${lastRun.status}. Open runs.` : "No runs. Open runs."}
+          ariaLabel={lastRun ? t("routineSections.overview.lastRunAria", { defaultValue: "Last run {{status}}. Open runs.", status: lastRun.status }) : t("routineSections.overview.noRunsAria", { defaultValue: "No runs. Open runs." })}
         />
       </div>
 
       {/* Recent activity */}
       <div className="space-y-2">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Recent activity
+          {t("routineSections.overview.recentActivity", { defaultValue: "Recent activity" })}
         </p>
         {recentActivity.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No activity yet.</p>
+          <p className="text-xs text-muted-foreground">{t("routineSections.overview.noActivityYet", { defaultValue: "No activity yet." })}</p>
         ) : (
           <div className="divide-y divide-border/60">
             {recentActivity.map((event) => (
@@ -347,7 +357,7 @@ export function OverviewSection({
               onClick={() => navigateToSection("activity")}
               className="flex items-center gap-1 pt-2 text-xs text-muted-foreground hover:text-foreground"
             >
-              View all activity <ArrowRight className="h-3 w-3" />
+              {t("routineSections.overview.viewAllActivity", { defaultValue: "View all activity" })} <ArrowRight className="h-3 w-3" />
             </button>
           </div>
         )}
@@ -389,6 +399,7 @@ function SummaryCard({
 }
 
 export function TriggersSection() {
+  const { t } = useTranslation();
   const ctx = useRoutineDetail();
   const { routine, newTrigger, setNewTrigger, createTrigger, updateTrigger, deleteTrigger, rotateTrigger } = ctx;
   const [addOpen, setAddOpen] = useState(false);
@@ -411,8 +422,10 @@ export function TriggersSection() {
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-muted-foreground">
           {routine.triggers.length === 0
-            ? "No triggers yet"
-            : `${routine.triggers.length} trigger${routine.triggers.length === 1 ? "" : "s"}`}
+            ? t("routineSections.triggers.noneYet", { defaultValue: "No triggers yet" })
+            : routine.triggers.length === 1
+              ? t("routineSections.triggers.count_one", { defaultValue: "{{count}} trigger", count: routine.triggers.length })
+              : t("routineSections.triggers.count_other", { defaultValue: "{{count}} triggers", count: routine.triggers.length })}
         </p>
         <Button
           size="sm"
@@ -423,12 +436,12 @@ export function TriggersSection() {
           {addOpen ? (
             <>
               <X className="mr-1.5 h-3.5 w-3.5" />
-              Cancel
+              {t("common.cancel", { defaultValue: "Cancel" })}
             </>
           ) : (
             <>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New trigger
+              {t("routineSections.triggers.newTrigger", { defaultValue: "New trigger" })}
             </>
           )}
         </Button>
@@ -437,10 +450,10 @@ export function TriggersSection() {
       {/* Add trigger form — expand-on-click drawer */}
       {addOpen ? (
       <div className="space-y-3 rounded-lg border border-border p-4">
-        <p className="text-sm font-medium">Add trigger</p>
+        <p className="text-sm font-medium">{t("routineSections.triggers.addTrigger", { defaultValue: "Add trigger" })}</p>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1.5">
-            <Label className="text-xs">Kind</Label>
+            <Label className="text-xs">{t("routineSections.triggers.kind", { defaultValue: "Kind" })}</Label>
             <Select
               value={newTrigger.kind}
               onValueChange={(kind) => setNewTrigger((current) => ({ ...current, kind }))}
@@ -452,7 +465,7 @@ export function TriggersSection() {
                 {triggerKinds.map((kind) => (
                   <SelectItem key={kind} value={kind} disabled={kind === "webhook"}>
                     {kind}
-                    {kind === "webhook" ? " — COMING SOON" : ""}
+                    {kind === "webhook" ? t("routineSections.triggers.comingSoon", { defaultValue: " — COMING SOON" }) : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -460,7 +473,7 @@ export function TriggersSection() {
           </div>
           {newTrigger.kind === "schedule" && (
             <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-xs">Schedule</Label>
+              <Label className="text-xs">{t("routineSections.triggers.schedule", { defaultValue: "Schedule" })}</Label>
               <ScheduleEditor
                 value={newTrigger.cronExpression}
                 onChange={(cronExpression) =>
@@ -473,7 +486,7 @@ export function TriggersSection() {
           {newTrigger.kind === "webhook" && (
             <>
               <div className="space-y-1.5">
-                <Label className="text-xs">Signing mode</Label>
+                <Label className="text-xs">{t("routineSections.triggers.signingMode", { defaultValue: "Signing mode" })}</Label>
                 <Select
                   value={newTrigger.signingMode}
                   onValueChange={(signingMode) =>
@@ -492,12 +505,12 @@ export function TriggersSection() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {signingModeDescriptions[newTrigger.signingMode]}
+                  {signingModeDescription(t, newTrigger.signingMode)}
                 </p>
               </div>
               {!SIGNING_MODES_WITHOUT_REPLAY_WINDOW.has(newTrigger.signingMode) && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Replay window (seconds)</Label>
+                  <Label className="text-xs">{t("routineSections.triggers.replayWindow", { defaultValue: "Replay window (seconds)" })}</Label>
                   <Input
                     value={newTrigger.replayWindowSec}
                     onChange={(event) =>
@@ -511,7 +524,7 @@ export function TriggersSection() {
         </div>
         <div className="flex items-center justify-end gap-2">
           <Button size="sm" variant="ghost" onClick={() => setAddOpen(false)}>
-            Cancel
+            {t("common.cancel", { defaultValue: "Cancel" })}
           </Button>
           <Button
             size="sm"
@@ -525,7 +538,7 @@ export function TriggersSection() {
             }
             disabled={addDisabled}
           >
-            {createTrigger.isPending ? "Adding..." : "Add trigger"}
+            {createTrigger.isPending ? t("routineSections.triggers.adding", { defaultValue: "Adding..." }) : t("routineSections.triggers.addTrigger", { defaultValue: "Add trigger" })}
           </Button>
         </div>
       </div>
@@ -535,8 +548,8 @@ export function TriggersSection() {
       {routine.triggers.length === 0 ? (
         <EmptyState
           icon={Clock3}
-          message="No triggers yet."
-          action="Add a schedule"
+          message={t("routineSections.triggers.emptyMessage", { defaultValue: "No triggers yet." })}
+          action={t("routineSections.triggers.addSchedule", { defaultValue: "Add a schedule" })}
           onAction={() => setAddOpen(true)}
         />
       ) : (
@@ -557,6 +570,7 @@ export function TriggersSection() {
 }
 
 export function VariablesSection() {
+  const { t } = useTranslation();
   const ctx = useRoutineDetail();
   const { editDraft, setEditDraft, navigateToSection } = ctx;
   const hasVariables = editDraft.variables.length > 0;
@@ -565,13 +579,13 @@ export function VariablesSection() {
     <div className="space-y-4">
       <div className="flex items-center gap-3 rounded-md border border-border bg-muted/20 px-4 py-3 text-xs">
         <span className="flex-1 text-muted-foreground">
-          Variables are auto-detected from <code className="font-mono">{"{{placeholders}}"}</code> in
-          the title &amp; instructions. The variable name is read-only — rename by editing the
-          placeholder.
+          {t("routineSections.variables.hintPrefix", { defaultValue: "Variables are auto-detected from" })}{" "}
+          <code className="font-mono">{"{{placeholders}}"}</code>{" "}
+          {t("routineSections.variables.hintSuffix", { defaultValue: "in the title & instructions. The variable name is read-only — rename by editing the placeholder." })}
         </span>
         <Button variant="secondary" size="sm" onClick={() => navigateToSection("overview")}>
           <Edit3 className="mr-1.5 h-3.5 w-3.5" />
-          Edit instructions
+          {t("routineSections.variables.editInstructions", { defaultValue: "Edit instructions" })}
         </Button>
       </div>
 
@@ -585,8 +599,8 @@ export function VariablesSection() {
       ) : (
         <EmptyState
           icon={Braces}
-          message="No variables yet. Add a {{placeholder}} in the title or instructions to create one."
-          action="Edit instructions"
+          message={t("routineSections.variables.emptyMessage", { defaultValue: "No variables yet. Add a {{token}} in the title or instructions to create one.", token: "{{placeholder}}" })}
+          action={t("routineSections.variables.editInstructions", { defaultValue: "Edit instructions" })}
           onAction={() => navigateToSection("overview")}
         />
       )}
@@ -595,6 +609,7 @@ export function VariablesSection() {
 }
 
 export function SecretsSection() {
+  const { t } = useTranslation();
   const ctx = useRoutineDetail();
   const { editDraft, setEditDraft, availableSecrets, createSecret, secretMessage, copySecretValue } = ctx;
 
@@ -616,8 +631,8 @@ export function SecretsSection() {
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-        Routine secrets apply to every task this routine creates. They override matching keys in
-        project and agent env. <span className="font-mono">PAPERCLIP_*</span> names are reserved.
+        {t("routineSections.secrets.intro", { defaultValue: "Routine secrets apply to every task this routine creates. They override matching keys in project and agent env." })}{" "}
+        <span className="font-mono">PAPERCLIP_*</span> {t("routineSections.secrets.reserved", { defaultValue: "names are reserved." })}
       </div>
 
       {secretMessage ? (
@@ -625,7 +640,7 @@ export function SecretsSection() {
           <div>
             <p className="font-medium">{secretMessage.title}</p>
             <p className="text-xs text-muted-foreground">
-              Save this now. Paperclip will not show the secret value again.
+              {t("routineSections.secrets.saveNow", { defaultValue: "Save this now. Paperclip will not show the secret value again." })}
             </p>
           </div>
           <div className="space-y-3">
@@ -633,14 +648,14 @@ export function SecretsSection() {
               <div key={`${entry.webhookUrl}-${index}`} className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Input value={entry.webhookUrl} readOnly className="flex-1" />
-                  <Button variant="outline" size="sm" onClick={() => copySecretValue("Webhook URL", entry.webhookUrl)}>
-                    URL
+                  <Button variant="outline" size="sm" onClick={() => copySecretValue(t("routineSections.secrets.webhookUrl", { defaultValue: "Webhook URL" }), entry.webhookUrl)}>
+                    {t("routineSections.secrets.url", { defaultValue: "URL" })}
                   </Button>
                 </div>
                 <div className="flex items-center gap-2">
                   <Input value={entry.webhookSecret} readOnly className="flex-1" />
-                  <Button variant="outline" size="sm" onClick={() => copySecretValue("Webhook secret", entry.webhookSecret)}>
-                    Secret
+                  <Button variant="outline" size="sm" onClick={() => copySecretValue(t("routineSections.secrets.webhookSecret", { defaultValue: "Webhook secret" }), entry.webhookSecret)}>
+                    {t("routineSections.secrets.secret", { defaultValue: "Secret" })}
                   </Button>
                 </div>
               </div>
@@ -661,17 +676,20 @@ export function SecretsSection() {
 }
 
 export function DeliverySection() {
+  const { t } = useTranslation();
   const ctx = useRoutineDetail();
   const { editDraft, setEditDraft, routine } = ctx;
+  const concurrencyPolicyOptions = buildConcurrencyPolicyOptions(t);
+  const catchUpPolicyOptions = buildCatchUpPolicyOptions(t);
 
   return (
     <div className="space-y-6">
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          Concurrency
+          {t("routineSections.delivery.concurrency", { defaultValue: "Concurrency" })}
         </p>
         <RadioCardGroup
-          ariaLabel="Concurrency policy"
+          ariaLabel={t("routineSections.delivery.concurrencyPolicy", { defaultValue: "Concurrency policy" })}
           value={editDraft.concurrencyPolicy}
           onValueChange={(concurrencyPolicy) =>
             setEditDraft((current) => ({ ...current, concurrencyPolicy }))
@@ -681,10 +699,10 @@ export function DeliverySection() {
       </div>
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          Catch-up
+          {t("routineSections.delivery.catchUp", { defaultValue: "Catch-up" })}
         </p>
         <RadioCardGroup
-          ariaLabel="Catch-up policy"
+          ariaLabel={t("routineSections.delivery.catchUpPolicy", { defaultValue: "Catch-up policy" })}
           value={editDraft.catchUpPolicy}
           onValueChange={(catchUpPolicy) =>
             setEditDraft((current) => ({ ...current, catchUpPolicy }))
@@ -719,6 +737,7 @@ function NextFiresPreview({
   triggers: RoutineDetailType["triggers"];
   concurrencyPolicy: string;
 }) {
+  const { t } = useTranslation();
   const preview = useMemo(() => {
     const schedule = triggers
       .filter((trigger) => trigger.kind === "schedule" && trigger.enabled && trigger.cronExpression)
@@ -740,7 +759,7 @@ function NextFiresPreview({
   return (
     <div className="space-y-3">
       <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-        Next 5 fires
+        {t("routineSections.delivery.next5Fires", { defaultValue: "Next 5 fires" })}
       </p>
       {preview ? (
         <>
@@ -760,14 +779,12 @@ function NextFiresPreview({
             ))}
           </div>
           <p className="text-[11px] text-muted-foreground/60">
-            Preview assumes the previous run is still in flight when the next fires. Times shown in{" "}
-            {preview.timeZone}.
+            {t("routineSections.delivery.previewNote", { defaultValue: "Preview assumes the previous run is still in flight when the next fires. Times shown in {{timeZone}}.", timeZone: preview.timeZone })}
           </p>
         </>
       ) : (
         <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-          No enabled schedule trigger to preview. Add a schedule in Triggers to see how this policy
-          treats upcoming fires.
+          {t("routineSections.delivery.noPreview", { defaultValue: "No enabled schedule trigger to preview. Add a schedule in Triggers to see how this policy treats upcoming fires." })}
         </p>
       )}
     </div>

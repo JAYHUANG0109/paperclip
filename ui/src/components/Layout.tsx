@@ -82,9 +82,6 @@ export function Layout() {
   const location = useLocation();
   const navigationType = useNavigationType();
   const isCompanySettingsRoute = location.pathname.includes("/company/settings");
-  // The Skills Store renders its own secondary (category) sidebar, so the main
-  // app nav collapses to its rail throughout the /skills section (PAP-10879).
-  const isSkillsRoute = /(^|\/)skills(\/|$)/.test(location.pathname);
   const onboardingTriggered = useRef(false);
   const lastMainScrollTop = useRef(0);
   const previousPathname = useRef<string | null>(null);
@@ -150,16 +147,15 @@ export function Layout() {
     queryFn: () => instanceSettingsApi.getGeneral(),
   }).data?.keyboardShortcuts === true;
 
-  // A secondary sidebar always collapses the app sidebar to its rail (still
-  // peek-able) — a hard invariant that overrides the user pin while the route
-  // is active, but does NOT mutate the persisted preference. Clearing the force
-  // on cleanup restores the user's expanded/collapsed choice when navigating
-  // off the takeover route (PAP-10694).
-  const forceRailCollapsed = hasSecondarySidebar || isSkillsRoute;
+  // Secondary sidebars (company settings, the Skills Store category nav, plugin
+  // `routeSidebar`s) no longer force the app sidebar to its rail. The app nav
+  // stays at the user's pinned state and the contextual sidebar + page content
+  // render to its right; an expanded pin reserves width (no cover) while a
+  // collapsed pin still overlays on hover-peek (SidebarShell handles both). We
+  // defensively clear any stale force so the user pin is always honored.
   useLayoutEffect(() => {
-    setForceCollapsed(forceRailCollapsed);
-    return () => setForceCollapsed(false);
-  }, [forceRailCollapsed, setForceCollapsed]);
+    setForceCollapsed(false);
+  }, [setForceCollapsed]);
 
   useEffect(() => {
     if (companiesLoading || onboardingTriggered.current) return;

@@ -28,6 +28,7 @@ import { NavLink } from "@/lib/router";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarAgents } from "./SidebarAgents";
+import { SidebarChat } from "./SidebarChat";
 import { SidebarProjects } from "./SidebarProjects";
 import { useDialogActions } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
@@ -98,7 +99,7 @@ export function Sidebar() {
               size="icon-sm"
               className="text-muted-foreground shrink-0"
               aria-label={t("nav.search", { defaultValue: "Open search" })}
-              title="Open search"
+              title={t("nav.search", { defaultValue: "Open search" })}
             >
               <NavLink to="/search">
                 <Search className="h-4 w-4" />
@@ -116,8 +117,8 @@ export function Sidebar() {
                   variant="ghost"
                   size="icon-sm"
                   className="text-muted-foreground shrink-0"
-                  aria-label="Keep sidebar expanded"
-                  title="Keep sidebar expanded"
+                  aria-label={t("sidebar.keepExpanded", { defaultValue: "Keep sidebar expanded" })}
+                  title={t("sidebar.keepExpanded", { defaultValue: "Keep sidebar expanded" })}
                   onClick={() => setCollapsed(false)}
                 >
                   <Pin className="h-4 w-4" />
@@ -128,8 +129,8 @@ export function Sidebar() {
                   size="icon-sm"
                   className="text-muted-foreground shrink-0"
                   aria-expanded={!collapsed}
-                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                  title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  aria-label={collapsed ? t("sidebar.expand", { defaultValue: "Expand sidebar" }) : t("sidebar.collapse", { defaultValue: "Collapse sidebar" })}
+                  title={collapsed ? t("sidebar.expand", { defaultValue: "Expand sidebar" }) : t("sidebar.collapse", { defaultValue: "Collapse sidebar" })}
                   onClick={() => toggleCollapsed()}
                 >
                   {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -170,7 +171,7 @@ export function Sidebar() {
             label={t("nav.inbox", { defaultValue: "Inbox" })}
             icon={Inbox}
             badge={inboxBadge.inbox}
-            badgeLabel="unread"
+            badgeLabel={t("sidebar.unread", { defaultValue: "unread" })}
             badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
             alert={inboxBadge.failedRuns > 0}
           />
@@ -209,6 +210,11 @@ export function Sidebar() {
             itemClassName="text-[13px] font-medium"
           />
         </SidebarSection>
+
+        {/* Google Chat connector's "Chat" section (Chat Logs, Assignments).
+            Renders nothing unless the plugin is installed and the viewer is an
+            owner/admin. Restored after a merge dropped the mount. */}
+        <SidebarChat />
 
         {/* Classic mode restores the per-project collapsible below Work. */}
         {streamlined ? null : <SidebarProjects />}

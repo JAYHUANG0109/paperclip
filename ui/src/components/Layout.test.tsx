@@ -405,15 +405,17 @@ describe("Layout", () => {
     await flushReact();
     await flushReact();
 
-    // Takeover model (PAP-10695): the app sidebar is kept (collapsed to its
-    // rail) AND the settings sidebar renders in the secondary pane.
+    // Coexistence model: the app sidebar is kept at the user's pinned state
+    // (no longer force-collapsed) AND the settings sidebar renders in the
+    // secondary pane to its right.
     expect(container.textContent).toContain("Company settings sidebar");
     expect(container.textContent).toContain("Main company nav");
     expect(container.textContent).not.toContain("Company rail");
     expect(container.textContent).not.toContain("Instance sidebar");
     expect(container.textContent).not.toContain("Plugin route sidebar");
-    // The route asks the host to collapse the app sidebar to its rail.
-    expect(mockSetForceCollapsed).toHaveBeenCalledWith(true);
+    // The route must NOT force the app sidebar to its rail; the user pin wins.
+    expect(mockSetForceCollapsed).not.toHaveBeenCalledWith(true);
+    expect(mockSetForceCollapsed).toHaveBeenCalledWith(false);
 
     await act(async () => {
       root.unmount();
@@ -478,7 +480,8 @@ describe("Layout", () => {
     expect(container.textContent).toContain("Main company nav");
     expect(container.textContent).not.toContain("Company rail");
     expect(container.textContent).not.toContain("Plugin route sidebar");
-    expect(mockSetForceCollapsed).toHaveBeenCalledWith(true);
+    expect(mockSetForceCollapsed).not.toHaveBeenCalledWith(true);
+    expect(mockSetForceCollapsed).toHaveBeenCalledWith(false);
 
     await act(async () => {
       root.unmount();
@@ -533,7 +536,8 @@ describe("Layout", () => {
     expect(container.textContent).toContain("Main company nav");
     expect(container.textContent).not.toContain("Company settings sidebar");
     expect(container.textContent).not.toContain("Instance sidebar");
-    expect(mockSetForceCollapsed).toHaveBeenCalledWith(true);
+    expect(mockSetForceCollapsed).not.toHaveBeenCalledWith(true);
+    expect(mockSetForceCollapsed).toHaveBeenCalledWith(false);
 
     await act(async () => {
       root.unmount();

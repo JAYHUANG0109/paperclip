@@ -439,6 +439,14 @@ const defaultStoreSkillFields = {
   installCount: 1,
   forkCount: 0,
   currentVersionId: null,
+  sharingTeams: [],
+  createdByUserId: null,
+  minutesPerUse: 0,
+  approvalStatus: "approved" as const,
+  approvalNote: null,
+  reviewedByUserId: null,
+  reviewedAt: null,
+  submittedAt: null,
 };
 
 const acpxSkillsCompanyLibrary: CompanySkillListItem[] = [

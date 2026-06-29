@@ -25,6 +25,12 @@ interface SidebarContextValue {
   // hover-capable pointer. Never persisted.
   peeking: boolean;
   setPeeking: (next: boolean) => void;
+  // Peek lock: while > 0, the peek flyout is held open even if the pointer
+  // leaves the panel. Used so a menu/popover spawned from the collapsed rail
+  // (which portals OUTSIDE the panel DOM) doesn't collapse the rail the instant
+  // the pointer moves onto it. Balanced lock/unlock; see usePeekLock.
+  lockPeek: () => void;
+  unlockPeek: () => void;
   // Hard, ephemeral collapse forced by an active secondary sidebar (settings,
   // plugin `routeSidebar`, …). HIGHER precedence than the user pin — the rule
   // is "a secondary sidebar always collapses the primary" — but it never
@@ -97,6 +103,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const [routeRequestsCollapsed, setRouteRequestsCollapsed] = useState(false);
   const [forceCollapsed, setForceCollapsed] = useState(false);
   const [rawPeeking, setRawPeeking] = useState(false);
+  const [peekLockCount, setPeekLockCount] = useState(0);
   const [pointerCanPeek, setPointerCanPeek] = useState(() => readPointerCanPeek());
 
   useEffect(() => {
@@ -152,8 +159,10 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const collapsed = isMobile ? false : desktopCollapsed;
   // While forced, the pin is locked: the expand/toggle affordance is inert.
   const collapseLocked = !isMobile && forceCollapsed;
-  // Peek only applies when collapsed on a hover-capable pointer.
-  const peeking = rawPeeking && collapsed && pointerCanPeek;
+  // Peek only applies when collapsed on a hover-capable pointer. A non-zero peek
+  // lock holds it open (e.g. a rail-spawned menu is open) even if the pointer
+  // has moved off the panel onto the portaled menu content.
+  const peeking = (rawPeeking || peekLockCount > 0) && collapsed && pointerCanPeek;
 
   const setCollapsed = useCallback((next: boolean) => {
     setUserCollapsed(next);
@@ -171,6 +180,9 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     setRawPeeking(next);
   }, []);
 
+  const lockPeek = useCallback(() => setPeekLockCount((c) => c + 1), []);
+  const unlockPeek = useCallback(() => setPeekLockCount((c) => Math.max(0, c - 1)), []);
+
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
 
   const value = useMemo<SidebarContextValue>(
@@ -185,6 +197,8 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       collapseLocked,
       peeking,
       setPeeking,
+      lockPeek,
+      unlockPeek,
       forceCollapsed,
       setForceCollapsed,
       routeRequestsCollapsed,
@@ -201,6 +215,8 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       collapseLocked,
       peeking,
       setPeeking,
+      lockPeek,
+      unlockPeek,
       forceCollapsed,
       setForceCollapsed,
       routeRequestsCollapsed,
@@ -217,4 +233,21 @@ export function useSidebar() {
     throw new Error("useSidebar must be used within SidebarProvider");
   }
   return ctx;
+}
+
+/**
+ * Hold the collapsed-rail peek flyout open while `active` is true. Used by
+ * menus/popovers that originate in the rail but portal their content outside
+ * the sidebar panel, so moving the pointer onto that content would otherwise
+ * collapse the rail and unmount the trigger (PAP-10676 follow-up). The
+ * lock/unlock pair is balanced on unmount, so it's safe even if the owning
+ * element unmounts while still open.
+ */
+export function usePeekLock(active: boolean) {
+  const { lockPeek, unlockPeek } = useSidebar();
+  useEffect(() => {
+    if (!active) return;
+    lockPeek();
+    return () => unlockPeek();
+  }, [active, lockPeek, unlockPeek]);
 }

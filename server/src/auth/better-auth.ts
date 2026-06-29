@@ -273,6 +273,15 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
             clientId: googleClientId,
             clientSecret: googleClientSecret,
             hd: googleHostedDomain,
+            // Request read-only Google Calendar access in addition to the default
+            // openid/email/profile scopes so each user's own calendar can be shown
+            // in Paperclip. `accessType: "offline"` returns a refresh_token so the
+            // server can refresh the access token without re-prompting; `prompt:
+            // "consent"` forces existing users to re-consent once to grant the new
+            // calendar scope (tokens issued before this change lack it).
+            scope: ["https://www.googleapis.com/auth/calendar.readonly"],
+            accessType: "offline" as const,
+            prompt: "consent" as const,
           },
         }
       : undefined;

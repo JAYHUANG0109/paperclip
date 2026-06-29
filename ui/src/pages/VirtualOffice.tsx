@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Wrench, Zap, Building2, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw } from "lucide-react";
+import { Wrench, Zap, Building2, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -10,10 +10,15 @@ import { assetsApi } from "../api/assets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { leaderboardApi, type LeaderboardEntry } from "../api/leaderboard";
 import { OfficeAvatar } from "../components/OfficeAvatar";
+import { TeamFilterBar } from "../components/TeamFilterBar";
+import { ViewSwitchButton } from "../components/ViewSwitchButton";
+import { agentMatchesTeams, listAllTeams, useAgentTeamFilter } from "../lib/agent-teams";
+import { sortAgentsByAccessLevel } from "../lib/agent-order";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { agentUrl } from "../lib/utils";
 import { cn } from "../lib/utils";
+import { queryKeys } from "../lib/queryKeys";
 import type { Agent } from "@paperclipai/shared";
 
 export function VirtualOffice() {
@@ -26,16 +31,20 @@ export function VirtualOffice() {
     setBreadcrumbs([{ label: t("office.title", { defaultValue: "Virtual Office" }) }]);
   }, [setBreadcrumbs, t]);
 
+  // Reuse the SAME query keys the always-mounted sidebar (and the Agents page)
+  // populate, so navigating here finds a warm cache instead of rendering an
+  // empty grid first and popping all the desks in — that cold-render cascade is
+  // what made this page "twitch/flash" while others felt instant.
   const { data: agents } = useQuery({
-    queryKey: ["office-agents", selectedCompanyId],
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
   const { data: liveRuns } = useQuery({
-    queryKey: ["office-live-runs", selectedCompanyId],
+    queryKey: queryKeys.liveRuns(selectedCompanyId!),
     queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!, { limit: 100 }),
     enabled: !!selectedCompanyId,
-    refetchInterval: 8000,
+    refetchInterval: 10_000,
   });
   const { data: skillCounts } = useQuery({
     queryKey: ["office-skill-counts", selectedCompanyId],
@@ -55,8 +64,18 @@ export function VirtualOffice() {
   const canViewAgent = (agentId: string) =>
     Boolean(viewable?.privileged) || (viewable?.agentIds ?? []).includes(agentId);
 
+  const { selected: teamFilter, toggle: toggleTeam, clear: clearTeams } = useAgentTeamFilter(selectedCompanyId);
   const workingAgentIds = useMemo(() => new Set((liveRuns ?? []).map((r) => r.agentId)), [liveRuns]);
-  const visibleAgents = useMemo(() => (agents ?? []).filter((a) => a.status !== "terminated"), [agents]);
+  const allAgents = useMemo(() => (agents ?? []).filter((a) => a.status !== "terminated"), [agents]);
+  const allTeams = useMemo(() => listAllTeams(allAgents), [allAgents]);
+  // Avatars are filtered by the shared team selection (same one the Agents page
+  // uses), so switching between the two views keeps the same filter applied.
+  // Ranked by access level (org seniority) by default; placeholder C-suite
+  // agents sort last.
+  const visibleAgents = useMemo(
+    () => sortAgentsByAccessLevel(allAgents.filter((a) => agentMatchesTeams(a, teamFilter)), allAgents),
+    [allAgents, teamFilter],
+  );
   const workingCount = visibleAgents.filter((a) => workingAgentIds.has(a.id)).length;
   const teamMinutes = (leaderboard?.entries ?? []).reduce((sum, e) => sum + e.rawMinutes, 0);
   const leaderboardByUser = useMemo(
@@ -78,6 +97,15 @@ export function VirtualOffice() {
           <Stat value={workingCount} label={t("office.working", { defaultValue: "Working" })} accent={workingCount > 0} />
           <Stat value={teamMinutes.toLocaleString()} label={t("office.teamMinutes", { defaultValue: "Team minutes saved" })} />
         </div>
+      </div>
+
+      {/* Shared controls row: team chip filter (left) + view switch (right) —
+          identical layout/style to the Agents page so the switch never moves. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <TeamFilterBar teams={allTeams} selected={teamFilter} onToggle={toggleTeam} onClear={clearTeams} />
+        </div>
+        <ViewSwitchButton to="/agents" label={t("office.browseAgents", { defaultValue: "Browse agents" })} icon={Users} />
       </div>
 
       <div className="rounded-2xl border border-border bg-[repeating-linear-gradient(45deg,hsl(var(--muted)/0.25)_0_12px,transparent_12px_24px)] p-4 sm:p-6">
@@ -127,8 +155,8 @@ function findLeaderboardForAgent(_byUser: Map<string, LeaderboardEntry>, _agent:
 
 function Stat({ value, label, accent }: { value: number | string; label: string; accent?: boolean }) {
   return (
-    <div className="text-right">
-      <div className={cn("text-2xl font-bold tabular-nums", accent && "text-emerald-500")}>{value}</div>
+    <div className="flex flex-col items-center text-center">
+      <div className={cn("text-2xl font-bold tabular-nums leading-tight", accent && "text-emerald-500")}>{value}</div>
       <div className="text-[11px] text-muted-foreground">{label}</div>
     </div>
   );
@@ -186,11 +214,15 @@ function Desk({ agent, working, skillCount, floatDelay, onOpen }: {
             <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
             {status.label}
           </div>
-          {skillCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              <Wrench className="h-2.5 w-2.5" />{skillCount} {t("office.skills", { defaultValue: "skills" })}
-            </span>
-          )}
+          {/* Reserve the badge row so the card height stays fixed while the
+              skill-count query resolves (avoids a reflow pop). */}
+          <div className="flex h-[18px] items-center justify-center">
+            {skillCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <Wrench className="h-2.5 w-2.5" />{skillCount} {t("office.skills", { defaultValue: "skills" })}
+              </span>
+            )}
+          </div>
         </button>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[14rem]">
@@ -227,7 +259,7 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
       return agentsApi.setOfficeAvatar(agent!.id, asset.contentPath, companyId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["office-agents", companyId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
     },
   });
 

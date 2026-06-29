@@ -80,6 +80,7 @@ vi.mock("../context/SidebarContext", () => ({
     collapsed: mockSidebarState.collapsed,
     peeking: mockSidebarState.peeking,
   }),
+  usePeekLock: () => {},
 }));
 
 vi.mock("../context/ToastContext", () => ({

@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { companySkills, companySkillUsage, monthlyAwards, skillBounties, authUsers } from "@paperclipai/db";
 import { bountyService } from "./bounties.js";
@@ -21,6 +21,8 @@ export interface LeaderboardEntry {
   skillCount: number;
   beneficiaries: number; // distinct people who used this trainer's skills
   bountyCount: number;
+  usageMinutes: number; // minutes this user saved by USING skills (any author)
+  usesCount: number; // how many skill invocations this user made
   score: number;
 }
 
@@ -46,11 +48,34 @@ export function leaderboardService(db: Db) {
       .groupBy(companySkillUsage.skillId);
   }
 
+  // Per-USER usage of approved skills (any author): minutes the user saved for
+  // themselves by invoking skills, plus their invocation count. This is the
+  // "reward usage, not just authoring" dimension — it lets heavy skill users
+  // rank even when the skills they use have no author credited.
+  async function usageByUserRows(companyId: string, periodMonth: string | null) {
+    const conds = [
+      eq(companySkillUsage.companyId, companyId),
+      eq(companySkills.approvalStatus, "approved"),
+      isNotNull(companySkillUsage.usedByUserId),
+    ];
+    if (periodMonth) conds.push(eq(companySkillUsage.periodMonth, periodMonth));
+    return db
+      .select({
+        userId: companySkillUsage.usedByUserId,
+        minutes: sql<number>`coalesce(sum(${companySkills.minutesPerUse} * ${companySkillUsage.count}), 0)::int`,
+        uses: sql<number>`coalesce(sum(${companySkillUsage.count}), 0)::int`,
+      })
+      .from(companySkillUsage)
+      .innerJoin(companySkills, eq(companySkills.id, companySkillUsage.skillId))
+      .where(and(...conds))
+      .groupBy(companySkillUsage.usedByUserId);
+  }
+
   async function compute(companyId: string, periodMonth: string | null): Promise<LeaderboardResult> {
     const bounties = bountyService(db);
     const sinceMs = Date.now() - BOUNTY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
     const bountyUsers = await bounties.recentCompleters(companyId, sinceMs);
-    const [skills, usage] = await Promise.all([
+    const [skills, usage, perUser] = await Promise.all([
       db
         .select({
           id: companySkills.id,
@@ -61,11 +86,32 @@ export function leaderboardService(db: Db) {
         .from(companySkills)
         .where(eq(companySkills.companyId, companyId)),
       skillUsageRows(companyId, periodMonth),
+      usageByUserRows(companyId, periodMonth),
     ]);
 
     const usageBySkill = new Map(usage.map((u) => [u.skillId, u]));
     const byUser = new Map<string, LeaderboardEntry>();
+    const ensure = (userId: string): LeaderboardEntry => {
+      let e = byUser.get(userId);
+      if (!e) {
+        e = {
+          userId,
+          minutesSaved: 0,
+          rawMinutes: 0,
+          runCount: 0,
+          skillCount: 0,
+          beneficiaries: 0,
+          bountyCount: 0,
+          usageMinutes: 0,
+          usesCount: 0,
+          score: 0,
+        };
+        byUser.set(userId, e);
+      }
+      return e;
+    };
 
+    // Author dimension: a creator earns from others using their approved skills.
     for (const skill of skills) {
       if (!skill.createdByUserId) continue;
       if (skill.approvalStatus !== "approved") continue; // only approved skills score
@@ -76,30 +122,30 @@ export function leaderboardService(db: Db) {
       const teamBonus = distinct >= TEAM_BONUS_THRESHOLD ? TEAM_BONUS : 1.0;
       const weightedMinutes = rawMinutes * teamBonus;
 
-      const entry = byUser.get(skill.createdByUserId) ?? {
-        userId: skill.createdByUserId,
-        minutesSaved: 0,
-        rawMinutes: 0,
-        runCount: 0,
-        skillCount: 0,
-        beneficiaries: 0,
-        bountyCount: 0,
-        score: 0,
-      };
+      const entry = ensure(skill.createdByUserId);
       entry.minutesSaved += weightedMinutes;
       entry.rawMinutes += rawMinutes;
       entry.runCount += count;
       entry.skillCount += 1;
       entry.beneficiaries = Math.max(entry.beneficiaries, distinct);
-      byUser.set(skill.createdByUserId, entry);
+    }
+
+    // Usage dimension: a user earns from invoking approved skills themselves.
+    for (const u of perUser) {
+      if (!u.userId) continue;
+      const entry = ensure(u.userId);
+      entry.usageMinutes += u.minutes;
+      entry.usesCount += u.uses;
     }
 
     const entries = [...byUser.values()].map((e) => {
       const hasBounty = bountyUsers.has(e.userId);
-      const score = Math.round(e.minutesSaved * (hasBounty ? BOUNTY_BONUS : 1.0));
+      // Score blends authored impact (others using your skills, team-bonus weighted)
+      // and your own usage minutes, then a bounty multiplier.
+      const score = Math.round((e.minutesSaved + e.usageMinutes) * (hasBounty ? BOUNTY_BONUS : 1.0));
       return { ...e, bountyCount: hasBounty ? 1 : 0, score };
     });
-    entries.sort((a, b) => b.score - a.score || b.runCount - a.runCount);
+    entries.sort((a, b) => b.score - a.score || b.usesCount - a.usesCount || b.runCount - a.runCount);
     return { period: periodMonth ?? "lifetime", entries };
   }
 

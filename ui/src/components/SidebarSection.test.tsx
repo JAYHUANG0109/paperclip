@@ -25,6 +25,7 @@ vi.mock("@/lib/router", () => ({
 
 vi.mock("../context/SidebarContext", () => ({
   useSidebar: () => sidebarState,
+  usePeekLock: () => {},
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

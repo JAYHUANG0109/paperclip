@@ -69,6 +69,7 @@ import { StatusIcon } from "../components/StatusIcon";
 import { cn } from "../lib/utils";
 import { StatusBadge } from "../components/StatusBadge";
 import { approvalLabel, defaultTypeIcon, typeIcon } from "../components/ApprovalPayload";
+import { NotificationsInboxSection } from "../components/NotificationsInboxSection";
 import { timeAgo } from "../lib/timeAgo";
 import { Button } from "@/components/ui/button";
 import {
@@ -1986,6 +1987,7 @@ export function Inbox() {
   const showGeneralIssueToolbarControls = tab !== "blocked";
   return (
     <div className="space-y-6">
+      {selectedCompanyId && <NotificationsInboxSection companyId={selectedCompanyId} />}
       <div className="space-y-2">
         {/* Search — full-width row on mobile, inline on desktop */}
         <div className="relative sm:hidden">

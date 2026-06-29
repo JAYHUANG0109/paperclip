@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { CalendarDays, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, AlertTriangle, Search } from "lucide-react";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
+import { dashboardApi } from "../api/dashboard";
+import { authApi } from "../api/auth";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useTranslation } from "@/i18n";
 import { queryKeys } from "../lib/queryKeys";
-import { IssueCalendar } from "../components/IssueCalendar";
+import {
+  IssueCalendar,
+  type AsanaCalendarEvent,
+  type GoogleCalendarEvent,
+} from "../components/IssueCalendar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "../lib/utils";
 import { createIssueDetailPath } from "../lib/issueDetailBreadcrumb";
@@ -35,21 +41,43 @@ function ymd(d: Date): string {
 
 type CalIssue = Pick<Issue, "id" | "title" | "status" | "priority" | "dueDate"> & {
   identifier?: string | null;
+  /** When set, this row is an Asana task and links out to Asana instead of an issue. */
+  asanaUrl?: string | null;
+  /** When set, this row is a Google Calendar event and links out to Google. */
+  googleUrl?: string | null;
 };
 
 /* ---------- Issue chip (shared by week + list) ---------- */
 function IssueChip({ issue }: { issue: CalIssue }) {
   const done = issue.status === "done" || issue.status === "cancelled";
-  return (
-    <Link
-      to={createIssueDetailPath(issue.identifier ?? issue.id)}
-      title={issue.title}
+  const className = cn(
+    "flex items-center gap-1.5 rounded px-1.5 py-1 text-xs no-underline transition-colors hover:bg-accent",
+    done ? "text-muted-foreground line-through" : "text-foreground",
+  );
+  const dot = (
+    <span
       className={cn(
-        "flex items-center gap-1.5 rounded px-1.5 py-1 text-xs no-underline transition-colors hover:bg-accent",
-        done ? "text-muted-foreground line-through" : "text-foreground",
+        "h-1.5 w-1.5 shrink-0 rounded-full",
+        issue.googleUrl
+          ? "bg-emerald-500"
+          : issue.asanaUrl
+            ? "bg-sky-500"
+            : PRIORITY_DOT[issue.priority] ?? "bg-neutral-400",
       )}
-    >
-      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", PRIORITY_DOT[issue.priority] ?? "bg-neutral-400")} />
+    />
+  );
+  // Asana tasks + Google events deep-link out; native issues go to the detail page.
+  if (issue.googleUrl || issue.asanaUrl) {
+    return (
+      <a href={issue.googleUrl ?? issue.asanaUrl ?? "#"} target="_blank" rel="noreferrer" title={issue.title} className={className}>
+        {dot}
+        <span className="truncate">{issue.title}</span>
+      </a>
+    );
+  }
+  return (
+    <Link to={createIssueDetailPath(issue.identifier ?? issue.id)} title={issue.title} className={className}>
+      {dot}
       <span className="truncate">{issue.title}</span>
     </Link>
   );
@@ -210,6 +238,7 @@ export function MyCalendar() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [tab, setTab] = useState("month");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     setBreadcrumbs([{ label: t("nav.calendar", { defaultValue: "Calendar" }) }]);
@@ -227,6 +256,38 @@ export function MyCalendar() {
     enabled: !!selectedCompanyId,
   });
 
+  // The user's own Asana tasks (read-only digest) overlaid onto the calendar.
+  const { data: digest } = useQuery({
+    queryKey: ["asana-digest", selectedCompanyId ?? "__none__"],
+    queryFn: () => dashboardApi.asanaDigest(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 60_000,
+  });
+
+  // The user's own Google Calendar events across all calendars they can see
+  // (read-only, fetched with their own SSO token). `connected:false` →
+  // re-consent needed; surfaced as a banner below.
+  const { data: google } = useQuery({
+    queryKey: ["google-calendar", selectedCompanyId ?? "__none__"],
+    queryFn: () => dashboardApi.googleCalendar(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 60_000,
+  });
+  const googleNeedsConnect = google?.connected === false && google.reason === "auth_required";
+
+  // Re-run the Google OAuth flow (with the calendar scope) and return here.
+  const handleConnectGoogle = async () => {
+    try {
+      const { url } = await authApi.signInSocial({
+        provider: "google",
+        callbackURL: window.location.pathname,
+      });
+      window.location.href = url;
+    } catch {
+      /* surfaced by the banner staying put; nothing destructive */
+    }
+  };
+
   const dated = useMemo(() => (issues ?? []).filter((i: Issue) => Boolean(i.dueDate)), [issues]);
   const projectEvents = useMemo(
     () =>
@@ -235,7 +296,84 @@ export function MyCalendar() {
         .map((p) => ({ id: p.id, name: p.name, date: p.targetDate as string, urlKey: p.urlKey })),
     [projects],
   );
-  const hasAnything = dated.length > 0 || projectEvents.length > 0;
+  // Asana tasks with a due date → month overlay events + week/list rows.
+  const asanaEvents = useMemo<AsanaCalendarEvent[]>(
+    () =>
+      (digest?.weekly ?? [])
+        .filter((tk) => tk.dueOn)
+        .map((tk) => ({
+          gid: tk.gid,
+          name: tk.name,
+          date: tk.dueOn as string,
+          permalinkUrl: tk.permalinkUrl,
+          completed: tk.completed,
+        })),
+    [digest],
+  );
+  const asanaCalIssues = useMemo<CalIssue[]>(
+    () =>
+      asanaEvents.map((ev) => ({
+        id: `asana-${ev.gid}`,
+        title: ev.name,
+        status: ev.completed ? "done" : "todo",
+        priority: "medium",
+        dueDate: ev.date,
+        asanaUrl: ev.permalinkUrl,
+      })),
+    [asanaEvents],
+  );
+  // Google events → month-grid overlay + week/list rows (green, deep-link out).
+  const googleEvents = useMemo<GoogleCalendarEvent[]>(
+    () =>
+      (google?.connected ? google.events : []).map((ev) => ({
+        id: ev.id,
+        title: ev.title,
+        date: ev.dateKey,
+        htmlLink: ev.htmlLink,
+        allDay: ev.allDay,
+        calendarName: ev.calendarName,
+      })),
+    [google],
+  );
+  const googleCalIssues = useMemo<CalIssue[]>(
+    () =>
+      googleEvents.map((ev) => ({
+        id: `gcal-${ev.id}`,
+        title: ev.title,
+        status: "todo",
+        priority: "medium",
+        dueDate: ev.date,
+        googleUrl: ev.htmlLink ?? null,
+      })),
+    [googleEvents],
+  );
+
+  // Title search across every source (the team's "find my name in the title" flow).
+  const q = search.trim().toLowerCase();
+  const matchesQuery = (title: string) => !q || title.toLowerCase().includes(q);
+  const filteredGoogleEvents = useMemo(
+    () => googleEvents.filter((ev) => matchesQuery(ev.title)),
+    [googleEvents, q],
+  );
+  const filteredProjectEvents = useMemo(
+    () => projectEvents.filter((p) => matchesQuery(p.name)),
+    [projectEvents, q],
+  );
+  const filteredAsanaEvents = useMemo(
+    () => asanaEvents.filter((ev) => matchesQuery(ev.name)),
+    [asanaEvents, q],
+  );
+  const filteredDatedIssues = useMemo(() => dated.filter((i) => matchesQuery(i.title)), [dated, q]);
+
+  const datedWithAsana = useMemo(
+    () => [
+      ...filteredDatedIssues,
+      ...asanaCalIssues.filter((i) => matchesQuery(i.title)),
+      ...googleCalIssues.filter((i) => matchesQuery(i.title)),
+    ],
+    [filteredDatedIssues, asanaCalIssues, googleCalIssues, q],
+  );
+  const hasAnything = datedWithAsana.length > 0 || filteredProjectEvents.length > 0;
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4 p-4 sm:p-6">
@@ -258,6 +396,36 @@ export function MyCalendar() {
         </Tabs>
       </div>
 
+      {/* Title search — the team encodes meeting attendees in event titles, so
+          searching the title is how people find what concerns them. */}
+      <div className="relative max-w-xs">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("calendar.searchPlaceholder", { defaultValue: "Search by title…" })}
+          className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      </div>
+
+      {googleNeedsConnect && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs">
+          <span className="text-emerald-700 dark:text-emerald-300">
+            {t("calendar.google.connectHint", {
+              defaultValue: "Connect Google Calendar to see your events here.",
+            })}
+          </span>
+          <button
+            type="button"
+            onClick={handleConnectGoogle}
+            className="rounded-md border border-emerald-500/40 px-2 py-1 font-medium text-emerald-700 transition-colors hover:bg-emerald-500/15 dark:text-emerald-300"
+          >
+            {t("calendar.google.connect", { defaultValue: "Connect Google Calendar" })}
+          </button>
+        </div>
+      )}
+
       {!hasAnything && (
         <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
           {t("calendar.empty.message", { defaultValue: "No issues have a due date yet. Set a due date on an issue to see it here." })}
@@ -266,14 +434,19 @@ export function MyCalendar() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsContent value="month" className="mt-0">
-          <IssueCalendar issues={dated} projectEvents={projectEvents} />
+          <IssueCalendar
+            issues={filteredDatedIssues}
+            projectEvents={filteredProjectEvents}
+            asanaEvents={filteredAsanaEvents}
+            googleEvents={filteredGoogleEvents}
+          />
         </TabsContent>
         <TabsContent value="week" className="mt-0">
-          <WeekView issues={dated} />
+          <WeekView issues={datedWithAsana} />
         </TabsContent>
         <TabsContent value="list" className="mt-0">
-          {dated.length > 0 ? (
-            <AgendaList issues={dated} />
+          {datedWithAsana.length > 0 ? (
+            <AgendaList issues={datedWithAsana} />
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
               {t("calendar.empty.message", { defaultValue: "No issues have a due date yet." })}

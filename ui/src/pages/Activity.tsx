@@ -8,6 +8,8 @@ import { buildCompanyUserProfileMap } from "../lib/company-members";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
+import { TeamFilterBar } from "../components/TeamFilterBar";
+import { useAgentTeamFilter, agentMatchesTeams, listAllTeams } from "../lib/agent-teams";
 import { EmptyState } from "../components/EmptyState";
 import { ActivityRow } from "../components/ActivityRow";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -49,6 +51,7 @@ export function Activity() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { t } = useTranslation();
   const [filter, setFilter] = useState("all");
+  const teamFilter = useAgentTeamFilter(selectedCompanyId);
 
   useEffect(() => {
     setBreadcrumbs([{ label: t("activityPage.breadcrumb") }]);
@@ -83,6 +86,8 @@ export function Activity() {
     return map;
   }, [agents]);
 
+  const allTeams = useMemo(() => listAllTeams(agents ?? []), [agents]);
+
   const entityNameMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const a of agents ?? []) map.set(`agent:${a.id}`, a.name);
@@ -110,10 +115,16 @@ export function Activity() {
     return <PageSkeleton variant="list" />;
   }
 
-  const filtered =
-    data && filter !== "all"
-      ? data.filter((e) => e.entityType === filter)
-      : data;
+  let filtered = data ?? [];
+  if (filter !== "all") filtered = filtered.filter((e) => e.entityType === filter);
+  if (teamFilter.selected.length > 0) {
+    filtered = filtered.filter((e) => {
+      const aid = e.agentId ?? (e.actorType === "agent" ? e.actorId : null);
+      if (!aid) return false;
+      const ag = agentMap.get(aid);
+      return ag ? agentMatchesTeams(ag, teamFilter.selected) : false;
+    });
+  }
 
   const entityTypes = data
     ? [...new Set(data.map((e) => e.entityType))].sort()
@@ -121,7 +132,17 @@ export function Activity() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {allTeams.length > 0 ? (
+          <TeamFilterBar
+            teams={allTeams}
+            selected={teamFilter.selected}
+            onToggle={teamFilter.toggle}
+            onClear={teamFilter.clear}
+          />
+        ) : (
+          <div />
+        )}
         <Select value={filter} onValueChange={setFilter}>
           <SelectTrigger className="w-[140px] h-8 text-xs">
             <SelectValue placeholder={t("activityPage.filterByType")} />

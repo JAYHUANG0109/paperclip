@@ -2,7 +2,7 @@ import { useState, type ComponentType, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useSidebar } from "../context/SidebarContext";
+import { useSidebar, usePeekLock } from "../context/SidebarContext";
 import {
   Collapsible,
   CollapsibleContent,
@@ -71,6 +71,9 @@ function SidebarSectionHeader({
 }: Pick<SidebarSectionProps, "collapsible" | "headerAction" | "label" | "menu">) {
   const { isMobile } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Keep the collapsed-rail peek open while this menu is open (its content
+  // portals outside the panel, so moving onto it would otherwise close peek).
+  usePeekLock(menuOpen);
   const hasMenu = Boolean(
     menu && ((menu.actions?.length ?? 0) > 0 || (menu.radioChoices?.length ?? 0) > 0),
   );

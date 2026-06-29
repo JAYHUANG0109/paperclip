@@ -2,6 +2,28 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { recordConversation } from "./conversations.js";
 
 /**
+ * Redact credentials a user might paste in chat (Asana Personal Access Tokens)
+ * so they never persist on highly-visible / monitoring surfaces (issue titles,
+ * the Chat Logs view, last-message context). Returns whether a secret was found
+ * so callers can route the raw value to the single, transient capture channel
+ * (the new issue's description, which the agent self-destructs after storing).
+ */
+const SECRET_PATTERNS: RegExp[] = [
+  /2\/\d{8,}\/\d{8,}:[0-9a-f]{16,}/g, // Asana PAT: 2/<userGid>/<appGid>:<hex>
+];
+export function redactSecrets(input: string): { text: string; hadSecret: boolean } {
+  let hadSecret = false;
+  let text = input ?? "";
+  for (const re of SECRET_PATTERNS) {
+    if (re.test(text)) {
+      hadSecret = true;
+      text = text.replace(re, "[已遮蔽的權杖 / redacted token]");
+    }
+  }
+  return { text, hadSecret };
+}
+
+/**
  * Where to deliver an agent's reply once it's ready. Stored in plugin state
  * keyed by the issue id, so the issue.updated handler can route the agent's
  * comment back to the right Google Chat space/thread.
@@ -95,11 +117,21 @@ export async function dispatchToAgent(
   }
 ): Promise<string> {
   const who = params.senderDisplayName ? ` from ${params.senderDisplayName}` : "";
-  const title = `[Google Chat]${who}: ${truncate(params.text.replace(/\s+/g, " "), 160)}`;
+  // Never let a pasted token reach the (highly visible) title. If a secret is
+  // present, keep the raw value ONLY in the description as a one-time capture
+  // channel and tell the agent to store it then wipe the description.
+  const safe = redactSecrets(params.text);
+  const title = `[Google Chat]${who}: ${truncate(safe.text.replace(/\s+/g, " "), 160)}`;
+  const description = safe.hadSecret
+    ? `${params.text}\n\n---\n⚠️ 本訊息含使用者提供的 Asana 權杖(明文)。請**立刻**:\n` +
+      `1) 用此權杖呼叫 POST /api/companies/${params.companyId}/connections/asana 以安全儲存並接線(見 .claude/asana-instructions-zh.md);\n` +
+      `2) 成功後**立即**把本議題描述改成「已安全儲存 Asana 權杖」以移除明文,並標記 done;\n` +
+      `3) 提醒使用者到 Asana 撤銷剛貼出的權杖。`
+    : params.text;
   const issue = await ctx.issues.create({
     companyId: params.companyId,
     title,
-    description: params.text,
+    description,
     assigneeAgentId: params.agentId
   });
   await ctx.issues.update(issue.id, { status: "todo" }, params.companyId);
@@ -111,7 +143,7 @@ export async function dispatchToAgent(
       email: params.target.senderEmail,
       displayName: params.senderDisplayName,
       issueId: issue.id,
-      text: params.text,
+      text: safe.text, // never store a token in the monitoring/Chat Logs view
       at: new Date().toISOString()
     });
   } catch {

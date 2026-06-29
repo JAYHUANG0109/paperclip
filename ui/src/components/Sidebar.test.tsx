@@ -56,10 +56,13 @@ const mockSidebar = vi.hoisted(() => ({
   peeking: false,
   toggleCollapsed: vi.fn(),
   setCollapsed: vi.fn(),
+  lockPeek: vi.fn(),
+  unlockPeek: vi.fn(),
 }));
 
 vi.mock("../context/SidebarContext", () => ({
   useSidebar: () => mockSidebar,
+  usePeekLock: () => {},
 }));
 
 vi.mock("../api/heartbeats", () => ({

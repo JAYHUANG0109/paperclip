@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { and, eq } from "drizzle-orm";
 import { inboxDismissals, joinRequests } from "@paperclipai/db";
 import { sidebarBadgeService } from "../services/sidebar-badges.js";
+import { notificationService } from "../services/notifications.js";
 import { accessService } from "../services/access.js";
 import { dashboardService } from "../services/dashboard.js";
 import { collapseDuplicatePendingHumanJoinRequests } from "../lib/join-request-dedupe.js";
@@ -19,6 +20,7 @@ function buildDismissedAtByKey(
 export function sidebarBadgeRoutes(db: Db) {
   const router = Router();
   const svc = sidebarBadgeService(db);
+  const notifications = notificationService(db);
   const access = accessService(db);
   const dashboard = dashboardService(db);
 
@@ -69,12 +71,21 @@ export function sidebarBadgeRoutes(db: Db) {
       dismissals: dismissedAtByKey,
       joinRequests: visibleJoinRequests,
     });
+    let unreadNotifications = 0;
+    try {
+      if (req.actor.type === "board" && req.actor.userId) {
+        unreadNotifications = await notifications.unreadCount(companyId, req.actor.userId);
+      }
+    } catch {
+      unreadNotifications = 0; // never let notifications break the inbox badge
+    }
     const summary = await dashboard.summary(companyId);
     const hasFailedRuns = badges.failedRuns > 0;
     const alertsCount =
       (summary.agents.error > 0 && !hasFailedRuns ? 1 : 0) +
       (summary.costs.monthBudgetCents > 0 && summary.costs.monthUtilizationPercent >= 80 ? 1 : 0);
-    badges.inbox = badges.failedRuns + alertsCount + badges.joinRequests + badges.approvals;
+    badges.notifications = unreadNotifications;
+    badges.inbox = badges.failedRuns + alertsCount + badges.joinRequests + badges.approvals + unreadNotifications;
 
     res.json(badges);
   });

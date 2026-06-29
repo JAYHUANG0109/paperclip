@@ -152,6 +152,81 @@ export function sortAgentsByDefaultSidebarOrder(
   return sorted;
 }
 
+// Generic, unassigned C-suite placeholder agents (CEO_agent, COO_agent,
+// CMO_agent, …) — scaffolding, not real colleagues.
+const PLACEHOLDER_CSUITE = /^(CEO|COO|CMO|CTO|CFO|CIO)_agent$/i;
+
+function isPlaceholderCsuite(agent: Pick<Agent, "name">): boolean {
+  return PLACEHOLDER_CSUITE.test(agent.name.trim());
+}
+
+// An agent that maps to no real person/user (bots, scaffolding). Detected by the
+// knowledge-maintainer role (the Wiki bot) or an explicit metadata.nonUser flag
+// (set by an admin for placeholders like generic consultants/specialists).
+function isNonUserAgent(agent: Pick<Agent, "role" | "metadata">): boolean {
+  const role = typeof agent.role === "string" ? agent.role.toLowerCase() : "";
+  if (role === "knowledge-maintainer") return true;
+  const md = agent.metadata as Record<string, unknown> | null;
+  return Boolean(md && md.nonUser === true);
+}
+
+/**
+ * Sort tier for the default agent ordering (lower = higher up the page):
+ *   0 — real colleagues (ranked among themselves by access level)
+ *   1 — generic C-suite placeholder agents (CEO/CMO/COO/…)
+ *   2 — other non-user agents (Wiki bot, flagged scaffolding) — the very bottom
+ */
+export function agentSortTier(agent: Pick<Agent, "name" | "role" | "metadata">): number {
+  if (isPlaceholderCsuite(agent)) return 1;
+  if (isNonUserAgent(agent)) return 2;
+  return 0;
+}
+
+// Depth in the reportsTo tree: 0 = root (no manager), +1 per hop up. Shallower
+// = higher up the org = more access. Cycle- and missing-parent-safe.
+function computeAccessDepths(universe: Agent[]): Map<string, number> {
+  const byId = new Map(universe.map((a) => [a.id, a]));
+  const depth = new Map<string, number>();
+  for (const a of universe) {
+    let d = 0;
+    let cur: Agent | undefined = a;
+    const seen = new Set<string>();
+    while (cur?.reportsTo && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      const parent = byId.get(cur.reportsTo);
+      if (!parent) break;
+      d += 1;
+      cur = parent;
+      if (d > 50) break;
+    }
+    depth.set(a.id, d);
+  }
+  return depth;
+}
+
+/**
+ * Rank agents by access level (org seniority): higher up the reportsTo chain
+ * first, ties broken by name. Generic C-suite placeholder agents
+ * (CEO_agent/COO_agent/CMO_agent/…) are pushed to the end regardless of depth,
+ * since they're unassigned scaffolding rather than real colleagues.
+ *
+ * `universe` is the full agent set used to resolve the reportsTo chain — pass it
+ * when `toSort` is a filtered subset so a manager filtered out of the view still
+ * contributes to depth. Defaults to `toSort`.
+ */
+export function sortAgentsByAccessLevel(toSort: Agent[], universe: Agent[] = toSort): Agent[] {
+  const depth = computeAccessDepths(universe.length ? universe : toSort);
+  return [...toSort].sort((a, b) => {
+    const ta = agentSortTier(a);
+    const tb = agentSortTier(b);
+    if (ta !== tb) return ta - tb; // real → C-suite → other non-user
+    const da = depth.get(a.id) ?? 99;
+    const db = depth.get(b.id) ?? 99;
+    if (da !== db) return da - db; // within a tier, higher in the org first
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+}
+
 export function sortAgentsByStoredOrder(
   agents: Agent[],
   orderedIds: string[],

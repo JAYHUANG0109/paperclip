@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n";
 import {
   ROUTINE_SECTION_KEYS,
   type RoutineSectionKey,
@@ -61,6 +62,16 @@ const NAV_GROUPS: NavGroup[] = [
 
 const ALL_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
 
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
+
+function groupLabel(t: TranslateFn, label: string): string {
+  return t(`routineSidebar.group.${label.toLowerCase()}`, { defaultValue: label });
+}
+
+function itemLabel(t: TranslateFn, item: NavItem): string {
+  return t(`routineSidebar.item.${item.key}`, { defaultValue: item.label });
+}
+
 export function RoutineSubSidebar({
   activeSection,
   hrefFor,
@@ -74,6 +85,7 @@ export function RoutineSubSidebar({
   hasLiveRun: boolean;
   onNavigate: (section: RoutineSectionKey) => void;
 }) {
+  const { t } = useTranslation();
   const itemRefs = useRef<Array<HTMLAnchorElement | null>>([]);
 
   const focusItem = (index: number) => {
@@ -109,13 +121,13 @@ export function RoutineSubSidebar({
 
   return (
     <nav
-      aria-label="Routine sections"
+      aria-label={t("routineSidebar.navLabel", { defaultValue: "Routine sections" })}
       className="sticky top-0 hidden max-h-[100dvh] w-52 shrink-0 flex-col gap-4 self-start overflow-y-auto border-r border-border bg-sidebar/30 px-3 py-4 md:flex"
     >
       {NAV_GROUPS.map((group) => (
         <div key={group.label} className="flex flex-col gap-0.5">
           <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
-            {group.label}
+            {groupLabel(t, group.label)}
           </p>
           {group.items.map((item) => {
             flatIndex += 1;
@@ -145,12 +157,12 @@ export function RoutineSubSidebar({
                 )}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{item.label}</span>
+                <span className="truncate">{itemLabel(t, item)}</span>
                 {showLiveDot ? (
                   <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 motion-safe:animate-pulse" />
                 ) : dirty ? (
                   <span
-                    aria-label="Unsaved changes"
+                    aria-label={t("routineSidebar.unsavedChanges", { defaultValue: "Unsaved changes" })}
                     className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 ring-2 ring-background"
                   />
                 ) : null}
@@ -173,6 +185,7 @@ export function RoutineSectionPicker({
   onNavigate: (section: RoutineSectionKey) => void;
   isSectionDirty: (section: RoutineSectionKey) => boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-2 md:hidden">
       <Select
@@ -183,20 +196,20 @@ export function RoutineSectionPicker({
           }
         }}
       >
-        <SelectTrigger className="h-11 w-full" aria-label="Routine section">
+        <SelectTrigger className="h-11 w-full" aria-label={t("routineSidebar.sectionLabel", { defaultValue: "Routine section" })}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {NAV_GROUPS.map((group) => (
             <SelectGroup key={group.label}>
               <SelectLabel className="uppercase tracking-[0.12em] text-[11px]">
-                {group.label}
+                {groupLabel(t, group.label)}
               </SelectLabel>
               {group.items.map((item) => (
                 <SelectItem key={item.key} value={item.key} className="h-11">
                   <span className="flex items-center gap-2">
                     <item.icon className="h-3.5 w-3.5" />
-                    {item.label}
+                    {itemLabel(t, item)}
                     {isSectionDirty(item.key) ? (
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                     ) : null}

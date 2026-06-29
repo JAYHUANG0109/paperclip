@@ -163,7 +163,7 @@ export function getScheduleCronValidation(cron: string): {
   if (!trimmed) {
     return {
       valid: false,
-      message: "Enter a 5-field cron expression.",
+      message: standaloneT("scheduleEditor.validation.empty", { defaultValue: "Enter a 5-field cron expression." }),
       nextFires: [],
     };
   }
@@ -172,7 +172,7 @@ export function getScheduleCronValidation(cron: string): {
   if (fields.length !== 5) {
     return {
       valid: false,
-      message: `Use exactly 5 fields; this has ${fields.length}.`,
+      message: standaloneT("scheduleEditor.validation.fieldCount", { defaultValue: "Use exactly 5 fields; this has {{count}}.", count: fields.length }),
       nextFires: [],
     };
   }
@@ -180,7 +180,7 @@ export function getScheduleCronValidation(cron: string): {
   if (!parseCronExpression(trimmed)) {
     return {
       valid: false,
-      message: "Cron fields must use valid numbers, ranges, lists, wildcards, or steps.",
+      message: standaloneT("scheduleEditor.validation.invalidFields", { defaultValue: "Cron fields must use valid numbers, ranges, lists, wildcards, or steps." }),
       nextFires: [],
     };
   }
@@ -188,7 +188,9 @@ export function getScheduleCronValidation(cron: string): {
   const nextFires = nextCronFires(trimmed, 3, { timeZone: "UTC" });
   return {
     valid: true,
-    message: nextFires.length > 0 ? "Valid cron." : "Valid cron, but no upcoming fires were found.",
+    message: nextFires.length > 0
+      ? standaloneT("scheduleEditor.validation.valid", { defaultValue: "Valid cron." })
+      : standaloneT("scheduleEditor.validation.validNoFires", { defaultValue: "Valid cron, but no upcoming fires were found." }),
     nextFires,
   };
 }
@@ -274,7 +276,7 @@ export function ScheduleEditor({
               }
             }}
             placeholder="0 10 * * *"
-            aria-label="Cron expression"
+            aria-label={t("scheduleEditor.cronExpression", { defaultValue: "Cron expression" })}
             aria-invalid={!customValidation.valid}
             className="font-mono text-sm"
           />
@@ -287,7 +289,7 @@ export function ScheduleEditor({
           >
             {customValidation.message}
             {customValidation.valid && customValidation.nextFires.length > 0
-              ? ` Next: ${customValidation.nextFires.map((fire) => fire.toLocaleString()).join(", ")}.`
+              ? t("scheduleEditor.nextFires", { defaultValue: " Next: {{fires}}.", fires: customValidation.nextFires.map((fire) => fire.toLocaleString()).join(", ") })
               : null}
           </p>
         </div>

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
-import { useSidebar } from "../context/SidebarContext";
+import { useSidebar, usePeekLock } from "../context/SidebarContext";
 import { useToastActions } from "../context/ToastContext";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
@@ -163,6 +163,9 @@ function SidebarAgentItem({
     : isBudgetPaused
       ? t("sidebarAgents.budgetPaused")
       : pauseResumeLabel;
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Hold the collapsed-rail peek open while this item's action menu is open.
+  usePeekLock(menuOpen);
 
   return (
     <div className="group/agent relative flex items-center">
@@ -201,7 +204,7 @@ function SidebarAgentItem({
         )}
       </NavLink>
 
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
@@ -538,9 +541,11 @@ export function SidebarAgents({ streamlined: _streamlined }: { streamlined?: boo
                 ))}
                 <Folder className="h-3.5 w-3.5 shrink-0" />
                 <span className="flex-1 truncate text-left">{label}</span>
-                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
-                  {group.agents.length}
-                </span>
+                {!rail && (
+                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
+                    {group.agents.length}
+                  </span>
+                )}
               </button>
               {!collapsed && group.agents.map(renderAgentItem)}
             </div>

@@ -9,6 +9,8 @@ export interface LeaderboardEntry {
   skillCount: number;
   beneficiaries: number;
   bountyCount: number;
+  usageMinutes: number;
+  usesCount: number;
   score: number;
 }
 
