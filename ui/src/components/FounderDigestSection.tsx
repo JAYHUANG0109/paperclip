@@ -141,7 +141,7 @@ function ConsoleView({
           const handledCount = items.filter((it) => (isReview ? !!it.decision : it.closed)).length;
           const pct = total > 0 ? Math.round((handledCount / total) * 100) : 0;
           return (
-            <Card key={c.key} className={cn("border-l-4", c.accent)}>
+            <Card key={c.key} className={cn("min-w-0 overflow-hidden border-l-4", c.accent)}>
               <CardHeader className="flex flex-row items-center justify-between gap-2 px-5 pt-5 pb-2">
                 <CardTitle className="text-base">{c.title}</CardTitle>
                 {total > 0 ? (
@@ -280,12 +280,12 @@ function FounderRow({
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
         {item.permalinkUrl ? (
-          <a href={item.permalinkUrl} target="_blank" rel="noreferrer" className={cn("group min-w-0 flex-1 hover:underline", item.closed && "text-muted-foreground line-through")}>
+          <a href={item.permalinkUrl} target="_blank" rel="noreferrer" className={cn("group min-w-0 flex-1 break-words [overflow-wrap:anywhere] hover:underline", item.closed && "text-muted-foreground line-through")}>
             {item.name}
             <ExternalLink className="ml-1 inline h-3 w-3 align-text-top text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
           </a>
         ) : (
-          <span className={cn("min-w-0 flex-1", item.closed && "text-muted-foreground line-through")}>{item.name}</span>
+          <span className={cn("min-w-0 flex-1 break-words [overflow-wrap:anywhere]", item.closed && "text-muted-foreground line-through")}>{item.name}</span>
         )}
         {isReview && item.triage && !item.decision && (
           <span
@@ -431,7 +431,7 @@ function Block({ label, text, accent, muted }: { label: string; text: string; ac
   return (
     <div className={cn("rounded-md border p-2", accent ? "border-primary/30 bg-primary/5" : "border-border", muted && "opacity-80")}>
       <div className="mb-0.5 font-medium text-muted-foreground">{label}</div>
-      <p className="whitespace-pre-wrap break-words text-foreground">{text}</p>
+      <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">{text}</p>
     </div>
   );
 }
