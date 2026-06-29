@@ -41,10 +41,15 @@ echo "▶ [2/4] Installing dependencies (fast if unchanged)…"
 pnpm install --frozen-lockfile --prefer-offline >/tmp/deploy-live-install.log 2>&1 \
   || { echo "✗ Dependency install failed — NOT restarting. See /tmp/deploy-live-install.log" >&2; exit 1; }
 
-echo "▶ [3/4] Building…"
-if ! pnpm build; then
+echo "▶ [3/4] Building the UI bundle…"
+# UI-only build: the server runs from TS source via tsx (no server build needed),
+# and the workspace packages were built during setup. We deliberately do NOT run the
+# full `pnpm build` here because it re-fetches the skills-catalog manifest from GitHub
+# every time and fails when GitHub is unreachable/rate-limited. If you ever change a
+# workspace package (packages/*), run a full `pnpm build` in ~/paperclip-live manually.
+if ! pnpm --filter @paperclipai/ui build; then
   echo "" >&2
-  echo "✗ Build FAILED — the service was NOT restarted." >&2
+  echo "✗ UI build FAILED — the service was NOT restarted." >&2
   echo "  The live site keeps serving the previous working build. Fix and re-run." >&2
   exit 1
 fi
