@@ -9,6 +9,15 @@ import { resolveOwnAgentId } from "./asana-digest.js";
  * submits); for meetings it drafts a prep brief. STORED on the agent as
  * metadata.founderDigest. The dashboard READS it (no token use at read time).
  */
+/**
+ * The founder's verdict on a draft 批閱:
+ *   approved         核准      — accept the draft as-is (green)
+ *   changes_requested 請求變更 — send back with the founder's note (amber)
+ *   rejected         拒絕      — decline (red)
+ * `null` = not yet decided (or the founder reset their decision).
+ */
+export type FounderDecision = "approved" | "changes_requested" | "rejected";
+
 export interface FounderItem {
   gid: string;
   name: string;
@@ -18,7 +27,8 @@ export interface FounderItem {
   review: string | null; // agent's DRAFT 批閱 — never auto-submitted
   prep: string | null; // agent's meeting prep brief (會議)
   triage: "now" | "evening" | null; // 15:30+ runs tag: 現在可先處理 / 留待晚上
-  approved: boolean; // founder has approved the draft 批閱
+  decision: FounderDecision | null; // founder's verdict on the draft 批閱
+  decisionNote: string | null; // founder's comment / suggestion / regards (optional)
 }
 
 export interface FounderDigest {
@@ -61,6 +71,14 @@ function sanitizeItem(raw: unknown): FounderItem | null {
   if (typeof t.gid !== "string" || typeof t.name !== "string") return null;
   const str = (v: unknown, max = 2000): string | null =>
     typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
+  // Decision: prefer the explicit field; fall back to the legacy boolean
+  // `approved` so digests produced by an older agent build still render.
+  const decision: FounderDecision | null =
+    t.decision === "approved" || t.decision === "changes_requested" || t.decision === "rejected"
+      ? t.decision
+      : t.approved === true
+        ? "approved"
+        : null;
   return {
     gid: t.gid,
     name: t.name,
@@ -70,7 +88,8 @@ function sanitizeItem(raw: unknown): FounderItem | null {
     review: str(t.review),
     prep: str(t.prep),
     triage: t.triage === "now" || t.triage === "evening" ? t.triage : null,
-    approved: t.approved === true,
+    decision,
+    decisionNote: str(t.decisionNote),
   };
 }
 
@@ -118,14 +137,25 @@ export async function getFounderDigestForUser(db: Db, companyId: string, email: 
   return null;
 }
 
-/** Optimistically flag a 待批閱 item as approved in the stored digest. */
-export async function setFounderItemApproved(db: Db, agentId: string, gid: string, approved: boolean): Promise<FounderDigest | null> {
+/**
+ * Optimistically record the founder's decision (+ optional note) on a 待批閱
+ * item in the stored digest. `decision: null` reverts it to undecided. The real
+ * Asana write is routed through the agent (see the dashboard route).
+ */
+export async function setFounderItemDecision(
+  db: Db,
+  agentId: string,
+  gid: string,
+  decision: FounderDecision | null,
+  note: string | null,
+): Promise<FounderDigest | null> {
   const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
   const md = row?.metadata && typeof row.metadata === "object" ? { ...(row.metadata as Record<string, unknown>) } : null;
   if (!md) return null;
   const digest = md.founderDigest as FounderDigest | undefined;
   if (!digest?.categories) return null;
-  const apply = (list: FounderItem[]) => (list ?? []).map((t) => (t.gid === gid ? { ...t, approved } : t));
+  const apply = (list: FounderItem[]) =>
+    (list ?? []).map((t) => (t.gid === gid ? { ...t, decision, decisionNote: note } : t));
   const next: FounderDigest = {
     ...digest,
     categories: {

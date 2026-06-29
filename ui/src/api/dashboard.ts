@@ -20,6 +20,8 @@ export interface AsanaDigest {
   sample?: boolean;
 }
 
+export type FounderDecision = "approved" | "changes_requested" | "rejected";
+
 export interface FounderItem {
   gid: string;
   name: string;
@@ -29,7 +31,8 @@ export interface FounderItem {
   review: string | null;
   prep: string | null;
   triage: "now" | "evening" | null;
-  approved: boolean;
+  decision: FounderDecision | null;
+  decisionNote: string | null;
 }
 export interface FounderDigest {
   generatedAt: string | null;
@@ -93,9 +96,11 @@ export const dashboardApi = {
       { completed },
     ),
   founderDigest: (companyId: string) => api.get<FounderDigest>(`/companies/${companyId}/founder-digest/me`),
-  approveFounderItem: (companyId: string, gid: string, approved: boolean) =>
+  // Submit the founder's verdict on a draft 批閱 (+ optional comment). `decision:
+  // null` reverts it to undecided.
+  decideFounderItem: (companyId: string, gid: string, decision: FounderDecision | null, note?: string) =>
     api.post<{ ok: boolean; digest: FounderDigest | null }>(
-      `/companies/${companyId}/founder-digest/items/${encodeURIComponent(gid)}/approve`,
-      { approved },
+      `/companies/${companyId}/founder-digest/items/${encodeURIComponent(gid)}/decision`,
+      { decision, note },
     ),
 };

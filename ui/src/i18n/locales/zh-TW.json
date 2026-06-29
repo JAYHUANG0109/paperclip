@@ -5689,17 +5689,25 @@
     "detailDescription": "說明"
   },
   "founder": {
-    "pendingApproval": "待您核准",
+    "pendingApproval": "待您批閱",
     "noItems": "目前沒有項目。",
     "approved": "已核准",
     "approve": "核准",
+    "requestChanges": "請求變更",
+    "changesRequested": "已請求變更",
+    "reject": "拒絕",
+    "rejected": "已拒絕",
+    "confirm": "確認",
+    "reset": "撤回決定",
+    "notePlaceholder": "留言 / 建議（選填）— 將張貼為 Asana 評論",
+    "yourNote": "您的留言",
     "summary": "AI 摘要",
-    "draftReview": "批閱草稿（核准前請先閱讀）",
+    "draftReview": "批閱草稿（決定前請先閱讀）",
     "meetingPrep": "會議準備",
     "source": "來自 Asana",
     "triageNow": "現在可先處理",
     "triageEvening": "留待晚上",
-    "approvedProgress": "{{done}}/{{total}} 已核准"
+    "handledProgress": "{{done}}/{{total}} 已處理"
   },
   "sidebarShell": {
     "resize": "調整側邊欄大小"

@@ -14,7 +14,8 @@ import {
 import {
   writeFounderDigestForAgent,
   getFounderDigestForUser,
-  setFounderItemApproved,
+  setFounderItemDecision,
+  type FounderDecision,
 } from "../services/founder-digest.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
@@ -234,9 +235,14 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     res.json(digest);
   });
 
-  // Approve a 待批閱 item's draft 批閱: optimistically flag it, then route the
-  // real Asana sign-off through the caller's own agent (never the server's token).
-  router.post("/companies/:companyId/founder-digest/items/:gid/approve", async (req, res) => {
+  // Record the founder's decision on a 待批閱 item's draft 批閱 — 核准 (approved) /
+  // 請求變更 (changes_requested) / 拒絕 (rejected), with an optional note (the
+  // founder's comment, suggestion, or regards). Optimistically flags the stored
+  // digest, then routes the real Asana sign-off through the caller's OWN agent
+  // (never the server's token): the agent posts the note as an Asana comment and
+  // applies the verdict. `decision: null` (or legacy `{ approved: false }`)
+  // reverts the item to undecided.
+  router.post("/companies/:companyId/founder-digest/items/:gid/decision", async (req, res) => {
     const companyId = req.params.companyId as string;
     const gid = req.params.gid as string;
     assertCompanyAccess(req, companyId);
@@ -247,14 +253,21 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       res.status(404).json({ error: "No agent is linked to your account to act on Asana." });
       return;
     }
-    const approved = req.body?.approved !== false; // default true
-    const digest = await setFounderItemApproved(db, agentId, gid, approved);
+    const body = (req.body ?? {}) as { decision?: unknown; note?: unknown; approved?: unknown };
+    const decision: FounderDecision | null =
+      body.decision === "approved" || body.decision === "changes_requested" || body.decision === "rejected"
+        ? body.decision
+        : body.approved === true
+          ? "approved" // legacy one-button approve
+          : null; // explicit reset / reopen
+    const note = typeof body.note === "string" ? body.note.trim().slice(0, 2000) || null : null;
+    const digest = await setFounderItemDecision(db, agentId, gid, decision, note);
     await heartbeat.wakeup(agentId, {
       source: "on_demand",
       triggerDetail: "manual",
-      reason: "founder-approve-item",
-      payload: { directive: "founder-approve-item", taskGid: gid, approved },
-      idempotencyKey: `founder-approve:${gid}:${approved ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
+      reason: "founder-review-item",
+      payload: { directive: "founder-review-item", taskGid: gid, decision, note },
+      idempotencyKey: `founder-review:${gid}:${decision ?? "reset"}:${Math.floor(Date.now() / 60000)}`,
       requestedByActorType: "user",
       requestedByActorId: userId ?? null,
     });

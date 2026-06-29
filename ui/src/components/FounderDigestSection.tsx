@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw } from "lucide-react";
 import { useTranslation } from "@/i18n";
-import { dashboardApi, type FounderDigest, type FounderItem } from "../api/dashboard";
+import { dashboardApi, type FounderDecision, type FounderDigest, type FounderItem } from "../api/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "../lib/utils";
 
@@ -32,13 +32,15 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
     staleTime: 60_000,
   });
 
-  const approve = useMutation({
-    mutationFn: ({ gid, approved }: { gid: string; approved: boolean }) => dashboardApi.approveFounderItem(companyId, gid, approved),
-    onMutate: async ({ gid, approved }) => {
+  const decide = useMutation({
+    mutationFn: ({ gid, decision, note }: { gid: string; decision: FounderDecision | null; note?: string }) =>
+      dashboardApi.decideFounderItem(companyId, gid, decision, note),
+    onMutate: async ({ gid, decision, note }) => {
       await queryClient.cancelQueries({ queryKey: KEY(companyId) });
       const prev = queryClient.getQueryData<FounderDigest>(KEY(companyId));
       if (prev?.categories) {
-        const apply = (l: FounderItem[]) => (l ?? []).map((it) => (it.gid === gid ? { ...it, approved } : it));
+        const apply = (l: FounderItem[]) =>
+          (l ?? []).map((it) => (it.gid === gid ? { ...it, decision, decisionNote: note?.trim() || null } : it));
         queryClient.setQueryData<FounderDigest>(KEY(companyId), {
           ...prev,
           categories: {
@@ -54,14 +56,14 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
     onError: (_e, _v, ctx) => ctx?.prev && queryClient.setQueryData(KEY(companyId), ctx.prev),
     onSettled: (res) => res?.digest && queryClient.setQueryData(KEY(companyId), res.digest),
   });
-  const pendingGid = approve.isPending ? approve.variables?.gid : undefined;
+  const pendingGid = decide.isPending ? decide.variables?.gid : undefined;
 
   const cats = data?.categories;
   const total = cats ? cats.urgent.length + cats.meetings.length + cats.nonUrgent.length + cats.reminders.length : 0;
   if (!cats || total === 0) return null;
 
   const pendingApproval =
-    [...cats.urgent, ...cats.nonUrgent].filter((it) => (it.summary || it.review) && !it.approved).length;
+    [...cats.urgent, ...cats.nonUrgent].filter((it) => (it.summary || it.review) && !it.decision).length;
   const generated = data?.generatedAt ? new Date(data.generatedAt) : null;
 
   return (
@@ -90,15 +92,16 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
           // they show just their count.
           const isReview = c.kind === "review";
           const total = items.length;
-          const approvedCount = isReview ? items.filter((it) => it.approved).length : 0;
-          const pct = isReview && total > 0 ? Math.round((approvedCount / total) * 100) : 0;
+          // Progress = items the founder has acted on (any decision), not just approvals.
+          const handledCount = isReview ? items.filter((it) => it.decision).length : 0;
+          const pct = isReview && total > 0 ? Math.round((handledCount / total) * 100) : 0;
           return (
             <Card key={c.key} className={cn("border-l-4", c.accent)}>
               <CardHeader className="flex flex-row items-center justify-between gap-2 px-5 pt-5 pb-2">
                 <CardTitle className="text-base">{c.title}</CardTitle>
                 {isReview && total > 0 ? (
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {t("founder.approvedProgress", { done: approvedCount, total, defaultValue: "{{done}}/{{total}} approved" })}
+                    {t("founder.handledProgress", { done: handledCount, total, defaultValue: "{{done}}/{{total}} handled" })}
                   </span>
                 ) : (
                   <span className="text-xs tabular-nums text-muted-foreground">{total}</span>
@@ -108,7 +111,7 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
                 <div
                   className="mx-5 mb-1 h-1.5 overflow-hidden rounded-full bg-muted"
                   role="progressbar"
-                  aria-valuenow={approvedCount}
+                  aria-valuenow={handledCount}
                   aria-valuemin={0}
                   aria-valuemax={total}
                 >
@@ -126,7 +129,7 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
                         item={it}
                         kind={c.kind}
                         pending={pendingGid === it.gid}
-                        onApprove={(approved) => approve.mutate({ gid: it.gid, approved })}
+                        onDecide={(decision, note) => decide.mutate({ gid: it.gid, decision, note })}
                       />
                     ))}
                   </ul>
@@ -157,20 +160,63 @@ function StatTile({ label, value, tone, highlight }: { label: string; value: num
   );
 }
 
+/** Visual + label config for each decided verdict. */
+const DECISION_META: Record<
+  FounderDecision,
+  { icon: typeof Check; labelKey: string; fallback: string; badge: string }
+> = {
+  approved: {
+    icon: Check,
+    labelKey: "founder.approved",
+    fallback: "已核准",
+    badge: "border-emerald-500/40 text-emerald-600 dark:text-emerald-400",
+  },
+  changes_requested: {
+    icon: MessageSquare,
+    labelKey: "founder.changesRequested",
+    fallback: "已請求變更",
+    badge: "border-amber-500/40 text-amber-600 dark:text-amber-400",
+  },
+  rejected: {
+    icon: X,
+    labelKey: "founder.rejected",
+    fallback: "已拒絕",
+    badge: "border-red-500/40 text-red-600 dark:text-red-400",
+  },
+};
+
+/** The three action buttons offered on an undecided 待批閱 item. */
+const DECISION_ACTIONS: { decision: FounderDecision; labelKey: string; fallback: string; cls: string }[] = [
+  { decision: "approved", labelKey: "founder.approve", fallback: "核准", cls: "border-emerald-500/50 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400" },
+  { decision: "changes_requested", labelKey: "founder.requestChanges", fallback: "請求變更", cls: "border-amber-500/50 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400" },
+  { decision: "rejected", labelKey: "founder.reject", fallback: "拒絕", cls: "border-red-500/50 text-red-700 hover:bg-red-500/10 dark:text-red-400" },
+];
+
 function FounderRow({
   item,
   kind,
   pending,
-  onApprove,
+  onDecide,
 }: {
   item: FounderItem;
   kind: "review" | "meeting" | "reminder";
   pending: boolean;
-  onApprove: (approved: boolean) => void;
+  onDecide: (decision: FounderDecision | null, note?: string) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  // Which verdict the founder is composing a note for (null = not composing).
+  const [composing, setComposing] = useState<FounderDecision | null>(null);
+  const [note, setNote] = useState("");
   const hasDetail = kind === "review" ? !!(item.summary || item.review || item.notes) : kind === "meeting" ? !!(item.prep || item.notes) : !!item.notes;
+  const isReview = kind === "review";
+
+  const submit = () => {
+    if (!composing) return;
+    onDecide(composing, note);
+    setComposing(null);
+    setNote("");
+  };
 
   return (
     <li className="py-2 text-sm">
@@ -192,7 +238,7 @@ function FounderRow({
         ) : (
           <span className="min-w-0 flex-1">{item.name}</span>
         )}
-        {kind === "review" && item.triage && !item.approved && (
+        {isReview && item.triage && !item.decision && (
           <span
             className={cn(
               "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
@@ -206,36 +252,99 @@ function FounderRow({
               : t("founder.triageEvening", { defaultValue: "留待晚上" })}
           </span>
         )}
-        {kind === "review" && (
-          item.approved ? (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-              <Check className="h-3 w-3" />{t("founder.approved", { defaultValue: "Approved" })}
+        {isReview && (item.decision ? (
+          // Decided → verdict badge + a quiet undo (reverts to undecided).
+          <div className="flex shrink-0 items-center gap-1">
+            <span className={cn("inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium", DECISION_META[item.decision].badge)}>
+              {(() => { const Icon = DECISION_META[item.decision].icon; return <Icon className="h-3 w-3" />; })()}
+              {t(DECISION_META[item.decision].labelKey, { defaultValue: DECISION_META[item.decision].fallback })}
             </span>
-          ) : (
             <button
               type="button"
-              onClick={() => onApprove(true)}
+              onClick={() => onDecide(null)}
               disabled={pending}
-              className="shrink-0 rounded-md border border-primary/50 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+              aria-label={t("founder.reset", { defaultValue: "Reset decision" })}
+              className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
-              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("founder.approve", { defaultValue: "Approve" })}
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
             </button>
-          )
-        )}
+          </div>
+        ) : (
+          // Undecided → three verdict buttons (open an optional-note composer).
+          <div className="flex shrink-0 items-center gap-1">
+            {DECISION_ACTIONS.map((a) => (
+              <button
+                key={a.decision}
+                type="button"
+                onClick={() => { setComposing(a.decision); setNote(""); }}
+                disabled={pending}
+                className={cn("rounded-md border px-2 py-0.5 text-[11px] font-medium disabled:opacity-50", a.cls)}
+              >
+                {t(a.labelKey, { defaultValue: a.fallback })}
+              </button>
+            ))}
+          </div>
+        ))}
       </div>
+
+      {/* Optional comment / suggestion composer for the chosen verdict. */}
+      {composing && (
+        <div className="ml-6 mt-2 space-y-2">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            autoFocus
+            placeholder={t("founder.notePlaceholder", { defaultValue: "留言 / 建議（選填）— 將張貼為 Asana 評論" })}
+            className="w-full rounded-md border border-border bg-background p-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={pending}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium disabled:opacity-50",
+                DECISION_ACTIONS.find((a) => a.decision === composing)?.cls,
+              )}
+            >
+              {pending && <Loader2 className="h-3 w-3 animate-spin" />}
+              {(() => {
+                const a = DECISION_ACTIONS.find((x) => x.decision === composing)!;
+                return `${t("founder.confirm", { defaultValue: "Confirm" })} · ${t(a.labelKey, { defaultValue: a.fallback })}`;
+              })()}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setComposing(null); setNote(""); }}
+              className="rounded-md px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              {t("common.cancel", { defaultValue: "Cancel" })}
+            </button>
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="ml-6 mt-2 space-y-2 text-xs">
-          {kind === "review" && item.summary && (
+          {isReview && item.summary && (
             <Block label={t("founder.summary", { defaultValue: "AI summary" })} text={item.summary} />
           )}
-          {kind === "review" && item.review && (
+          {isReview && item.review && (
             <Block label={t("founder.draftReview", { defaultValue: "Draft 批閱 (review before approving)" })} text={item.review} accent />
           )}
           {kind === "meeting" && item.prep && (
             <Block label={t("founder.meetingPrep", { defaultValue: "Meeting prep" })} text={item.prep} />
           )}
           {item.notes && <Block label={t("founder.source", { defaultValue: "From Asana" })} text={item.notes} muted />}
+        </div>
+      )}
+
+      {/* The founder's own comment, once recorded — shown inline even when collapsed. */}
+      {item.decision && item.decisionNote && (
+        <div className="ml-6 mt-2 rounded-md border border-border bg-muted/20 p-2 text-xs">
+          <div className="mb-0.5 font-medium text-muted-foreground">{t("founder.yourNote", { defaultValue: "Your note" })}</div>
+          <p className="whitespace-pre-wrap break-words text-foreground">{item.decisionNote}</p>
         </div>
       )}
     </li>

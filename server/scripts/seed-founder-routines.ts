@@ -32,7 +32,11 @@ const DESCRIPTION = [
   "讀取專案 1211712817475632 的四個區段（🔴急件 / 📅今日會議 / 🟡非急件 / 🔔提醒），",
   "為待批閱項目產出摘要 + 批閱草稿（不送出），為今日會議整理議程與預讀資料，",
   "然後 POST /api/companies/<companyId>/founder-digest 回寫儀表板。",
-  "依當下時段填 lastRunLabel；最終核准由創辦人在儀表板按鈕觸發 founder-approve-item。",
+  "依當下時段填 lastRunLabel。創辦人在儀表板對每個項目做出決定，觸發 founder-review-item",
+  "（payload: { taskGid, decision, note }）：decision = approved 核准 / changes_requested",
+  "請求變更 / rejected 拒絕；note 為創辦人的留言或建議（選填）。收到後依 decision 在 Asana",
+  "貼上 note 評論並套用結果（核准→送出批閱、請求變更→退回並附建議、拒絕→婉拒說明）；",
+  "decision 為 null 代表撤回先前決定。",
 ].join("\n");
 
 async function main() {
