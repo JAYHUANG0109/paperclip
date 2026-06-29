@@ -5689,6 +5689,18 @@
     "detailDescription": "Description"
   },
   "founder": {
+    "close": "Close",
+    "closed": "Closed",
+    "reopen": "Reopen",
+    "requestChanges": "Request changes",
+    "changesRequested": "Changes requested",
+    "reject": "Reject",
+    "rejected": "Rejected",
+    "confirm": "Confirm",
+    "reset": "Undo decision",
+    "notePlaceholder": "Note / suggestion (optional) — posted as an Asana comment",
+    "yourNote": "Your note",
+    "handledProgress": "{{done}}/{{total}} handled",
     "pendingApproval": "Awaiting your approval",
     "noItems": "Nothing here.",
     "approved": "Approved",

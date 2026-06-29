@@ -28,7 +28,15 @@ for (const [locale, messages] of Object.entries(localeMessages)) {
     assertValidLocaleMessages(messages);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid ${locale} locale messages: ${message}`);
+    // In development, fail loudly so locale drift (e.g. a key added to one
+    // language but not English) is caught immediately. In production, NEVER
+    // crash the whole app over a missing translation — log it and continue;
+    // i18next falls back to the default locale / key. A blank site for every
+    // user is far worse than one untranslated string.
+    if (import.meta.env.DEV) {
+      throw new Error(`Invalid ${locale} locale messages: ${message}`);
+    }
+    console.error(`[i18n] Invalid ${locale} locale messages (continuing with fallbacks): ${message}`);
   }
 }
 
