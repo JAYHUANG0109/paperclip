@@ -7,8 +7,30 @@ any terminal or VS Code window**. You should not have to start it by hand.
 - Public URL: `https://jays-macbook-pro.tailacdc6f.ts.net` (Tailscale Funnel → `http://127.0.0.1:3100`)
 - Service label: `com.seasonarts.paperclip`
 - Service file: `~/Library/LaunchAgents/com.seasonarts.paperclip.plist`
-- Runs: `pnpm --filter @paperclipai/server exec tsx src/index.ts` from `/Users/jayhuang/dev/paperclip/paperclip` — a **production server** that serves the pre-built UI bundle from `ui/dist` (no Vite dev server). This is what makes the site load fast for remote users and mobile.
-- Database: embedded PostgreSQL on port `54329`, data in `~/.paperclip/instances/default/db`
+- Runs: `pnpm --filter @paperclipai/server exec tsx src/index.ts` — a **production server** that serves the pre-built UI bundle from `ui/dist` (no Vite dev server). This is what makes the site load fast for remote users and mobile.
+- **Runs from a dedicated production checkout: `/Users/jayhuang/paperclip-live`** — NOT your editing tree. You edit in `~/dev/paperclip/paperclip` (any number of tabs / tasks); production is isolated and only changes when you run `pnpm deploy:live`. See "Develop vs. deploy" below.
+- Database: embedded PostgreSQL on port `54329`, data in `~/.paperclip/instances/default/db` (shared — only ever run ONE server)
+
+## Develop vs. deploy (the important part)
+
+Two separate checkouts, on purpose:
+
+| Folder | Role | You edit it? |
+|---|---|---|
+| `~/paperclip-live` | **Production.** The service runs from here. | ❌ Never. Only `pnpm deploy:live` touches it. |
+| `~/dev/paperclip/paperclip` | **Development.** Edit here, in as many tabs / tasks as you like. | ✅ Yes |
+
+Because production runs from a *different* folder, your in-progress edits — finished or
+half-typed, across any number of tabs — **can never reach or break the live site.** A
+broken edit only affects production if you commit, push, *and* deploy it.
+
+**To publish changes:**
+1. Edit + test in `~/dev` (for parallel tasks, use a git worktree per task:
+   `git worktree add ../paperclip-taskname -b my-task`).
+2. Commit **and push** the verified code.
+3. Run **`pnpm deploy:live`** — it pulls the pushed code into `~/paperclip-live`, rebuilds,
+   and restarts the service. If the build fails, it does NOT restart (the live site keeps
+   serving the previous good build).
 
 ## What is now automatic (you don't do anything)
 
@@ -17,7 +39,7 @@ any terminal or VS Code window**. You should not have to start it by hand.
 | Mac reboots / you log in | Service auto-starts (`RunAtLoad`) |
 | App crashes or is killed | launchd restarts it within ~15s (`KeepAlive`) |
 | You close VS Code / terminals | App keeps running (it's not a child of them) |
-| You edit/`git` files in the repo | Live server is **not** disturbed (no-watch mode) |
+| You edit/`git` files in `~/dev` | Live server is **completely unaffected** — production runs from a separate checkout (`~/paperclip-live`) |
 
 ## ⚠️ Do NOT run `pnpm dev` manually anymore
 
@@ -50,32 +72,28 @@ tail -f ~/.paperclip/instances/default/logs/launchd-paperclip.err.log
 
 ## Applying code changes
 
-The service serves a **pre-built UI bundle** (production mode) and runs the server in
-**no-watch** mode, so editing files does **not** change the live site until you rebuild
-and restart. This is the trade-off for being fast for everyone (the old `dev:once` setup
-hot-reloaded but was slow/unusable for remote users and phones). To deploy changes:
+See **"Develop vs. deploy"** above. Short version:
 
-1. Pull / finish the code on this machine.
-2. **Run one command** — it rebuilds the UI bundle and restarts the service (and aborts
-   without restarting if the build fails, so a broken build never takes the site down):
-   ```bash
-   pnpm deploy:live
-   ```
-   This also picks up server/backend changes (the server runs from TypeScript source via
-   `tsx`, so the restart alone applies them — no server build needed).
+1. Edit + verify in `~/dev/paperclip/paperclip`, then **commit and push**.
+2. Run **`pnpm deploy:live`** (from your dev tree). It pulls the pushed code into
+   `~/paperclip-live`, reinstalls if deps changed, rebuilds, and restarts the service —
+   aborting **without** a restart if the build fails, so a broken build never takes the
+   site down. The server runs from TypeScript source via `tsx`, so the restart applies
+   backend changes too; the UI is rebuilt into a fast static bundle.
 
-   The equivalent manual steps, if you ever need them:
-   ```bash
-   pnpm --filter @paperclipai/ui build
-   launchctl kickstart -k gui/$(id -u)/com.seasonarts.paperclip
-   ```
-   (`pnpm build` rebuilds everything but fetches the skills-catalog manifest from GitHub and
-   can fail offline — the UI-only build in `deploy:live` avoids that.)
+The equivalent manual steps (rarely needed):
+```bash
+cd ~/paperclip-live
+git fetch origin && git reset --hard "origin/$(git branch --show-current)"
+pnpm install --frozen-lockfile && pnpm build
+launchctl kickstart -k gui/$(id -u)/com.seasonarts.paperclip
+```
 
-> **Develop elsewhere, not on the live tree.** Because this working directory *is* the
-> live site, editing it mid-development can break production (e.g. a half-finished commit
-> with mismatched i18n keys blanked the whole app once). For active development, use a
-> separate checkout / your own `pnpm dev` server, then build + deploy here when ready.
+> **Why production is a separate checkout.** Earlier, the live site ran from the same folder
+> being edited, so a half-finished change (e.g. mismatched i18n keys) blanked the whole app
+> for everyone. Now production runs from `~/paperclip-live`, which only changes on
+> `pnpm deploy:live` — so you can edit/multitask freely in `~/dev` with zero risk to the
+> live site.
 
 ## If the site is ever down
 
