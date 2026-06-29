@@ -5,6 +5,7 @@ import {
   writeFounderDigestForAgent,
   setFounderItemDecision,
   setFounderItemClosed,
+  getConsolesForUser,
   type FounderDigest,
 } from "../services/founder-digest.js";
 
@@ -12,11 +13,13 @@ describe("founder-digest decisions", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   let agentId = "";
+  let companyId = "";
 
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-founder-digest-");
     db = createDb(tempDb.connectionString);
     const [co] = await db.insert(companies).values({ name: "Test Co" }).returning();
+    companyId = co.id;
     const [ag] = await db.insert(agents).values({ companyId: co.id, name: "創辦人_test" }).returning();
     agentId = ag.id;
   }, 30_000);
@@ -64,6 +67,35 @@ describe("founder-digest decisions", () => {
     await setFounderItemDecision(db, agentId, "1", "approved", null);
     const d = await read();
     expect(d.categories.urgent.find((i) => i.gid === "3")?.decision).toBe("changes_requested");
+  });
+
+  it("hosts two consoles on one agent and routes writes by console key", async () => {
+    // An allowlisted preview user whose agent carries BOTH consoles.
+    process.env.PAPERCLIP_FOUNDER_EMAILS = "preview-console@test.org";
+    const email = "preview-console@test.org";
+    const [ag] = await db
+      .insert(agents)
+      .values({ companyId, name: "preview", adapterConfig: { assignedUserEmail: email } })
+      .returning();
+    await writeFounderDigestForAgent(db, companyId, ag.id, {
+      categories: { urgent: [{ gid: "f1", name: "創辦人項目" }] },
+    });
+    await writeFounderDigestForAgent(db, companyId, ag.id, {
+      console: "principal",
+      categories: { reminders: [{ gid: "p1", name: "園長提醒" }] },
+    });
+
+    const consoles = await getConsolesForUser(db, companyId, email);
+    const keys = consoles.map((c) => c.key).sort();
+    expect(keys).toEqual(["founder", "principal"]);
+    expect(consoles.find((c) => c.key === "founder")?.digest.categories.urgent[0]?.gid).toBe("f1");
+    expect(consoles.find((c) => c.key === "principal")?.digest.categories.reminders[0]?.gid).toBe("p1");
+
+    // A decision on the principal item must not leak into the founder console.
+    await setFounderItemDecision(db, ag.id, "p1", "approved", null);
+    const after = await getConsolesForUser(db, companyId, email);
+    expect(after.find((c) => c.key === "principal")?.digest.categories.reminders[0]?.decision).toBe("approved");
+    expect(after.find((c) => c.key === "founder")?.digest.categories.urgent[0]?.decision).toBeNull();
   });
 
   it("marks a meeting/reminder item 結案 and can reopen it", async () => {

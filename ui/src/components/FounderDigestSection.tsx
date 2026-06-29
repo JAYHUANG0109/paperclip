@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw } from "lucide-react";
 import { useTranslation } from "@/i18n";
-import { dashboardApi, type FounderDecision, type FounderDigest, type FounderItem } from "../api/dashboard";
+import { dashboardApi, type DailyConsole, type FounderConsolesResponse, type FounderDecision, type FounderItem } from "../api/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "../lib/utils";
 
@@ -17,43 +17,45 @@ const CATS: { key: CatKey; title: string; kind: "review" | "meeting" | "reminder
 ];
 
 /**
- * Founder daily-calendar console (創辦人每日行事曆). Four priority blocks; 待批閱
- * items expand to the agent's summary + DRAFT 批閱 with an Approve button (the
- * agent never auto-submits — approval routes back through the agent). Renders
- * nothing until a founder digest exists, so it's inert for non-founder users.
+ * Daily-calendar console(s) for allowlisted leaders. Renders one 4-block group
+ * per console the caller has on their own agent (創辦人 and/or 園長). 待批閱 items
+ * expand to the agent's summary + DRAFT 批閱 with 核准/請求變更/拒絕 verdicts;
+ * meetings/reminders get a 結案 toggle. Renders nothing for non-console users.
  */
 export function FounderDigestSection({ companyId }: { companyId: string }) {
-  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: KEY(companyId),
-    queryFn: () => dashboardApi.founderDigest(companyId),
+    queryFn: () => dashboardApi.founderConsoles(companyId),
     enabled: !!companyId,
     staleTime: 60_000,
   });
 
-  // Optimistically patch one item (by gid) across the four categories in the cache.
+  // Optimistically patch one item (by gid) across every console's categories.
   const optimisticPatch = async (gid: string, patch: Partial<FounderItem>) => {
     await queryClient.cancelQueries({ queryKey: KEY(companyId) });
-    const prev = queryClient.getQueryData<FounderDigest>(KEY(companyId));
-    if (prev?.categories) {
+    const prev = queryClient.getQueryData<FounderConsolesResponse>(KEY(companyId));
+    if (prev?.consoles) {
       const apply = (l: FounderItem[]) => (l ?? []).map((it) => (it.gid === gid ? { ...it, ...patch } : it));
-      queryClient.setQueryData<FounderDigest>(KEY(companyId), {
-        ...prev,
-        categories: {
-          urgent: apply(prev.categories.urgent),
-          meetings: apply(prev.categories.meetings),
-          nonUrgent: apply(prev.categories.nonUrgent),
-          reminders: apply(prev.categories.reminders),
+      const consoles = prev.consoles.map((con) => ({
+        ...con,
+        digest: {
+          ...con.digest,
+          categories: {
+            urgent: apply(con.digest.categories.urgent),
+            meetings: apply(con.digest.categories.meetings),
+            nonUrgent: apply(con.digest.categories.nonUrgent),
+            reminders: apply(con.digest.categories.reminders),
+          },
         },
-      });
+      }));
+      queryClient.setQueryData<FounderConsolesResponse>(KEY(companyId), { ...prev, consoles });
     }
     return { prev };
   };
-  const rollback = (_e: unknown, _v: unknown, ctx: { prev?: FounderDigest } | undefined) =>
+  const rollback = (_e: unknown, _v: unknown, ctx: { prev?: FounderConsolesResponse } | undefined) =>
     ctx?.prev && queryClient.setQueryData(KEY(companyId), ctx.prev);
-  const settle = (res: { digest: FounderDigest | null } | undefined) =>
-    res?.digest && queryClient.setQueryData(KEY(companyId), res.digest);
+  const settle = () => queryClient.invalidateQueries({ queryKey: KEY(companyId) });
 
   const decide = useMutation({
     mutationFn: ({ gid, decision, note }: { gid: string; decision: FounderDecision | null; note?: string }) =>
@@ -71,17 +73,49 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
   const pendingGid =
     (decide.isPending ? decide.variables?.gid : undefined) ?? (close.isPending ? close.variables?.gid : undefined);
 
-  const cats = data?.categories;
-  const total = cats ? cats.urgent.length + cats.meetings.length + cats.nonUrgent.length + cats.reminders.length : 0;
-  if (!cats || total === 0) return null;
+  const consoles = data?.consoles ?? [];
+  if (consoles.length === 0) return null;
+  const showTitle = consoles.length > 1; // only label each group when there's more than one
 
-  const pendingApproval =
-    [...cats.urgent, ...cats.nonUrgent].filter((it) => (it.summary || it.review) && !it.decision).length;
-  const generated = data?.generatedAt ? new Date(data.generatedAt) : null;
+  return (
+    <div className="space-y-6">
+      {consoles.map((con) => (
+        <ConsoleView
+          key={con.key}
+          console={con}
+          showTitle={showTitle}
+          pendingGid={pendingGid}
+          onDecide={(gid, decision, note) => decide.mutate({ gid, decision, note })}
+          onClose={(gid, closed) => close.mutate({ gid, closed })}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** One console: the status-tile bar + four priority blocks. */
+function ConsoleView({
+  console: con,
+  showTitle,
+  pendingGid,
+  onDecide,
+  onClose,
+}: {
+  console: DailyConsole;
+  showTitle: boolean;
+  pendingGid: string | undefined;
+  onDecide: (gid: string, decision: FounderDecision | null, note?: string) => void;
+  onClose: (gid: string, closed: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const cats = con.digest.categories;
+  const pendingApproval = [...cats.urgent, ...cats.nonUrgent].filter((it) => (it.summary || it.review) && !it.decision).length;
+  const generated = con.digest.generatedAt ? new Date(con.digest.generatedAt) : null;
 
   return (
     <div className="space-y-3">
-      {/* Founder workflow status bar */}
+      {showTitle && <h2 className="text-sm font-semibold text-foreground/80">{con.title}</h2>}
+      {/* Workflow status bar */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile label="🔴 急件待批" value={cats.urgent.length} tone="red" />
         <StatTile label="📅 今日會議" value={cats.meetings.length} tone="sky" />
@@ -89,10 +123,10 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
         <StatTile label="🔔 提醒" value={cats.reminders.length} tone="violet" />
         <StatTile label={t("founder.pendingApproval", { defaultValue: "Awaiting your approval" })} value={pendingApproval} tone="primary" highlight />
       </div>
-      {(generated || data?.lastRunLabel) && (
+      {(generated || con.digest.lastRunLabel) && (
         <p className="text-[11px] text-muted-foreground">
           {t("asana.updatedAt", { defaultValue: "Updated" })} {generated ? generated.toLocaleString() : ""}
-          {data?.lastRunLabel ? ` · ${data.lastRunLabel}` : ""}
+          {con.digest.lastRunLabel ? ` · ${con.digest.lastRunLabel}` : ""}
         </p>
       )}
 
@@ -100,7 +134,7 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
       <div className="grid gap-4 lg:grid-cols-2">
         {CATS.map((c) => {
           const items = cats[c.key];
-          // Every block now shows a progress bar of items the founder has cleared:
+          // Every block shows a progress bar of items the founder has cleared:
           // review blocks count any verdict (decision); meetings/reminders count 結案.
           const isReview = c.kind === "review";
           const total = items.length;
@@ -140,8 +174,8 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
                         item={it}
                         kind={c.kind}
                         pending={pendingGid === it.gid}
-                        onDecide={(decision, note) => decide.mutate({ gid: it.gid, decision, note })}
-                        onClose={(closed) => close.mutate({ gid: it.gid, closed })}
+                        onDecide={(decision, note) => onDecide(it.gid, decision, note)}
+                        onClose={(closed) => onClose(it.gid, closed)}
                       />
                     ))}
                   </ul>
@@ -234,7 +268,8 @@ function FounderRow({
 
   return (
     <li className="py-2 text-sm">
-      <div className="flex items-start gap-2">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
         <button
           type="button"
           onClick={() => hasDetail && setOpen((v) => !v)}
@@ -266,6 +301,7 @@ function FounderRow({
               : t("founder.triageEvening", { defaultValue: "留待晚上" })}
           </span>
         )}
+        </div>
         {isReview && (item.decision ? (
           // Decided → verdict badge + a quiet undo (reverts to undecided).
           <div className="flex shrink-0 items-center gap-1">
@@ -285,7 +321,7 @@ function FounderRow({
           </div>
         ) : (
           // Undecided → three verdict buttons (open an optional-note composer).
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 flex-wrap items-center gap-1">
             {DECISION_ACTIONS.map((a) => (
               <button
                 key={a.decision}

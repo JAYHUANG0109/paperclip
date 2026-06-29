@@ -47,6 +47,16 @@ export interface FounderDigest {
   empty?: boolean;
 }
 
+export type ConsoleKey = "founder" | "principal";
+export interface DailyConsole {
+  key: ConsoleKey;
+  title: string;
+  digest: FounderDigest;
+}
+export interface FounderConsolesResponse {
+  consoles: DailyConsole[];
+}
+
 export interface GoogleCalendarEventDto {
   id: string;
   calendarId: string;
@@ -96,7 +106,9 @@ export const dashboardApi = {
       `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/complete`,
       { completed },
     ),
-  founderDigest: (companyId: string) => api.get<FounderDigest>(`/companies/${companyId}/founder-digest/me`),
+  // Every daily console the caller has (創辦人 / 園長). Most users have one.
+  founderConsoles: (companyId: string) =>
+    api.get<FounderConsolesResponse>(`/companies/${companyId}/founder-digest/me`),
   // Submit the founder's verdict on a draft 批閱 (+ optional comment). `decision:
   // null` reverts it to undecided.
   decideFounderItem: (companyId: string, gid: string, decision: FounderDecision | null, note?: string) =>

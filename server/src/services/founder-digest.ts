@@ -46,6 +46,35 @@ export interface FounderDigest {
 
 const EMPTY: FounderDigest["categories"] = { urgent: [], meetings: [], nonUrgent: [], reminders: [] };
 
+/**
+ * A user can host more than one daily console on their own agent — e.g. Jay (the
+ * preview/test account) carries both the 創辦人 and the 園長 console so he can
+ * verify each. Each console is its own slot on `agent.metadata`; the same 4-block
+ * UI renders one group per console that exists.
+ */
+export type ConsoleKey = "founder" | "principal";
+export const CONSOLE_KEYS: ConsoleKey[] = ["founder", "principal"];
+/** Which `agent.metadata` field stores each console's digest. */
+const CONSOLE_META_KEY: Record<ConsoleKey, string> = {
+  founder: "founderDigest", // unchanged — back-compat with existing data
+  principal: "principalDigest",
+};
+/** Heading shown above each console's blocks on the dashboard. */
+const CONSOLE_TITLE: Record<ConsoleKey, string> = {
+  founder: "創辦人每日行事曆",
+  principal: "仁美園長待決議與提醒",
+};
+
+export interface DailyConsole {
+  key: ConsoleKey;
+  title: string;
+  digest: FounderDigest;
+}
+
+function asConsoleKey(v: unknown): ConsoleKey {
+  return v === "principal" ? "principal" : "founder";
+}
+
 // The daily-calendar console is a bespoke customization for a small set of
 // leaders, NOT the whole org. Every other user keeps the normal dashboard
 // (daily/weekly Asana tasks + summaries). This allowlist gates the READ so even
@@ -108,7 +137,8 @@ function sanitizeList(v: unknown): FounderItem[] {
   return Array.isArray(v) ? v.map(sanitizeItem).filter((x): x is FounderItem => !!x) : [];
 }
 
-/** Persist a founder digest onto the agent's metadata. Agent-only writer. */
+/** Persist a digest onto the agent's metadata, under the given console slot
+ * (default "founder"; the slot is taken from `body.console` by the route). */
 export async function writeFounderDigestForAgent(
   db: Db,
   companyId: string,
@@ -116,6 +146,7 @@ export async function writeFounderDigestForAgent(
   body: unknown,
 ): Promise<FounderDigest> {
   const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const consoleKey = asConsoleKey(b.console);
   const cats = (b.categories && typeof b.categories === "object" ? b.categories : {}) as Record<string, unknown>;
   const digest: FounderDigest = {
     generatedAt: typeof b.generatedAt === "string" ? b.generatedAt : new Date().toISOString(),
@@ -130,25 +161,42 @@ export async function writeFounderDigestForAgent(
   };
   const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
   const md = row?.metadata && typeof row.metadata === "object" ? { ...(row.metadata as Record<string, unknown>) } : {};
-  md.founderDigest = digest;
+  md[CONSOLE_META_KEY[consoleKey]] = digest;
   await db.update(agents).set({ metadata: md, updatedAt: new Date() }).where(eq(agents.id, agentId));
   return digest;
 }
 
-/** Read the caller's founder digest (their own agent's metadata.founderDigest). */
+/** Read the caller's primary (founder) digest — kept for back-compat. */
 export async function getFounderDigestForUser(db: Db, companyId: string, email: string | null): Promise<FounderDigest | null> {
-  // Founder-only feature — non-allowlisted users never see the console.
-  if (!isFounderEmail(email)) return null;
-  const agentId = await resolveOwnAgentId(db, companyId, email);
-  if (!agentId) return null;
-  const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
-  const md = row?.metadata as Record<string, unknown> | null;
-  const digest = md && typeof md === "object" ? (md.founderDigest as FounderDigest | undefined) : undefined;
-  if (digest && digest.categories) return digest;
-  return null;
+  const consoles = await getConsolesForUser(db, companyId, email);
+  return consoles.find((c) => c.key === "founder")?.digest ?? null;
 }
 
-/** Optimistically patch one item (matched by gid) across all four categories. */
+/**
+ * Read every daily console the caller has on their OWN agent. Allowlist-gated,
+ * self-scoped (caller's email → caller's agent → that agent's metadata). Most
+ * users have one (創辦人 OR 園長); the preview account may have both.
+ */
+export async function getConsolesForUser(db: Db, companyId: string, email: string | null): Promise<DailyConsole[]> {
+  if (!isFounderEmail(email)) return []; // not an allowlisted console user
+  const agentId = await resolveOwnAgentId(db, companyId, email);
+  if (!agentId) return [];
+  const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
+  const md = row?.metadata as Record<string, unknown> | null;
+  if (!md || typeof md !== "object") return [];
+  const out: DailyConsole[] = [];
+  for (const key of CONSOLE_KEYS) {
+    const digest = md[CONSOLE_META_KEY[key]] as FounderDigest | undefined;
+    if (digest && digest.categories) out.push({ key, title: CONSOLE_TITLE[key], digest });
+  }
+  return out;
+}
+
+/**
+ * Optimistically patch one item (matched by gid) across all four categories of
+ * whichever console slot contains it. Item gids are unique across consoles, so
+ * we patch the slot that holds the gid and return that console's updated digest.
+ */
 async function patchFounderItem(
   db: Db,
   agentId: string,
@@ -158,21 +206,30 @@ async function patchFounderItem(
   const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
   const md = row?.metadata && typeof row.metadata === "object" ? { ...(row.metadata as Record<string, unknown>) } : null;
   if (!md) return null;
-  const digest = md.founderDigest as FounderDigest | undefined;
-  if (!digest?.categories) return null;
   const apply = (list: FounderItem[]) => (list ?? []).map((t) => (t.gid === gid ? { ...t, ...patch } : t));
-  const next: FounderDigest = {
-    ...digest,
-    categories: {
-      urgent: apply(digest.categories.urgent),
-      meetings: apply(digest.categories.meetings),
-      nonUrgent: apply(digest.categories.nonUrgent),
-      reminders: apply(digest.categories.reminders),
-    },
-  };
-  md.founderDigest = next;
+  let patched: FounderDigest | null = null;
+  for (const key of CONSOLE_KEYS) {
+    const slot = CONSOLE_META_KEY[key];
+    const digest = md[slot] as FounderDigest | undefined;
+    if (!digest?.categories) continue;
+    const hit = [digest.categories.urgent, digest.categories.meetings, digest.categories.nonUrgent, digest.categories.reminders]
+      .some((l) => (l ?? []).some((t) => t.gid === gid));
+    if (!hit) continue;
+    const next: FounderDigest = {
+      ...digest,
+      categories: {
+        urgent: apply(digest.categories.urgent),
+        meetings: apply(digest.categories.meetings),
+        nonUrgent: apply(digest.categories.nonUrgent),
+        reminders: apply(digest.categories.reminders),
+      },
+    };
+    md[slot] = next;
+    patched = next;
+  }
+  if (!patched) return null;
   await db.update(agents).set({ metadata: md, updatedAt: new Date() }).where(eq(agents.id, agentId));
-  return next;
+  return patched;
 }
 
 /**

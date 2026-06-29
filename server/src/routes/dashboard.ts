@@ -13,7 +13,7 @@ import {
 } from "../services/asana-digest.js";
 import {
   writeFounderDigestForAgent,
-  getFounderDigestForUser,
+  getConsolesForUser,
   setFounderItemDecision,
   setFounderItemClosed,
   type FounderDecision,
@@ -213,15 +213,17 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     res.json({ ok: true, digest });
   });
 
-  // ── Founder daily-calendar digest (創辦人每日行事曆) ──────────────────────
-  // Read the caller's own founder digest (4 priority categories + agent drafts).
+  // ── Daily-calendar consoles (創辦人 / 園長 每日行事曆) ──────────────────────
+  // Read every console the caller has on their own agent (each = 4 priority
+  // categories + agent drafts). Most users have one; the preview account may
+  // have both. Allowlist-gated + self-scoped inside getConsolesForUser.
   router.get("/companies/:companyId/founder-digest/me", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const userId = req.actor.type === "board" ? req.actor.userId : null;
     const email = await emailForUserId(db, userId);
-    const digest = await getFounderDigestForUser(db, companyId, email);
-    res.json(digest ?? { generatedAt: null, lastRunLabel: null, categories: { urgent: [], meetings: [], nonUrgent: [], reminders: [] }, empty: true });
+    const consoles = await getConsolesForUser(db, companyId, email);
+    res.json({ consoles });
   });
 
   // The agent writes its OWN founder digest (agent-only, self-scoped).

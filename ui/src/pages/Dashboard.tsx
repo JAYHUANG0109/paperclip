@@ -99,18 +99,20 @@ export function Dashboard() {
     staleTime: 60_000,
   });
 
-  // Founder daily-calendar digest — same query key as FounderDigestSection so
-  // it's shared, not a second fetch. When the caller has a populated founder
-  // digest, the dashboard switches to "founder mode": the 4 priority blocks +
-  // the founder status bar REPLACE the generic task block + metric tiles.
-  const { data: founderDigest } = useQuery({
+  // Daily-calendar console(s) — same query key as FounderDigestSection so it's
+  // shared, not a second fetch. When the caller has any populated console (創辦人
+  // and/or 園長), the dashboard switches to "founder mode": the priority blocks +
+  // status bar REPLACE the generic task block + metric tiles.
+  const { data: founderConsoles } = useQuery({
     queryKey: ["founder-digest", selectedCompanyId],
-    queryFn: () => dashboardApi.founderDigest(selectedCompanyId!),
+    queryFn: () => dashboardApi.founderConsoles(selectedCompanyId!),
     enabled: !!selectedCompanyId,
     staleTime: 60_000,
   });
-  const fc = founderDigest?.categories;
-  const founderMode = !!fc && fc.urgent.length + fc.meetings.length + fc.nonUrgent.length + fc.reminders.length > 0;
+  const founderMode = (founderConsoles?.consoles ?? []).some((con) => {
+    const c = con.digest.categories;
+    return c.urgent.length + c.meetings.length + c.nonUrgent.length + c.reminders.length > 0;
+  });
 
   const userProfileMap = useMemo(
     () => buildCompanyUserProfileMap(companyMembers?.users),
