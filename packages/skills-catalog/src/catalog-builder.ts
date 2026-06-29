@@ -473,7 +473,19 @@ function isRecoverableReferencedFetchError(error: string) {
   const statusMatch = /HTTP (\d+)/.exec(error);
   if (!statusMatch) return true;
   const status = Number(statusMatch[1]);
-  return status === 403 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+  // 400 is included because raw.githubusercontent.com intermittently returns "400 Bad
+  // Request" (not 429) when rate-limiting bursts of unauthenticated fetches during a
+  // build. The pinned file itself is valid, so this is transient — fall back to the
+  // previously-built (committed) version of the skill instead of failing the whole build.
+  return (
+    status === 400 ||
+    status === 403 ||
+    status === 408 ||
+    status === 409 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500
+  );
 }
 
 async function readReferencedSkillDescriptor(
