@@ -1,4 +1,5 @@
 import express, { Router, type Request as ExpressRequest } from "express";
+import compression from "compression";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -170,6 +171,20 @@ export async function createApp(
   },
 ) {
   const app = express();
+
+  // Gzip responses. Without this the server sent the ~14 MB JS bundle uncompressed,
+  // which timed out on phones / slower links behind the Tailscale funnel ("load failed").
+  // Skip text/event-stream so SSE (board-chat, plugin streams) keeps flushing live.
+  app.use(
+    compression({
+      filter: (req, res) => {
+        const contentType = String(res.getHeader("Content-Type") ?? "");
+        if (contentType.includes("text/event-stream")) return false;
+        return compression.filter(req, res);
+      },
+    }),
+  );
+
   const captureRawBody = (req: express.Request, _res: express.Response, buf: Buffer) => {
     (req as unknown as { rawBody: Buffer }).rawBody = buf;
   };
