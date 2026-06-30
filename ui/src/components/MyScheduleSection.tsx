@@ -80,7 +80,7 @@ export function MyScheduleSection({ companyId }: { companyId: string }) {
 
       {showSettings && <AliasEditor companyId={companyId} />}
 
-      <Card>
+      <Card className="min-w-0 overflow-hidden">
         <CardHeader className="px-5 pt-5 pb-2">
           <CardTitle className="text-base">{t("schedule.upcoming", { defaultValue: "Upcoming" })}</CardTitle>
         </CardHeader>

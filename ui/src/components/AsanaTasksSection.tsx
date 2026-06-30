@@ -125,7 +125,7 @@ function TaskCard({
   const done = tasks.filter((tk) => tk.completed).length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
-    <Card>
+    <Card className="min-w-0 overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between gap-2 px-5 pt-5 pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <Icon className="h-4 w-4 text-muted-foreground" />
