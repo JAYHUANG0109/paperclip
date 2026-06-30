@@ -8,10 +8,17 @@ import { agentTeams } from "../lib/agent-teams";
 interface Zone {
   id: string;
   name: string;
-  x: number; // % of map width
-  y: number; // % of map height
+  // Room rectangle (walls) — used for the overlay border + label. % of map.
+  x: number;
+  y: number;
   w: number;
   h: number;
+  // Interior floor rectangle — where agents are actually seated. % of map.
+  // Tighter than the room so avatars sit on open floor, not on walls/furniture.
+  fx: number;
+  fy: number;
+  fw: number;
+  fh: number;
   color: string;
 }
 
@@ -24,6 +31,8 @@ interface FloorDef {
   zones: Zone[];
 }
 
+// Coordinates below are hand-tuned to the two pixel-art maps so agents land on
+// the open floor of each room (roughly on the workstation rows), not on walls.
 const FLOORS: FloorDef[] = [
   {
     id: "floor1",
@@ -32,11 +41,11 @@ const FLOORS: FloorDef[] = [
     natW: 640,
     natH: 800,
     zones: [
-      { id: "planning", name: "Planning Studio", x: 25, y: 3,  w: 50, h: 27, color: "#8B5CF6" },
-      { id: "shipyard", name: "Shipyard",        x: 2,  y: 33, w: 58, h: 30, color: "#3B82F6" },
-      { id: "systems",  name: "Systems Bay",     x: 62, y: 33, w: 36, h: 22, color: "#10B981" },
-      { id: "commons",  name: "Commons",         x: 2,  y: 68, w: 58, h: 30, color: "#F59E0B" },
-      { id: "signal",   name: "Signal Room",     x: 62, y: 60, w: 36, h: 38, color: "#EC4899" },
+      { id: "planning", name: "Planning Studio", x: 32, y: 3,  w: 36, h: 27, fx: 35, fy: 15, fw: 30, fh: 14, color: "#8B5CF6" },
+      { id: "shipyard", name: "Shipyard",        x: 4,  y: 32, w: 50, h: 37, fx: 8,  fy: 46, fw: 44, fh: 22, color: "#3B82F6" },
+      { id: "systems",  name: "Systems Bay",     x: 64, y: 45, w: 32, h: 18, fx: 66, fy: 47, fw: 29, fh: 14, color: "#10B981" },
+      { id: "commons",  name: "Commons",         x: 4,  y: 69, w: 50, h: 28, fx: 7,  fy: 76, fw: 45, fh: 20, color: "#F59E0B" },
+      { id: "signal",   name: "Signal Room",     x: 64, y: 69, w: 32, h: 28, fx: 66, fy: 73, fw: 29, fh: 22, color: "#EC4899" },
     ],
   },
   {
@@ -46,18 +55,17 @@ const FLOORS: FloorDef[] = [
     natW: 768,
     natH: 672,
     zones: [
-      { id: "lab",      name: "Lab",        x: 2,  y: 3,  w: 30, h: 20, color: "#14B8A6" },
-      { id: "main",     name: "Main Floor", x: 2,  y: 26, w: 50, h: 50, color: "#3B82F6" },
-      { id: "westWing", name: "West Wing",  x: 57, y: 3,  w: 40, h: 36, color: "#8B5CF6" },
-      { id: "eastWing", name: "East Wing",  x: 57, y: 43, w: 40, h: 35, color: "#F97316" },
-      { id: "lobby",    name: "Lobby",      x: 2,  y: 80, w: 48, h: 17, color: "#EC4899" },
+      { id: "main",        name: "Main Floor",  x: 5,  y: 9,  w: 50, h: 82, fx: 8,  fy: 30, fw: 44, fh: 58, color: "#3B82F6" },
+      { id: "northOffice", name: "North Office", x: 61, y: 9, w: 35, h: 33, fx: 64, fy: 24, fw: 30, fh: 15, color: "#8B5CF6" },
+      { id: "eastOffice",  name: "East Office",  x: 57, y: 44, w: 39, h: 24, fx: 60, fy: 47, fw: 34, fh: 17, color: "#10B981" },
+      { id: "lounge",      name: "Lounge",       x: 57, y: 69, w: 39, h: 22, fx: 60, fy: 71, fw: 34, fh: 18, color: "#F97316" },
     ],
   },
 ];
 
-// Native-pixel area of a zone — used for capacity-aware team placement.
+// Native-pixel area of a zone's FLOOR — used for capacity-aware team placement.
 function zoneAreaPx(z: Zone, f: FloorDef) {
-  return (z.w / 100) * f.natW * (z.h / 100) * f.natH;
+  return (z.fw / 100) * f.natW * (z.fh / 100) * f.natH;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -114,12 +122,15 @@ function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, del
   const color    = STATUS_COLOR[status];
   const glow     = STATUS_GLOW[status];
   const isActive = status === "working";
-  const ring     = isActive || status === "attention";
+  // Only WORKING agents get the animated pulse ring — otherwise a floor full of
+  // idle/blocked agents becomes a wall of distracting rings. Status for the rest
+  // is conveyed by the avatar border + the dot on the name label + roster badge.
+  const ring     = isActive;
 
   return (
     <div style={{
       position: "absolute", left: `${x}%`, top: `${y}%`, width: size, height: size,
-      marginLeft: -r, marginTop: -r, zIndex: highlight ? 25 : 10, overflow: "visible",
+      marginLeft: -r, marginTop: -r, zIndex: highlight ? 25 : isActive ? 12 : 10, overflow: "visible",
     }}>
       {ring && (
         <div className="office-agent-ring" style={{
@@ -351,29 +362,31 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
       const N = members.length;
       if (N === 0) continue;
 
-      const padX = 8, padTop = 17, padBot = 9;            // % of zone
-      const usableWpx = (zone.w * (1 - 2 * padX / 100) / 100) * mapW;
-      const usableHpx = (zone.h * (1 - (padTop + padBot) / 100) / 100) * mapH;
+      // Place agents in an aligned grid centered on the room's INTERIOR FLOOR
+      // rectangle (fx/fy/fw/fh) so they sit on open floor in tidy rows.
+      const usableWpx = (zone.fw / 100) * mapW;
+      const usableHpx = (zone.fh / 100) * mapH;
 
-      // columns matched to room aspect ratio, then fit a square cell
-      let cols = clamp(Math.round(Math.sqrt(N * (usableWpx / usableHpx))), 1, N);
-      let rows = Math.ceil(N / cols);
+      // columns matched to room aspect ratio, then a square cell
+      const cols = clamp(Math.round(Math.sqrt(N * (usableWpx / usableHpx))), 1, N);
+      const rows = Math.ceil(N / cols);
       const cellW = usableWpx / cols;
       const cellH = usableHpx / rows;
-      const size = clamp(Math.min(cellW * 0.64, cellH * 0.56), 12, 42);
+      const size = clamp(Math.min(cellW * 0.62, cellH * 0.5), 12, 40);
       minSize = Math.min(minSize, size);
 
-      const stepXpct = (zone.w * (1 - 2 * padX / 100)) / cols;
-      const stepYpct = (zone.h * (1 - (padTop + padBot) / 100)) / rows;
-      const x0 = zone.x + zone.w * padX / 100;
-      const y0 = zone.y + zone.h * padTop / 100;
+      const stepXpct = zone.fw / cols;
+      const stepYpct = zone.fh / rows;
 
       members.forEach((agent, i) => {
         const c = i % cols, rr = Math.floor(i / cols);
+        // Center the last (possibly short) row so rows stay visually balanced.
+        const inRow = Math.min(cols, N - rr * cols);
+        const rowOffset = (cols - inRow) / 2;
         out.push({
           agent,
-          x: x0 + (c + 0.5) * stepXpct,
-          y: y0 + (rr + 0.5) * stepYpct,
+          x: zone.fx + (c + rowOffset + 0.5) * stepXpct,
+          y: zone.fy + (rr + 0.5) * stepYpct,
           size,
         });
       });
