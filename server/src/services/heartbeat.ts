@@ -2561,7 +2561,11 @@ export function extractWakeCommentIds(
   const out: string[] = [];
   for (const entry of raw) {
     const value = readNonEmptyString(entry);
-    if (!value || out.includes(value)) continue;
+    // These ids are looked up as `issue_comments.id` (a uuid column), so drop any
+    // non-uuid value — e.g. a synthetic "pending-…" id from an optimistic
+    // dashboard comment — which would otherwise crash run setup with
+    // `invalid input syntax for type uuid`.
+    if (!value || !isUuidLike(value) || out.includes(value)) continue;
     out.push(value);
   }
   return out;
@@ -2571,7 +2575,9 @@ function mergeWakeCommentIds(...values: Array<unknown>): string[] {
   const merged: string[] = [];
   const append = (value: unknown) => {
     const normalized = readNonEmptyString(value);
-    if (!normalized || merged.includes(normalized)) return;
+    // Only real uuid comment ids belong here (they become issue_comments.id
+    // lookups); ignore synthetic ids like an optimistic "pending-…" comment.
+    if (!normalized || !isUuidLike(normalized) || merged.includes(normalized)) return;
     merged.push(normalized);
   };
 
