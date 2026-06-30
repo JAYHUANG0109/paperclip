@@ -9,12 +9,22 @@ import {
   agentTaskSessions,
   agentWakeupRequests,
   activityLog,
+  approvals,
+  approvalComments,
+  assets,
   costEvents,
+  financeEvents,
+  goals,
   heartbeatRunEvents,
   heartbeatRuns,
   issueExecutionDecisions,
   issues,
   issueComments,
+  issueThreadInteractions,
+  issueWatchdogs,
+  joinRequests,
+  projects,
+  routines,
 } from "@paperclipai/db";
 import {
   AGENT_DEFAULT_MAX_CONCURRENT_RUNS,
@@ -621,18 +631,61 @@ export function agentService(db: Db) {
       const existing = await getById(id);
       if (!existing) return null;
 
+      // Every table below has a NO ACTION / RESTRICT FK to `agents` (or to the
+      // agent's `heartbeat_runs`), so it must be cleared in-transaction or the
+      // final agent delete fails — which is exactly what the UI delete button
+      // (DELETE /agents/:id) hits in the wild. Convention: nullable references
+      // are SET NULL to preserve the record (authored comments, owned projects,
+      // routines, etc.); rows that cannot exist without their agent are deleted.
+      // Keep CASCADE FKs (agent_memberships, agent_config_revisions, …) implicit.
       return db.transaction(async (tx) => {
+        const ownRuns = sql`(select ${heartbeatRuns.id} from ${heartbeatRuns} where ${heartbeatRuns.agentId} = ${id})`;
+
+        // ── Preserve-the-record references → SET NULL ──────────────────────────
         await tx.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, id));
         await tx
           .update(issues)
           .set({ assigneeAgentId: null, createdByAgentId: null })
           .where(or(eq(issues.assigneeAgentId, id), eq(issues.createdByAgentId, id)));
+        await tx.update(routines).set({ assigneeAgentId: null }).where(eq(routines.assigneeAgentId, id));
+        await tx.update(projects).set({ leadAgentId: null }).where(eq(projects.leadAgentId, id));
+        await tx.update(goals).set({ ownerAgentId: null }).where(eq(goals.ownerAgentId, id));
+        await tx.update(approvals).set({ requestedByAgentId: null }).where(eq(approvals.requestedByAgentId, id));
+        await tx.update(approvalComments).set({ authorAgentId: null }).where(eq(approvalComments.authorAgentId, id));
+        await tx.update(assets).set({ createdByAgentId: null }).where(eq(assets.createdByAgentId, id));
+        await tx.update(joinRequests).set({ createdAgentId: null }).where(eq(joinRequests.createdAgentId, id));
+        await tx
+          .update(issueThreadInteractions)
+          .set({ createdByAgentId: null })
+          .where(eq(issueThreadInteractions.createdByAgentId, id));
+        await tx
+          .update(issueThreadInteractions)
+          .set({ resolvedByAgentId: null })
+          .where(eq(issueThreadInteractions.resolvedByAgentId, id));
+
+        // ── Rows that cannot exist without their agent → DELETE ────────────────
+        // Watchdog ownership is NOT NULL — a watchdog with no agent is meaningless.
+        await tx.delete(issueWatchdogs).where(eq(issueWatchdogs.watchdogAgentId, id));
+        // Spend telemetry: cost_events.agent_id is NOT NULL, and both tables also
+        // chain to the agent's runs (and finance→cost), so delete finance first.
+        await tx
+          .delete(financeEvents)
+          .where(
+            or(
+              eq(financeEvents.agentId, id),
+              sql`${financeEvents.heartbeatRunId} in ${ownRuns}`,
+              sql`${financeEvents.costEventId} in (select ${costEvents.id} from ${costEvents} where ${costEvents.agentId} = ${id})`,
+            ),
+          );
+        await tx.delete(costEvents).where(eq(costEvents.agentId, id));
+
+        // ── Agent-scoped rows (own the agent_id) → DELETE ──────────────────────
         await tx.delete(heartbeatRunEvents).where(eq(heartbeatRunEvents.agentId, id));
         await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.agentId, id));
         await tx.delete(activityLog).where(
           or(
             eq(activityLog.agentId, id),
-            sql`${activityLog.runId} in (select ${heartbeatRuns.id} from ${heartbeatRuns} where ${heartbeatRuns.agentId} = ${id})`,
+            sql`${activityLog.runId} in ${ownRuns}`,
           ),
         );
         await tx.delete(issueExecutionDecisions).where(eq(issueExecutionDecisions.actorAgentId, id));
