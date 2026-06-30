@@ -276,7 +276,13 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
 
   const fitZoom = useMemo(() => {
     if (!viewport.w || !viewport.h) return 1;
-    return clamp(Math.min(viewport.w / mapW, viewport.h / mapH), 0.3, 4);
+    // Fill the available WIDTH so the portrait floorplans aren't letterboxed into
+    // a thin column (vertical scroll handles the extra height), but cap the height
+    // so a tall floor doesn't require endless scrolling. Never below contain-fit.
+    const fill      = viewport.w / mapW;
+    const heightCap = (viewport.h * 1.7) / mapH;
+    const contain   = Math.min(viewport.w / mapW, viewport.h / mapH);
+    return clamp(Math.max(contain, Math.min(fill, heightCap)), 0.3, 4);
   }, [viewport, mapW, mapH]);
   const zoom = userZoom ?? fitZoom;
 
