@@ -70,6 +70,14 @@ function zoneAreaPx(z: Zone, f: FloorDef) {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+// 8-way facing from a screen-space velocity (y points down → south).
+type Dir = "south" | "south-east" | "east" | "north-east" | "north" | "north-west" | "west" | "south-west";
+const DIR_SECTORS: Dir[] = ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"];
+function dirFromVelocity(dx: number, dy: number): Dir {
+  const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+  return DIR_SECTORS[(Math.round(((ang % 360) + 360) % 360 / 45)) % 8];
+}
+
 // ── Status ─────────────────────────────────────────────────────────────────
 type Status = "working" | "attention" | "paused" | "idle";
 
@@ -114,10 +122,10 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
 }
 
 // ── Agent pin on map (size is dynamic per room) ────────────────────────────
-function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, spriteUrl, delayMs, onOpen }: {
+function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, spriteUrl, moving, delayMs, onOpen }: {
   agent: Agent; x: number; y: number; size: number; status: Status;
   bubble: string | null; highlight: boolean; showLabel: boolean; spriteUrl?: string | null;
-  delayMs: number; onOpen: () => void;
+  moving?: boolean; delayMs: number; onOpen: () => void;
 }) {
   const r        = size / 2;
   const color    = STATUS_COLOR[status];
@@ -151,7 +159,7 @@ function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, spr
       {bubble && isActive && <SpeechBubble text={bubble} color={color} />}
 
       <button type="button" onClick={onOpen} title={agent.name ?? undefined}
-        className={isActive ? "office-agent-working" : undefined}
+        className={(isActive || moving) ? "office-agent-working" : undefined}
         style={{
           position: "absolute", inset: 0, padding: 0, background: "none", border: "none",
           cursor: "pointer", borderRadius: "50%", outline: "none", animationDelay: `${delayMs * 0.6}ms`,
@@ -311,7 +319,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
 
   // Pixel-art character sprites, generated per agent via PixelLab. Loaded from a
   // static manifest; agents without a sprite fall back to the circular avatar.
-  const [sprites, setSprites] = useState<Record<string, { south?: string }>>({});
+  const [sprites, setSprites] = useState<Record<string, Partial<Record<Dir, string>> & { name?: string }>>({});
   useEffect(() => {
     let alive = true;
     fetch("/assets/agent-sprites/manifest.json")
@@ -386,7 +394,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   // Pin layout + DYNAMIC avatar size per room. Avatars shrink as a room fills so
   // crowded teams never overlap, and grow when a room is sparse.
   const { pins, labelSize } = useMemo(() => {
-    const out: { agent: Agent; x: number; y: number; size: number }[] = [];
+    const out: { agent: Agent; x: number; y: number; size: number; floor: { fx: number; fy: number; fw: number; fh: number } }[] = [];
     let minSize = Infinity;
     for (const za of floorZones) {
       const { zone, members } = za;
@@ -419,12 +427,90 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
           x: zone.fx + (c + rowOffset + 0.5) * stepXpct,
           y: zone.fy + (rr + 0.5) * stepYpct,
           size,
+          floor: { fx: zone.fx, fy: zone.fy, fw: zone.fw, fh: zone.fh },
         });
       });
     }
     // Hide name labels only when avatars get very small (would collide).
     return { pins: out, labelSize: minSize };
   }, [floorZones, mapW, mapH]);
+
+  // ── Wandering engine ──────────────────────────────────────────────────────
+  // Agents mostly sit at their desk (facing south). Occasionally one strolls to
+  // a nearby spot inside its room and back, facing its direction of travel — so
+  // the office feels alive without descending into chaos. Honors reduced-motion.
+  interface Motion {
+    x: number; y: number; hx: number; hy: number; dir: Dir;
+    moving: boolean; tx: number; ty: number; waitUntil: number;
+    walkable: boolean;
+    floor: { fx: number; fy: number; fw: number; fh: number };
+  }
+  // An agent may wander only if it has a full directional sprite set — otherwise
+  // a front-facing sprite sliding sideways looks like moonwalking. Agents without
+  // the full set stay seated until their sprites are generated.
+  const ALL_DIRS: Dir[] = ["south", "south-east", "east", "north-east", "north", "north-west", "west", "south-west"];
+  const hasAllDirs = (set?: Partial<Record<Dir, string>>) => !!set && ALL_DIRS.every(d => !!set[d]);
+  const motion = useRef<Map<string, Motion>>(new Map());
+  const [, setMotionTick] = useState(0);
+  const reduceMotion = useRef(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reduceMotion.current = mq.matches;
+    const on = () => { reduceMotion.current = mq.matches; };
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+
+  // (Re)seed motion state when the layout changes — keep live position if the
+  // agent already exists so a re-layout doesn't teleport anyone.
+  useEffect(() => {
+    const next = new Map<string, Motion>();
+    for (const p of pins) {
+      const walkable = hasAllDirs(sprites[p.agent.id]);
+      const prev = motion.current.get(p.agent.id);
+      next.set(p.agent.id, prev
+        ? { ...prev, hx: p.x, hy: p.y, floor: p.floor, walkable }
+        : { x: p.x, y: p.y, hx: p.x, hy: p.y, dir: "south", moving: false, tx: p.x, ty: p.y, waitUntil: 0, walkable, floor: p.floor });
+    }
+    motion.current = next;
+  }, [pins, sprites]);
+
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
+    let lastRender = 0;
+    const SPEED = 7;          // % of map per second (gentle stroll)
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      if (!reduceMotion.current) {
+        for (const m of motion.current.values()) {
+          if (m.moving) {
+            const dx = m.tx - m.x, dy = m.ty - m.y;
+            const dist = Math.hypot(dx, dy);
+            const step = SPEED * dt;
+            if (dist <= step || dist < 0.3) {
+              m.x = m.tx; m.y = m.ty; m.moving = false; m.dir = "south";
+              m.waitUntil = now + 3000 + Math.random() * 9000;
+            } else {
+              m.x += (dx / dist) * step; m.y += (dy / dist) * step;
+              m.dir = dirFromVelocity(dx, dy);
+            }
+          } else if (m.walkable && now >= m.waitUntil && Math.random() < dt * 0.12) {
+            // start a short wander within the room floor (kept off the edges)
+            const mx = m.floor.fw * 0.16, my = m.floor.fh * 0.16;
+            m.tx = clamp(m.hx + (Math.random() - 0.5) * m.floor.fw * 0.6, m.floor.fx + mx, m.floor.fx + m.floor.fw - mx);
+            m.ty = clamp(m.hy + (Math.random() - 0.5) * m.floor.fh * 0.6, m.floor.fy + my, m.floor.fy + m.floor.fh - my);
+            m.moving = true;
+          }
+        }
+      }
+      if (now - lastRender > 50) { lastRender = now; setMotionTick(t => (t + 1) % 1000000); }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   // Roster: active → blocked → paused → idle
   const roster = useMemo(() =>
@@ -524,15 +610,24 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
                   count={za.members.length}
                   workingCount={za.members.filter(a => workingIds.has(a.id)).length} />
               ))}
-              {pins.map((pin, idx) => (
-                <AgentPin key={pin.agent.id} agent={pin.agent} x={pin.x} y={pin.y} size={pin.size}
+              {pins.map((pin, idx) => {
+                const m = motion.current.get(pin.agent.id);
+                const lx = m?.x ?? pin.x;
+                const ly = m?.y ?? pin.y;
+                const dir = m?.dir ?? "south";
+                const set = sprites[pin.agent.id];
+                const spriteUrl = set ? (set[dir] ?? set.south ?? null) : null;
+                return (
+                <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}
                   status={getStatus(pin.agent, workingIds.has(pin.agent.id))}
                   bubble={bubbles.get(pin.agent.id) ?? null}
                   highlight={highlightId === pin.agent.id}
                   showLabel={labelSize >= 17}
-                  spriteUrl={sprites[pin.agent.id]?.south ?? null}
+                  moving={m?.moving ?? false}
+                  spriteUrl={spriteUrl}
                   delayMs={idx * 120} onOpen={() => onOpen(pin.agent)} />
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

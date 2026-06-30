@@ -1,11 +1,25 @@
 {
   "aef56c47-b594-4253-9aaa-4da6ee626185": {
     "name": "CEO_agent",
-    "south": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/south.png"
+    "south": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/south.png",
+    "south-east": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/south-east.png",
+    "east": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/east.png",
+    "north-east": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/north-east.png",
+    "north": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/north.png",
+    "north-west": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/north-west.png",
+    "west": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/west.png",
+    "south-west": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/south-west.png"
   },
   "fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f": {
     "name": "COO_agent",
-    "south": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/south.png"
+    "south": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/south.png",
+    "south-east": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/south-east.png",
+    "east": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/east.png",
+    "north-east": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/north-east.png",
+    "north": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/north.png",
+    "north-west": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/north-west.png",
+    "west": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/west.png",
+    "south-west": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/south-west.png"
   },
   "22b0b084-603c-4b28-978e-debd40cb5359": {
     "name": "CMO_agent",

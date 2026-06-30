@@ -170,6 +170,13 @@ for (const agent of rows) {
   } catch (err) {
     failed++;
     console.log(`\n  ✗ ${agent.name}: ${err.message}`);
+    // Out of PixelLab credits — stop early instead of hammering 100s of doomed
+    // calls. Re-run with more credits; it resumes from where it left off.
+    if (/\b(402|403|429)\b|insufficient|credit|quota|balance/i.test(err.message)) {
+      console.log("  ⚠ Looks like the PixelLab balance/quota is exhausted — stopping. Add credits and re-run; it resumes.");
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+      break;
+    }
   }
   // Persist manifest after each agent so a crash never loses progress.
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
