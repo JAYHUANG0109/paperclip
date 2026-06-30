@@ -1,8 +1,10 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
-import { authUsers } from "@paperclipai/db";
-import { inArray } from "drizzle-orm";
+import { authUsers, companySkills } from "@paperclipai/db";
+import { eq, inArray } from "drizzle-orm";
 import { leaderboardService } from "../services/leaderboard.js";
+import { progressionFor } from "../services/office-progression.js";
+import { notificationService } from "../services/notifications.js";
 import {
   catalogSkillListQuerySchema,
   companySkillCommentCreateSchema,
@@ -836,6 +838,7 @@ export function companySkillRoutes(db: Db) {
 
   // ---- Leaderboard (排行榜) ----
   const leaderboard = leaderboardService(db);
+  const notifications = notificationService(db);
 
   router.get("/companies/:companyId/leaderboard", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -855,7 +858,13 @@ export function companySkillRoutes(db: Db) {
     const awards = await leaderboard.listAwards(companyId, awardsMonth);
     res.json({
       period: result.period,
-      entries: result.entries.map((e) => ({ ...e, displayName: nameById.get(e.userId) ?? e.userId.slice(0, 8) })),
+      // Attach the Virtual Office progression (XP/level/title/coins/badges),
+      // computed purely from each entry. coinsSpent is 0 until the shop ships.
+      entries: result.entries.map((e) => ({
+        ...e,
+        displayName: nameById.get(e.userId) ?? e.userId.slice(0, 8),
+        progression: progressionFor(e),
+      })),
       awards,
     });
   });
@@ -889,6 +898,39 @@ export function companySkillRoutes(db: Db) {
     const usedByAgentId = req.actor.type === "agent" ? req.actor.agentId ?? null : (typeof body.usedByAgentId === "string" ? body.usedByAgentId : null);
     const increment = typeof body.increment === "number" && body.increment > 0 ? Math.min(1000, Math.round(body.increment)) : 1;
     const row = await leaderboard.recordUsage(companyId, skillId, periodMonth, usedByUserId, usedByAgentId, increment);
+
+    // Reward loop: when a real user adopts someone else's skill, notify the
+    // author — once per adopter (deduped), so repeat uses never spam. Best-effort:
+    // a notification failure must never break usage recording.
+    if (usedByUserId) {
+      try {
+        const [skill] = await db
+          .select({ name: companySkills.name, author: companySkills.createdByUserId })
+          .from(companySkills)
+          .where(eq(companySkills.id, skillId))
+          .limit(1);
+        if (skill?.author && skill.author !== usedByUserId) {
+          const [user] = await db
+            .select({ name: authUsers.name, email: authUsers.email })
+            .from(authUsers)
+            .where(eq(authUsers.id, usedByUserId))
+            .limit(1);
+          const who = user?.name ?? user?.email ?? "有人 / Someone";
+          await notifications.create({
+            companyId,
+            userId: skill.author,
+            kind: "office_skill_adopted",
+            title: `🎉 ${who} 用了你的技能 / used your skill`,
+            body: `《${skill.name}》被採用了——你的自動化正在幫團隊省時間。 / Your automation is saving the team time.`,
+            link: "/virtual-office",
+            dedupeKey: `office-skill-adopted:${skillId}:${usedByUserId}`,
+          });
+        }
+      } catch {
+        /* notifications are best-effort */
+      }
+    }
+
     res.json(row);
   });
 

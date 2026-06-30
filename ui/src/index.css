@@ -1343,3 +1343,37 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
 @media (prefers-reduced-motion: reduce) {
   .office-avatar-idle { animation: none; }
 }
+
+/* ---- Virtual Office living critters ---- */
+@keyframes office-critter-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes office-critter-walk-bob { 0%, 100% { transform: translateY(0) rotate(-2.5deg); } 50% { transform: translateY(-2.5px) rotate(2.5deg); } }
+@keyframes office-critter-leg-a { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+@keyframes office-critter-leg-b { 0%, 100% { transform: translateY(-2.5px); } 50% { transform: translateY(0); } }
+/* roam: a slow local wander around the critter's home spot (vars set inline per agent) */
+@keyframes office-critter-roam {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(var(--roam-x, 18px), var(--roam-y, -6px)); }
+  50%  { transform: translate(calc(var(--roam-x, 18px) * -0.6), var(--roam-y2, 8px)); }
+  75%  { transform: translate(calc(var(--roam-x, 18px) * 0.4), calc(var(--roam-y2, 8px) * -0.5)); }
+  100% { transform: translate(0, 0); }
+}
+.office-critter-idle { animation: office-critter-bob 3s ease-in-out infinite; transform-origin: center bottom; }
+.office-critter-walk { animation: office-critter-walk-bob 0.5s ease-in-out infinite; transform-origin: center bottom; }
+.office-critter-walk .leg-l { animation: office-critter-leg-a 0.5s ease-in-out infinite; }
+.office-critter-walk .leg-r { animation: office-critter-leg-b 0.5s ease-in-out infinite; }
+.office-critter-roam { animation: office-critter-roam var(--roam-dur, 14s) ease-in-out infinite; will-change: transform; }
+/* single-image (PNG) critters: a squash/stretch hop for roaming + a typing bob at the desk */
+@keyframes office-critter-hop {
+  0% { transform: translateY(0) scale(1, 1); }
+  12% { transform: translateY(0) scale(1.12, 0.88); }
+  38% { transform: translateY(-8px) scale(0.92, 1.08); }
+  62% { transform: translateY(0) scale(1.12, 0.88); }
+  74%, 100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes office-critter-type { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-1.5px) rotate(1deg); } }
+.office-critter-hop { animation: office-critter-hop 1.1s ease-in-out infinite; transform-origin: center bottom; }
+.office-critter-type { animation: office-critter-type 0.5s ease-in-out infinite; transform-origin: center bottom; }
+@media (prefers-reduced-motion: reduce) {
+  .office-critter-idle, .office-critter-walk, .office-critter-roam, .office-critter-hop, .office-critter-type,
+  .office-critter-walk .leg-l, .office-critter-walk .leg-r { animation: none; }
+}

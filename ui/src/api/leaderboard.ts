@@ -1,5 +1,28 @@
 import { api } from "./client";
 
+export interface EarnedBadge {
+  key: string;
+  emoji: string;
+  zh: string;
+  en: string;
+  xp: number;
+}
+
+// Virtual Office gamification layer, computed server-side from the entry.
+// See server/src/services/office-progression.ts.
+export interface OfficeProgression {
+  totalXp: number;
+  level: number;
+  title: { zh: string; en: string };
+  xpToNext: number;
+  levelFloorXp: number;
+  nextLevelXp: number;
+  coinsMinted: number;
+  coinsBalance: number;
+  badges: EarnedBadge[];
+  breakdown: { skill: number; personal: number; bounty: number; milestone: number };
+}
+
 export interface LeaderboardEntry {
   userId: string;
   displayName: string;
@@ -12,6 +35,7 @@ export interface LeaderboardEntry {
   usageMinutes: number;
   usesCount: number;
   score: number;
+  progression?: OfficeProgression;
 }
 
 export interface MonthlyAward {

@@ -17,6 +17,7 @@ import { companyRoutes } from "./routes/companies.js";
 import { companySkillRoutes } from "./routes/company-skills.js";
 import { bountyRoutes } from "./routes/bounties.js";
 import { leaderboardService } from "./services/leaderboard.js";
+import { progressionNotifications } from "./services/office-progression.js";
 import { summaryService } from "./services/summaries.js";
 import { notificationService } from "./services/notifications.js";
 import { teamsCatalogRoutes } from "./routes/teams-catalog.js";
@@ -549,10 +550,24 @@ export async function createApp(
   const runMonthlyRollups = async () => {
     try {
       const leaderboard = leaderboardService(db);
+      const notifier = notificationService(db);
       const period = previousMonthKey(new Date());
       const rows = await db.select({ id: companies.id }).from(companies);
       for (const c of rows) {
         await leaderboard.runMonthlyRollup(c.id, period);
+        // Announce Virtual Office level-ups & new badges to each contributor's
+        // inbox. Deduped per level/badge, so this daily sweep notifies once each.
+        try {
+          const board = await leaderboard.compute(c.id, null);
+          for (const e of board.entries) {
+            if (!e.userId) continue;
+            for (const notice of progressionNotifications(e.userId, e)) {
+              await notifier.create({ companyId: c.id, userId: e.userId, ...notice });
+            }
+          }
+        } catch (noticeErr) {
+          logger.warn({ err: noticeErr, companyId: c.id }, "office progression notices failed");
+        }
       }
       logger.info({ period, companies: rows.length }, "monthly leaderboard rollup complete");
       try {

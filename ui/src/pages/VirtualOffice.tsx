@@ -10,11 +10,11 @@ import { assetsApi } from "../api/assets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { leaderboardApi, type LeaderboardEntry } from "../api/leaderboard";
 import { OfficeAvatar } from "../components/OfficeAvatar";
+import { LivingOfficeFloor } from "../components/LivingOfficeFloor";
 import { TeamFilterBar } from "../components/TeamFilterBar";
 import { ViewSwitchButton } from "../components/ViewSwitchButton";
 import { agentMatchesTeams, listAllTeams, useAgentTeamFilter } from "../lib/agent-teams";
 import { sortAgentsByAccessLevel } from "../lib/agent-order";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { agentUrl } from "../lib/utils";
 import { cn } from "../lib/utils";
@@ -108,7 +108,7 @@ export function VirtualOffice() {
         <ViewSwitchButton to="/agents" label={t("office.browseAgents", { defaultValue: "Browse agents" })} icon={Users} />
       </div>
 
-      <div className="rounded-2xl border border-border bg-[repeating-linear-gradient(45deg,hsl(var(--muted)/0.25)_0_12px,transparent_12px_24px)] p-4 sm:p-6">
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 [background-image:radial-gradient(hsl(var(--muted)/0.55)_1px,transparent_1px)] [background-size:22px_22px]">
         <div className="mb-4 flex items-center justify-center gap-2">
           <span>🪴</span>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-sm font-medium">
@@ -118,18 +118,7 @@ export function VirtualOffice() {
           <span>🌿</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7">
-          {visibleAgents.map((agent, i) => (
-            <Desk
-              key={agent.id}
-              agent={agent}
-              working={workingAgentIds.has(agent.id)}
-              skillCount={skillCounts?.[agent.id] ?? 0}
-              floatDelay={(i % 7) * 0.28}
-              onOpen={() => setActiveAgent(agent)}
-            />
-          ))}
-        </div>
+        <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} onOpen={setActiveAgent} />
       </div>
 
       <AgentModal
@@ -167,76 +156,6 @@ function statusInfo(agent: Agent, working: boolean, t: (k: string, o?: Record<st
   if (agent.errorReason) return { label: t("office.error", { defaultValue: "Needs attention" }), dot: "bg-red-500" };
   if (working) return { label: t("office.busy", { defaultValue: "Working" }), dot: "bg-emerald-500 animate-pulse" };
   return { label: t("office.idle", { defaultValue: "Idle" }), dot: "bg-muted-foreground/40" };
-}
-
-function Desk({ agent, working, skillCount, floatDelay, onOpen }: {
-  agent: Agent;
-  working: boolean;
-  skillCount: number;
-  floatDelay: number;
-  onOpen: () => void;
-}) {
-  const { t } = useTranslation();
-  const status = statusInfo(agent, working, t);
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="group flex flex-col items-center gap-1 rounded-lg p-2 text-center transition-transform hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <div className="relative h-16 w-16">
-            {/* Circular pedestal behind the avatar */}
-            <div className={cn(
-              "absolute inset-0 rounded-full border-2 bg-background transition-shadow group-hover:shadow-lg",
-              working ? "border-emerald-400/70" : "border-border",
-            )} />
-            {/* Avatar is larger than the pedestal and bottom-anchored so the
-                head pokes above the rim (sticker look). Float animation on the
-                wrapper so it bobs as one piece. */}
-            <div
-              className="office-avatar-idle absolute inset-x-0 -top-3 flex justify-center"
-              style={{ animationDelay: `${floatDelay}s` }}
-            >
-              <OfficeAvatar agent={agent} size={72} animated={false} className="drop-shadow-sm" />
-            </div>
-            {working && (
-              <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <Zap className="h-2.5 w-2.5" />
-              </span>
-            )}
-          </div>
-          <div className="-mt-1 h-1.5 w-16 rounded-full bg-amber-200/70 dark:bg-amber-900/40" />
-          <div className="mt-0.5 max-w-[7rem] truncate text-xs font-medium">{agent.name}</div>
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
-            {status.label}
-          </div>
-          {/* Reserve the badge row so the card height stays fixed while the
-              skill-count query resolves (avoids a reflow pop). */}
-          <div className="flex h-[18px] items-center justify-center">
-            {skillCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                <Wrench className="h-2.5 w-2.5" />{skillCount} {t("office.skills", { defaultValue: "skills" })}
-              </span>
-            )}
-          </div>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[14rem]">
-        <div className="text-sm font-semibold">{agent.name}</div>
-        <div className="text-xs text-muted-foreground">{agent.title ?? agent.role}</div>
-        <div className="mt-1 flex items-center gap-1.5 text-xs">
-          <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
-          {status.label}
-          {skillCount > 0 && <span className="ml-auto text-muted-foreground">{skillCount} {t("office.skills", { defaultValue: "skills" })}</span>}
-        </div>
-        <div className="mt-1 text-[11px] text-muted-foreground">{t("office.clickForMore", { defaultValue: "Click for details" })}</div>
-      </TooltipContent>
-    </Tooltip>
-  );
 }
 
 function AgentModal({ agent, companyId, canManage, canView, working, skillCount, leaderboard, onClose }: {
