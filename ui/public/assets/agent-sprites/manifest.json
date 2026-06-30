@@ -1,0 +1,102 @@
+{
+  "aef56c47-b594-4253-9aaa-4da6ee626185": {
+    "name": "CEO_agent",
+    "south": "/assets/agent-sprites/aef56c47-b594-4253-9aaa-4da6ee626185/south.png"
+  },
+  "fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f": {
+    "name": "COO_agent",
+    "south": "/assets/agent-sprites/fbb2b6d7-dc2a-419e-a78b-6bdb4a7ebe3f/south.png"
+  },
+  "22b0b084-603c-4b28-978e-debd40cb5359": {
+    "name": "CMO_agent",
+    "south": "/assets/agent-sprites/22b0b084-603c-4b28-978e-debd40cb5359/south.png"
+  },
+  "593fa24b-96dd-4c76-aca1-44ea8dd784ac": {
+    "name": "創辦人_tang",
+    "south": "/assets/agent-sprites/593fa24b-96dd-4c76-aca1-44ea8dd784ac/south.png"
+  },
+  "7e1a0853-38f2-4a2f-ac5b-69247c1a350c": {
+    "name": "Jay_jay20020109",
+    "south": "/assets/agent-sprites/7e1a0853-38f2-4a2f-ac5b-69247c1a350c/south.png"
+  },
+  "5499f95c-781a-4a66-9561-169c891ca91d": {
+    "name": "Frank_資訊副理_a0000960",
+    "south": "/assets/agent-sprites/5499f95c-781a-4a66-9561-169c891ca91d/south.png"
+  },
+  "c7e8b2d4-1181-4a0b-9137-a90f7423d38e": {
+    "name": "Jessica_資訊顧問_it-jessica",
+    "south": "/assets/agent-sprites/c7e8b2d4-1181-4a0b-9137-a90f7423d38e/south.png"
+  },
+  "eb8bdc4f-139d-48cf-8afb-5007288b6138": {
+    "name": "張育銘_資訊軟體組長_a0001030",
+    "south": "/assets/agent-sprites/eb8bdc4f-139d-48cf-8afb-5007288b6138/south.png"
+  },
+  "b021b448-a3d8-4916-bc77-d141027c7fa8": {
+    "name": "賴忠泰_資訊工程師_a0001151",
+    "south": "/assets/agent-sprites/b021b448-a3d8-4916-bc77-d141027c7fa8/south.png"
+  },
+  "876fd97b-d9a1-49eb-9901-0321168ed48b": {
+    "name": "林智偉_資訊工程師_a0001186",
+    "south": "/assets/agent-sprites/876fd97b-d9a1-49eb-9901-0321168ed48b/south.png"
+  },
+  "53858f3e-d2ab-4367-8668-f397a0d52f45": {
+    "name": "黃坤源_資訊硬體組長_a0000409",
+    "south": "/assets/agent-sprites/53858f3e-d2ab-4367-8668-f397a0d52f45/south.png"
+  },
+  "d3288395-0416-4109-b338-ab6c7342de1a": {
+    "name": "吳家秀_仁美園長行政_21950706",
+    "south": "/assets/agent-sprites/d3288395-0416-4109-b338-ab6c7342de1a/south.png"
+  },
+  "67ac6991-d183-4685-ae10-4982e443fc13": {
+    "name": "哈哈Tracy_跨校總園長_22A20201",
+    "south": "/assets/agent-sprites/67ac6991-d183-4685-ae10-4982e443fc13/south.png"
+  },
+  "08c1ba71-698a-4839-81cd-bd0f2dadaf4e": {
+    "name": "何惠君_人才發展_51A20901",
+    "south": "/assets/agent-sprites/08c1ba71-698a-4839-81cd-bd0f2dadaf4e/south.png"
+  },
+  "eb8298a8-b651-4cc4-bd0a-502a0e6fd1e9": {
+    "name": "黃思瑜_活動主管_22A50801",
+    "south": "/assets/agent-sprites/eb8298a8-b651-4cc4-bd0a-502a0e6fd1e9/south.png"
+  },
+  "5563bbc0-130d-4e70-8cd8-02d7ac667b22": {
+    "name": "蘇俐蓉_跨校巡輔組長_22990701",
+    "south": "/assets/agent-sprites/5563bbc0-130d-4e70-8cd8-02d7ac667b22/south.png"
+  },
+  "fdb903f6-1aa3-4ea3-aecd-5ea0fe365e09": {
+    "name": "林亭邑_教學副組長_32A20706",
+    "south": "/assets/agent-sprites/fdb903f6-1aa3-4ea3-aecd-5ea0fe365e09/south.png"
+  },
+  "900afd4b-c822-4b52-a752-b0a255e1f0f4": {
+    "name": "蔡欣恬_教學組老師_38A30602",
+    "south": "/assets/agent-sprites/900afd4b-c822-4b52-a752-b0a255e1f0f4/south.png"
+  },
+  "84b77962-9ebc-480f-8ecd-bfb2ac76a3af": {
+    "name": "陳琬茹_班群組長_Agent 12",
+    "south": "/assets/agent-sprites/84b77962-9ebc-480f-8ecd-bfb2ac76a3af/south.png"
+  },
+  "ce31415c-5319-4e55-9301-278bb34ab134": {
+    "name": "陳怡伶_教學主管_22980502",
+    "south": "/assets/agent-sprites/ce31415c-5319-4e55-9301-278bb34ab134/south.png"
+  },
+  "04ba992c-1794-4889-b556-873f1eab48d4": {
+    "name": "劉雅筑_教學主管_32A60804",
+    "south": "/assets/agent-sprites/04ba992c-1794-4889-b556-873f1eab48d4/south.png"
+  },
+  "af58a440-9146-4207-a9b5-c3515e3f5af8": {
+    "name": "邱瓊慧_教學總召_21970801",
+    "south": "/assets/agent-sprites/af58a440-9146-4207-a9b5-c3515e3f5af8/south.png"
+  },
+  "2667463a-0b76-486d-ae14-ae7ae769444d": {
+    "name": "雅雅_跨校教學_22990101",
+    "south": "/assets/agent-sprites/2667463a-0b76-486d-ae14-ae7ae769444d/south.png"
+  },
+  "6d3ca5ae-5860-4898-8311-bded50727c2d": {
+    "name": "Wiki Maintainer",
+    "south": "/assets/agent-sprites/6d3ca5ae-5860-4898-8311-bded50727c2d/south.png"
+  },
+  "9e5de1cb-3f96-4e0b-ac89-7c6ac18b607f": {
+    "name": "OpenRouter — openai/gpt-4o-mini",
+    "south": "/assets/agent-sprites/9e5de1cb-3f96-4e0b-ac89-7c6ac18b607f/south.png"
+  }
+}

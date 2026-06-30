@@ -114,9 +114,10 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
 }
 
 // ── Agent pin on map (size is dynamic per room) ────────────────────────────
-function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, delayMs, onOpen }: {
+function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, spriteUrl, delayMs, onOpen }: {
   agent: Agent; x: number; y: number; size: number; status: Status;
-  bubble: string | null; highlight: boolean; showLabel: boolean; delayMs: number; onOpen: () => void;
+  bubble: string | null; highlight: boolean; showLabel: boolean; spriteUrl?: string | null;
+  delayMs: number; onOpen: () => void;
 }) {
   const r        = size / 2;
   const color    = STATUS_COLOR[status];
@@ -155,10 +156,28 @@ function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, del
           position: "absolute", inset: 0, padding: 0, background: "none", border: "none",
           cursor: "pointer", borderRadius: "50%", outline: "none", animationDelay: `${delayMs * 0.6}ms`,
         }}>
-        <OfficeAvatar agent={agent} size={size} animated={isActive} style={{
-          borderRadius: "50%", border: `${Math.max(1.5, size * 0.055)}px solid ${color}90`,
-          boxShadow: ring ? `0 0 14px ${glow}, 0 2px 7px rgba(0,0,0,.65)` : "0 1px 5px rgba(0,0,0,.55)",
-        }} />
+        {spriteUrl ? (
+          <>
+            {/* ground shadow so the character reads as standing on the floor */}
+            <div style={{
+              position: "absolute", left: "50%", bottom: -size * 0.04, transform: "translateX(-50%)",
+              width: size * 0.62, height: size * 0.16, borderRadius: "50%",
+              background: "rgba(0,0,0,0.38)", filter: "blur(1px)", pointerEvents: "none",
+            }} />
+            <img src={spriteUrl} alt={agent.name ?? ""} draggable={false} style={{
+              position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-52%)",
+              width: size * 1.55, height: size * 1.55, imageRendering: "pixelated", pointerEvents: "none",
+              filter: status === "idle" || status === "paused"
+                ? "saturate(0.7) brightness(0.85)"
+                : `drop-shadow(0 0 ${ring ? 6 : 0}px ${glow})`,
+            }} />
+          </>
+        ) : (
+          <OfficeAvatar agent={agent} size={size} animated={isActive} style={{
+            borderRadius: "50%", border: `${Math.max(1.5, size * 0.055)}px solid ${color}90`,
+            boxShadow: ring ? `0 0 14px ${glow}, 0 2px 7px rgba(0,0,0,.65)` : "0 1px 5px rgba(0,0,0,.55)",
+          }} />
+        )}
       </button>
 
       {showLabel && (
@@ -289,6 +308,18 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
 
   // Reset to auto-fit whenever the floor changes.
   useEffect(() => { setUserZoom(null); }, [floorIdx]);
+
+  // Pixel-art character sprites, generated per agent via PixelLab. Loaded from a
+  // static manifest; agents without a sprite fall back to the circular avatar.
+  const [sprites, setSprites] = useState<Record<string, { south?: string }>>({});
+  useEffect(() => {
+    let alive = true;
+    fetch("/assets/agent-sprites/manifest.json")
+      .then(r => (r.ok ? r.json() : {}))
+      .then(m => { if (alive) setSprites(m ?? {}); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const floor = FLOORS[floorIdx];
   const mapW  = floor.natW;
@@ -499,6 +530,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
                   bubble={bubbles.get(pin.agent.id) ?? null}
                   highlight={highlightId === pin.agent.id}
                   showLabel={labelSize >= 17}
+                  spriteUrl={sprites[pin.agent.id]?.south ?? null}
                   delayMs={idx * 120} onOpen={() => onOpen(pin.agent)} />
               ))}
             </div>
