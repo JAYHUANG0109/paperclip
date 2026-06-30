@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Wrench, Zap, Building2, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users } from "lucide-react";
+import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -108,18 +108,7 @@ export function VirtualOffice() {
         <ViewSwitchButton to="/agents" label={t("office.browseAgents", { defaultValue: "Browse agents" })} icon={Users} />
       </div>
 
-      <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 [background-image:radial-gradient(hsl(var(--muted)/0.55)_1px,transparent_1px)] [background-size:22px_22px]">
-        <div className="mb-4 flex items-center justify-center gap-2">
-          <span>🪴</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-sm font-medium">
-            <Building2 className="h-3.5 w-3.5" />
-            {selectedCompany?.name ?? t("office.officeName", { defaultValue: "Office" })}
-          </span>
-          <span>🌿</span>
-        </div>
-
-        <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} onOpen={setActiveAgent} />
-      </div>
+      <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} />
 
       <AgentModal
         agent={activeAgent}

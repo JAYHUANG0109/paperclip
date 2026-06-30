@@ -1362,6 +1362,36 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
 .office-critter-walk .leg-l { animation: office-critter-leg-a 0.5s ease-in-out infinite; }
 .office-critter-walk .leg-r { animation: office-critter-leg-b 0.5s ease-in-out infinite; }
 .office-critter-roam { animation: office-critter-roam var(--roam-dur, 14s) ease-in-out infinite; will-change: transform; }
+
+/* ── Virtual office: agent working-state animations ─────────────────────── */
+@keyframes office-agent-ring-pulse {
+  0%, 100% { opacity: 0.55; transform: translate(-50%,-50%) scale(1); }
+  50%       { opacity: 1;    transform: translate(-50%,-50%) scale(1.13); }
+}
+@keyframes office-agent-working-bob {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+@keyframes office-bubble-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(5px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes office-bubble-blink {
+  0%, 90%, 100% { opacity: 1; }
+  95% { opacity: 0.6; }
+}
+.office-agent-ring {
+  animation: office-agent-ring-pulse 1.8s ease-in-out infinite;
+}
+.office-agent-working {
+  animation: office-agent-working-bob 2.4s ease-in-out infinite;
+}
+.office-speech-bubble {
+  animation: office-bubble-in 0.25s ease-out forwards, office-bubble-blink 4s ease-in-out 1s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .office-agent-ring, .office-agent-working, .office-speech-bubble { animation: none; opacity: 1; }
+}
 /* single-image (PNG) critters: a squash/stretch hop for roaming + a typing bob at the desk */
 @keyframes office-critter-hop {
   0% { transform: translateY(0) scale(1, 1); }
