@@ -136,6 +136,13 @@ function ConsoleView({
   const cats = con.digest.categories;
   const pendingApproval = [...cats.urgent, ...cats.nonUrgent].filter((it) => (it.summary || it.review) && !it.decision).length;
   const generated = con.digest.generatedAt ? new Date(con.digest.generatedAt) : null;
+  // Surface a silently-stale board: the pipeline refreshes ~4×/day on weekdays
+  // (longest normal gap is the 22:00→11:30 overnight, ~13.5h), so >16h old means
+  // at least one scheduled run was missed (e.g. an agent run failed). The
+  // watchdog already kills genuinely-stuck runs; this just tells the reader the
+  // numbers below may be behind Asana.
+  const STALE_MS = 16 * 60 * 60 * 1000;
+  const isStale = generated ? Date.now() - generated.getTime() > STALE_MS : false;
 
   return (
     <div className="space-y-3">
@@ -152,6 +159,11 @@ function ConsoleView({
         <p className="text-[11px] text-muted-foreground">
           {t("asana.updatedAt", { defaultValue: "Updated" })} {generated ? generated.toLocaleString() : ""}
           {con.digest.lastRunLabel ? ` · ${con.digest.lastRunLabel}` : ""}
+        </p>
+      )}
+      {isStale && (
+        <p className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+          ⚠️ {t("founder.stale", { when: generated ? generated.toLocaleString() : "", defaultValue: "May be out of date — last refreshed {{when}}" })}
         </p>
       )}
 
@@ -338,7 +350,7 @@ function FounderRow({
         {isReview && (item.comments?.length ?? 0) > 0 && (
           <span
             className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] tabular-nums text-muted-foreground"
-            title={t("founder.threadCount", { count: item.comments.length, defaultValue: "{{count}} 則留言" })}
+            title={t("founder.threadCount", { count: item.comments.length, defaultValue: "{{count}} 則評論" })}
           >
             <MessageSquare className="h-3 w-3" />
             {item.comments.length}
@@ -496,7 +508,7 @@ function CommentThread({
   return (
     <div className="rounded-md border border-border p-2">
       <div className="mb-1 font-medium text-muted-foreground">
-        {t("founder.thread", { defaultValue: "討論串 (張貼為 Asana 評論)" })}
+        {t("founder.thread", { defaultValue: "評論" })}
       </div>
       {comments.length > 0 && (
         <ul className="mb-2 space-y-1.5">

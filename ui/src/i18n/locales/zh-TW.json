@@ -5712,12 +5712,13 @@
     "triageNow": "現在可先處理",
     "triageEvening": "留待晚上",
     "approvedProgress": "{{done}}/{{total}} 已核准",
-    "thread": "討論串（張貼為 Asana 評論）",
+    "thread": "評論",
     "you": "您",
     "sending": "傳送中",
     "commentPlaceholder": "留言 / 提問（不做決定）— 將張貼為 Asana 評論",
     "postComment": "送出留言",
-    "threadCount": "{{count}} 則留言"
+    "threadCount": "{{count}} 則評論",
+    "stale": "資料可能過期 — 最後更新 {{when}}"
   },
   "sidebarShell": {
     "resize": "調整側邊欄大小"

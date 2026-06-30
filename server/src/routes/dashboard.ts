@@ -20,6 +20,7 @@ import {
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
+import { postAsanaComment, setAsanaTaskCompleted } from "../services/agent-asana.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
@@ -296,15 +297,20 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     }
     const closed = (req.body as { closed?: unknown })?.closed !== false; // default true
     const digest = await setFounderItemClosed(db, agentId, gid, closed);
-    await heartbeat.wakeup(agentId, {
-      source: "on_demand",
-      triggerDetail: "manual",
-      reason: "founder-close-item",
-      payload: { directive: "founder-close-item", taskGid: gid, closed },
-      idempotencyKey: `founder-close:${gid}:${closed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
-      requestedByActorType: "user",
-      requestedByActorId: userId ?? null,
-    });
+    // Apply to Asana immediately with the agent's own token (instant, no heartbeat
+    // wait). Only fall back to waking the agent if the direct write didn't land.
+    const applied = await setAsanaTaskCompleted(db, companyId, agentId, gid, closed);
+    if (!applied) {
+      await heartbeat.wakeup(agentId, {
+        source: "on_demand",
+        triggerDetail: "manual",
+        reason: "founder-close-item",
+        payload: { directive: "founder-close-item", taskGid: gid, closed },
+        idempotencyKey: `founder-close:${gid}:${closed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
+        requestedByActorType: "user",
+        requestedByActorId: userId ?? null,
+      });
+    }
     res.json({ ok: true, digest });
   });
 
@@ -329,6 +335,11 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       res.status(400).json({ error: "A non-empty comment is required." });
       return;
     }
+    // Post to Asana immediately with the agent's own token, so the comment lands
+    // in seconds instead of waiting for the agent's next heartbeat. Mark the
+    // stored comment confirmed when it posts; only fall back to the agent
+    // (founder-comment directive) if the direct write didn't land.
+    const posted = await postAsanaComment(db, companyId, agentId, gid, text);
     const id = `pending-${randomUUID()}`;
     const digest = await appendFounderItemComment(db, agentId, gid, {
       id,
@@ -336,17 +347,19 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       authorType: "founder",
       text,
       createdAt: new Date().toISOString(),
-      pending: true,
+      ...(posted ? {} : { pending: true }),
     });
-    await heartbeat.wakeup(agentId, {
-      source: "on_demand",
-      triggerDetail: "manual",
-      reason: "founder-comment",
-      payload: { directive: "founder-comment", taskGid: gid, text, commentId: id },
-      idempotencyKey: `founder-comment:${id}`,
-      requestedByActorType: "user",
-      requestedByActorId: userId ?? null,
-    });
+    if (!posted) {
+      await heartbeat.wakeup(agentId, {
+        source: "on_demand",
+        triggerDetail: "manual",
+        reason: "founder-comment",
+        payload: { directive: "founder-comment", taskGid: gid, text, commentId: id },
+        idempotencyKey: `founder-comment:${id}`,
+        requestedByActorType: "user",
+        requestedByActorId: userId ?? null,
+      });
+    }
     res.json({ ok: true, digest });
   });
 
