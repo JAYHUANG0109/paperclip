@@ -5711,7 +5711,13 @@
     "source": "From Asana",
     "triageNow": "Can handle now",
     "triageEvening": "Leave for evening",
-    "approvedProgress": "{{done}}/{{total}} approved"
+    "approvedProgress": "{{done}}/{{total}} approved",
+    "thread": "Discussion (posted as Asana comments)",
+    "you": "You",
+    "sending": "Sending",
+    "commentPlaceholder": "Comment / question (no decision) — posted as an Asana comment",
+    "postComment": "Post comment",
+    "threadCount": "{{count}} comments"
   },
   "sidebarShell": {
     "resize": "Resize sidebar"

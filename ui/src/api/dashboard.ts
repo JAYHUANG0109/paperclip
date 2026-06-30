@@ -22,6 +22,15 @@ export interface AsanaDigest {
 
 export type FounderDecision = "approved" | "changes_requested" | "rejected";
 
+export interface FounderComment {
+  id: string;
+  author: string | null;
+  authorType: "founder" | "agent" | "asana";
+  text: string;
+  createdAt: string;
+  pending?: boolean;
+}
+
 export interface FounderItem {
   gid: string;
   name: string;
@@ -33,6 +42,7 @@ export interface FounderItem {
   triage: "now" | "evening" | null;
   decision: FounderDecision | null;
   decisionNote: string | null;
+  comments: FounderComment[];
   closed: boolean;
 }
 export interface FounderDigest {
@@ -47,7 +57,7 @@ export interface FounderDigest {
   empty?: boolean;
 }
 
-export type ConsoleKey = "founder" | "principal";
+export type ConsoleKey = "founder" | "principal" | "principalZhengXitun";
 export interface DailyConsole {
   key: ConsoleKey;
   title: string;
@@ -121,5 +131,12 @@ export const dashboardApi = {
     api.post<{ ok: boolean; digest: FounderDigest | null }>(
       `/companies/${companyId}/founder-digest/items/${encodeURIComponent(gid)}/close`,
       { closed },
+    ),
+  // Post a free-form comment to an item's thread (decision-independent). Routed
+  // through the caller's own agent, which posts it as an Asana comment.
+  commentFounderItem: (companyId: string, gid: string, text: string) =>
+    api.post<{ ok: boolean; digest: FounderDigest | null }>(
+      `/companies/${companyId}/founder-digest/items/${encodeURIComponent(gid)}/comment`,
+      { text },
     ),
 };

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw } from "lucide-react";
+import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw, Send } from "lucide-react";
 import { useTranslation } from "@/i18n";
-import { dashboardApi, type DailyConsole, type FounderConsolesResponse, type FounderDecision, type FounderItem } from "../api/dashboard";
+import { dashboardApi, type DailyConsole, type FounderComment, type FounderConsolesResponse, type FounderDecision, type FounderItem } from "../api/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "../lib/utils";
 
@@ -31,12 +31,12 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
     staleTime: 60_000,
   });
 
-  // Optimistically patch one item (by gid) across every console's categories.
-  const optimisticPatch = async (gid: string, patch: Partial<FounderItem>) => {
+  // Optimistically update one item (by gid) across every console's categories.
+  const optimisticUpdate = async (gid: string, update: (it: FounderItem) => FounderItem) => {
     await queryClient.cancelQueries({ queryKey: KEY(companyId) });
     const prev = queryClient.getQueryData<FounderConsolesResponse>(KEY(companyId));
     if (prev?.consoles) {
-      const apply = (l: FounderItem[]) => (l ?? []).map((it) => (it.gid === gid ? { ...it, ...patch } : it));
+      const apply = (l: FounderItem[]) => (l ?? []).map((it) => (it.gid === gid ? update(it) : it));
       const consoles = prev.consoles.map((con) => ({
         ...con,
         digest: {
@@ -53,6 +53,8 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
     }
     return { prev };
   };
+  const optimisticPatch = (gid: string, patch: Partial<FounderItem>) =>
+    optimisticUpdate(gid, (it) => ({ ...it, ...patch }));
   const rollback = (_e: unknown, _v: unknown, ctx: { prev?: FounderConsolesResponse } | undefined) =>
     ctx?.prev && queryClient.setQueryData(KEY(companyId), ctx.prev);
   const settle = () => queryClient.invalidateQueries({ queryKey: KEY(companyId) });
@@ -70,8 +72,25 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
     onError: rollback,
     onSettled: settle,
   });
+  const comment = useMutation({
+    mutationFn: ({ gid, text }: { gid: string; text: string }) => dashboardApi.commentFounderItem(companyId, gid, text),
+    onMutate: ({ gid, text }) => {
+      const optimistic: FounderComment = {
+        id: `pending-${crypto.randomUUID()}`,
+        author: null,
+        authorType: "founder",
+        text: text.trim(),
+        createdAt: new Date().toISOString(),
+        pending: true,
+      };
+      return optimisticUpdate(gid, (it) => ({ ...it, comments: [...(it.comments ?? []), optimistic] }));
+    },
+    onError: rollback,
+    onSettled: settle,
+  });
   const pendingGid =
     (decide.isPending ? decide.variables?.gid : undefined) ?? (close.isPending ? close.variables?.gid : undefined);
+  const commentingGid = comment.isPending ? comment.variables?.gid : undefined;
 
   const consoles = data?.consoles ?? [];
   if (consoles.length === 0) return null;
@@ -85,8 +104,10 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
           console={con}
           showTitle={showTitle}
           pendingGid={pendingGid}
+          commentingGid={commentingGid}
           onDecide={(gid, decision, note) => decide.mutate({ gid, decision, note })}
           onClose={(gid, closed) => close.mutate({ gid, closed })}
+          onComment={(gid, text) => comment.mutate({ gid, text })}
         />
       ))}
     </div>
@@ -98,14 +119,18 @@ function ConsoleView({
   console: con,
   showTitle,
   pendingGid,
+  commentingGid,
   onDecide,
   onClose,
+  onComment,
 }: {
   console: DailyConsole;
   showTitle: boolean;
   pendingGid: string | undefined;
+  commentingGid: string | undefined;
   onDecide: (gid: string, decision: FounderDecision | null, note?: string) => void;
   onClose: (gid: string, closed: boolean) => void;
+  onComment: (gid: string, text: string) => void;
 }) {
   const { t } = useTranslation();
   const cats = con.digest.categories;
@@ -174,8 +199,10 @@ function ConsoleView({
                         item={it}
                         kind={c.kind}
                         pending={pendingGid === it.gid}
+                        commenting={commentingGid === it.gid}
                         onDecide={(decision, note) => onDecide(it.gid, decision, note)}
                         onClose={(closed) => onClose(it.gid, closed)}
+                        onComment={(text) => onComment(it.gid, text)}
                       />
                     ))}
                   </ul>
@@ -242,22 +269,29 @@ function FounderRow({
   item,
   kind,
   pending,
+  commenting,
   onDecide,
   onClose,
+  onComment,
 }: {
   item: FounderItem;
   kind: "review" | "meeting" | "reminder";
   pending: boolean;
+  commenting: boolean;
   onDecide: (decision: FounderDecision | null, note?: string) => void;
   onClose: (closed: boolean) => void;
+  onComment: (text: string) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   // Which verdict the founder is composing a note for (null = not composing).
   const [composing, setComposing] = useState<FounderDecision | null>(null);
   const [note, setNote] = useState("");
-  const hasDetail = kind === "review" ? !!(item.summary || item.review || item.notes) : kind === "meeting" ? !!(item.prep || item.notes) : !!item.notes;
   const isReview = kind === "review";
+  // Review items always expand (summary/批閱 + thread); meetings/reminders expand
+  // when they carry a prep brief, notes, or an existing discussion thread.
+  const hasThread = (item.comments?.length ?? 0) > 0;
+  const hasDetail = isReview || (kind === "meeting" ? !!(item.prep || item.notes) : !!item.notes) || hasThread;
 
   const submit = () => {
     if (!composing) return;
@@ -299,6 +333,15 @@ function FounderRow({
             {item.triage === "now"
               ? t("founder.triageNow", { defaultValue: "現在可先處理" })
               : t("founder.triageEvening", { defaultValue: "留待晚上" })}
+          </span>
+        )}
+        {isReview && (item.comments?.length ?? 0) > 0 && (
+          <span
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] tabular-nums text-muted-foreground"
+            title={t("founder.threadCount", { count: item.comments.length, defaultValue: "{{count}} 則留言" })}
+          >
+            <MessageSquare className="h-3 w-3" />
+            {item.comments.length}
           </span>
         )}
         </div>
@@ -413,6 +456,7 @@ function FounderRow({
             <Block label={t("founder.meetingPrep", { defaultValue: "Meeting prep" })} text={item.prep} />
           )}
           {item.notes && <Block label={t("founder.source", { defaultValue: "From Asana" })} text={item.notes} muted />}
+          {isReview && <CommentThread comments={item.comments ?? []} commenting={commenting} onComment={onComment} />}
         </div>
       )}
 
@@ -424,6 +468,79 @@ function FounderRow({
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * Discussion thread for a 待批閱 item: the agent-seeded Asana comment history
+ * plus the founder's own replies, with a box to post a new comment WITHOUT
+ * making a verdict. Each reply is routed to Asana through the founder's agent.
+ */
+function CommentThread({
+  comments,
+  commenting,
+  onComment,
+}: {
+  comments: FounderComment[];
+  commenting: boolean;
+  onComment: (text: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [reply, setReply] = useState("");
+  const send = () => {
+    const text = reply.trim();
+    if (!text) return;
+    onComment(text);
+    setReply("");
+  };
+  return (
+    <div className="rounded-md border border-border p-2">
+      <div className="mb-1 font-medium text-muted-foreground">
+        {t("founder.thread", { defaultValue: "討論串 (張貼為 Asana 評論)" })}
+      </div>
+      {comments.length > 0 && (
+        <ul className="mb-2 space-y-1.5">
+          {comments.map((c) => (
+            <li key={c.id} className="rounded border border-border/60 bg-muted/20 p-1.5">
+              <div className="mb-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className="font-medium text-foreground/80">
+                  {c.authorType === "founder" ? t("founder.you", { defaultValue: "您" }) : c.author || "Asana"}
+                </span>
+                <span>{new Date(c.createdAt).toLocaleString()}</span>
+                {c.pending && (
+                  <span className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
+                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    {t("founder.sending", { defaultValue: "傳送中" })}
+                  </span>
+                )}
+              </div>
+              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">{c.text}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <textarea
+        value={reply}
+        onChange={(e) => setReply(e.target.value)}
+        rows={2}
+        placeholder={t("founder.commentPlaceholder", { defaultValue: "留言 / 提問（不做決定）— 將張貼為 Asana 評論" })}
+        className="w-full rounded-md border border-border bg-background p-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send();
+        }}
+      />
+      <div className="mt-1 flex justify-end">
+        <button
+          type="button"
+          onClick={send}
+          disabled={commenting || !reply.trim()}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
+        >
+          {commenting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+          {t("founder.postComment", { defaultValue: "送出留言" })}
+        </button>
+      </div>
+    </div>
   );
 }
 

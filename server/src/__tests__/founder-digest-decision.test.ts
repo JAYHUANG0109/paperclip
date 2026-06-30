@@ -5,6 +5,7 @@ import {
   writeFounderDigestForAgent,
   setFounderItemDecision,
   setFounderItemClosed,
+  appendFounderItemComment,
   getConsolesForUser,
   type FounderDigest,
 } from "../services/founder-digest.js";
@@ -96,6 +97,48 @@ describe("founder-digest decisions", () => {
     const after = await getConsolesForUser(db, companyId, email);
     expect(after.find((c) => c.key === "principal")?.digest.categories.reminders[0]?.decision).toBe("approved");
     expect(after.find((c) => c.key === "founder")?.digest.categories.urgent[0]?.decision).toBeNull();
+  });
+
+  it("parses an agent-seeded comment thread and appends a founder reply", async () => {
+    await writeFounderDigestForAgent(db, "c", agentId, {
+      categories: {
+        urgent: [
+          {
+            gid: "ct1",
+            name: "with thread",
+            comments: [
+              { id: "s1", author: "婉珺", authorType: "agent", text: "已修正上傳新版", createdAt: "2026-06-30T01:00:00Z" },
+              { text: "" }, // dropped: empty
+              { nope: true }, // dropped: malformed
+            ],
+          },
+        ],
+      },
+    });
+    let item = (await read()).categories.urgent.find((i) => i.gid === "ct1");
+    expect(item?.comments).toHaveLength(1);
+    expect(item?.comments[0]).toMatchObject({ id: "s1", author: "婉珺", authorType: "agent", text: "已修正上傳新版" });
+
+    const digest = await appendFounderItemComment(db, agentId, "ct1", {
+      id: "pending-x",
+      author: null,
+      authorType: "founder",
+      text: "請先確認金額",
+      createdAt: "2026-06-30T02:00:00Z",
+      pending: true,
+    });
+    expect(digest).not.toBeNull();
+    item = (await read()).categories.urgent.find((i) => i.gid === "ct1");
+    expect(item?.comments).toHaveLength(2);
+    expect(item?.comments[1]).toMatchObject({ authorType: "founder", text: "請先確認金額", pending: true });
+  });
+
+  it("defaults comments to an empty array when the agent omits them", async () => {
+    await writeFounderDigestForAgent(db, "c", agentId, {
+      categories: { urgent: [{ gid: "nc1", name: "no comments" }] },
+    });
+    const item = (await read()).categories.urgent.find((i) => i.gid === "nc1");
+    expect(item?.comments).toEqual([]);
   });
 
   it("marks a meeting/reminder item 結案 and can reopen it", async () => {

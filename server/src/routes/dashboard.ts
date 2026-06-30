@@ -16,8 +16,10 @@ import {
   getConsolesForUser,
   setFounderItemDecision,
   setFounderItemClosed,
+  appendFounderItemComment,
   type FounderDecision,
 } from "../services/founder-digest.js";
+import { randomUUID } from "node:crypto";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
@@ -300,6 +302,48 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       reason: "founder-close-item",
       payload: { directive: "founder-close-item", taskGid: gid, closed },
       idempotencyKey: `founder-close:${gid}:${closed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
+      requestedByActorType: "user",
+      requestedByActorId: userId ?? null,
+    });
+    res.json({ ok: true, digest });
+  });
+
+  // Post a free-form comment to an item's thread — decision-independent (unlike
+  // the optional note on a verdict, this does NOT decide the item). Optimistically
+  // appends the founder's reply (pending) to the stored digest, then routes the
+  // real Asana comment through the caller's OWN agent, which posts it as a story
+  // and reconciles the thread (confirmed Asana history) on its next digest write.
+  router.post("/companies/:companyId/founder-digest/items/:gid/comment", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const gid = req.params.gid as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account to act on Asana." });
+      return;
+    }
+    const text = typeof req.body?.text === "string" ? req.body.text.trim().slice(0, 2000) : "";
+    if (!text) {
+      res.status(400).json({ error: "A non-empty comment is required." });
+      return;
+    }
+    const id = `pending-${randomUUID()}`;
+    const digest = await appendFounderItemComment(db, agentId, gid, {
+      id,
+      author: null, // labelled "您" in the UI; the agent fills the real name on reconcile
+      authorType: "founder",
+      text,
+      createdAt: new Date().toISOString(),
+      pending: true,
+    });
+    await heartbeat.wakeup(agentId, {
+      source: "on_demand",
+      triggerDetail: "manual",
+      reason: "founder-comment",
+      payload: { directive: "founder-comment", taskGid: gid, text, commentId: id },
+      idempotencyKey: `founder-comment:${id}`,
       requestedByActorType: "user",
       requestedByActorId: userId ?? null,
     });

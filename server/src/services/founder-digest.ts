@@ -18,6 +18,21 @@ import { resolveOwnAgentId } from "./asana-digest.js";
  */
 export type FounderDecision = "approved" | "changes_requested" | "rejected";
 
+/**
+ * One comment in an item's thread. The agent seeds the history from the task's
+ * Asana stories (authorType "agent"/"asana"); the founder's own replies are
+ * appended optimistically by the server (authorType "founder", pending: true)
+ * and reconciled into confirmed Asana stories on the next digest write.
+ */
+export interface FounderComment {
+  id: string; // Asana story gid, or a client/server-generated id for a pending reply
+  author: string | null; // display name (null = unknown / "您")
+  authorType: "founder" | "agent" | "asana";
+  text: string;
+  createdAt: string; // ISO
+  pending?: boolean; // optimistic reply not yet confirmed posted to Asana
+}
+
 export interface FounderItem {
   gid: string;
   name: string;
@@ -29,6 +44,7 @@ export interface FounderItem {
   triage: "now" | "evening" | null; // 15:30+ runs tag: 現在可先處理 / 留待晚上
   decision: FounderDecision | null; // founder's verdict on the draft 批閱 (review items)
   decisionNote: string | null; // founder's comment / suggestion / regards (optional)
+  comments: FounderComment[]; // discussion thread (Asana stories + founder replies)
   closed: boolean; // 結案 — used by meetings/reminders (no draft to approve, just "done")
 }
 
@@ -52,17 +68,25 @@ const EMPTY: FounderDigest["categories"] = { urgent: [], meetings: [], nonUrgent
  * verify each. Each console is its own slot on `agent.metadata`; the same 4-block
  * UI renders one group per console that exists.
  */
-export type ConsoleKey = "founder" | "principal";
-export const CONSOLE_KEYS: ConsoleKey[] = ["founder", "principal"];
+// One console per campus/role. A user sees a console only if their OWN agent
+// carries that slot, so visibility is naturally scoped: 創辦人 sees only
+// `founder`; each 園長 sees only their campus's principal slot; Jay (preview)
+// carries all of them. Render order follows CONSOLE_KEYS.
+//   • principal           — 仁美 (吳家秀 reneew / 王姿雅 ziya)
+//   • principalZhengXitun — 市政 + 西屯, aggregated (哈哈 Tracy tracyha)
+export type ConsoleKey = "founder" | "principal" | "principalZhengXitun";
+export const CONSOLE_KEYS: ConsoleKey[] = ["founder", "principal", "principalZhengXitun"];
 /** Which `agent.metadata` field stores each console's digest. */
 const CONSOLE_META_KEY: Record<ConsoleKey, string> = {
   founder: "founderDigest", // unchanged — back-compat with existing data
   principal: "principalDigest",
+  principalZhengXitun: "principalDigestZhengXitun",
 };
 /** Heading shown above each console's blocks on the dashboard. */
 const CONSOLE_TITLE: Record<ConsoleKey, string> = {
   founder: "創辦人每日行事曆",
   principal: "仁美園長待決議與提醒",
+  principalZhengXitun: "市政・西屯園長待決議與提醒",
 };
 
 export interface DailyConsole {
@@ -72,7 +96,9 @@ export interface DailyConsole {
 }
 
 function asConsoleKey(v: unknown): ConsoleKey {
-  return v === "principal" ? "principal" : "founder";
+  if (v === "principal") return "principal";
+  if (v === "principalZhengXitun") return "principalZhengXitun";
+  return "founder";
 }
 
 // The daily-calendar console is a bespoke customization for a small set of
@@ -91,6 +117,7 @@ const DEFAULT_FOUNDER_EMAILS = [
   "jay20020109@seasonart.org",
   "reneew@seasonart.org", // 仁美校園長 吳家秀 Renee
   "ziya@seasonart.org", // 仁美校園長 王姿雅 雅雅
+  "tracyha@seasonart.org", // 跨校總園長 哈哈 Tracy — 市政 + 西屯 console
 ];
 
 function founderEmails(): Set<string> {
@@ -129,8 +156,33 @@ function sanitizeItem(raw: unknown): FounderItem | null {
     triage: t.triage === "now" || t.triage === "evening" ? t.triage : null,
     decision,
     decisionNote: str(t.decisionNote),
+    comments: sanitizeComments(t.comments),
     closed: t.closed === true,
   };
+}
+
+/** Parse a thread of comments off agent output. Drops malformed entries; caps
+ * the list so a runaway story history can't bloat the stored digest. */
+function sanitizeComments(v: unknown): FounderComment[] {
+  if (!Array.isArray(v)) return [];
+  const out: FounderComment[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const c = raw as Record<string, unknown>;
+    const text = typeof c.text === "string" ? c.text.trim().slice(0, 2000) : "";
+    if (!text) continue;
+    const authorType: FounderComment["authorType"] =
+      c.authorType === "founder" || c.authorType === "agent" ? c.authorType : "asana";
+    out.push({
+      id: typeof c.id === "string" && c.id.trim() ? c.id.trim().slice(0, 200) : `c-${out.length}`,
+      author: typeof c.author === "string" && c.author.trim() ? c.author.trim().slice(0, 120) : null,
+      authorType,
+      text,
+      createdAt: typeof c.createdAt === "string" && c.createdAt ? c.createdAt : new Date().toISOString(),
+      ...(c.pending === true ? { pending: true } : {}),
+    });
+  }
+  return out.slice(-50);
 }
 
 function sanitizeList(v: unknown): FounderItem[] {
@@ -197,16 +249,16 @@ export async function getConsolesForUser(db: Db, companyId: string, email: strin
  * whichever console slot contains it. Item gids are unique across consoles, so
  * we patch the slot that holds the gid and return that console's updated digest.
  */
-async function patchFounderItem(
+async function mutateFounderItem(
   db: Db,
   agentId: string,
   gid: string,
-  patch: Partial<FounderItem>,
+  update: (item: FounderItem) => FounderItem,
 ): Promise<FounderDigest | null> {
   const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
   const md = row?.metadata && typeof row.metadata === "object" ? { ...(row.metadata as Record<string, unknown>) } : null;
   if (!md) return null;
-  const apply = (list: FounderItem[]) => (list ?? []).map((t) => (t.gid === gid ? { ...t, ...patch } : t));
+  const apply = (list: FounderItem[]) => (list ?? []).map((t) => (t.gid === gid ? update(t) : t));
   let patched: FounderDigest | null = null;
   for (const key of CONSOLE_KEYS) {
     const slot = CONSOLE_META_KEY[key];
@@ -230,6 +282,16 @@ async function patchFounderItem(
   if (!patched) return null;
   await db.update(agents).set({ metadata: md, updatedAt: new Date() }).where(eq(agents.id, agentId));
   return patched;
+}
+
+/** Merge a partial patch onto the item matched by gid (used by decision/close). */
+function patchFounderItem(
+  db: Db,
+  agentId: string,
+  gid: string,
+  patch: Partial<FounderItem>,
+): Promise<FounderDigest | null> {
+  return mutateFounderItem(db, agentId, gid, (t) => ({ ...t, ...patch }));
 }
 
 /**
@@ -258,6 +320,24 @@ export function setFounderItemClosed(
   closed: boolean,
 ): Promise<FounderDigest | null> {
   return patchFounderItem(db, agentId, gid, { closed });
+}
+
+/**
+ * Optimistically append the founder's reply to an item's thread (capped, like
+ * the agent-seeded history). The comment is marked `pending` until the agent
+ * posts it to Asana and reconciles it on the next digest write. The real Asana
+ * comment is routed through the agent (see the dashboard route).
+ */
+export function appendFounderItemComment(
+  db: Db,
+  agentId: string,
+  gid: string,
+  comment: FounderComment,
+): Promise<FounderDigest | null> {
+  return mutateFounderItem(db, agentId, gid, (t) => ({
+    ...t,
+    comments: [...(t.comments ?? []), comment].slice(-50),
+  }));
 }
 
 export const FOUNDER_EMPTY_CATEGORIES = EMPTY;

@@ -20,7 +20,7 @@ import { routineService } from "../src/services/routines.js";
 
 const AGENT = process.argv[2] || "7e1a0853-38f2-4a2f-ac5b-69247c1a350c";
 const COMPANY = process.argv[3] || "0980d089-ebdf-4f54-9576-1a9150c5d6f9";
-const VARIANT = (process.argv[4] || "founder") as "founder" | "principal";
+const VARIANT = (process.argv[4] || "founder") as "founder" | "principal" | "principalZhengXitun";
 const DB_URL = process.env.SEED_DB_URL || "postgres://paperclip:paperclip@127.0.0.1:54329/paperclip";
 
 const TRIGGERS = [
@@ -38,7 +38,7 @@ const DIRECTIVE_TAIL = [
   "「結案」鈕觸發 founder-close-item（payload: { taskGid, closed }）：closed=true → complete-task。",
 ].join("\n");
 
-const CONFIGS: Record<"founder" | "principal", { title: string; description: string }> = {
+const CONFIGS: Record<"founder" | "principal" | "principalZhengXitun", { title: string; description: string }> = {
   founder: {
     title: "創辦人每日行事曆 — 每日彙整與批閱草擬",
     description: [
@@ -57,6 +57,18 @@ const CONFIGS: Record<"founder" | "principal", { title: string; description: str
       "& Reminders）」的 GID 與 sections，對應到四類（urgent / meetings / nonUrgent / reminders），",
       "為待決議項產出摘要 + 裁示草稿（不送出），為今日會議整理議程與預讀資料，",
       "然後 POST /api/companies/<companyId>/founder-digest 回寫儀表板（與創辦人相同四宮格）。",
+      DIRECTIVE_TAIL,
+    ].join("\n"),
+  },
+  principalZhengXitun: {
+    title: "市政・西屯園長待決議與提醒 — 每日彙整與裁示草擬",
+    description: [
+      "依 AGENTS.md「市政・西屯園長待決議與提醒 — 每日彙整與裁示草擬」章節執行。",
+      "用本人 token 解析兩個 Asana 專案「市政｜園長待決議與提醒（ShiZheng Pending Decisions",
+      "& Reminders）」與「西屯｜園長待決議與提醒（Xitun Pending Decisions & Reminders）」的 GID",
+      "與 sections，**把兩校合併**對應到四類（urgent / meetings / nonUrgent / reminders），每筆 name",
+      "前加校別標記〔市政〕／〔西屯〕，為待決議項產出摘要 + 裁示草稿（不送出），",
+      "然後 POST /api/companies/<companyId>/founder-digest 回寫，**body 務必帶 \"console\": \"principalZhengXitun\"**。",
       DIRECTIVE_TAIL,
     ].join("\n"),
   },
