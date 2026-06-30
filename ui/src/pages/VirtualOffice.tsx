@@ -84,7 +84,7 @@ export function VirtualOffice() {
   );
 
   return (
-    <div className="w-full max-w-6xl space-y-5">
+    <div className="w-full space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4">
         <div>
           <h1 className="text-2xl font-bold">{t("office.title", { defaultValue: "Virtual Office" })}</h1>

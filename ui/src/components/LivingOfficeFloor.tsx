@@ -95,9 +95,6 @@ const STATUS_GLOW: Record<Status, string> = {
   working: "rgba(34,197,94,0.65)", attention: "rgba(239,68,68,0.55)",
   paused: "rgba(245,158,11,0.4)", idle: "transparent",
 };
-const STATUS_LABEL: Record<Status, string> = {
-  working: "ACTIVE", attention: "BLOCKED", paused: "PAUSED", idle: "IDLE",
-};
 
 // ── Speech bubble ──────────────────────────────────────────────────────────
 function SpeechBubble({ text, color }: { text: string; color: string }) {
@@ -122,9 +119,9 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
 }
 
 // ── Agent pin on map (size is dynamic per room) ────────────────────────────
-function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, spriteUrl, moving, delayMs, onOpen }: {
+function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, moving, delayMs, onOpen }: {
   agent: Agent; x: number; y: number; size: number; status: Status;
-  bubble: string | null; highlight: boolean; showLabel: boolean; spriteUrl?: string | null;
+  bubble: string | null; showLabel: boolean; spriteUrl?: string | null;
   moving?: boolean; delayMs: number; onOpen: () => void;
 }) {
   const r        = size / 2;
@@ -133,13 +130,13 @@ function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, spr
   const isActive = status === "working";
   // Only WORKING agents get the animated pulse ring — otherwise a floor full of
   // idle/blocked agents becomes a wall of distracting rings. Status for the rest
-  // is conveyed by the avatar border + the dot on the name label + roster badge.
+  // is conveyed by the sprite tint + the dot on the name label.
   const ring     = isActive;
 
   return (
     <div style={{
       position: "absolute", left: `${x}%`, top: `${y}%`, width: size, height: size,
-      marginLeft: -r, marginTop: -r, zIndex: highlight ? 25 : isActive ? 12 : 10, overflow: "visible",
+      marginLeft: -r, marginTop: -r, zIndex: isActive ? 12 : 10, overflow: "visible",
     }}>
       {ring && (
         <div className="office-agent-ring" style={{
@@ -147,13 +144,6 @@ function AgentPin({ agent, x, y, size, status, bubble, highlight, showLabel, spr
           width: size * 1.36, height: size * 1.36, borderRadius: "50%",
           border: `${Math.max(1.5, size * 0.05)}px solid ${color}`, boxShadow: `0 0 10px ${glow}`,
           animationDelay: `${delayMs}ms`, pointerEvents: "none",
-        }} />
-      )}
-      {highlight && (
-        <div style={{
-          position: "absolute", left: -size * 0.3, top: -size * 0.3,
-          width: size * 1.6, height: size * 1.6, borderRadius: "50%",
-          border: "2px solid #e2e8f0", boxShadow: "0 0 16px rgba(255,255,255,.5)", pointerEvents: "none",
         }} />
       )}
       {bubble && isActive && <SpeechBubble text={bubble} color={color} />}
@@ -240,55 +230,7 @@ function ZoneOverlay({ zone, teamName, count, workingCount }: {
   );
 }
 
-// ── Roster row (right panel) ───────────────────────────────────────────────
-function RosterRow({ agent, status, teamName, onOpen, onHover, onLeave }: {
-  agent: Agent; status: Status; teamName: string;
-  onOpen: () => void; onHover: () => void; onLeave: () => void;
-}) {
-  const color = STATUS_COLOR[status];
-  const [hover, setHover] = useState(false);
-  return (
-    <button type="button" onClick={onOpen}
-      onMouseEnter={() => { setHover(true); onHover(); }}
-      onMouseLeave={() => { setHover(false); onLeave(); }}
-      style={{
-        display: "flex", alignItems: "center", gap: 9, width: "100%", textAlign: "left",
-        padding: "7px 9px", borderRadius: 9, border: "1px solid",
-        borderColor: hover ? `${color}55` : "transparent",
-        background: hover ? "rgba(255,255,255,0.05)" : "transparent",
-        cursor: "pointer", transition: "all .12s", outline: "none",
-      }}>
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        <OfficeAvatar agent={agent} size={30} animated={false} style={{
-          borderRadius: "50%", border: `1.5px solid ${color}80`,
-        }} />
-        <span style={{
-          position: "absolute", right: -1, bottom: -1, width: 9, height: 9, borderRadius: "50%",
-          background: color, border: "2px solid #0d1117",
-          boxShadow: status === "working" ? `0 0 6px ${color}` : undefined,
-        }} />
-      </div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{
-          fontSize: 12, fontWeight: 600, color: "#e2e8f0", overflow: "hidden",
-          textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>{agent.name}</div>
-        <div style={{
-          fontSize: 10, color: "#7b8aa3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>{agent.title ?? agent.role ?? teamName}</div>
-      </div>
-      <span style={{
-        fontSize: 8, fontWeight: 800, letterSpacing: "0.06em", color,
-        background: `${color}1f`, border: `1px solid ${color}40`, borderRadius: 5,
-        padding: "2px 5px", flexShrink: 0,
-      }}>{STATUS_LABEL[status]}</span>
-    </button>
-  );
-}
-
 // ── Public export ──────────────────────────────────────────────────────────
-const ROSTER_ORDER: Record<Status, number> = { working: 0, attention: 1, paused: 2, idle: 3 };
-
 export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   agents: Agent[];
   workingIds: Set<string>;
@@ -297,7 +239,6 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   onOpen: (agent: Agent) => void;
 }) {
   const [floorIdx, setFloorIdx]     = useState(0);
-  const [highlightId, setHighlight] = useState<string | null>(null);
 
   // Map viewport measurement → contain-fit zoom so the whole floor is as large as it can be.
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -380,12 +321,6 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     return assignments;
   }, [teamList]);
 
-  const agentFloor = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const za of zoneAssignments) for (const a of za.members) m.set(a.id, za.floorIdx);
-    return m;
-  }, [zoneAssignments]);
-
   const floorZones = useMemo(
     () => zoneAssignments.filter(za => za.floorIdx === floorIdx),
     [zoneAssignments, floorIdx]
@@ -411,7 +346,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
       const rows = Math.ceil(N / cols);
       const cellW = usableWpx / cols;
       const cellH = usableHpx / rows;
-      const size = clamp(Math.min(cellW * 0.62, cellH * 0.5), 12, 40);
+      const size = clamp(Math.min(cellW * 0.6, cellH * 0.5), 14, 46);
       minSize = Math.min(minSize, size);
 
       const stepXpct = zone.fw / cols;
@@ -512,20 +447,8 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Roster: active → blocked → paused → idle
-  const roster = useMemo(() =>
-    agents
-      .map(a => ({ agent: a, status: getStatus(a, workingIds.has(a.id)), teamName: agentTeams(a)[0] ?? "—" }))
-      .sort((a, b) => ROSTER_ORDER[a.status] - ROSTER_ORDER[b.status]),
-    [agents, workingIds]);
-
-  const workingTotal = roster.filter(r => r.status === "working").length;
-  const attnTotal    = roster.filter(r => r.status === "attention").length;
-
-  function focusAgent(agentId: string) {
-    const f = agentFloor.get(agentId);
-    if (f != null && f !== floorIdx) setFloorIdx(f);
-  }
+  const workingTotal = agents.filter(a => getStatus(a, workingIds.has(a.id)) === "working").length;
+  const attnTotal    = agents.filter(a => getStatus(a, workingIds.has(a.id)) === "attention").length;
 
   const scaledW = mapW * zoom;
   const scaledH = mapH * zoom;
@@ -586,76 +509,45 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
         </div>
       </div>
 
-      {/* ── Body: map + roster ──────────────────────────────────────── */}
-      <div style={{ display: "flex", height: "min(76vh, 860px)", minHeight: 520 }}>
-        {/* Map viewport */}
-        <div ref={viewportRef} style={{
-          flex: 1, minWidth: 0, overflow: "auto", position: "relative",
-          background: "radial-gradient(circle at 50% 40%, #11151f, #090b10)",
-        }}>
-          <div style={{
-            width: Math.max(viewport.w, scaledW), height: Math.max(viewport.h, scaledH), position: "relative",
-          }}>
-            <div style={{
-              position: "absolute", left: offsetX, top: offsetY, width: mapW, height: mapH,
-              transform: `scale(${zoom})`, transformOrigin: "top left",
-            }}>
-              <img src={floor.image} alt={floor.label} draggable={false} style={{
-                position: "absolute", inset: 0, width: "100%", height: "100%",
-                imageRendering: "pixelated", display: "block", userSelect: "none", pointerEvents: "none",
-                boxShadow: "0 0 60px rgba(0,0,0,.5)",
-              }} />
-              {floorZones.map(za => (
-                <ZoneOverlay key={za.zone.id} zone={za.zone} teamName={za.teamName}
-                  count={za.members.length}
-                  workingCount={za.members.filter(a => workingIds.has(a.id)).length} />
-              ))}
-              {pins.map((pin, idx) => {
-                const m = motion.current.get(pin.agent.id);
-                const lx = m?.x ?? pin.x;
-                const ly = m?.y ?? pin.y;
-                const dir = m?.dir ?? "south";
-                const set = sprites[pin.agent.id];
-                const spriteUrl = set ? (set[dir] ?? set.south ?? null) : null;
-                return (
-                <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}
-                  status={getStatus(pin.agent, workingIds.has(pin.agent.id))}
-                  bubble={bubbles.get(pin.agent.id) ?? null}
-                  highlight={highlightId === pin.agent.id}
-                  showLabel={labelSize >= 17}
-                  moving={m?.moving ?? false}
-                  spriteUrl={spriteUrl}
-                  delayMs={idx * 120} onOpen={() => onOpen(pin.agent)} />
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Roster panel */}
+      {/* ── Body: full-bleed map ─────────────────────────────────────── */}
+      <div ref={viewportRef} style={{
+        height: "calc(100vh - 210px)", minHeight: 480, overflow: "auto", position: "relative",
+        background: "radial-gradient(circle at 50% 35%, #11151f, #070a0f 75%)",
+      }}>
         <div style={{
-          width: 256, flexShrink: 0, borderLeft: "1px solid rgba(255,255,255,0.07)",
-          display: "flex", flexDirection: "column", background: "#0b0e16",
+          width: Math.max(viewport.w, scaledW), height: Math.max(viewport.h, scaledH), position: "relative",
         }}>
           <div style={{
-            padding: "10px 12px 8px", borderBottom: "1px solid rgba(255,255,255,0.06)",
-            display: "flex", alignItems: "center", justifyContent: "space-between",
+            position: "absolute", left: offsetX, top: offsetY, width: mapW, height: mapH,
+            transform: `scale(${zoom})`, transformOrigin: "top left",
           }}>
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "#94a3b8", textTransform: "uppercase" }}>
-              Team Presence
-            </span>
-            <span style={{ fontSize: 10, color: "#5f6b80" }}>{agents.length}</span>
-          </div>
-          <div style={{ overflow: "auto", flex: 1, padding: 6, display: "flex", flexDirection: "column", gap: 2 }}>
-            {roster.length === 0 && (
-              <div style={{ padding: 16, textAlign: "center", fontSize: 11, color: "#5f6b80" }}>No agents in view.</div>
-            )}
-            {roster.map(({ agent, status, teamName }) => (
-              <RosterRow key={agent.id} agent={agent} status={status} teamName={teamName}
-                onOpen={() => onOpen(agent)}
-                onHover={() => { focusAgent(agent.id); setHighlight(agent.id); }}
-                onLeave={() => setHighlight(h => (h === agent.id ? null : h))} />
+            <img src={floor.image} alt={floor.label} draggable={false} style={{
+              position: "absolute", inset: 0, width: "100%", height: "100%",
+              imageRendering: "pixelated", display: "block", userSelect: "none", pointerEvents: "none",
+              boxShadow: "0 0 80px rgba(0,0,0,.6)", borderRadius: 2,
+            }} />
+            {floorZones.map(za => (
+              <ZoneOverlay key={za.zone.id} zone={za.zone} teamName={za.teamName}
+                count={za.members.length}
+                workingCount={za.members.filter(a => workingIds.has(a.id)).length} />
             ))}
+            {pins.map((pin, idx) => {
+              const m = motion.current.get(pin.agent.id);
+              const lx = m?.x ?? pin.x;
+              const ly = m?.y ?? pin.y;
+              const dir = m?.dir ?? "south";
+              const set = sprites[pin.agent.id];
+              const spriteUrl = set ? (set[dir] ?? set.south ?? null) : null;
+              return (
+              <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}
+                status={getStatus(pin.agent, workingIds.has(pin.agent.id))}
+                bubble={bubbles.get(pin.agent.id) ?? null}
+                showLabel={labelSize >= 17}
+                moving={m?.moving ?? false}
+                spriteUrl={spriteUrl}
+                delayMs={idx * 120} onOpen={() => onOpen(pin.agent)} />
+              );
+            })}
           </div>
         </div>
       </div>
