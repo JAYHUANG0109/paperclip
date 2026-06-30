@@ -46,6 +46,13 @@ export interface FounderItem {
   decisionNote: string | null; // founder's comment / suggestion / regards (optional)
   comments: FounderComment[]; // discussion thread (Asana stories + founder replies)
   closed: boolean; // 結案 — used by meetings/reminders (no draft to approve, just "done")
+  /**
+   * When the outer public task links to a restricted private task (a "Private link"
+   * in Asana), the agent sets this to the inner task's GID. All comment writes
+   * (AI drafts, founder replies) are routed here instead of `gid`. If null/absent,
+   * comments go to the outer task (existing behaviour).
+   */
+  commentTargetGid?: string | null;
 }
 
 export interface FounderDigest {
@@ -145,6 +152,10 @@ function sanitizeItem(raw: unknown): FounderItem | null {
       : t.approved === true
         ? "approved"
         : null;
+  const commentTargetGid =
+    typeof t.commentTargetGid === "string" && /^\d+$/.test(t.commentTargetGid.trim())
+      ? t.commentTargetGid.trim()
+      : null;
   return {
     gid: t.gid,
     name: t.name,
@@ -158,6 +169,7 @@ function sanitizeItem(raw: unknown): FounderItem | null {
     decisionNote: str(t.decisionNote),
     comments: sanitizeComments(t.comments),
     closed: t.closed === true,
+    ...(commentTargetGid ? { commentTargetGid } : {}),
   };
 }
 
@@ -338,6 +350,29 @@ export function appendFounderItemComment(
     ...t,
     comments: [...(t.comments ?? []), comment].slice(-50),
   }));
+}
+
+/**
+ * Look up a single item by gid across all console slots on the agent's metadata.
+ * Used by the comment endpoint to resolve commentTargetGid before writing to Asana.
+ */
+export async function getFounderItemByGid(db: Db, agentId: string, gid: string): Promise<FounderItem | null> {
+  const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
+  const md = row?.metadata as Record<string, unknown> | null;
+  if (!md || typeof md !== "object") return null;
+  for (const key of CONSOLE_KEYS) {
+    const digest = md[CONSOLE_META_KEY[key]] as FounderDigest | undefined;
+    if (!digest?.categories) continue;
+    const all = [
+      ...(digest.categories.urgent ?? []),
+      ...(digest.categories.meetings ?? []),
+      ...(digest.categories.nonUrgent ?? []),
+      ...(digest.categories.reminders ?? []),
+    ];
+    const hit = all.find((t) => t.gid === gid);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 export const FOUNDER_EMPTY_CATEGORIES = EMPTY;

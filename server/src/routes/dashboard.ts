@@ -17,6 +17,7 @@ import {
   setFounderItemDecision,
   setFounderItemClosed,
   appendFounderItemComment,
+  getFounderItemByGid,
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
@@ -268,11 +269,12 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
           : null; // explicit reset / reopen
     const note = typeof body.note === "string" ? body.note.trim().slice(0, 2000) || null : null;
     const digest = await setFounderItemDecision(db, agentId, gid, decision, note);
+    const reviewItem = await getFounderItemByGid(db, agentId, gid);
     await heartbeat.wakeup(agentId, {
       source: "on_demand",
       triggerDetail: "manual",
       reason: "founder-review-item",
-      payload: { directive: "founder-review-item", taskGid: gid, decision, note },
+      payload: { directive: "founder-review-item", taskGid: gid, commentTargetGid: reviewItem?.commentTargetGid ?? null, decision, note },
       idempotencyKey: `founder-review:${gid}:${decision ?? "reset"}:${Math.floor(Date.now() / 60000)}`,
       requestedByActorType: "user",
       requestedByActorId: userId ?? null,
@@ -299,13 +301,16 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     const digest = await setFounderItemClosed(db, agentId, gid, closed);
     // Apply to Asana immediately with the agent's own token (instant, no heartbeat
     // wait). Only fall back to waking the agent if the direct write didn't land.
-    const applied = await setAsanaTaskCompleted(db, companyId, agentId, gid, closed);
+    // Use the item's commentTargetGid if set (private-linked inner task).
+    const item = await getFounderItemByGid(db, agentId, gid);
+    const closeTargetGid = item?.commentTargetGid ?? gid;
+    const applied = await setAsanaTaskCompleted(db, companyId, agentId, closeTargetGid, closed);
     if (!applied) {
       await heartbeat.wakeup(agentId, {
         source: "on_demand",
         triggerDetail: "manual",
         reason: "founder-close-item",
-        payload: { directive: "founder-close-item", taskGid: gid, closed },
+        payload: { directive: "founder-close-item", taskGid: gid, commentTargetGid: item?.commentTargetGid ?? null, closed },
         idempotencyKey: `founder-close:${gid}:${closed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
         requestedByActorType: "user",
         requestedByActorId: userId ?? null,
@@ -339,7 +344,10 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     // in seconds instead of waiting for the agent's next heartbeat. Mark the
     // stored comment confirmed when it posts; only fall back to the agent
     // (founder-comment directive) if the direct write didn't land.
-    const posted = await postAsanaComment(db, companyId, agentId, gid, text);
+    // If the item has a commentTargetGid (linked private task), post there instead.
+    const commentItem = await getFounderItemByGid(db, agentId, gid);
+    const commentTargetGid = commentItem?.commentTargetGid ?? null;
+    const posted = await postAsanaComment(db, companyId, agentId, commentTargetGid ?? gid, text);
     const id = `pending-${randomUUID()}`;
     const digest = await appendFounderItemComment(db, agentId, gid, {
       id,
@@ -354,7 +362,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
         source: "on_demand",
         triggerDetail: "manual",
         reason: "founder-comment",
-        payload: { directive: "founder-comment", taskGid: gid, text, commentId: id },
+        payload: { directive: "founder-comment", taskGid: gid, commentTargetGid, text, commentId: id },
         idempotencyKey: `founder-comment:${id}`,
         requestedByActorType: "user",
         requestedByActorId: userId ?? null,
