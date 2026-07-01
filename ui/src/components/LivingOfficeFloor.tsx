@@ -44,18 +44,18 @@ const FLOORS: FloorDef[] = [
     id: "square",
     label: "Office",
     image: "/assets/pixelart/Office%20Square.png",
-    natW: 1248,
-    natH: 880,
+    natW: 1280,
+    natH: 896,
     zones: [
-      { id: "meeting", name: "會議室", team: null, x: 1.3, y: 3.6, w: 24.4, h: 30.9, color: "#10B981" },
-      { id: "teaching", name: "教學組", team: "教學組", x: 28.2, y: 1.8, w: 43.6, h: 34.5, color: "#8B5CF6", seats: [{"x":38.27,"y":16.36},{"x":46.09,"y":16.36},{"x":53.91,"y":16.36},{"x":61.73,"y":16.36},{"x":38.27,"y":27.64},{"x":46.09,"y":27.64},{"x":53.91,"y":27.64},{"x":61.73,"y":27.64}] },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 75.6, y: 3.6, w: 20.5, h: 29.1, color: "#6366F1", seats: [{"x":85.9,"y":21.09}] },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.3, y: 38.2, w: 25.6, h: 34.5, color: "#F59E0B", seats: [{"x":10.19,"y":52.73},{"x":18.01,"y":52.73},{"x":10.19,"y":64},{"x":18.01,"y":64}] },
-      { id: "it", name: "資訊部", team: "資訊部", x: 28.2, y: 38.2, w: 43.6, h: 34.5, color: "#3B82F6", seats: [{"x":38.27,"y":52.73},{"x":46.09,"y":52.73},{"x":53.91,"y":52.73},{"x":61.73,"y":52.73},{"x":38.27,"y":64},{"x":46.09,"y":64},{"x":53.91,"y":64}] },
-      { id: "lounge", name: "休息室", team: null, x: 75.6, y: 40, w: 20.5, h: 29.1, color: "#EC4899" },
-      { id: "pantry", name: "茶水間", team: null, x: 2.6, y: 74.5, w: 21.8, h: 21.8, color: "#14B8A6" },
-      { id: "reception", name: "接待處", team: null, x: 32.1, y: 74.5, w: 35.9, h: 21.8, color: "#A855F7" },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 75.6, y: 74.5, w: 19.2, h: 21.8, color: "#F97316", seats: [{"x":85.26,"y":88.36}] },
+      { id: "meeting", name: "會議室", team: null, x: 2.5, y: 7.1, w: 17.5, h: 25, color: "#10B981" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 22.5, y: 1.8, w: 55, h: 35.7, color: "#8B5CF6", seats: [{"x":30.78,"y":12.86},{"x":43.59,"y":12.86},{"x":56.41,"y":12.86},{"x":69.22,"y":12.86},{"x":30.78,"y":27.59},{"x":43.59,"y":27.59},{"x":56.41,"y":27.59},{"x":69.22,"y":27.59}] },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 80, y: 7.1, w: 16.3, h: 23.2, color: "#6366F1", seats: [{"x":88.13,"y":18.21}] },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.3, y: 39.3, w: 20, h: 35.7, color: "#F59E0B", seats: [{"x":5.16,"y":50.36},{"x":9.22,"y":50.36},{"x":13.28,"y":50.36},{"x":17.34,"y":50.36}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 22.5, y: 39.3, w: 55, h: 35.7, color: "#3B82F6", seats: [{"x":30.78,"y":50.36},{"x":43.59,"y":50.36},{"x":56.41,"y":50.36},{"x":69.22,"y":50.36},{"x":37.19,"y":65.09},{"x":50,"y":65.09},{"x":62.81,"y":65.09}] },
+      { id: "lounge", name: "休息室", team: null, x: 80, y: 46.4, w: 16.3, h: 21.4, color: "#EC4899" },
+      { id: "pantry", name: "茶水間", team: null, x: 2.5, y: 78.6, w: 17.5, h: 17.9, color: "#14B8A6" },
+      { id: "reception", name: "接待處", team: null, x: 33.8, y: 78.6, w: 32.5, h: 17.9, color: "#A855F7" },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 81.3, y: 78.6, w: 15, h: 17.9, color: "#F97316", seats: [{"x":88.75,"y":89.64}] },
     ],
   },
 ];
@@ -136,9 +136,9 @@ function DeskMonitor({ x, y, size, status }: { x: number; y: number; size: numbe
 }
 
 // ── Agent pin on map (size is dynamic per room) ────────────────────────────
-function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, moving, delayMs, onOpen }: {
+function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spriteScale = SPRITE_SCALE, moving, delayMs, onOpen }: {
   agent: Agent; x: number; y: number; size: number; status: Status;
-  bubble: string | null; showLabel: boolean; spriteUrl?: string | null;
+  bubble: string | null; showLabel: boolean; spriteUrl?: string | null; spriteScale?: number;
   moving?: boolean; delayMs: number; onOpen: () => void;
 }) {
   const r        = size / 2;
@@ -181,7 +181,7 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, mov
             }} />
             <img src={spriteUrl} alt={agent.name ?? ""} draggable={false} style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-52%)",
-              width: size * SPRITE_SCALE, height: size * SPRITE_SCALE, objectFit: "contain",
+              width: size * spriteScale, height: size * spriteScale, objectFit: "contain",
               imageRendering: "pixelated", pointerEvents: "none",
               filter: status === "idle" || status === "paused"
                 ? "saturate(0.7) brightness(0.85)"
@@ -316,7 +316,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   // outranks bespoke so the whole floor shares one consistent look until a user
   // picks a specific character.
   const spriteSetFor = useMemo(() => {
-    return (agent: Agent): (SpriteSet & { walk?: SpriteSet }) | null => {
+    return (agent: Agent): (SpriteSet & { walk?: SpriteSet; walkScale?: number }) | null => {
       const chosen = agent.metadata?.officeCharacterId;
       if (typeof chosen === "string" && CATALOG_BY_ID.has(chosen)) {
         const set = catalog[chosen];
@@ -516,7 +516,9 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
         height: availH, minHeight: 360, overflow: "hidden", position: "relative",
         borderRadius: 12,
       }}>
-        <div style={{ position: "absolute", inset: 0, overflow: "auto" }}>
+        {/* Scroll only when zoomed in PAST fit; at fit, clip so big agent sprites
+            overflowing the map edge don't spawn scrollbars. */}
+        <div style={{ position: "absolute", inset: 0, overflow: (userZoom != null && userZoom > fitZoom) ? "auto" : "hidden" }}>
         <div style={{
           width: Math.max(viewport.w, scaledW), height: Math.max(viewport.h, scaledH), position: "relative",
         }}>
@@ -552,6 +554,9 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const walkUrl = moving && set?.walk ? (set.walk[dir] ?? set.walk.south ?? null) : null;
               const rawSprite = walkUrl ?? (set ? (set[dir] ?? set.south ?? null) : null);
               const spriteUrl = rawSprite ? bustCache(rawSprite) : null;
+              // Walk GIFs aren't trimmed → scale them up (walkScale) so the moving
+              // character matches the static sprite's size.
+              const spriteScale = walkUrl ? SPRITE_SCALE * (set?.walkScale ?? 1) : SPRITE_SCALE;
               return (
               <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}
                 status={getStatus(pin.agent, workingIds.has(pin.agent.id))}
@@ -559,6 +564,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
                 showLabel={labelSize >= 17}
                 moving={m?.moving ?? false}
                 spriteUrl={spriteUrl}
+                spriteScale={spriteScale}
                 delayMs={idx * 120} onOpen={() => onOpen(pin.agent)} />
               );
             })}

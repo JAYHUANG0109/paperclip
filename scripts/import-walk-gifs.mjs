@@ -60,6 +60,18 @@ for (const d of DIRS) {
   n++;
   console.log(`  ${d} ← ${path.basename(hit)}`);
 }
+// Walk GIFs are NOT trimmed like the static PNGs, so the character fills less of
+// the (larger) GIF canvas → it renders smaller. Store walkScale = gifCanvas /
+// staticCanvas so the app scales the walking sprite up to match the static size.
+try {
+  const gifBuf = readFileSync(path.join(dir, "south.gif"));
+  const gifW = gifBuf.readUInt16LE(6);                     // GIF logical screen width
+  const pngPath = path.join(OUT_DIR, ID, "south.png");
+  const pngW = existsSync(pngPath) ? readFileSync(pngPath).readUInt32BE(16) : gifW; // PNG IHDR width
+  entry.walkScale = +(gifW / pngW).toFixed(3);
+  console.log(`  walkScale = ${entry.walkScale}  (gif ${gifW}px / static ${pngW}px)`);
+} catch (e) { console.log("  (could not compute walkScale:", e.message, ")"); }
+
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
 console.log(`\n✓ Imported ${n}/8 walk gifs for "${ID}".`);

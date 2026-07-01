@@ -18,7 +18,8 @@
       "south": "/assets/office-characters/male/walk/south.gif",
       "east": "/assets/office-characters/male/walk/east.gif",
       "west": "/assets/office-characters/male/walk/west.gif"
-    }
+    },
+    "walkScale": 2.444
   },
   "female": {
     "name": "female",
@@ -39,6 +40,7 @@
       "south": "/assets/office-characters/female/walk/south.gif",
       "east": "/assets/office-characters/female/walk/east.gif",
       "west": "/assets/office-characters/female/walk/west.gif"
-    }
+    },
+    "walkScale": 1.667
   }
 }

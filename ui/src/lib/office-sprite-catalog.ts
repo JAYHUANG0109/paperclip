@@ -83,7 +83,9 @@ export type SpriteSet = Partial<Record<
 >>;
 // Each catalog entry has the 8 static rotations plus an optional `walk` set of
 // per-direction animated GIFs, played while the agent is moving.
-export type CatalogManifest = Record<string, SpriteSet & { name?: string; walk?: SpriteSet }>;
+// walkScale (= walk-gif canvas / static-png canvas) tells the app how much bigger
+// to render the walk GIF so the moving character matches the static sprite size.
+export type CatalogManifest = Record<string, SpriteSet & { name?: string; walk?: SpriteSet; walkScale?: number }>;
 
 /** Public URL of the catalog manifest the office fetches at runtime. */
 export const CATALOG_MANIFEST_URL = "/assets/office-characters/manifest.json";
@@ -91,7 +93,7 @@ export const CATALOG_MANIFEST_URL = "/assets/office-characters/manifest.json";
 // Bump when the sprite PNGs are regenerated — the filenames stay the same, so
 // without this the browser serves stale cached images. Appended as ?v= to every
 // sprite URL so a redeploy always shows the latest art.
-export const ART_VERSION = "10";
+export const ART_VERSION = "11";
 
 /** Append the art-version cache-buster to a sprite URL. */
 export function bustCache(url: string): string {
