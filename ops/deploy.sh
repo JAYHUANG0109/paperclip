@@ -130,6 +130,21 @@ deploy() {
   fi
 }
 
+# Fully reload the launchd job, then report health. `bootout` is asynchronous, so
+# we wait for the job to actually unload before `bootstrap` — otherwise bootstrap
+# races and fails with "5: Input/output error" — and retry the bootstrap once for
+# good measure. Returns 0 only if the service comes back healthy.
+reload_launchd() {
+  local plist="$1"
+  launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+  local n=0
+  until ! launchctl print "gui/$UID_NUM/$LABEL" >/dev/null 2>&1 || [ "$n" -ge 10 ]; do n=$((n + 1)); sleep 1; done
+  launchctl bootstrap "gui/$UID_NUM" "$plist" 2>/dev/null \
+    || { sleep 2; launchctl bootstrap "gui/$UID_NUM" "$plist" 2>/dev/null; } \
+    || { warn "launchctl bootstrap failed"; return 1; }
+  healthy
+}
+
 # One-time migration: point the launchd service at the $CURRENT symlink instead
 # of its original working dir, so future deploys are just a symlink flip. Builds
 # + validates the first release BEFORE touching launchd; backs up the plist and
@@ -149,35 +164,43 @@ setup() {
   cp "$plist" "$plist.pre-deploy.bak"
   echo "$old_wd" > "$ROOT/.original-workdir"
   /usr/libexec/PlistBuddy -c "Set :WorkingDirectory $CURRENT" "$plist"
-  launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
-  launchctl bootstrap "gui/$UID_NUM" "$plist"
 
-  if healthy; then
+  if reload_launchd "$plist"; then
     prune_old
     log "✓ Cutover complete — launchd now serves $CURRENT → $(basename "$rel")."
     log "  Original checkout kept as fallback at: $old_wd  (plist backup: $plist.pre-deploy.bak)"
   else
     warn "New release unhealthy — REVERTING launchd to $old_wd"
     /usr/libexec/PlistBuddy -c "Set :WorkingDirectory $old_wd" "$plist"
-    launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
-    launchctl bootstrap "gui/$UID_NUM" "$plist"
-    healthy && die "Cutover failed; reverted to $old_wd (live healthy again)" \
-             || die "Cutover failed AND revert unhealthy — restore $plist.pre-deploy.bak manually"
+    reload_launchd "$plist" && die "Cutover failed; reverted to $old_wd (live healthy again)" \
+                            || die "Cutover failed AND revert unhealthy — restore $plist.pre-deploy.bak manually"
   fi
 }
 
 rollback() {
   local prev; prev="$(cat "$ROOT/.previous-release" 2>/dev/null || true)"
-  [ -n "$prev" ] && [ -d "$prev" ] || die "No previous release recorded to roll back to"
-  local cur; cur="$(current_release)"
-  log "Rolling back current → $(basename "$prev")"
-  ln -sfn "$prev" "$CURRENT"; restart
-  if healthy; then
-    [ -n "$cur" ] && echo "$cur" > "$ROOT/.previous-release"   # allow toggling back
-    log "✓ Rolled back & healthy: $(basename "$prev")"
-  else
-    die "Unhealthy after rollback — manual intervention needed"
+  if [ -n "$prev" ] && [ -d "$prev" ]; then
+    # Normal case: flip the symlink back to the previous release + restart.
+    local cur; cur="$(current_release)"
+    log "Rolling back current → $(basename "$prev")"
+    ln -sfn "$prev" "$CURRENT"; restart
+    if healthy; then
+      [ -n "$cur" ] && echo "$cur" > "$ROOT/.previous-release"   # allow toggling back
+      log "✓ Rolled back & healthy: $(basename "$prev")"
+    else
+      die "Unhealthy after rollback — manual intervention needed"
+    fi
+    return
   fi
+  # No previous release (e.g. right after the first cutover) → revert launchd to
+  # the original pre-cutover checkout recorded at setup time.
+  local orig; orig="$(cat "$ROOT/.original-workdir" 2>/dev/null || true)"
+  [ -n "$orig" ] && [ -d "$orig" ] || die "Nothing to roll back to (no previous release or original checkout)."
+  local plist="$HOME/Library/LaunchAgents/$LABEL.plist"
+  log "No previous release — reverting launchd WorkingDirectory → $orig (the pre-cutover checkout)"
+  /usr/libexec/PlistBuddy -c "Set :WorkingDirectory $orig" "$plist"
+  reload_launchd "$plist" && log "✓ Reverted to original checkout & healthy: $orig" \
+                          || die "Unhealthy after revert — restore $plist.pre-deploy.bak manually"
 }
 
 status() {
