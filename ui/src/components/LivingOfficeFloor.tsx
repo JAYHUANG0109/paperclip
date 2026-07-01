@@ -44,18 +44,18 @@ const FLOORS: FloorDef[] = [
     id: "square",
     label: "Office",
     image: "/assets/pixelart/Office%20Square.png",
-    natW: 1280,
+    natW: 1344,
     natH: 896,
     zones: [
-      { id: "meeting", name: "會議室", team: null, x: 2.5, y: 7.1, w: 17.5, h: 25, color: "#10B981" },
-      { id: "teaching", name: "教學組", team: "教學組", x: 22.5, y: 1.8, w: 55, h: 35.7, color: "#8B5CF6", seats: [{"x":30.78,"y":12.86},{"x":43.59,"y":12.86},{"x":56.41,"y":12.86},{"x":69.22,"y":12.86},{"x":30.78,"y":27.59},{"x":43.59,"y":27.59},{"x":56.41,"y":27.59},{"x":69.22,"y":27.59}] },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 80, y: 7.1, w: 16.3, h: 23.2, color: "#6366F1", seats: [{"x":88.13,"y":18.21}] },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.3, y: 39.3, w: 20, h: 35.7, color: "#F59E0B", seats: [{"x":5.16,"y":50.36},{"x":9.22,"y":50.36},{"x":13.28,"y":50.36},{"x":17.34,"y":50.36}] },
-      { id: "it", name: "資訊部", team: "資訊部", x: 22.5, y: 39.3, w: 55, h: 35.7, color: "#3B82F6", seats: [{"x":30.78,"y":50.36},{"x":43.59,"y":50.36},{"x":56.41,"y":50.36},{"x":69.22,"y":50.36},{"x":37.19,"y":65.09},{"x":50,"y":65.09},{"x":62.81,"y":65.09}] },
-      { id: "lounge", name: "休息室", team: null, x: 80, y: 46.4, w: 16.3, h: 21.4, color: "#EC4899" },
-      { id: "pantry", name: "茶水間", team: null, x: 2.5, y: 78.6, w: 17.5, h: 17.9, color: "#14B8A6" },
-      { id: "reception", name: "接待處", team: null, x: 33.8, y: 78.6, w: 32.5, h: 17.9, color: "#A855F7" },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 81.3, y: 78.6, w: 15, h: 17.9, color: "#F97316", seats: [{"x":88.75,"y":89.64}] },
+      { id: "meeting", name: "會議室", team: null, x: 4.8, y: 7.1, w: 16.7, h: 25, color: "#10B981" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 26.2, y: 1.8, w: 52.4, h: 35.7, color: "#8B5CF6", seats: [{"x":34.08,"y":12.86},{"x":46.28,"y":12.86},{"x":58.48,"y":12.86},{"x":70.68,"y":12.86},{"x":34.08,"y":27.59},{"x":46.28,"y":27.59},{"x":58.48,"y":27.59},{"x":70.68,"y":27.59}] },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 81, y: 7.1, w: 15.5, h: 23.2, color: "#6366F1", seats: [{"x":88.69,"y":18.21}] },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.2, y: 39.3, w: 23.8, h: 35.7, color: "#F59E0B", seats: [{"x":8.04,"y":50.36},{"x":18.15,"y":50.36},{"x":8.04,"y":65.09},{"x":18.15,"y":65.09}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 26.2, y: 39.3, w: 52.4, h: 35.7, color: "#3B82F6", seats: [{"x":34.08,"y":50.36},{"x":46.28,"y":50.36},{"x":58.48,"y":50.36},{"x":70.68,"y":50.36},{"x":40.18,"y":65.09},{"x":52.38,"y":65.09},{"x":64.58,"y":65.09}] },
+      { id: "lounge", name: "休息室", team: null, x: 81, y: 46.4, w: 15.5, h: 21.4, color: "#EC4899" },
+      { id: "pantry", name: "茶水間", team: null, x: 4.8, y: 78.6, w: 16.7, h: 17.9, color: "#14B8A6" },
+      { id: "reception", name: "接待處", team: null, x: 36.9, y: 78.6, w: 31, h: 17.9, color: "#A855F7" },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 82.1, y: 78.6, w: 14.3, h: 17.9, color: "#F97316", seats: [{"x":89.29,"y":89.64}] },
     ],
   },
 ];
@@ -395,18 +395,21 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
       const { zone, members } = za;
       if (members.length === 0) continue;
       const seats = zone.seats ?? [];
-      // interior box for overflow placement + (unused) wander bounds
-      const floor = { fx: zone.x + 2, fy: zone.y + zone.h * 0.55, fw: zone.w - 4, fh: zone.h * 0.4 };
+      // Full room interior — used to clamp wandering so an agent never leaves its
+      // own room. Wandering itself stays within a small radius of each desk (below).
+      const floor = { fx: zone.x + 2, fy: zone.y + 3, fw: zone.w - 4, fh: zone.h - 5 };
+      // Overflow (more members than seats) tiles into the lower half of the room.
+      const lower = { lx: zone.x + 2, ly: zone.y + zone.h * 0.55, lw: zone.w - 4 };
       const overflow = members.length - seats.length;
-      const cols = Math.max(1, Math.min(overflow, Math.floor(floor.fw / 7)));
+      const cols = Math.max(1, Math.min(overflow, Math.floor(lower.lw / 7)));
 
       members.forEach((agent, i) => {
         let x: number, y: number;
         if (i < seats.length) { x = seats[i]!.x; y = seats[i]!.y; }
         else {
           const j = i - seats.length, c = j % cols, r = Math.floor(j / cols);
-          x = floor.fx + (c + 0.5) * (floor.fw / cols);
-          y = floor.fy + (r + 0.5) * 6;
+          x = lower.lx + (c + 0.5) * (lower.lw / cols);
+          y = lower.ly + (r + 0.5) * 6;
         }
         out.push({ agent, x, y, size: AGENT_SIZE, floor });
       });
@@ -474,10 +477,12 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               m.dir = dirFromVelocity(dx, dy);
             }
           } else if (m.walkable && now >= m.waitUntil && Math.random() < dt * 0.3) {
-            // start a short wander within the room floor (kept off the edges)
-            const mx = m.floor.fw * 0.16, my = m.floor.fh * 0.16;
-            m.tx = clamp(m.hx + (Math.random() - 0.5) * m.floor.fw * 0.6, m.floor.fx + mx, m.floor.fx + m.floor.fw - mx);
-            m.ty = clamp(m.hy + (Math.random() - 0.5) * m.floor.fh * 0.6, m.floor.fy + my, m.floor.fy + m.floor.fh - my);
+            // Take a small step near the agent's OWN desk — a tight radius so
+            // everyone mills around their workstation instead of roaming the room,
+            // still clamped to the room interior so no one walks through a wall.
+            const R = 4.5; // radius in % of map around the home desk
+            m.tx = clamp(m.hx + (Math.random() - 0.5) * 2 * R, m.floor.fx, m.floor.fx + m.floor.fw);
+            m.ty = clamp(m.hy + (Math.random() - 0.5) * 2 * R, m.floor.fy, m.floor.fy + m.floor.fh);
             m.moving = true;
           }
         }

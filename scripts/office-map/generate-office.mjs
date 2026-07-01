@@ -26,15 +26,15 @@ const TABLE  = { c: 4,  r: 1,  w: 4, h: 2 };
 const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
 
 // wide grid, tight 1-tile gaps. Center column is wide for the big team rooms.
-const COLX = [1, 18, 63], COLW = [16, 44, 16];
+const COLX = [1, 22, 67], COLW = [20, 44, 16];
 const ROWY = [1, 22, 43], ROWH = [20, 20, 12];
-const MW = 80, MH = 56;   // 1280x896 (~1.43:1)
+const MW = 84, MH = 56;   // 1344x896 — wider left column, middle shifted right
 
 const ROOMS = [
   { id:"meeting",  team:null,         name:"會議室",    cell:[0,0], dw:14, dh:14, kind:"meeting" },
   { id:"teaching", team:"教學組",     name:"教學組",    cell:[1,0], cap:8 },
   { id:"talent",   team:"人才發展",   name:"人才發展",  cell:[2,0], dw:13, dh:13, cap:1 },
-  { id:"lead",     team:"領導團隊",   name:"領導團隊",  cell:[0,1], cap:4 },
+  { id:"lead",     team:"領導團隊",   name:"領導團隊",  cell:[0,1], cap:4, deskCols:2 },
   { id:"it",       team:"資訊部",     name:"資訊部",    cell:[1,1], cap:7 },
   { id:"lounge",   team:null,         name:"休息室",    cell:[2,1], dw:13, dh:12, kind:"lounge" },
   { id:"pantry",   team:null,         name:"茶水間",    cell:[0,2], dw:14, dh:10, kind:"pantry" },
@@ -67,7 +67,7 @@ const seatPct = (tx, ty) => ({ x: +((tx)/MW*100).toFixed(2), y: +((ty)/MH*100).t
 function furnishTeam(rm) {
   const { x, y, w, h, cap, id } = rm;
   const dW = DESK.w*DESK_F, dH = DESK.h*DESK_F, cW = CHAIR.w*CHAIR_F, cH = CHAIR.h*CHAIR_F;
-  const cols = Math.max(1, Math.min(cap, 4));
+  const cols = rm.deskCols ?? Math.max(1, Math.min(cap, 4));
   const rows = Math.ceil(cap / cols);
   const usableW = w - 3, usableH = h - 3.5;
   const cellW = usableW / cols, cellH = usableH / rows;
