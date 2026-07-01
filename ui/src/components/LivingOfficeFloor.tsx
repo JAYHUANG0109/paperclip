@@ -173,15 +173,15 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spr
         }}>
         {spriteUrl ? (
           <>
-            {/* Ground shadow, anchored at the character's VISIBLE feet (the pant/
-                shoe line ~0.27*spriteH below the pin, since the dark shoes at the
-                very bottom read as ground). Shadow centre = pin + size*0.27*scale;
-                sits right at the label, which is fine — better a touch of overlap
-                than a floating gap. */}
+            {/* Ground shadow, directly under the character's feet. The sprite is
+                centred with a -52% offset and its feet sit ~0.4*spriteH below the
+                box centre, so shadow centre = pin + size*0.4*scale. The label is
+                pushed below this (see below) so the shadow reads as under the feet,
+                not detached beneath the name. */}
             <div style={{
-              position: "absolute", left: "50%", top: size * (0.5 + 0.27 * spriteScale),
+              position: "absolute", left: "50%", top: size * (0.5 + 0.4 * spriteScale),
               transform: "translate(-50%,-50%)",
-              width: size * 0.31 * spriteScale, height: size * 0.08 * spriteScale, borderRadius: "50%",
+              width: size * 0.31 * spriteScale, height: size * 0.07 * spriteScale, borderRadius: "50%",
               background: "rgba(0,0,0,0.38)", filter: "blur(1px)", pointerEvents: "none",
             }} />
             <img src={spriteUrl} alt={agent.name ?? ""} draggable={false} style={{
@@ -203,7 +203,9 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spr
 
       {showLabel && (
         <div style={{
-          position: "absolute", top: size + 2, left: "50%", transform: "translateX(-50%)",
+          // Sit just below the feet/shadow (which are at ~0.4*spriteH below the
+          // box centre), so the name never overlaps the character's legs.
+          position: "absolute", top: size * (0.5 + 0.4 * spriteScale) + size * 0.14, left: "50%", transform: "translateX(-50%)",
           maxWidth: Math.max(60, size * 2.4), overflow: "hidden", textOverflow: "ellipsis",
           whiteSpace: "nowrap", fontSize: clamp(size * 0.24, 7.5, 10), fontWeight: 700, color: "#c6d2e8",
           background: "rgba(6,9,18,0.90)", borderRadius: 4, padding: "1px 5px", pointerEvents: "none",

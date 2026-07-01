@@ -22,10 +22,18 @@ import "./index.css";
 
 initPluginBridge(React, ReactDOM);
 
+// We no longer use a service worker. A previous build registered a cache-first
+// SW that kept serving stale JS bundles even through hard refreshes (users saw
+// old UI after deploys). Actively unregister any lingering SW and drop its
+// caches so every client converges on the latest deploy. sw.js is now a
+// self-destructing no-op for browsers that still request it.
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js");
-  });
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    for (const reg of regs) reg.unregister();
+  }).catch(() => {});
+  if (typeof caches !== "undefined") {
+    caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+  }
 }
 
 const queryClient = new QueryClient({

@@ -1,42 +1,26 @@
-const CACHE_NAME = "paperclip-v2";
-
+// Self-destructing service worker. Earlier builds shipped a caching SW that
+// served stale JS bundles across deploys (hard refresh didn't help, because a
+// controlling SW intercepts the request). This no-op replaces it: on activate
+// it clears all caches, unregisters itself, and reloads open clients so they
+// fetch the latest deploy directly from the network. The app no longer
+// registers any SW (see main.tsx).
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((key) => caches.delete(key)))
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener("fetch", (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // Skip non-GET requests and API calls
-  if (request.method !== "GET" || url.pathname.startsWith("/api")) {
-    return;
-  }
-
-  // Network-first for everything — cache is only an offline fallback
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response.ok && url.origin === self.location.origin) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      })
-      .catch(() => {
-        if (request.mode === "navigate") {
-          return caches.match("/") || new Response("Offline", { status: 503 });
-        }
-        return caches.match(request);
-      })
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      await self.registration.unregister();
+      const clients = await self.clients.matchAll({ type: "window" });
+      for (const client of clients) {
+        // Reload each open tab so it drops this SW and loads fresh assets.
+        client.navigate(client.url);
+      }
+    })(),
   );
 });
+
+// No fetch handler — requests go straight to the network.
