@@ -196,9 +196,10 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spr
               // (incl. the male 1.3×) has NO visible effect on the floor.
               maxWidth: "none", maxHeight: "none",
               imageRendering: "pixelated", pointerEvents: "none",
-              filter: status === "idle" || status === "paused"
-                ? "saturate(0.7) brightness(0.85)"
-                : `drop-shadow(0 0 ${ring ? 6 : 0}px ${glow})`,
+              // No status-based dimming — every agent renders at full brightness so
+              // skin tones are uniform. Status is conveyed by the desk monitor
+              // colour, the label dot, and the working ring instead.
+              filter: `drop-shadow(0 0 ${ring ? 6 : 0}px ${glow})`,
             }} />
           </>
         ) : (
@@ -447,6 +448,10 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   const motion = useRef<Map<string, Motion>>(new Map());
   const [, setMotionTick] = useState(0);
   const reduceMotion = useRef(false);
+  // Live working set, read by the animation tick (which closes over stale props)
+  // so working agents can be kept parked at their desks.
+  const workingRef = useRef<Set<string>>(workingIds);
+  workingRef.current = workingIds;
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     reduceMotion.current = mq.matches;
@@ -479,8 +484,12 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       if (!reduceMotion.current) {
-        for (const m of motion.current.values()) {
+        for (const [id, m] of motion.current.entries()) {
+          // A live/working agent stays put at its desk — it returns home if it was
+          // mid-stroll and never starts a new wander while working.
+          const working = workingRef.current.has(id);
           if (m.moving) {
+            if (working) { m.tx = m.hx; m.ty = m.hy; }
             const dx = m.tx - m.x, dy = m.ty - m.y;
             const dist = Math.hypot(dx, dy);
             const step = SPEED * dt;
@@ -490,6 +499,11 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
             } else {
               m.x += (dx / dist) * step; m.y += (dy / dist) * step;
               m.dir = dirFromVelocity(dx, dy);
+            }
+          } else if (working) {
+            // Working but standing away from the desk → walk back and stay.
+            if (Math.abs(m.x - m.hx) > 0.3 || Math.abs(m.y - m.hy) > 0.3) {
+              m.tx = m.hx; m.ty = m.hy; m.moving = true;
             }
           } else if (m.walkable && now >= m.waitUntil && Math.random() < dt * 0.3) {
             // Take a small step near the agent's OWN desk — a tight radius so
