@@ -315,7 +315,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   // outranks bespoke so the whole floor shares one consistent look until a user
   // picks a specific character.
   const spriteSetFor = useMemo(() => {
-    return (agent: Agent): SpriteSet | null => {
+    return (agent: Agent): (SpriteSet & { walk?: SpriteSet }) | null => {
       const chosen = agent.metadata?.officeCharacterId;
       if (typeof chosen === "string" && CATALOG_BY_ID.has(chosen)) {
         const set = catalog[chosen];
@@ -467,12 +467,12 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
             const step = SPEED * dt;
             if (dist <= step || dist < 0.3) {
               m.x = m.tx; m.y = m.ty; m.moving = false; m.dir = "south";
-              m.waitUntil = now + 3000 + Math.random() * 9000;
+              m.waitUntil = now + 1500 + Math.random() * 4500;
             } else {
               m.x += (dx / dist) * step; m.y += (dy / dist) * step;
               m.dir = dirFromVelocity(dx, dy);
             }
-          } else if (m.walkable && now >= m.waitUntil && Math.random() < dt * 0.12) {
+          } else if (m.walkable && now >= m.waitUntil && Math.random() < dt * 0.3) {
             // start a short wander within the room floor (kept off the edges)
             const mx = m.floor.fw * 0.16, my = m.floor.fh * 0.16;
             m.tx = clamp(m.hx + (Math.random() - 0.5) * m.floor.fw * 0.6, m.floor.fx + mx, m.floor.fx + m.floor.fw - mx);
@@ -545,7 +545,11 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const ly = m?.y ?? pin.y;
               const dir = m?.dir ?? "south";
               const set = spriteSetFor(pin.agent);
-              const rawSprite = set ? (set[dir] ?? set.south ?? null) : null;
+              // While moving, play the walk GIF for the current direction (if the
+              // character has one); otherwise show the static rotation.
+              const moving = m?.moving ?? false;
+              const walkUrl = moving && set?.walk ? (set.walk[dir] ?? set.walk.south ?? null) : null;
+              const rawSprite = walkUrl ?? (set ? (set[dir] ?? set.south ?? null) : null);
               const spriteUrl = rawSprite ? bustCache(rawSprite) : null;
               return (
               <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}

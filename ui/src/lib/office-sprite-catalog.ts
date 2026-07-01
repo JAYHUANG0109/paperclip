@@ -81,7 +81,9 @@ export type SpriteSet = Partial<Record<
   "south" | "south-east" | "east" | "north-east" | "north" | "north-west" | "west" | "south-west",
   string
 >>;
-export type CatalogManifest = Record<string, SpriteSet & { name?: string }>;
+// Each catalog entry has the 8 static rotations plus an optional `walk` set of
+// per-direction animated GIFs, played while the agent is moving.
+export type CatalogManifest = Record<string, SpriteSet & { name?: string; walk?: SpriteSet }>;
 
 /** Public URL of the catalog manifest the office fetches at runtime. */
 export const CATALOG_MANIFEST_URL = "/assets/office-characters/manifest.json";
