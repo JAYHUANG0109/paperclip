@@ -129,9 +129,12 @@ function DeskMonitor({ x, y, size, status }: { x: number; y: number; size: numbe
   const w = size * 0.52, h = size * 0.38;
   return (
     <div style={{
-      position: "absolute", left: `${x}%`, top: `${y}%`,
-      // sit the monitor on the desk, which is ~2 tiles above the agent's seat
-      transform: `translate(-50%, calc(-50% - ${size * 0.9}px))`,
+      position: "absolute", left: `${x}%`,
+      // Sit the monitor on the desk (~0.9*AGENT_SIZE above the seat). The offset
+      // lives in `top` (reliable calc of % − px); doing it inside transform's
+      // translate() left the monitor stuck at the seat/torso.
+      top: `calc(${y}% - ${size * 0.9}px)`,
+      transform: "translate(-50%, -50%)",
       width: w, height: h, zIndex: 6, pointerEvents: "none",
       // no bezel — the whole monitor is the status colour
       background: screen, borderRadius: 2,
