@@ -50,19 +50,6 @@ const FLOORS: FloorDef[] = [
       { id: "signal",   name: "Signal Room",     x: 64, y: 69, w: 32, h: 28, fx: 66, fy: 73, fw: 29, fh: 22, color: "#EC4899" },
     ],
   },
-  {
-    id: "floor2",
-    label: "Floor 2",
-    image: "/assets/pixelart/Office%20Level%203.jpeg",
-    natW: 768,
-    natH: 672,
-    zones: [
-      { id: "main",        name: "Main Floor",  x: 5,  y: 9,  w: 50, h: 82, fx: 8,  fy: 30, fw: 44, fh: 58, color: "#3B82F6" },
-      { id: "northOffice", name: "North Office", x: 61, y: 9, w: 35, h: 33, fx: 64, fy: 24, fw: 30, fh: 15, color: "#8B5CF6" },
-      { id: "eastOffice",  name: "East Office",  x: 57, y: 44, w: 39, h: 24, fx: 60, fy: 47, fw: 34, fh: 17, color: "#10B981" },
-      { id: "lounge",      name: "Lounge",       x: 57, y: 69, w: 39, h: 22, fx: 60, fy: 71, fw: 34, fh: 18, color: "#F97316" },
-    ],
-  },
 ];
 
 // Native-pixel area of a zone's FLOOR — used for capacity-aware team placement.
@@ -166,7 +153,8 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, mov
             }} />
             <img src={spriteUrl} alt={agent.name ?? ""} draggable={false} style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-52%)",
-              width: size * 1.55, height: size * 1.55, imageRendering: "pixelated", pointerEvents: "none",
+              width: size * 1.55, height: size * 1.55, objectFit: "contain",
+              imageRendering: "pixelated", pointerEvents: "none",
               filter: status === "idle" || status === "paused"
                 ? "saturate(0.7) brightness(0.85)"
                 : `drop-shadow(0 0 ${ring ? 6 : 0}px ${glow})`,
@@ -240,7 +228,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   liveRuns?: LiveRunForIssue[];
   onOpen: (agent: Agent) => void;
 }) {
-  const [floorIdx, setFloorIdx]     = useState(0);
+  const floorIdx = 0; // single floor (Office Level 4) — Floor 2 removed
 
   // Map viewport measurement → contain-fit zoom so the whole floor is as large as it can be.
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -258,8 +246,6 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   }, []);
 
   // Reset to auto-fit whenever the floor changes.
-  useEffect(() => { setUserZoom(null); }, [floorIdx]);
-
   // Pixel-art character sprites, generated per agent via PixelLab. Loaded from a
   // static manifest; agents without a sprite fall back to the circular avatar.
   const [sprites, setSprites] = useState<Record<string, Partial<Record<Dir, string>> & { name?: string }>>({});
@@ -487,72 +473,29 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const workingTotal = agents.filter(a => getStatus(a, workingIds.has(a.id)) === "working").length;
-  const attnTotal    = agents.filter(a => getStatus(a, workingIds.has(a.id)) === "attention").length;
-
   const scaledW = mapW * zoom;
   const scaledH = mapH * zoom;
   const offsetX = Math.max(0, (viewport.w - scaledW) / 2);
   const offsetY = Math.max(0, (viewport.h - scaledH) / 2);
 
   return (
-    <div style={{
-      borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)",
-      background: "#0a0d14", boxShadow: "0 8px 40px rgba(0,0,0,.35)",
-    }}>
-      {/* ── Top bar ──────────────────────────────────────────────────── */}
+    <div style={{ position: "relative" }}>
+      {/* Floating zoom control (no frame/top bar — team filters live above the map) */}
       <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "9px 14px", background: "linear-gradient(180deg,#141925,#0d1117)",
-        borderBottom: "1px solid rgba(255,255,255,0.07)", flexWrap: "wrap", gap: 8,
+        position: "absolute", top: 10, right: 10, zIndex: 20,
+        display: "flex", gap: 3, alignItems: "center",
+        background: "rgba(10,13,20,0.6)", backdropFilter: "blur(4px)",
+        borderRadius: 8, padding: 3,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", letterSpacing: "0.02em" }}>
-            Virtual Office
-          </span>
-          <span style={{
-            display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9, fontWeight: 800,
-            letterSpacing: "0.08em", color: "#4ade80", background: "rgba(34,197,94,.12)",
-            border: "1px solid rgba(34,197,94,.35)", borderRadius: 5, padding: "2px 7px",
-          }}>
-            <span style={{
-              width: 6, height: 6, borderRadius: "50%", background: "#22c55e",
-              boxShadow: "0 0 6px rgba(34,197,94,.9)",
-              animation: "office-agent-ring-pulse 1.8s ease-in-out infinite",
-            }} />
-            LIVE
-          </span>
-          <div style={{ display: "flex", gap: 4, marginLeft: 6 }}>
-            {FLOORS.map((f, i) => (
-              <button key={f.id} type="button" onClick={() => setFloorIdx(i)} style={{
-                padding: "3px 11px", fontSize: 10.5, fontWeight: 700, borderRadius: 7,
-                border: "1px solid", cursor: "pointer", transition: "all .15s", outline: "none",
-                borderColor: i === floorIdx ? "#6366f1" : "rgba(255,255,255,0.1)",
-                background: i === floorIdx ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.03)",
-                color: i === floorIdx ? "#a5b4fc" : "#8290a8",
-              }}>{f.label}</button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 11, color: "#7b8aa3" }}>
-            <b style={{ color: "#4ade80" }}>{workingTotal}</b> active
-            {attnTotal > 0 && <> · <b style={{ color: "#f87171" }}>{attnTotal}</b> blocked</>}
-            {" · "}<b style={{ color: "#cbd5e1" }}>{agents.length}</b> total
-          </span>
-          <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-            <button type="button" onClick={() => setUserZoom(z => clamp((z ?? fitZoom) - 0.2, 0.3, 4))} style={zoomBtnStyle} title="Zoom out">−</button>
-            <button type="button" onClick={() => setUserZoom(null)} style={{ ...zoomBtnStyle, width: "auto", padding: "0 8px", fontSize: 10, fontWeight: 700 }} title="Fit to screen">FIT</button>
-            <button type="button" onClick={() => setUserZoom(z => clamp((z ?? fitZoom) + 0.2, 0.3, 4))} style={zoomBtnStyle} title="Zoom in">+</button>
-          </div>
-        </div>
+        <button type="button" onClick={() => setUserZoom(z => clamp((z ?? fitZoom) - 0.2, 0.3, 4))} style={zoomBtnStyle} title="Zoom out">−</button>
+        <button type="button" onClick={() => setUserZoom(null)} style={{ ...zoomBtnStyle, width: "auto", padding: "0 8px", fontSize: 10, fontWeight: 700 }} title="Fit to screen">FIT</button>
+        <button type="button" onClick={() => setUserZoom(z => clamp((z ?? fitZoom) + 0.2, 0.3, 4))} style={zoomBtnStyle} title="Zoom in">+</button>
       </div>
 
-      {/* ── Body: full-bleed map ─────────────────────────────────────── */}
+      {/* ── Body: full-bleed map, frameless ──────────────────────────── */}
       <div ref={viewportRef} style={{
-        height: "calc(100vh - 140px)", minHeight: 480, overflow: "auto", position: "relative",
-        background: "radial-gradient(circle at 50% 35%, #11151f, #070a0f 75%)",
+        height: "calc(100vh - 120px)", minHeight: 480, overflow: "auto", position: "relative",
+        borderRadius: 12,
       }}>
         <div style={{
           width: Math.max(viewport.w, scaledW), height: Math.max(viewport.h, scaledH), position: "relative",
