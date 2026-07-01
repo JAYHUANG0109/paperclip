@@ -75,7 +75,10 @@ prune_old() {
   done
 }
 
-deploy() {
+# Build + validate a release in its own dir WITHOUT touching live. Sets global
+# REL to the built release path. Dies (leaving live untouched) on any failure.
+REL=""
+build_release() {
   local ref="${1:-origin/$BRANCH}"
   ensure_cache
   local sha
@@ -88,17 +91,27 @@ deploy() {
   git clone --quiet --shared "$CACHE" "$rel"
   git -C "$rel" -c advice.detachedHead=false checkout --quiet "$sha"
 
-  log "Installing dependencies"
+  log "Installing dependencies (pnpm install --frozen-lockfile)"
   ( cd "$rel" && pnpm install --frozen-lockfile ) || { rm -rf "$rel"; die "pnpm install failed — live untouched ($(basename "$(current_release)") still serving)"; }
 
-  log "Validating (typecheck)"
-  if ! ( cd "$rel" && pnpm --filter @paperclipai/server exec tsc --noEmit -p tsconfig.json ); then
-    rm -rf "$rel"
-    die "Typecheck FAILED — live untouched ($(basename "$(current_release)") still serving)"
-  fi
-  # To also gate on a UI build, uncomment:  ( cd "$rel/ui" && pnpm build ) || { rm -rf "$rel"; die "UI build failed — live untouched"; }
+  # The server runs from TS source via tsx (workspace packages export ./src/*),
+  # so it needs no package build — only a typecheck to validate. The UI, however,
+  # is served as a static prebuilt bundle, so ui/dist MUST be built. Both run in
+  # this isolated release dir; a failure aborts before any flip (live untouched).
+  log "Validating server (tsc --noEmit)"
+  ( cd "$rel" && pnpm --filter @paperclipai/server exec tsc --noEmit -p tsconfig.json ) || { rm -rf "$rel"; die "server typecheck FAILED — live untouched ($(basename "$(current_release)") still serving)"; }
 
-  local prev; prev="$(current_release)"
+  log "Building UI bundle (pnpm --filter @paperclipai/ui build)"
+  ( cd "$rel" && pnpm --filter @paperclipai/ui build ) || { rm -rf "$rel"; die "UI build FAILED — live untouched ($(basename "$(current_release)") still serving)"; }
+  [ -d "$rel/ui/dist" ] || { rm -rf "$rel"; die "Build produced no ui/dist — live untouched"; }
+
+  REL="$rel"
+}
+
+deploy() {
+  build_release "${1:-origin/$BRANCH}"
+  local rel="$REL" prev
+  prev="$(current_release)"
   log "Switching current → $(basename "$rel") and restarting"
   ln -sfn "$rel" "$CURRENT"
   restart
@@ -115,6 +128,42 @@ deploy() {
       die "Deploy failed AND rollback unhealthy — manual intervention needed"
     fi
     die "New release unhealthy and no previous release to roll back to"
+  fi
+}
+
+# One-time migration: point the launchd service at the $CURRENT symlink instead
+# of its original working dir, so future deploys are just a symlink flip. Builds
+# + validates the first release BEFORE touching launchd; backs up the plist and
+# auto-reverts to the original working dir if the new release doesn't come up.
+setup() {
+  local ref="${1:-origin/$BRANCH}"
+  local plist="$HOME/Library/LaunchAgents/$LABEL.plist"
+  [ -f "$plist" ] || die "launchd plist not found: $plist"
+  if [ -L "$CURRENT" ]; then die "$CURRENT already exists — looks already set up; use 'deploy' instead."; fi
+
+  build_release "$ref"
+  local rel="$REL"
+  ln -sfn "$rel" "$CURRENT"
+
+  local old_wd; old_wd="$(/usr/libexec/PlistBuddy -c 'Print :WorkingDirectory' "$plist")"
+  log "Repointing launchd WorkingDirectory: $old_wd → $CURRENT"
+  cp "$plist" "$plist.pre-deploy.bak"
+  echo "$old_wd" > "$ROOT/.original-workdir"
+  /usr/libexec/PlistBuddy -c "Set :WorkingDirectory $CURRENT" "$plist"
+  launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$UID_NUM" "$plist"
+
+  if healthy; then
+    prune_old
+    log "✓ Cutover complete — launchd now serves $CURRENT → $(basename "$rel")."
+    log "  Original checkout kept as fallback at: $old_wd  (plist backup: $plist.pre-deploy.bak)"
+  else
+    warn "New release unhealthy — REVERTING launchd to $old_wd"
+    /usr/libexec/PlistBuddy -c "Set :WorkingDirectory $old_wd" "$plist"
+    launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+    launchctl bootstrap "gui/$UID_NUM" "$plist"
+    healthy && die "Cutover failed; reverted to $old_wd (live healthy again)" \
+             || die "Cutover failed AND revert unhealthy — restore $plist.pre-deploy.bak manually"
   fi
 }
 
@@ -144,8 +193,9 @@ status() {
 }
 
 case "${1:-}" in
+  setup)    shift; setup "${1:-}";;
   deploy)   shift; deploy "${1:-}";;
   rollback) rollback;;
   status)   status;;
-  *) echo "usage: $(basename "$0") deploy [git-ref] | rollback | status"; exit 2;;
+  *) echo "usage: $(basename "$0") setup [git-ref] | deploy [git-ref] | rollback | status"; exit 2;;
 esac
