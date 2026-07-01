@@ -61,8 +61,8 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 // Fixed on-floor character footprint in native map px — uniform for every agent
 // (≈ chair-sized). Visible sprite is AGENT_SIZE * SPRITE_SCALE.
-const AGENT_SIZE = 40;
-const SPRITE_SCALE = 1.5;
+const AGENT_SIZE = 46;
+const SPRITE_SCALE = 2.0;
 
 // 8-way facing from a screen-space velocity (y points down → south).
 type Dir = "south" | "south-east" | "east" | "north-east" | "north" | "north-west" | "west" | "south-west";
@@ -251,7 +251,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     if (!el || !root) return;
     const update = () => {
       const top = root.getBoundingClientRect().top;
-      const h = Math.max(360, Math.round(window.innerHeight - top - 20)); // 20px bottom gutter
+      const h = Math.max(360, Math.round(window.innerHeight - top - 34)); // clears <main>'s bottom padding
       setAvailH(h);
       setViewport({ w: el.clientWidth, h: el.clientHeight });
     };
