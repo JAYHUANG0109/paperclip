@@ -104,6 +104,15 @@ export function bustCache(url: string): string {
   return url.includes("?") ? url : `${url}?v=${ART_VERSION}`;
 }
 
+// Canonical per-character size multiplier — the single source of truth for how
+// big a character renders relative to the base sprite scale (the female default).
+// The male art reads visually smaller at the same scale, so it renders 1.2×.
+// Used on the floor AND for the circular avatars so they stay consistent.
+export const CHARACTER_SCALE: Record<string, number> = { male: 1.2 };
+export function characterScale(id: string | null | undefined): number {
+  return (id != null && CHARACTER_SCALE[id]) || 1;
+}
+
 /**
  * The catalog character id to show for an agent: their explicit choice if set,
  * otherwise the gender-default ("male"/"female") so seeded agents get sensible

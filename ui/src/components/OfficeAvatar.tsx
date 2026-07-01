@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { CartoonAvatar } from "./CartoonAvatar";
-import { resolveAvatarSources, resolveGender, isSpriteSource } from "../lib/office-avatars";
-import { bustCache } from "../lib/office-sprite-catalog";
+import { resolveAvatarSources, resolveGender, isSpriteSource, avatarCharacterId } from "../lib/office-avatars";
+import { bustCache, characterScale } from "../lib/office-sprite-catalog";
 import { cn } from "../lib/utils";
 
 interface Props {
@@ -24,6 +24,29 @@ export function OfficeAvatar({ agent, size = 56, className, animated = true, sty
     const rawSrc = sources[idx]!;
     const sprite = isSpriteSource(rawSrc);
     const src = sprite ? bustCache(rawSrc) : rawSrc;
+    if (sprite) {
+      // Full-body pixel sprite. Some characters read smaller at the same size
+      // (male → 1.2×), so scale the sprite inside a fixed circular frame that
+      // clips the overflow — the circle stays `size`, the character just fills
+      // more of it. Scaled from the bottom so the feet stay grounded.
+      const cs = characterScale(avatarCharacterId(agent));
+      return (
+        <div
+          className={cn("relative overflow-hidden rounded-full", className)}
+          style={{ width: size, height: size, ...style }}
+          aria-hidden="true"
+        >
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            onError={() => setIdx((i) => i + 1)}
+            className={cn("absolute inset-0 select-none object-contain", animated && "office-avatar-idle")}
+            style={{ width: size, height: size, imageRendering: "pixelated", transform: `scale(${cs})`, transformOrigin: "center bottom" }}
+          />
+        </div>
+      );
+    }
     return (
       <img
         src={src}
@@ -33,15 +56,8 @@ export function OfficeAvatar({ agent, size = 56, className, animated = true, sty
         aria-hidden="true"
         draggable={false}
         onError={() => setIdx((i) => i + 1)}
-        className={cn(
-          "select-none rounded-full",
-          // Pixel sprites are full-body → contain (never crop) + crisp scaling.
-          // Realistic/photo avatars → cover (fill the circle).
-          sprite ? "object-contain" : "object-cover",
-          animated && "office-avatar-idle",
-          className,
-        )}
-        style={{ width: size, height: size, ...(sprite ? { imageRendering: "pixelated" } : {}), ...style }}
+        className={cn("select-none rounded-full object-cover", animated && "office-avatar-idle", className)}
+        style={{ width: size, height: size, ...style }}
       />
     );
   }

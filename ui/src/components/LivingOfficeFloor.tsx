@@ -5,7 +5,7 @@ import { OfficeAvatar } from "./OfficeAvatar";
 import { agentTeams } from "../lib/agent-teams";
 import { resolveGender } from "../lib/office-avatars";
 import { displayAgentName } from "../lib/agent-name";
-import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
+import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, characterScale, resolveAgentCharacterId, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
 
 // ── Floor / zone definitions ───────────────────────────────────────────────
 interface Zone {
@@ -173,11 +173,13 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spr
         }}>
         {spriteUrl ? (
           <>
-            {/* ground shadow, anchored under the character's FEET (which sit at
-                ~0.4*spriteH below the box centre given the sprite's -52% offset and
-                its ~8% bottom margin) so agents read as standing, not floating. */}
+            {/* Ground shadow, anchored at the character's VISIBLE feet (the pant/
+                shoe line ~0.27*spriteH below the pin, since the dark shoes at the
+                very bottom read as ground). Shadow centre = pin + size*0.27*scale;
+                sits right at the label, which is fine — better a touch of overlap
+                than a floating gap. */}
             <div style={{
-              position: "absolute", left: "50%", top: size * (0.5 + 0.4 * spriteScale),
+              position: "absolute", left: "50%", top: size * (0.5 + 0.27 * spriteScale),
               transform: "translate(-50%,-50%)",
               width: size * 0.31 * spriteScale, height: size * 0.08 * spriteScale, borderRadius: "50%",
               background: "rgba(0,0,0,0.38)", filter: "blur(1px)", pointerEvents: "none",
@@ -563,10 +565,13 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const rawSprite = walkUrl ?? (set ? (set[dir] ?? set.south ?? null) : null);
               const spriteUrl = rawSprite ? bustCache(rawSprite) : null;
               // Walk GIFs are re-framed to match the static sprite (walkScale ≈ 1).
-              // A per-character `scale` then sizes the whole look (e.g. male 1.2×);
-              // it applies to both the static PNG and the walk GIF uniformly.
+              // A per-character scale then sizes the whole look (e.g. male 1.2×),
+              // applied to both the static PNG and the walk GIF. Resolved in code
+              // (characterScale) so it holds even if the catalog manifest fetch
+              // falls back to bespoke sprites; manifest `scale` is honored too.
+              const charScale = set?.scale ?? characterScale(resolveAgentCharacterId(pin.agent, resolveGender(pin.agent)));
               const base = walkUrl ? SPRITE_SCALE * (set?.walkScale ?? 1) : SPRITE_SCALE;
-              const spriteScale = base * (set?.scale ?? 1);
+              const spriteScale = base * charScale;
               return (
               <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}
                 status={getStatus(pin.agent, workingIds.has(pin.agent.id))}
