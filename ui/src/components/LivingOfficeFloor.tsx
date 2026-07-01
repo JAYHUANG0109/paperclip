@@ -286,7 +286,10 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   }, []);
 
   // Resolve the directional sprite SET an agent should render (or null → circular
-  // avatar fallback). Priority: explicit catalog pick → bespoke sprite → gender default.
+  // avatar fallback). Priority: explicit catalog pick → uniform gender default
+  // (the shared man/woman set) → bespoke per-agent sprite. The gender default
+  // outranks bespoke so the whole floor shares one consistent look until a user
+  // picks a specific character.
   const spriteSetFor = useMemo(() => {
     return (agent: Agent): SpriteSet | null => {
       const chosen = agent.metadata?.officeCharacterId;
@@ -294,10 +297,10 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
         const set = catalog[chosen];
         if (set && Object.keys(set).length) return set;
       }
-      const own = sprites[agent.id];
-      if (own && Object.keys(own).some(k => k !== "name")) return own;
       const def = catalog[resolveGender(agent)];
       if (def && Object.keys(def).length) return def;
+      const own = sprites[agent.id];
+      if (own && Object.keys(own).some(k => k !== "name")) return own;
       return null;
     };
   }, [sprites, catalog]);
