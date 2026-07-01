@@ -78,7 +78,7 @@ export function AgentsOfficeStrip({
                   )}
                 />
                 <div className="absolute inset-x-0 -top-2 flex justify-center">
-                  <OfficeAvatar agent={agent} size={72} animated={false} />
+                  <OfficeAvatar agent={agent} size={72} animated={false} charScaleCap={1.1} />
                 </div>
                 {working && (
                   <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">

@@ -162,7 +162,7 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
             "relative flex h-28 w-28 shrink-0 items-center justify-center rounded-full border-2 bg-background",
             working ? "border-emerald-400/70" : "border-border",
           )}>
-            <OfficeAvatar agent={agent} size={104} animated={false} />
+            <OfficeAvatar agent={agent} size={104} animated={false} clip={false} />
             {canManage && (
               <>
                 <button

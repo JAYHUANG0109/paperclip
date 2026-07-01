@@ -565,11 +565,11 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const rawSprite = walkUrl ?? (set ? (set[dir] ?? set.south ?? null) : null);
               const spriteUrl = rawSprite ? bustCache(rawSprite) : null;
               // Walk GIFs are re-framed to match the static sprite (walkScale ≈ 1).
-              // A per-character scale then sizes the whole look (e.g. male 1.2×),
-              // applied to both the static PNG and the walk GIF. Resolved in code
-              // (characterScale) so it holds even if the catalog manifest fetch
-              // falls back to bespoke sprites; manifest `scale` is honored too.
-              const charScale = set?.scale ?? characterScale(resolveAgentCharacterId(pin.agent, resolveGender(pin.agent)));
+              // A per-character scale then sizes the whole look (e.g. male 1.3×),
+              // applied to both the static PNG and the walk GIF. Resolved purely in
+              // code (characterScale) — the single source of truth — so it always
+              // applies regardless of whether the catalog manifest carries `scale`.
+              const charScale = characterScale(resolveAgentCharacterId(pin.agent, resolveGender(pin.agent)));
               const base = walkUrl ? SPRITE_SCALE * (set?.walkScale ?? 1) : SPRITE_SCALE;
               const spriteScale = base * charScale;
               return (

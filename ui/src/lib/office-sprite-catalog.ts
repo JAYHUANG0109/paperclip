@@ -106,9 +106,10 @@ export function bustCache(url: string): string {
 
 // Canonical per-character size multiplier — the single source of truth for how
 // big a character renders relative to the base sprite scale (the female default).
-// The male art reads visually smaller at the same scale, so it renders 1.2×.
+// The male art reads visually smaller at the same scale, so it renders larger.
 // Used on the floor AND for the circular avatars so they stay consistent.
-export const CHARACTER_SCALE: Record<string, number> = { male: 1.2 };
+// (The agent-browsing top strip caps this at 1.1 via charScaleCap.)
+export const CHARACTER_SCALE: Record<string, number> = { male: 1.3 };
 export function characterScale(id: string | null | undefined): number {
   return (id != null && CHARACTER_SCALE[id]) || 1;
 }

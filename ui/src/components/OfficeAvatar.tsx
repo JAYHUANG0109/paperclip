@@ -10,13 +10,20 @@ interface Props {
   className?: string;
   animated?: boolean;
   style?: React.CSSProperties;
+  /** Clip the (possibly upscaled) sprite to the circular frame. Default true.
+   *  Pass false where the frame is a backdrop ring behind the avatar (player
+   *  card) so an upscaled head isn't cut off. */
+  clip?: boolean;
+  /** Upper bound on the per-character size multiplier (e.g. the top strip caps
+   *  male at 1.1 so it doesn't dominate the row). */
+  charScaleCap?: number;
 }
 
 // Tries the resolved image sources in order (custom → gender generic); when all
 // fail (file not present yet), falls back to a DiceBear cartoon seeded so male
 // and female still look distinct. This makes the uploaded avatars plug-and-play
 // while never showing a broken image.
-export function OfficeAvatar({ agent, size = 56, className, animated = true, style }: Props) {
+export function OfficeAvatar({ agent, size = 56, className, animated = true, style, clip = true, charScaleCap }: Props) {
   const sources = useMemo(() => resolveAvatarSources(agent), [agent]);
   const [idx, setIdx] = useState(0);
 
@@ -26,13 +33,16 @@ export function OfficeAvatar({ agent, size = 56, className, animated = true, sty
     const src = sprite ? bustCache(rawSrc) : rawSrc;
     if (sprite) {
       // Full-body pixel sprite. Some characters read smaller at the same size
-      // (male → 1.2×), so scale the sprite inside a fixed circular frame that
-      // clips the overflow — the circle stays `size`, the character just fills
-      // more of it. Scaled from the bottom so the feet stay grounded.
-      const cs = characterScale(avatarCharacterId(agent));
+      // (male → larger), so scale the sprite up inside the circular frame. When
+      // clip is true the overflow is hidden (the circle stays `size`, the
+      // character just fills more of it); when false the sprite may overflow the
+      // frame so an upscaled head isn't cut off. Scaled from the bottom so the
+      // feet stay grounded.
+      let cs = characterScale(avatarCharacterId(agent));
+      if (charScaleCap != null) cs = Math.min(cs, charScaleCap);
       return (
         <div
-          className={cn("relative overflow-hidden rounded-full", className)}
+          className={cn("relative rounded-full", clip && "overflow-hidden", className)}
           style={{ width: size, height: size, ...style }}
           aria-hidden="true"
         >
