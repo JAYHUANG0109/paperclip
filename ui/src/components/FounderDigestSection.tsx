@@ -8,6 +8,14 @@ import { cn } from "../lib/utils";
 
 const KEY = (companyId: string) => ["founder-digest", companyId];
 
+// Hide empty / placeholder comments (Asana system stories or the agent's old
+// "（空白留言）" placeholder) so a thread never shows blank rows.
+const isBlankComment = (c: FounderComment) => {
+  const t = (c.text ?? "").trim();
+  return !t || t === "（空白留言）" || t === "(空白留言)";
+};
+const visibleComments = (comments?: FounderComment[]) => (comments ?? []).filter((c) => !isBlankComment(c));
+
 type CatKey = "urgent" | "meetings" | "nonUrgent" | "reminders";
 const CATS: { key: CatKey; title: string; kind: "review" | "meeting" | "reminder"; accent: string; dot: string }[] = [
   { key: "urgent", title: "🔴 待批閱・急件", kind: "review", accent: "border-l-red-500", dot: "bg-red-500" },
@@ -340,8 +348,10 @@ function FounderRow({
   const isReview = kind === "review";
   // Review items always expand (summary/批閱 + thread); meetings/reminders expand
   // when they carry a prep brief, notes, or an existing discussion thread.
-  const hasThread = (item.comments?.length ?? 0) > 0;
-  const hasDetail = isReview || (kind === "meeting" ? !!(item.prep || item.notes) : !!item.notes) || hasThread;
+  const threadComments = visibleComments(item.comments);
+  const hasThread = threadComments.length > 0;
+  const subtasks = item.subtasks ?? [];
+  const hasDetail = isReview || (kind === "meeting" ? !!(item.prep || item.notes) : !!item.notes) || hasThread || subtasks.length > 0;
 
   const submit = () => {
     if (!composing) return;
@@ -385,13 +395,13 @@ function FounderRow({
               : t("founder.triageEvening", { defaultValue: "留待晚上" })}
           </span>
         )}
-        {isReview && (item.comments?.length ?? 0) > 0 && (
+        {isReview && threadComments.length > 0 && (
           <span
             className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1 py-0.5 text-[10px] tabular-nums text-muted-foreground"
-            title={t("founder.threadCount", { count: item.comments.length, defaultValue: "{{count}} 則評論" })}
+            title={t("founder.threadCount", { count: threadComments.length, defaultValue: "{{count}} 則評論" })}
           >
             <MessageSquare className="h-3 w-3" />
-            {item.comments.length}
+            {threadComments.length}
           </span>
         )}
         </div>
@@ -506,7 +516,26 @@ function FounderRow({
             <Block label={t("founder.meetingPrep", { defaultValue: "Meeting prep" })} text={item.prep} />
           )}
           {item.notes && <Block label={t("founder.source", { defaultValue: "From Asana" })} text={item.notes} muted />}
-          {isReview && <CommentThread comments={item.comments ?? []} commenting={commenting} onComment={onComment} />}
+          {subtasks.length > 0 && (
+            <div className="rounded-md border border-border/60 bg-muted/30 p-2.5">
+              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("founder.subtasks", { count: subtasks.length, defaultValue: "子任務 ({{count}})" })}
+              </div>
+              <ul className="space-y-1">
+                {subtasks.map((st, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs">
+                    {st.completed
+                      ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      : <span className="mt-1 h-3 w-3 shrink-0 rounded-[3px] border border-muted-foreground/50" />}
+                    <span className={cn("min-w-0 break-words [overflow-wrap:anywhere]", st.completed && "text-muted-foreground line-through")}>
+                      {st.name}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {isReview && <CommentThread comments={threadComments} commenting={commenting} onComment={onComment} />}
         </div>
       )}
 

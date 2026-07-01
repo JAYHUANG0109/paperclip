@@ -43,6 +43,7 @@ export interface FounderItem {
   decision: FounderDecision | null;
   decisionNote: string | null;
   comments: FounderComment[];
+  subtasks?: { name: string; completed: boolean }[];
   closed: boolean;
 }
 export interface FounderDigest {

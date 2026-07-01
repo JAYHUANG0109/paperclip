@@ -33,6 +33,11 @@ export interface FounderComment {
   pending?: boolean; // optimistic reply not yet confirmed posted to Asana
 }
 
+export interface FounderSubtask {
+  name: string;
+  completed: boolean;
+}
+
 export interface FounderItem {
   gid: string;
   name: string;
@@ -45,6 +50,7 @@ export interface FounderItem {
   decision: FounderDecision | null; // founder's verdict on the draft 批閱 (review items)
   decisionNote: string | null; // founder's comment / suggestion / regards (optional)
   comments: FounderComment[]; // discussion thread (Asana stories + founder replies)
+  subtasks?: FounderSubtask[]; // Asana subtasks of the task, if any (議題/子項清單)
   closed: boolean; // 結案 — used by meetings/reminders (no draft to approve, just "done")
   /**
    * When the outer public task links to a restricted private task (a "Private link"
@@ -168,9 +174,24 @@ function sanitizeItem(raw: unknown): FounderItem | null {
     decision,
     decisionNote: str(t.decisionNote),
     comments: sanitizeComments(t.comments),
+    ...(sanitizeSubtasks(t.subtasks).length ? { subtasks: sanitizeSubtasks(t.subtasks) } : {}),
     closed: t.closed === true,
     ...(commentTargetGid ? { commentTargetGid } : {}),
   };
+}
+
+/** Parse an item's subtasks. Keeps name + completed only; caps the list. */
+function sanitizeSubtasks(v: unknown): FounderSubtask[] {
+  if (!Array.isArray(v)) return [];
+  const out: FounderSubtask[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const s = raw as Record<string, unknown>;
+    const name = typeof s.name === "string" ? s.name.trim().slice(0, 300) : "";
+    if (!name) continue;
+    out.push({ name, completed: s.completed === true });
+  }
+  return out.slice(0, 20);
 }
 
 /** Parse a thread of comments off agent output. Drops malformed entries; caps
@@ -182,7 +203,9 @@ function sanitizeComments(v: unknown): FounderComment[] {
     if (!raw || typeof raw !== "object") continue;
     const c = raw as Record<string, unknown>;
     const text = typeof c.text === "string" ? c.text.trim().slice(0, 2000) : "";
-    if (!text) continue;
+    // Drop empty comments and the agent's old "（空白留言）" placeholder — Asana
+    // system stories / empty comment stories must never surface as blank threads.
+    if (!text || text === "（空白留言）" || text === "(空白留言)") continue;
     const authorType: FounderComment["authorType"] =
       c.authorType === "founder" || c.authorType === "agent" ? c.authorType : "asana";
     out.push({
