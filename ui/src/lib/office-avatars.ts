@@ -37,15 +37,33 @@ export function resolveGender(agent: {
   return inItDept ? "male" : "female";
 }
 
+/** The catalog character id used for an agent's avatar: explicit pick or gender. */
+export function avatarCharacterId(agent: {
+  name?: string | null; urlKey?: string | null; metadata?: Record<string, unknown> | null;
+}): string {
+  const chosen = agent.metadata?.officeCharacterId;
+  if (typeof chosen === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(chosen)) return chosen;
+  return resolveGender(agent);
+}
+
+/** True for a pixel-sprite source (render with object-contain + pixelated). */
+export function isSpriteSource(src: string): boolean {
+  return src.includes("/office-characters/");
+}
+
 // Returns the ordered list of image srcs to try before falling back to DiceBear.
 // The component tries each in order, advancing on load error.
 export function resolveAvatarSources(agent: { name?: string | null; urlKey?: string | null; metadata?: Record<string, unknown> | null }): string[] {
   const h = haystack(agent);
   const custom = CUSTOM_AVATARS.find((c) => h.includes(c.match.toLowerCase()));
   const sources: string[] = [];
-  // Uploaded avatar (per-agent, set in Settings / office) wins over everything.
+  // Explicit per-agent uploaded avatar wins.
   const uploaded = agent.metadata && typeof agent.metadata.officeAvatarUrl === "string" ? agent.metadata.officeAvatarUrl : null;
   if (uploaded) sources.push(uploaded);
+  // Then the pixel-sprite character (chosen or gender default) — the south view,
+  // so the circle/modal avatar matches the character on the floor.
+  sources.push(`/assets/office-characters/${avatarCharacterId(agent)}/south.png`);
+  // Then legacy custom PNG + the realistic gender image, before DiceBear.
   if (custom) sources.push(custom.src);
   sources.push(GENDER_IMAGE[resolveGender(agent)]);
   return sources;

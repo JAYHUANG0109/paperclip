@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { CartoonAvatar } from "./CartoonAvatar";
-import { resolveAvatarSources, resolveGender } from "../lib/office-avatars";
+import { resolveAvatarSources, resolveGender, isSpriteSource } from "../lib/office-avatars";
 import { cn } from "../lib/utils";
 
 interface Props {
@@ -20,17 +20,26 @@ export function OfficeAvatar({ agent, size = 56, className, animated = true, sty
   const [idx, setIdx] = useState(0);
 
   if (idx < sources.length) {
+    const src = sources[idx]!;
+    const sprite = isSpriteSource(src);
     return (
       <img
-        src={sources[idx]}
+        src={src}
         width={size}
         height={size}
         alt=""
         aria-hidden="true"
         draggable={false}
         onError={() => setIdx((i) => i + 1)}
-        className={cn("select-none rounded-full object-cover", animated && "office-avatar-idle", className)}
-        style={{ width: size, height: size, ...style }}
+        className={cn(
+          "select-none rounded-full",
+          // Pixel sprites are full-body → contain (never crop) + crisp scaling.
+          // Realistic/photo avatars → cover (fill the circle).
+          sprite ? "object-contain" : "object-cover",
+          animated && "office-avatar-idle",
+          className,
+        )}
+        style={{ width: size, height: size, ...(sprite ? { imageRendering: "pixelated" } : {}), ...style }}
       />
     );
   }

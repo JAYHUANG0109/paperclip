@@ -297,12 +297,11 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
 
   const fitZoom = useMemo(() => {
     if (!viewport.w || !viewport.h) return 1;
-    // Contain-fit the whole floor to the viewport, but NEVER upscale the pixel-art
-    // map/sprites past their native size — upscaling is what made everything look
-    // blown-up and "stretched" on wide monitors. The floor is horizontally centered
-    // (offsetX), and users can still zoom in past this with the +/− controls.
+    // Contain-fit the whole floor to the viewport — fill the limiting dimension so
+    // the map (and everyone on it) is as large as fits without cropping. Uniform
+    // scale, so proportions are always preserved. Users can still zoom with +/−.
     const contain = Math.min(viewport.w / mapW, viewport.h / mapH);
-    return clamp(Math.min(contain, 1), 0.3, 4);
+    return clamp(contain, 0.3, 3);
   }, [viewport, mapW, mapH]);
   const zoom = userZoom ?? fitZoom;
 
@@ -372,7 +371,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
       const rows = Math.ceil(N / cols);
       const cellW = usableWpx / cols;
       const cellH = usableHpx / rows;
-      const size = clamp(Math.min(cellW * 0.6, cellH * 0.5), 14, 46);
+      const size = clamp(Math.min(cellW * 0.78, cellH * 0.66), 18, 60);
       minSize = Math.min(minSize, size);
 
       const stepXpct = zone.fw / cols;
@@ -494,7 +493,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
 
       {/* ── Body: full-bleed map, frameless ──────────────────────────── */}
       <div ref={viewportRef} style={{
-        height: "calc(100vh - 120px)", minHeight: 480, overflow: "auto", position: "relative",
+        height: "calc(100vh - 112px)", minHeight: 480, overflow: "auto", position: "relative",
         borderRadius: 12,
       }}>
         <div style={{

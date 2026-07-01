@@ -83,7 +83,7 @@ export function VirtualOffice() {
   );
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-2">
       {/* Shared controls row: team chip filter (left) + view switch (right) —
           identical layout/style to the Agents page so the switch never moves. */}
       <div className="flex flex-wrap items-center gap-2">
