@@ -390,16 +390,36 @@ export async function createApp(
           immutable: true,
         }),
       );
+      // One-shot recovery route: a stale service worker from an older build can
+      // keep serving cached JS across deploys. Hitting /__reset returns a
+      // Clear-Site-Data header that unregisters service workers + clears their
+      // caches (storage/cache; cookies are left intact so the session survives),
+      // then bounces back to the app. Handy to hand to a user stuck on old UI.
+      app.get("/__reset", (_req, res) => {
+        res
+          .status(200)
+          .set("Clear-Site-Data", '"cache", "storage"')
+          .set("Cache-Control", "no-store")
+          .set("Content-Type", "text/html; charset=utf-8")
+          .end(
+            '<!doctype html><meta charset="utf-8">' +
+            '<meta http-equiv="refresh" content="1;url=/">' +
+            '<body style="font-family:system-ui,sans-serif;background:#0b0d14;color:#c6d2e8;padding:48px;font-size:15px">' +
+            'Cleared stale service worker &amp; cache. Reloading the latest version…</body>',
+          );
+      });
       // Non-hashed static files (favicon.ico, manifest, robots.txt, etc.):
       // short cache so operators who swap them out see the new version
       // reasonably fast. Override for `index.html` specifically — it is
       // served by this middleware for `/` and `/index.html`, and it must
-      // never outlive the asset hashes it points at.
+      // never outlive the asset hashes it points at. `sw.js` is no-cache too
+      // so the (now self-destructing) worker script is always fetched fresh.
       app.use(
         express.static(uiDist, {
           maxAge: "1h",
           setHeaders(res, filePath) {
-            if (path.basename(filePath) === "index.html") {
+            const base = path.basename(filePath);
+            if (base === "index.html" || base === "sw.js") {
               res.set("Cache-Control", "no-cache");
             }
           },
