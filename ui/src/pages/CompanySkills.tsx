@@ -1,4 +1,12 @@
 import { useTranslation } from "@/i18n";
+import {
+  SkillLangProvider,
+  useSkillLang,
+  localizeCategory,
+  localizeSkillName,
+  skillDescriptionZh,
+  type SkillLang,
+} from "@/lib/skill-i18n";
 import { SkillMembersPanel } from "../components/SkillMembersPanel";
 import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
@@ -786,15 +794,26 @@ function SkillStat({ icon: Icon, value }: { icon: typeof Star; value: string }) 
 }
 
 function SkillCategoryChip({ label }: { label: string }) {
+  const lang = useSkillLang();
   return (
-    <span className="inline-flex items-center rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] capitalize text-muted-foreground">
-      {label}
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground",
+        lang === "en" && "capitalize",
+      )}
+    >
+      {localizeCategory(label, lang)}
     </span>
   );
 }
 
 function SkillCard({ card, onOpen }: { card: DiscoveryCard; onOpen: (card: DiscoveryCard) => void }) {
   const { t } = useTranslation();
+  const lang = useSkillLang();
+  const displayName = localizeSkillName(card.slug, card.name, lang);
+  const englishSummary =
+    resolveSkillSummaryText({ tagline: card.tagline, description: card.description, key: card.key, name: card.name }) ?? "";
+  const displaySummary = lang === "zh" ? (skillDescriptionZh(card.slug) ?? englishSummary) : englishSummary;
   return (
     <button
       type="button"
@@ -807,9 +826,14 @@ function SkillCard({ card, onOpen }: { card: DiscoveryCard; onOpen: (card: Disco
       <div className="flex items-start gap-3">
         <SkillCardIcon card={card} />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-sm font-medium text-foreground">{card.name}</div>
+          <div className={cn("truncate text-sm font-medium text-foreground", lang === "en" && "font-mono")}>{displayName}</div>
           <div className="truncate text-xs text-muted-foreground">
-            by {card.author}{card.version ? ` · ${card.version}` : ""}
+            {/* In 中文 mode, keep the slug visible as the technical id beneath the name. */}
+            {lang === "zh" && displayName !== card.name ? (
+              <span className="font-mono">{card.name}</span>
+            ) : (
+              <>by {card.author}{card.version ? ` · ${card.version}` : ""}</>
+            )}
           </div>
         </div>
         {/* Where the skill came from (PAP-10907 E); native title gives a hover hint. */}
@@ -833,12 +857,7 @@ function SkillCard({ card, onOpen }: { card: DiscoveryCard; onOpen: (card: Disco
 
       {/* Always reserve two lines so cards line up even without a description. */}
       <p className="mt-2 line-clamp-2 min-h-8 text-xs text-muted-foreground">
-        {resolveSkillSummaryText({
-          tagline: card.tagline,
-          description: card.description,
-          key: card.key,
-          name: card.name,
-        }) ?? ""}
+        {displaySummary}
       </p>
 
       <div className="mt-auto pt-3">
@@ -905,6 +924,7 @@ function CategoryNav({
   onSelect: (slug: string | null) => void;
 }) {
   const { t } = useTranslation();
+  const lang = useSkillLang();
   return (
     <nav className="flex flex-col gap-0.5 px-2">
       <button
@@ -924,11 +944,12 @@ function CategoryNav({
           type="button"
           onClick={() => onSelect(category.slug)}
           className={cn(
-            "flex items-center justify-between rounded-md px-2 py-1.5 text-sm capitalize transition-colors hover:bg-accent/40",
+            "flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent/40",
+            lang === "en" && "capitalize",
             active === category.slug ? "bg-accent/60 font-medium text-foreground" : "text-muted-foreground",
           )}
         >
-          <span className="truncate">{category.slug}</span>
+          <span className="truncate">{localizeCategory(category.slug, lang)}</span>
           <span className="ml-2 shrink-0 text-xs text-muted-foreground">{category.count}</span>
         </button>
       ))}
@@ -983,7 +1004,22 @@ export function DiscoveryGrid({
   scanPending: boolean;
   scanStatus: string | null;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // 中/EN toggle for skill names, descriptions and category labels. Defaults to
+  // the app's current language (persisted per browser), independent of the app
+  // locale so a zh-TW user can still read the original English if they want.
+  const [skillLang, setSkillLang] = useState<SkillLang>(() => {
+    const stored = typeof window !== "undefined" ? window.localStorage.getItem("skill-store-lang") : null;
+    if (stored === "en" || stored === "zh") return stored;
+    return (i18n.language ?? "").toLowerCase().startsWith("zh") ? "zh" : "en";
+  });
+  const toggleSkillLang = () => {
+    setSkillLang((prev) => {
+      const next: SkillLang = prev === "zh" ? "en" : "zh";
+      if (typeof window !== "undefined") window.localStorage.setItem("skill-store-lang", next);
+      return next;
+    });
+  };
   // Source filter (github / skills.sh / local / …) lives in the grid so it
   // narrows whatever the parent already filtered by tab/category/search (PAP-10907 E).
   const [sourceBadgeFilter, setSourceBadgeFilter] = useState<string>("all");
@@ -1004,9 +1040,10 @@ export function DiscoveryGrid({
   const sourceFilterActive = sourceBadgeFilter !== "all";
 
   return (
-    // On desktop the store is bounded to the viewport so the category sidebar
-    // and the results pane each scroll independently (PAP-10907). Mobile keeps
-    // the natural page flow.
+   <SkillLangProvider value={skillLang}>
+    {/* On desktop the store is bounded to the viewport so the category sidebar
+        and the results pane each scroll independently (PAP-10907). Mobile keeps
+        the natural page flow. */}
     <div className="flex min-h-[calc(100vh-12rem)] md:h-[calc(100dvh-6rem)] md:min-h-0 md:overflow-hidden">
       {/* Secondary category sidebar — the main app nav collapses to a rail while
           this is present (handled in Layout). */}
@@ -1039,6 +1076,31 @@ export function DiscoveryGrid({
               placeholder={t("companySkills.searchPlaceholder", { defaultValue: "Search skills, authors, categories…" })}
               className="h-full w-full bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
             />
+          </div>
+          {/* 中/EN toggle — flips skill names, descriptions and category labels. */}
+          <div className="inline-flex h-9 shrink-0 items-center rounded-md border border-border p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => skillLang !== "zh" && toggleSkillLang()}
+              aria-pressed={skillLang === "zh"}
+              className={cn(
+                "rounded px-2 py-1 font-medium transition-colors",
+                skillLang === "zh" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              中文
+            </button>
+            <button
+              type="button"
+              onClick={() => skillLang !== "en" && toggleSkillLang()}
+              aria-pressed={skillLang === "en"}
+              className={cn(
+                "rounded px-2 py-1 font-medium transition-colors",
+                skillLang === "en" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              EN
+            </button>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1121,7 +1183,11 @@ export function DiscoveryGrid({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="w-full justify-between">
-                  <span className="capitalize">{activeCategory ?? "All categories"}</span>
+                  <span className={cn(skillLang === "en" && "capitalize")}>
+                    {activeCategory
+                      ? localizeCategory(activeCategory, skillLang)
+                      : t("companySkills.allCategories", { defaultValue: "All categories" })}
+                  </span>
                   <ChevronDown className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
@@ -1130,10 +1196,10 @@ export function DiscoveryGrid({
                   value={activeCategory ?? "__all__"}
                   onValueChange={(value) => onCategoryChange(value === "__all__" ? null : value)}
                 >
-                  <DropdownMenuRadioItem value="__all__">All ({categoryTotal})</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="__all__">{t("companySkills.sidebarAll", { defaultValue: "All" })} ({categoryTotal})</DropdownMenuRadioItem>
                   {categories.map((category) => (
-                    <DropdownMenuRadioItem key={category.slug} value={category.slug} className="capitalize">
-                      {category.slug} ({category.count})
+                    <DropdownMenuRadioItem key={category.slug} value={category.slug} className={cn(skillLang === "en" && "capitalize")}>
+                      {localizeCategory(category.slug, skillLang)} ({category.count})
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
@@ -1226,6 +1292,7 @@ export function DiscoveryGrid({
         </div>
       </div>
     </div>
+   </SkillLangProvider>
   );
 }
 
