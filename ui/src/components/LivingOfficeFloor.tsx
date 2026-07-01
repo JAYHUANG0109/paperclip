@@ -589,7 +589,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               // A working agent steps up between its chair and desk and faces its
               // screen (male → north, female → north-west). The monitor now sits
               // up on the desk, so this small forward shift doesn't cover it.
-              const ly = (working ? pin.y : (m?.y ?? pin.y)) - (working ? 3 : 0);
+              const ly = (working ? pin.y : (m?.y ?? pin.y)) - (working ? 4 : 0);
               const dir = working ? (gender === "male" ? "north" : "north-west") : (m?.dir ?? "south");
               const set = spriteSetFor(pin.agent);
               // While moving (never while working), play the walk GIF for the
