@@ -3,6 +3,8 @@ import type { Agent } from "@paperclipai/shared";
 import type { LiveRunForIssue } from "../api/heartbeats";
 import { OfficeAvatar } from "./OfficeAvatar";
 import { agentTeams } from "../lib/agent-teams";
+import { resolveGender } from "../lib/office-avatars";
+import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
 
 // ── Floor / zone definitions ───────────────────────────────────────────────
 interface Zone {
@@ -270,19 +272,48 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     return () => { alive = false; };
   }, []);
 
+  // Shared CHARACTER CATALOG sprites (the pickable roster). An agent's chosen
+  // catalog character wins over its bespoke per-agent sprite; if it hasn't picked,
+  // its bespoke sprite wins, then the gender-default catalog character.
+  const [catalog, setCatalog] = useState<CatalogManifest>({});
+  useEffect(() => {
+    let alive = true;
+    fetch(CATALOG_MANIFEST_URL)
+      .then(r => (r.ok ? r.json() : {}))
+      .then(m => { if (alive) setCatalog(m ?? {}); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // Resolve the directional sprite SET an agent should render (or null → circular
+  // avatar fallback). Priority: explicit catalog pick → bespoke sprite → gender default.
+  const spriteSetFor = useMemo(() => {
+    return (agent: Agent): SpriteSet | null => {
+      const chosen = agent.metadata?.officeCharacterId;
+      if (typeof chosen === "string" && CATALOG_BY_ID.has(chosen)) {
+        const set = catalog[chosen];
+        if (set && Object.keys(set).length) return set;
+      }
+      const own = sprites[agent.id];
+      if (own && Object.keys(own).some(k => k !== "name")) return own;
+      const def = catalog[resolveGender(agent)];
+      if (def && Object.keys(def).length) return def;
+      return null;
+    };
+  }, [sprites, catalog]);
+
   const floor = FLOORS[floorIdx];
   const mapW  = floor.natW;
   const mapH  = floor.natH;
 
   const fitZoom = useMemo(() => {
     if (!viewport.w || !viewport.h) return 1;
-    // Fill the available WIDTH so the portrait floorplans aren't letterboxed into
-    // a thin column (vertical scroll handles the extra height), but cap the height
-    // so a tall floor doesn't require endless scrolling. Never below contain-fit.
-    const fill      = viewport.w / mapW;
-    const heightCap = (viewport.h * 1.7) / mapH;
-    const contain   = Math.min(viewport.w / mapW, viewport.h / mapH);
-    return clamp(Math.max(contain, Math.min(fill, heightCap)), 0.3, 4);
+    // Contain-fit the whole floor to the viewport, but NEVER upscale the pixel-art
+    // map/sprites past their native size — upscaling is what made everything look
+    // blown-up and "stretched" on wide monitors. The floor is horizontally centered
+    // (offsetX), and users can still zoom in past this with the +/− controls.
+    const contain = Math.min(viewport.w / mapW, viewport.h / mapH);
+    return clamp(Math.min(contain, 1), 0.3, 4);
   }, [viewport, mapW, mapH]);
   const zoom = userZoom ?? fitZoom;
 
@@ -407,14 +438,14 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   useEffect(() => {
     const next = new Map<string, Motion>();
     for (const p of pins) {
-      const walkable = hasAllDirs(sprites[p.agent.id]);
+      const walkable = hasAllDirs(spriteSetFor(p.agent) ?? undefined);
       const prev = motion.current.get(p.agent.id);
       next.set(p.agent.id, prev
         ? { ...prev, hx: p.x, hy: p.y, floor: p.floor, walkable }
         : { x: p.x, y: p.y, hx: p.x, hy: p.y, dir: "south", moving: false, tx: p.x, ty: p.y, waitUntil: 0, walkable, floor: p.floor });
     }
     motion.current = next;
-  }, [pins, sprites]);
+  }, [pins, spriteSetFor]);
 
   useEffect(() => {
     let raf = 0;
@@ -517,7 +548,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
 
       {/* ── Body: full-bleed map ─────────────────────────────────────── */}
       <div ref={viewportRef} style={{
-        height: "calc(100vh - 210px)", minHeight: 480, overflow: "auto", position: "relative",
+        height: "calc(100vh - 140px)", minHeight: 480, overflow: "auto", position: "relative",
         background: "radial-gradient(circle at 50% 35%, #11151f, #070a0f 75%)",
       }}>
         <div style={{
@@ -542,7 +573,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const lx = m?.x ?? pin.x;
               const ly = m?.y ?? pin.y;
               const dir = m?.dir ?? "south";
-              const set = sprites[pin.agent.id];
+              const set = spriteSetFor(pin.agent);
               const spriteUrl = set ? (set[dir] ?? set.south ?? null) : null;
               return (
               <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}

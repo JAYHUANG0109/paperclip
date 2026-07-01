@@ -237,6 +237,10 @@ export const agentsApi = {
     api.get<{ privileged: boolean; agentIds: string[] }>(`/companies/${encodeURIComponent(companyId)}/my-visible-agents`),
   setOfficeAvatar: (id: string, url: string, companyId?: string) =>
     api.put<Agent>(agentPath(id, companyId, "/office-avatar"), { url }),
+  // Pick a catalog character (or "" to clear back to the default). Stored in
+  // agent.metadata.officeCharacterId.
+  setOfficeCharacter: (id: string, characterId: string, companyId?: string) =>
+    api.put<Agent>(agentPath(id, companyId, "/office-character"), { characterId }),
 };
 
 export interface AvailableSkill {

@@ -2570,6 +2570,31 @@ export function agentRoutes(
     res.json(updated);
   });
 
+  // Office character: which catalog look the agent uses on the Virtual Office
+  // floor. Stored in agent.metadata.officeCharacterId (a slug like "cat" / "male").
+  // Empty string clears it back to the gender default. No schema change.
+  router.put("/agents/:id/office-character", async (req, res) => {
+    const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    await assertCanUpdateAgent(req, existing);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const characterId = typeof body.characterId === "string" ? body.characterId.trim() : "";
+    // Slug-only (folder-name safe); empty clears.
+    if (characterId && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(characterId)) {
+      res.status(400).json({ error: "characterId must be a lowercase slug" });
+      return;
+    }
+    const nextMetadata = { ...(existing.metadata ?? {}) } as Record<string, unknown>;
+    if (characterId) nextMetadata.officeCharacterId = characterId;
+    else delete nextMetadata.officeCharacterId;
+    const updated = await svc.update(id, { metadata: nextMetadata });
+    res.json(updated);
+  });
+
   router.patch("/agents/:id/permissions", validate(updateAgentPermissionsSchema), async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);

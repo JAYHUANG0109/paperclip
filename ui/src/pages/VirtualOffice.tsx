@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users } from "lucide-react";
+import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users, Palette } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -11,6 +11,7 @@ import { heartbeatsApi } from "../api/heartbeats";
 import { leaderboardApi, type LeaderboardEntry } from "../api/leaderboard";
 import { OfficeAvatar } from "../components/OfficeAvatar";
 import { LivingOfficeFloor } from "../components/LivingOfficeFloor";
+import { OfficeCharacterPicker } from "../components/OfficeCharacterPicker";
 import { TeamFilterBar } from "../components/TeamFilterBar";
 import { ViewSwitchButton } from "../components/ViewSwitchButton";
 import { agentMatchesTeams, listAllTeams, useAgentTeamFilter } from "../lib/agent-teams";
@@ -23,7 +24,7 @@ import type { Agent } from "@paperclipai/shared";
 
 export function VirtualOffice() {
   const { t } = useTranslation();
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
 
@@ -76,8 +77,6 @@ export function VirtualOffice() {
     () => sortAgentsByAccessLevel(allAgents.filter((a) => agentMatchesTeams(a, teamFilter)), allAgents),
     [allAgents, teamFilter],
   );
-  const workingCount = visibleAgents.filter((a) => workingAgentIds.has(a.id)).length;
-  const teamMinutes = (leaderboard?.entries ?? []).reduce((sum, e) => sum + e.rawMinutes, 0);
   const leaderboardByUser = useMemo(
     () => new Map((leaderboard?.entries ?? []).map((e) => [e.userId, e])),
     [leaderboard],
@@ -85,20 +84,6 @@ export function VirtualOffice() {
 
   return (
     <div className="w-full space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4">
-        <div>
-          <h1 className="text-2xl font-bold">{t("office.title", { defaultValue: "Virtual Office" })}</h1>
-          <p className="text-sm text-muted-foreground">
-            {selectedCompany?.name ? `${selectedCompany.name} ` : ""}{t("office.subtitle", { defaultValue: "The AI team at work ✨" })}
-          </p>
-        </div>
-        <div className="flex items-center gap-6">
-          <Stat value={visibleAgents.length} label={t("office.colleagues", { defaultValue: "colleagues" })} />
-          <Stat value={workingCount} label={t("office.working", { defaultValue: "Working" })} accent={workingCount > 0} />
-          <Stat value={teamMinutes.toLocaleString()} label={t("office.teamMinutes", { defaultValue: "Team minutes saved" })} />
-        </div>
-      </div>
-
       {/* Shared controls row: team chip filter (left) + view switch (right) —
           identical layout/style to the Agents page so the switch never moves. */}
       <div className="flex flex-wrap items-center gap-2">
@@ -131,15 +116,6 @@ function findLeaderboardForAgent(_byUser: Map<string, LeaderboardEntry>, _agent:
   return null;
 }
 
-function Stat({ value, label, accent }: { value: number | string; label: string; accent?: boolean }) {
-  return (
-    <div className="flex flex-col items-center text-center">
-      <div className={cn("text-2xl font-bold tabular-nums leading-tight", accent && "text-emerald-500")}>{value}</div>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-    </div>
-  );
-}
-
 function statusInfo(agent: Agent, working: boolean, t: (k: string, o?: Record<string, unknown>) => string) {
   if (agent.pauseReason) return { label: t("office.paused", { defaultValue: "Paused" }), dot: "bg-muted-foreground" };
   if (agent.errorReason) return { label: t("office.error", { defaultValue: "Needs attention" }), dot: "bg-red-500" };
@@ -161,6 +137,7 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const upload = useMutation({
     mutationFn: async (file: File) => {
       const asset = await assetsApi.uploadImage(companyId, file, "office-avatar");
@@ -234,11 +211,22 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
           <p className="mt-3 line-clamp-3 text-xs text-muted-foreground">{agent.capabilities}</p>
         )}
 
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent"
+          >
+            <Palette className="h-4 w-4" />
+            {t("office.changeCharacter", { defaultValue: "Change character" })}
+          </button>
+        )}
+
         {canView ? (
           <Link
             to={agentUrl(agent)}
             onClick={onClose}
-            className="mt-4 flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+            className="mt-2 flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
             <ExternalLink className="h-4 w-4" />
             {t("office.viewAgent", { defaultValue: "View agent" })}
@@ -250,6 +238,13 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
           </div>
         )}
       </DialogContent>
+
+      <OfficeCharacterPicker
+        agent={pickerOpen ? agent : null}
+        companyId={companyId}
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+      />
     </Dialog>
   );
 }
