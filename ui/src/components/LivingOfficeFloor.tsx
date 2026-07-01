@@ -152,10 +152,9 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spr
   const color    = STATUS_COLOR[status];
   const glow     = STATUS_GLOW[status];
   const isActive = status === "working";
-  // Only WORKING agents get the animated pulse ring — otherwise a floor full of
-  // idle/blocked agents becomes a wall of distracting rings. Status for the rest
-  // is conveyed by the sprite tint + the dot on the name label.
-  const ring     = isActive;
+  // No pulse ring around agents — status is shown by the desk monitor colour and
+  // the dot on the name label. (Working agents also face their screen at the desk.)
+  const ring     = false;
 
   return (
     <div style={{
@@ -581,13 +580,17 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
             })}
             {pins.map((pin, idx) => {
               const m = motion.current.get(pin.agent.id);
-              const lx = m?.x ?? pin.x;
-              const ly = m?.y ?? pin.y;
-              const dir = m?.dir ?? "south";
+              const working = workingIds.has(pin.agent.id);
+              const gender = resolveGender(pin.agent);
+              const lx = working ? pin.x : (m?.x ?? pin.x);
+              // A working agent stands just forward of its chair (between chair and
+              // desk) and faces its screen: male → north, female → north-west.
+              const ly = (working ? pin.y : (m?.y ?? pin.y)) - (working ? 3 : 0);
+              const dir = working ? (gender === "male" ? "north" : "north-west") : (m?.dir ?? "south");
               const set = spriteSetFor(pin.agent);
-              // While moving, play the walk GIF for the current direction (if the
-              // character has one); otherwise show the static rotation.
-              const moving = m?.moving ?? false;
+              // While moving (never while working), play the walk GIF for the
+              // current direction; otherwise show the static rotation.
+              const moving = !working && (m?.moving ?? false);
               const walkUrl = moving && set?.walk ? (set.walk[dir] ?? set.walk.south ?? null) : null;
               const rawSprite = walkUrl ?? (set ? (set[dir] ?? set.south ?? null) : null);
               const spriteUrl = rawSprite ? bustCache(rawSprite) : null;
@@ -596,15 +599,15 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               // applied to both the static PNG and the walk GIF. Resolved purely in
               // code (characterScale) — the single source of truth — so it always
               // applies regardless of whether the catalog manifest carries `scale`.
-              const charScale = characterScale(resolveAgentCharacterId(pin.agent, resolveGender(pin.agent)));
+              const charScale = characterScale(resolveAgentCharacterId(pin.agent, gender));
               const base = walkUrl ? SPRITE_SCALE * (set?.walkScale ?? 1) : SPRITE_SCALE;
               const spriteScale = base * charScale;
               return (
               <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}
-                status={getStatus(pin.agent, workingIds.has(pin.agent.id))}
+                status={getStatus(pin.agent, working)}
                 bubble={bubbles.get(pin.agent.id) ?? null}
                 showLabel={labelSize >= 17}
-                moving={m?.moving ?? false}
+                moving={moving}
                 spriteUrl={spriteUrl}
                 spriteScale={spriteScale}
                 delayMs={idx * 120} onOpen={() => onOpen(pin.agent)} />
