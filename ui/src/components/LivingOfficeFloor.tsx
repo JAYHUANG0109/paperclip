@@ -83,9 +83,12 @@ function dirFromVelocity(dx: number, dy: number): Dir {
 type Status = "working" | "attention" | "paused" | "idle";
 
 function getStatus(agent: Agent, working: boolean): Status {
+  // A live run wins over everything: if the agent is executing right now it is
+  // working (green), even if it carries a stale errorReason/pauseReason from a
+  // previous run. Only when it is NOT running do those prior states show.
+  if (working)           return "working";
   if (agent.errorReason) return "attention";
   if (agent.pauseReason) return "paused";
-  if (working)           return "working";
   return "idle";
 }
 
