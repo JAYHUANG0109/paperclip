@@ -1,0 +1,24 @@
+{
+  "male": {
+    "name": "male",
+    "south": "/assets/office-characters/male/south.png",
+    "south-east": "/assets/office-characters/male/south-east.png",
+    "east": "/assets/office-characters/male/east.png",
+    "north-east": "/assets/office-characters/male/north-east.png",
+    "north": "/assets/office-characters/male/north.png",
+    "north-west": "/assets/office-characters/male/north-west.png",
+    "west": "/assets/office-characters/male/west.png",
+    "south-west": "/assets/office-characters/male/south-west.png"
+  },
+  "female": {
+    "name": "female",
+    "south": "/assets/office-characters/female/south.png",
+    "south-east": "/assets/office-characters/female/south-east.png",
+    "east": "/assets/office-characters/female/east.png",
+    "north-east": "/assets/office-characters/female/north-east.png",
+    "north": "/assets/office-characters/female/north.png",
+    "north-west": "/assets/office-characters/female/north-west.png",
+    "west": "/assets/office-characters/female/west.png",
+    "south-west": "/assets/office-characters/female/south-west.png"
+  }
+}
