@@ -63,9 +63,13 @@ const FLOORS: FloorDef[] = [
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 // Fixed on-floor character footprint in native map px — uniform for every agent
-// (≈ chair-sized). Visible sprite is AGENT_SIZE * SPRITE_SCALE.
+// (≈ chair-sized). Visible sprite is AGENT_SIZE * SPRITE_SCALE. NOTE: the sprite
+// img used to be silently clamped to AGENT_SIZE by the global `img{max-width}`
+// reset, so SPRITE_SCALE was effectively ~1. Now that the clamp is removed
+// (maxWidth:none on the img), SPRITE_SCALE=1 keeps that same visible size while
+// per-character scale (male 1.3×) finally takes effect.
 const AGENT_SIZE = 84;
-const SPRITE_SCALE = 2.0;
+const SPRITE_SCALE = 1.0;
 
 // 8-way facing from a screen-space velocity (y points down → south).
 type Dir = "south" | "south-east" | "east" | "north-east" | "north" | "north-west" | "west" | "south-west";
@@ -179,14 +183,18 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spr
                 pushed below this (see below) so the shadow reads as under the feet,
                 not detached beneath the name. */}
             <div style={{
-              position: "absolute", left: "50%", top: size * (0.5 + 0.4 * spriteScale),
+              position: "absolute", left: "50%", top: size * (0.5 + 0.36 * spriteScale),
               transform: "translate(-50%,-50%)",
-              width: size * 0.31 * spriteScale, height: size * 0.07 * spriteScale, borderRadius: "50%",
+              width: size * 0.34 * spriteScale, height: size * 0.09 * spriteScale, borderRadius: "50%",
               background: "rgba(0,0,0,0.38)", filter: "blur(1px)", pointerEvents: "none",
             }} />
             <img src={spriteUrl} alt={agent.name ?? ""} draggable={false} style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-52%)",
               width: size * spriteScale, height: size * spriteScale, objectFit: "contain",
+              // Override the global Tailwind `img{max-width:100%}` reset — without
+              // this the sprite is clamped to its container width, so spriteScale
+              // (incl. the male 1.3×) has NO visible effect on the floor.
+              maxWidth: "none", maxHeight: "none",
               imageRendering: "pixelated", pointerEvents: "none",
               filter: status === "idle" || status === "paused"
                 ? "saturate(0.7) brightness(0.85)"
@@ -205,7 +213,7 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spr
         <div style={{
           // Sit just below the feet/shadow (which are at ~0.4*spriteH below the
           // box centre), so the name never overlaps the character's legs.
-          position: "absolute", top: size * (0.5 + 0.4 * spriteScale) + size * 0.14, left: "50%", transform: "translateX(-50%)",
+          position: "absolute", top: size * (0.5 + 0.36 * spriteScale) + size * 0.16, left: "50%", transform: "translateX(-50%)",
           maxWidth: Math.max(60, size * 2.4), overflow: "hidden", textOverflow: "ellipsis",
           whiteSpace: "nowrap", fontSize: clamp(size * 0.24, 7.5, 10), fontWeight: 700, color: "#c6d2e8",
           background: "rgba(6,9,18,0.90)", borderRadius: 4, padding: "1px 5px", pointerEvents: "none",
