@@ -84,6 +84,7 @@ export function blit(dst, src, sx, sy, sw, sh, dx, dy) {
 // Alpha-composite a src region onto dst, nearest-neighbour scaled by `f` (may be
 // fractional). Destination top-left is (dx,dy) in px.
 export function blitScaled(dst, src, sx, sy, sw, sh, dx, dy, f) {
+  dx = Math.round(dx); dy = Math.round(dy);   // integer dest — Buffer ignores fractional indices
   const ow = Math.round(sw * f), oh = Math.round(sh * f);
   for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
     const ax = sx + Math.floor(x / f), ay = sy + Math.floor(y / f);

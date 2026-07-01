@@ -43,18 +43,18 @@ const FLOORS: FloorDef[] = [
     id: "square",
     label: "Office",
     image: "/assets/pixelart/Office%20Square.png",
-    natW: 1184,
-    natH: 848,
+    natW: 1248,
+    natH: 880,
     zones: [
-      { id: "meeting", name: "會議室", team: null, x: 4.1, y: 5.7, w: 21.6, h: 26.4, color: "#10B981" },
-      { id: "teaching", name: "教學組", team: "教學組", x: 29.7, y: 1.9, w: 40.5, h: 34, color: "#8B5CF6", seats: [{"x":37.84,"y":14.62},{"x":45.95,"y":14.62},{"x":54.05,"y":14.62},{"x":62.16,"y":14.62},{"x":37.84,"y":25.94},{"x":45.95,"y":25.94},{"x":54.05,"y":25.94},{"x":62.16,"y":25.94}] },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 77, y: 5.7, w: 16.2, h: 24.5, color: "#6366F1", seats: [{"x":85.14,"y":19.34}] },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.4, y: 37.7, w: 27, h: 34, color: "#F59E0B", seats: [{"x":6.76,"y":50.47},{"x":14.86,"y":50.47},{"x":22.97,"y":50.47},{"x":6.76,"y":61.79}] },
-      { id: "it", name: "資訊部", team: "資訊部", x: 29.7, y: 37.7, w: 40.5, h: 34, color: "#3B82F6", seats: [{"x":37.84,"y":50.47},{"x":45.95,"y":50.47},{"x":54.05,"y":50.47},{"x":62.16,"y":50.47},{"x":37.84,"y":61.79},{"x":45.95,"y":61.79},{"x":54.05,"y":61.79}] },
-      { id: "lounge", name: "休息室", team: null, x: 75.7, y: 43.4, w: 17.6, h: 20.8, color: "#EC4899" },
-      { id: "pantry", name: "茶水間", team: null, x: 5.4, y: 75.5, w: 17.6, h: 20.8, color: "#14B8A6" },
-      { id: "reception", name: "接待處", team: null, x: 39.2, y: 75.5, w: 21.6, h: 20.8, color: "#A855F7" },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 77, y: 75.5, w: 14.9, h: 20.8, color: "#F97316", seats: [{"x":84.46,"y":87.26}] },
+      { id: "meeting", name: "會議室", team: null, x: 1.3, y: 3.6, w: 24.4, h: 30.9, color: "#10B981" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 28.2, y: 1.8, w: 43.6, h: 34.5, color: "#8B5CF6", seats: [{"x":38.27,"y":16.36},{"x":46.09,"y":16.36},{"x":53.91,"y":16.36},{"x":61.73,"y":16.36},{"x":38.27,"y":27.64},{"x":46.09,"y":27.64},{"x":53.91,"y":27.64},{"x":61.73,"y":27.64}] },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 75.6, y: 3.6, w: 20.5, h: 29.1, color: "#6366F1", seats: [{"x":85.9,"y":21.09}] },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.3, y: 38.2, w: 25.6, h: 34.5, color: "#F59E0B", seats: [{"x":10.19,"y":52.73},{"x":18.01,"y":52.73},{"x":10.19,"y":64},{"x":18.01,"y":64}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 28.2, y: 38.2, w: 43.6, h: 34.5, color: "#3B82F6", seats: [{"x":38.27,"y":52.73},{"x":46.09,"y":52.73},{"x":53.91,"y":52.73},{"x":61.73,"y":52.73},{"x":38.27,"y":64},{"x":46.09,"y":64},{"x":53.91,"y":64}] },
+      { id: "lounge", name: "休息室", team: null, x: 75.6, y: 40, w: 20.5, h: 29.1, color: "#EC4899" },
+      { id: "pantry", name: "茶水間", team: null, x: 2.6, y: 74.5, w: 21.8, h: 21.8, color: "#14B8A6" },
+      { id: "reception", name: "接待處", team: null, x: 32.1, y: 74.5, w: 35.9, h: 21.8, color: "#A855F7" },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 75.6, y: 74.5, w: 19.2, h: 21.8, color: "#F97316", seats: [{"x":85.26,"y":88.36}] },
     ],
   },
 ];
@@ -63,7 +63,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 // Fixed on-floor character footprint in native map px — uniform for every agent
 // (≈ chair-sized). Visible sprite is AGENT_SIZE * SPRITE_SCALE.
-const AGENT_SIZE = 62;
+const AGENT_SIZE = 84;
 const SPRITE_SCALE = 2.0;
 
 // 8-way facing from a screen-space velocity (y points down → south).
@@ -114,27 +114,23 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
   );
 }
 
-// ── Desk monitor: sits on the desk, screen colour reflects agent status ──────
+// ── Desk monitor: sits on the desk, whole screen is the agent's status colour ──
 function DeskMonitor({ x, y, size, status }: { x: number; y: number; size: number; status: Status }) {
   const screen = STATUS_COLOR[status];
   const working = status === "working";
-  const w = size * 0.5, h = size * 0.36;
+  const w = size * 0.52, h = size * 0.38;
   return (
     <div style={{
       position: "absolute", left: `${x}%`, top: `${y}%`,
       // sit the monitor on the desk, which is ~2 tiles above the agent's seat
-      transform: `translate(-50%, calc(-50% - ${size * 0.78}px))`,
+      transform: `translate(-50%, calc(-50% - ${size * 0.9}px))`,
       width: w, height: h, zIndex: 6, pointerEvents: "none",
-      background: "#12151c", border: `${Math.max(1, size*0.05)}px solid #2b303c`,
-      borderRadius: 3, padding: size * 0.07, boxSizing: "border-box",
-    }}>
-      <div style={{
-        width: "100%", height: "100%", borderRadius: 1, background: screen,
-        opacity: status === "idle" ? 0.5 : 0.95,
-        boxShadow: working ? `0 0 ${size*0.25}px ${screen}` : "none",
-        animation: working ? "office-agent-ring-pulse 1.8s ease-in-out infinite" : "none",
-      }} />
-    </div>
+      // no bezel — the whole monitor is the status colour
+      background: screen, borderRadius: 2,
+      opacity: status === "idle" ? 0.6 : 1,
+      boxShadow: working ? `0 0 ${size*0.28}px ${screen}` : "none",
+      animation: working ? "office-agent-ring-pulse 1.8s ease-in-out infinite" : "none",
+    }} />
   );
 }
 
@@ -344,7 +340,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     // width-shrinks → refit → scrollbar-disappears feedback loop that made the map
     // twitch (時大時小). Rounded to 2dp to kill sub-pixel jitter. Uniform scale, so
     // proportions are always preserved.
-    const contain = Math.min((viewport.w - 12) / mapW, (viewport.h - 12) / mapH);
+    const contain = Math.min((viewport.w - 4) / mapW, (viewport.h - 4) / mapH);
     return Math.round(clamp(contain, 0.3, 3) * 100) / 100;
   }, [viewport, mapW, mapH]);
   const zoom = userZoom ?? fitZoom;
