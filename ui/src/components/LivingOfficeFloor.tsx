@@ -153,7 +153,7 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, mov
             }} />
             <img src={spriteUrl} alt={agent.name ?? ""} draggable={false} style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-52%)",
-              width: size * 1.55, height: size * 1.55, objectFit: "contain",
+              width: size * 1.9, height: size * 1.9, objectFit: "contain",
               imageRendering: "pixelated", pointerEvents: "none",
               filter: status === "idle" || status === "paused"
                 ? "saturate(0.7) brightness(0.85)"
@@ -371,7 +371,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
       const rows = Math.ceil(N / cols);
       const cellW = usableWpx / cols;
       const cellH = usableHpx / rows;
-      const size = clamp(Math.min(cellW * 0.78, cellH * 0.66), 18, 60);
+      const size = clamp(Math.min(cellW * 0.92, cellH * 0.8), 24, 84);
       minSize = Math.min(minSize, size);
 
       const stepXpct = zone.fw / cols;
