@@ -46,14 +46,14 @@ const FLOORS: FloorDef[] = [
     natW: 960,
     natH: 736,
     zones: [
-      { id: "teaching", name: "教學組", team: "教學組", x: 1.7, y: 2.2, w: 50, h: 56.5, color: "#8B5CF6", seats: [{"x":7.5,"y":12.17},{"x":14.17,"y":12.17},{"x":20.83,"y":12.17},{"x":27.5,"y":12.17},{"x":34.17,"y":12.17},{"x":40.83,"y":12.17},{"x":7.5,"y":23.04},{"x":14.17,"y":23.04},{"x":20.83,"y":23.04},{"x":27.5,"y":23.04},{"x":34.17,"y":23.04},{"x":40.83,"y":23.04},{"x":7.5,"y":33.91},{"x":14.17,"y":33.91},{"x":20.83,"y":33.91},{"x":27.5,"y":33.91},{"x":34.17,"y":33.91},{"x":40.83,"y":33.91}] },
-      { id: "it", name: "資訊部", team: "資訊部", x: 1.7, y: 60.9, w: 50, h: 37, color: "#3B82F6", seats: [{"x":7.5,"y":70.87},{"x":14.17,"y":70.87},{"x":20.83,"y":70.87},{"x":27.5,"y":70.87},{"x":34.17,"y":70.87},{"x":40.83,"y":70.87},{"x":7.5,"y":81.74},{"x":14.17,"y":81.74},{"x":20.83,"y":81.74},{"x":27.5,"y":81.74},{"x":34.17,"y":81.74},{"x":40.83,"y":81.74},{"x":7.5,"y":92.61},{"x":14.17,"y":92.61},{"x":20.83,"y":92.61},{"x":27.5,"y":92.61},{"x":34.17,"y":92.61},{"x":40.83,"y":92.61}] },
-      { id: "meeting", name: "會議室", team: null, x: 53.3, y: 2.2, w: 26.7, h: 37, color: "#10B981" },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 53.3, y: 41.3, w: 26.7, h: 26.1, color: "#F59E0B", seats: [{"x":59.17,"y":51.3},{"x":65.83,"y":51.3},{"x":72.5,"y":51.3},{"x":59.17,"y":62.17},{"x":65.83,"y":62.17},{"x":72.5,"y":62.17}] },
-      { id: "lounge", name: "休息室", team: null, x: 53.3, y: 69.6, w: 26.7, h: 28.3, color: "#EC4899" },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 81.7, y: 2.2, w: 16.7, h: 28.3, color: "#6366F1", seats: [{"x":87.5,"y":12.17},{"x":87.5,"y":23.04}] },
-      { id: "pantry", name: "茶水間", team: null, x: 81.7, y: 32.6, w: 16.7, h: 30.4, color: "#14B8A6" },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 81.7, y: 65.2, w: 13.3, h: 19.6, color: "#F97316", seats: [{"x":87.5,"y":75.22}] },
+      { id: "meeting", name: "會議室", team: null, x: 1.7, y: 2.2, w: 28.3, h: 34.8, color: "#10B981" },
+      { id: "lounge", name: "休息室", team: null, x: 70, y: 2.2, w: 28.3, h: 34.8, color: "#EC4899" },
+      { id: "pantry", name: "茶水間", team: null, x: 1.7, y: 65.2, w: 28.3, h: 32.6, color: "#14B8A6" },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 83.3, y: 73.9, w: 15, h: 23.9, color: "#F97316", seats: [{"x":90.83,"y":88.26}] },
+      { id: "teaching", name: "教學組", team: "教學組", x: 33.3, y: 2.2, w: 33.3, h: 43.5, color: "#8B5CF6", seats: [{"x":42.5,"y":14.35},{"x":50.83,"y":14.35},{"x":59.17,"y":14.35},{"x":42.5,"y":25.22},{"x":50.83,"y":25.22},{"x":59.17,"y":25.22},{"x":42.5,"y":36.09},{"x":50.83,"y":36.09},{"x":59.17,"y":36.09}] },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.7, y: 39.1, w: 28.3, h: 23.9, color: "#F59E0B", seats: [{"x":7.5,"y":53.48},{"x":15.83,"y":53.48},{"x":24.17,"y":53.48}] },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 70, y: 39.1, w: 28.3, h: 30.4, color: "#6366F1", seats: [{"x":84.17,"y":55.65}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 33.3, y: 47.8, w: 46.7, h: 50, color: "#3B82F6", seats: [{"x":40.83,"y":68.7},{"x":49.17,"y":68.7},{"x":57.5,"y":68.7},{"x":65.83,"y":68.7},{"x":74.17,"y":68.7},{"x":40.83,"y":79.57},{"x":49.17,"y":79.57}] },
     ],
   },
 ];
@@ -108,6 +108,30 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
         position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
         width: 0, height: 0, borderLeft: "4px solid transparent", borderRight: "4px solid transparent",
         borderTop: `4px solid ${color}60`,
+      }} />
+    </div>
+  );
+}
+
+// ── Desk monitor: sits on the desk, screen colour reflects agent status ──────
+function DeskMonitor({ x, y, size, status }: { x: number; y: number; size: number; status: Status }) {
+  const screen = STATUS_COLOR[status];
+  const working = status === "working";
+  const w = size * 0.82, h = size * 0.56;
+  return (
+    <div style={{
+      position: "absolute", left: `${x}%`, top: `${y}%`,
+      // sit the monitor on the desk, which is ~2 tiles above the agent's seat
+      transform: `translate(-50%, calc(-50% - ${size * 0.78}px))`,
+      width: w, height: h, zIndex: 6, pointerEvents: "none",
+      background: "#12151c", border: `${Math.max(1, size*0.05)}px solid #2b303c`,
+      borderRadius: 3, padding: size * 0.07, boxSizing: "border-box",
+    }}>
+      <div style={{
+        width: "100%", height: "100%", borderRadius: 1, background: screen,
+        opacity: status === "idle" ? 0.5 : 0.95,
+        boxShadow: working ? `0 0 ${size*0.25}px ${screen}` : "none",
+        animation: working ? "office-agent-ring-pulse 1.8s ease-in-out infinite" : "none",
       }} />
     </div>
   );
@@ -420,7 +444,8 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   useEffect(() => {
     const next = new Map<string, Motion>();
     for (const p of pins) {
-      const walkable = false; // seated office
+      // Agents wander in the open area of their room and return to their desk (home).
+      const walkable = true;
       const prev = motion.current.get(p.agent.id);
       next.set(p.agent.id, prev
         ? { ...prev, hx: p.x, hy: p.y, floor: p.floor, walkable }
@@ -511,6 +536,12 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
                 count={za.members.length}
                 workingCount={za.members.filter(a => workingIds.has(a.id)).length} />
             ))}
+            {/* Desk monitors — fixed at each agent's home desk, screen tinted by that
+                agent's status (green working / red attention / amber paused / grey idle). */}
+            {pins.map((pin) => {
+              const st = getStatus(pin.agent, workingIds.has(pin.agent.id));
+              return <DeskMonitor key={`mon-${pin.agent.id}`} x={pin.x} y={pin.y} size={pin.size} status={st} />;
+            })}
             {pins.map((pin, idx) => {
               const m = motion.current.get(pin.agent.id);
               const lx = m?.x ?? pin.x;
