@@ -290,7 +290,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   const [sprites, setSprites] = useState<Record<string, Partial<Record<Dir, string>> & { name?: string }>>({});
   useEffect(() => {
     let alive = true;
-    fetch("/assets/agent-sprites/manifest.json")
+    fetch(bustCache("/assets/agent-sprites/manifest.json"))
       .then(r => (r.ok ? r.json() : {}))
       .then(m => { if (alive) setSprites(m ?? {}); })
       .catch(() => {});
@@ -303,7 +303,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   const [catalog, setCatalog] = useState<CatalogManifest>({});
   useEffect(() => {
     let alive = true;
-    fetch(CATALOG_MANIFEST_URL)
+    fetch(bustCache(CATALOG_MANIFEST_URL))
       .then(r => (r.ok ? r.json() : {}))
       .then(m => { if (alive) setCatalog(m ?? {}); })
       .catch(() => {});

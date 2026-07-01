@@ -10,6 +10,7 @@ import { resolveGender } from "../lib/office-avatars";
 import {
   CATALOG,
   CATALOG_MANIFEST_URL,
+  bustCache,
   resolveAgentCharacterId,
   type CatalogManifest,
   type CatalogCharacter,
@@ -33,7 +34,7 @@ export function OfficeCharacterPicker({ agent, companyId, open, onClose }: {
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    fetch(CATALOG_MANIFEST_URL)
+    fetch(bustCache(CATALOG_MANIFEST_URL))
       .then((r) => (r.ok ? r.json() : {}))
       .then((m) => { if (alive) setManifest(m ?? {}); })
       .catch(() => {});
