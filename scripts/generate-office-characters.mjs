@@ -43,8 +43,8 @@ const SUFFIX =
 
 // id → subject clause. MUST stay in sync with CATALOG in office-sprite-catalog.ts.
 const CHARACTERS = {
-  male:          "a man office worker with short dark hair, wearing a navy business suit",
-  female:        "a woman office worker with a neat bob, wearing a smart blazer",
+  male:          "a man office worker with short dark hair, wearing a white button-down shirt with a tie and grey trousers, full body, head to toe, standing",
+  female:        "a woman office worker with long dark hair, wearing a white button-down shirt and grey trousers, full body, head to toe, standing",
   cat:           "an anthropomorphic orange tabby cat office worker, wearing a grey business suit, standing on two legs",
   fox:           "an anthropomorphic orange fox office worker, wearing a brown blazer, standing on two legs",
   dog:           "an anthropomorphic golden dog office worker, wearing a blue shirt and tie, standing on two legs",

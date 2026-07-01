@@ -41,11 +41,11 @@ export const PROMPT_SUFFIX =
  * (e.g. "cat-ginger", "cat-tuxedo") as separate rows.
  */
 export const CATALOG: CatalogCharacter[] = [
-  // ── Default people ────────────────────────────────────────────────────────
+  // ── Default people (matched pair: both white button-down + grey trousers) ──
   { id: "male", gender: "male", group: "people", emoji: "👨‍💼", zh: "男生（預設）", en: "Male (default)",
-    prompt: `a man office worker with short dark hair, wearing a navy business suit, ${""}` },
+    prompt: "a man office worker with short dark hair, wearing a white button-down shirt with a tie and grey trousers, full body, head to toe, standing," },
   { id: "female", gender: "female", group: "people", emoji: "👩‍💼", zh: "女生（預設）", en: "Female (default)",
-    prompt: `a woman office worker with a neat bob, wearing a smart blazer, ${""}` },
+    prompt: "a woman office worker with long dark hair, wearing a white button-down shirt and grey trousers, full body, head to toe, standing," },
 
   // ── Animals (anthropomorphic office workers, suit-and-tie chibi) ───────────
   { id: "cat", group: "animals", emoji: "🐱", zh: "貓", en: "Cat",
