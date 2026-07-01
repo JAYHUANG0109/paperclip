@@ -81,6 +81,23 @@ export function blit(dst, src, sx, sy, sw, sh, dx, dy) {
   }
 }
 
+// Alpha-composite a src region onto dst, nearest-neighbour scaled by `f` (may be
+// fractional). Destination top-left is (dx,dy) in px.
+export function blitScaled(dst, src, sx, sy, sw, sh, dx, dy, f) {
+  const ow = Math.round(sw * f), oh = Math.round(sh * f);
+  for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+    const ax = sx + Math.floor(x / f), ay = sy + Math.floor(y / f);
+    if (ax < 0 || ay < 0 || ax >= src.w || ay >= src.h) continue;
+    const bx = dx + x, by = dy + y; if (bx < 0 || by < 0 || bx >= dst.w || by >= dst.h) continue;
+    const s = (ay * src.w + ax) * 4, d = (by * dst.w + bx) * 4;
+    const sa = src.px[s + 3]; if (sa === 0) continue;
+    if (sa === 255) { dst.px[d]=src.px[s]; dst.px[d+1]=src.px[s+1]; dst.px[d+2]=src.px[s+2]; dst.px[d+3]=255; continue; }
+    const a = sa / 255, ia = 1 - a;
+    for (let k = 0; k < 3; k++) dst.px[d + k] = Math.round(src.px[s + k] * a + dst.px[d + k] * ia);
+    dst.px[d + 3] = Math.max(dst.px[d + 3], sa);
+  }
+}
+
 export function fillRect(dst, x0, y0, rw, rh, [r,g,b,a=255]) {
   for (let y = y0; y < y0 + rh; y++) for (let x = x0; x < x0 + rw; x++) {
     if (x<0||y<0||x>=dst.w||y>=dst.h) continue; const d=(y*dst.w+x)*4;

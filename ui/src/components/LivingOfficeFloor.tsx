@@ -43,18 +43,18 @@ const FLOORS: FloorDef[] = [
     id: "square",
     label: "Office",
     image: "/assets/pixelart/Office%20Square.png",
-    natW: 768,
-    natH: 672,
+    natW: 1184,
+    natH: 848,
     zones: [
-      { id: "meeting", name: "會議室", team: null, x: 2.1, y: 4.8, w: 25, h: 31, color: "#10B981" },
-      { id: "teaching", name: "教學組", team: "教學組", x: 31.3, y: 2.4, w: 37.5, h: 38.1, color: "#8B5CF6", seats: [{"x":38.54,"y":10.71},{"x":46.88,"y":10.71},{"x":55.21,"y":10.71},{"x":63.54,"y":10.71},{"x":38.54,"y":22.62},{"x":46.88,"y":22.62},{"x":55.21,"y":22.62},{"x":63.54,"y":22.62},{"x":38.54,"y":34.52}] },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 72.9, y: 7.1, w: 20.8, h: 26.2, color: "#6366F1", seats: [{"x":84.38,"y":22.62}] },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 2.1, y: 45.2, w: 27.1, h: 23.8, color: "#F59E0B", seats: [{"x":11.46,"y":53.57},{"x":19.79,"y":53.57},{"x":11.46,"y":65.48}] },
-      { id: "it", name: "資訊部", team: "資訊部", x: 31.3, y: 42.9, w: 37.5, h: 28.6, color: "#3B82F6", seats: [{"x":38.54,"y":53.57},{"x":46.88,"y":53.57},{"x":55.21,"y":53.57},{"x":63.54,"y":53.57},{"x":38.54,"y":65.48},{"x":46.88,"y":65.48},{"x":55.21,"y":65.48}] },
-      { id: "lounge", name: "休息室", team: null, x: 72.9, y: 45.2, w: 22.9, h: 21.4, color: "#EC4899" },
-      { id: "pantry", name: "茶水間", team: null, x: 4.2, y: 73.8, w: 22.9, h: 21.4, color: "#14B8A6" },
-      { id: "reception", name: "接待處", team: null, x: 35.4, y: 73.8, w: 29.2, h: 21.4, color: "#A855F7" },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 75, y: 73.8, w: 18.8, h: 21.4, color: "#F97316", seats: [{"x":84.38,"y":86.9}] },
+      { id: "meeting", name: "會議室", team: null, x: 4.1, y: 5.7, w: 21.6, h: 26.4, color: "#10B981" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 29.7, y: 1.9, w: 40.5, h: 34, color: "#8B5CF6", seats: [{"x":37.84,"y":14.62},{"x":45.95,"y":14.62},{"x":54.05,"y":14.62},{"x":62.16,"y":14.62},{"x":37.84,"y":25.94},{"x":45.95,"y":25.94},{"x":54.05,"y":25.94},{"x":62.16,"y":25.94}] },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 77, y: 5.7, w: 16.2, h: 24.5, color: "#6366F1", seats: [{"x":85.14,"y":19.34}] },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.4, y: 37.7, w: 27, h: 34, color: "#F59E0B", seats: [{"x":6.76,"y":50.47},{"x":14.86,"y":50.47},{"x":22.97,"y":50.47},{"x":6.76,"y":61.79}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 29.7, y: 37.7, w: 40.5, h: 34, color: "#3B82F6", seats: [{"x":37.84,"y":50.47},{"x":45.95,"y":50.47},{"x":54.05,"y":50.47},{"x":62.16,"y":50.47},{"x":37.84,"y":61.79},{"x":45.95,"y":61.79},{"x":54.05,"y":61.79}] },
+      { id: "lounge", name: "休息室", team: null, x: 75.7, y: 43.4, w: 17.6, h: 20.8, color: "#EC4899" },
+      { id: "pantry", name: "茶水間", team: null, x: 5.4, y: 75.5, w: 17.6, h: 20.8, color: "#14B8A6" },
+      { id: "reception", name: "接待處", team: null, x: 39.2, y: 75.5, w: 21.6, h: 20.8, color: "#A855F7" },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 77, y: 75.5, w: 14.9, h: 20.8, color: "#F97316", seats: [{"x":84.46,"y":87.26}] },
     ],
   },
 ];
@@ -63,7 +63,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 // Fixed on-floor character footprint in native map px — uniform for every agent
 // (≈ chair-sized). Visible sprite is AGENT_SIZE * SPRITE_SCALE.
-const AGENT_SIZE = 44;
+const AGENT_SIZE = 62;
 const SPRITE_SCALE = 2.0;
 
 // 8-way facing from a screen-space velocity (y points down → south).
@@ -118,7 +118,7 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
 function DeskMonitor({ x, y, size, status }: { x: number; y: number; size: number; status: Status }) {
   const screen = STATUS_COLOR[status];
   const working = status === "working";
-  const w = size * 0.62, h = size * 0.44;
+  const w = size * 0.5, h = size * 0.36;
   return (
     <div style={{
       position: "absolute", left: `${x}%`, top: `${y}%`,

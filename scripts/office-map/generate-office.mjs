@@ -1,18 +1,18 @@
-// Compose the Virtual Office from the Donarg Office Tileset as a 3x3 九宮格.
-// 9 rooms on a shared hallway floor. Team rooms fill their grid cell; decorative
-// rooms (會議室/休息室/茶水間/接待處) are drawn smaller, centered in their cell.
-// Team rooms get exactly `cap` desks (= headcount). Monitors are rendered by the app.
-import { decode, make, blit, fillRect, encode } from "./pnglib.mjs";
+// Compose the Virtual Office from the Donarg Office Tileset as a wide 3x3 九宮格.
+// Transparent background (rooms float on the page); furniture scaled 1.5x so desks
+// and chairs read big. Team rooms get exactly `cap` desks; monitors drawn by the app.
+import { decode, make, blit, blitScaled, fillRect, encode } from "./pnglib.mjs";
 
 const PACK = "/Users/jayhuang/dev/paperclip/paperclip/Office Tileset";
 const A5 = decode(PACK + "/Office VX Ace/A5 Office Floors & Walls.png");
 const M = decode(PACK + "/Office Tileset All 16x16.png");
 const T = 16;
+const F = 1.5;  // furniture scale
 
 const ROOM_FLOOR = { c: 8, r: 18 };
-const HALL_FLOOR = { c: 2, r: 16 };
-const tileAt = (d, t, tx, ty) => blit(d, A5, t.c*T, t.r*T, T, T, tx*T, ty*T);
-const obj = (d, mc, mr, wc, hc, tx, ty) => blit(d, M, mc*T, mr*T, wc*T, hc*T, tx*T, ty*T);
+const tileAt = (t, tx, ty) => blit(map, A5, t.c*T, t.r*T, T, T, tx*T, ty*T);
+// scaled object: placed by top-left tile, drawn F× bigger
+const objS = (mc, mr, wc, hc, tx, ty) => blitScaled(map, M, mc*T, mr*T, wc*T, hc*T, tx*T, ty*T, F);
 
 const DESK   = { c: 1,  r: 0,  w: 3, h: 2 };
 const CHAIR  = { c: 4,  r: 16, w: 1, h: 1 };
@@ -24,88 +24,86 @@ const FRIDGE = { c: 12, r: 16, w: 2, h: 2 };
 const TABLE  = { c: 4,  r: 1,  w: 4, h: 2 };
 const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
 
-// ── 3x3 grid geometry (tiles) ────────────────────────────────────────────────
-const COLX = [1, 15, 34], COLW = [13, 18, 13];
-const ROWY = [1, 18, 31], ROWH = [16, 12, 10];
-const MW = 48, MH = 42;                       // 768x672 → scales up big
+// wide grid
+const COLX = [1, 22, 53], COLW = [20, 30, 20];
+const ROWY = [1, 20, 39], ROWH = [18, 18, 13];
+const MW = 74, MH = 53;   // 1184x848 (~1.4:1, fills a wide viewport)
 
-// cell:[col,row]; dw/dh = drawn size (default: fill the cell)
 const ROOMS = [
-  { id:"meeting",  team:null,         name:"會議室",    cell:[0,0], dw:12, dh:13, kind:"meeting" },
-  { id:"teaching", team:"教學組",     name:"教學組",    cell:[1,0], cap:9 },
-  { id:"talent",   team:"人才發展",   name:"人才發展",  cell:[2,0], dw:10, dh:11, cap:1 },
-  { id:"lead",     team:"領導團隊",   name:"領導團隊",  cell:[0,1], dw:13, dh:10, cap:3 },
+  { id:"meeting",  team:null,         name:"會議室",    cell:[0,0], dw:16, dh:14, kind:"meeting" },
+  { id:"teaching", team:"教學組",     name:"教學組",    cell:[1,0], cap:8 },
+  { id:"talent",   team:"人才發展",   name:"人才發展",  cell:[2,0], dw:12, dh:13, cap:1 },
+  { id:"lead",     team:"領導團隊",   name:"領導團隊",  cell:[0,1], cap:4 },
   { id:"it",       team:"資訊部",     name:"資訊部",    cell:[1,1], cap:7 },
-  { id:"lounge",   team:null,         name:"休息室",    cell:[2,1], dw:11, dh:9, kind:"lounge" },
-  { id:"pantry",   team:null,         name:"茶水間",    cell:[0,2], dw:11, dh:9, kind:"pantry" },
-  { id:"reception",team:null,         name:"接待處",    cell:[1,2], dw:14, dh:9, kind:"reception" },
-  { id:"auto",     team:"系統自動化", name:"系統自動化",cell:[2,2], dw:9,  dh:9, cap:1 },
+  { id:"lounge",   team:null,         name:"休息室",    cell:[2,1], dw:13, dh:11, kind:"lounge" },
+  { id:"pantry",   team:null,         name:"茶水間",    cell:[0,2], dw:13, dh:11, kind:"pantry" },
+  { id:"reception",team:null,         name:"接待處",    cell:[1,2], dw:16, dh:11, kind:"reception" },
+  { id:"auto",     team:"系統自動化", name:"系統自動化",cell:[2,2], dw:11, dh:11, cap:1 },
 ];
 for (const rm of ROOMS) {
-  const [c, r] = rm.cell;
-  const cw = COLW[c], ch = ROWH[r], cx = COLX[c], cy = ROWY[r];
+  const [c, r] = rm.cell; const cw = COLW[c], ch = ROWH[r], cx = COLX[c], cy = ROWY[r];
   rm.w = rm.dw ?? cw; rm.h = rm.dh ?? ch;
-  rm.x = cx + Math.floor((cw - rm.w) / 2);
-  rm.y = cy + Math.floor((ch - rm.h) / 2);
+  rm.x = cx + Math.floor((cw - rm.w) / 2); rm.y = cy + Math.floor((ch - rm.h) / 2);
 }
 
-const map = make(MW*T, MH*T);
-for (let ty = 0; ty < MH; ty++) for (let tx = 0; tx < MW; tx++) tileAt(map, HALL_FLOOR, tx, ty);
+const map = make(MW*T, MH*T);   // transparent background
 const seats = {};
 
 function drawRoom(rm) {
   const { x, y, w, h } = rm;
-  for (let ty = y+1; ty < y+h-1; ty++) for (let tx = x+1; tx < x+w-1; tx++) tileAt(map, ROOM_FLOOR, tx, ty);
-  fillRect(map, x*T, y*T, w*T, T, [224,218,202,255]); fillRect(map, x*T, (y+h-1)*T, w*T, T, [224,218,202,255]);
-  fillRect(map, x*T, y*T, T, h*T, [224,218,202,255]); fillRect(map, (x+w-1)*T, y*T, T, h*T, [224,218,202,255]);
-  const E=[56,52,46,255];
+  for (let ty = y+1; ty < y+h-1; ty++) for (let tx = x+1; tx < x+w-1; tx++) tileAt(ROOM_FLOOR, tx, ty);
+  const W=[224,218,202,255], E=[56,52,46,255];
+  fillRect(map, x*T, y*T, w*T, T, W); fillRect(map, x*T, (y+h-1)*T, w*T, T, W);
+  fillRect(map, x*T, y*T, T, h*T, W); fillRect(map, (x+w-1)*T, y*T, T, h*T, W);
   fillRect(map, x*T, y*T, w*T, 2, E); fillRect(map, x*T, (y+h)*T-2, w*T, 2, E);
   fillRect(map, x*T, y*T, 2, h*T, E); fillRect(map, (x+w)*T-2, y*T, 2, h*T, E);
   fillRect(map, x*T, (y+1)*T-1, w*T, 1, E);
-  const dX = x + Math.floor(w/2) - 1; tileAt(map, ROOM_FLOOR, dX, y+h-1); tileAt(map, ROOM_FLOOR, dX+1, y+h-1);
+  const dX = x + Math.floor(w/2) - 1; tileAt(ROOM_FLOOR, dX, y+h-1); tileAt(ROOM_FLOOR, dX+1, y+h-1);
 }
 
-const seatPct = (tx, ty) => ({ x: +((tx+0.5)/MW*100).toFixed(2), y: +((ty+0.5)/MH*100).toFixed(2) });
+const seatPct = (tx, ty) => ({ x: +((tx)/MW*100).toFixed(2), y: +((ty)/MH*100).toFixed(2) });
 
 function furnishTeam(rm) {
   const { x, y, w, h, cap, id } = rm;
-  const PX = 4, PY = 5;
+  const dW = DESK.w*F, dH = DESK.h*F;        // scaled desk size (tiles)
+  const PX = dW + 1.5, PY = dH + 3;          // pitch
   const cols = Math.max(1, Math.min(cap, Math.floor((w - 2) / PX)));
   const rows = Math.ceil(cap / cols);
-  const gridW = cols * PX - 1, gridH = rows * PY - 1;
-  const sx = x + Math.max(1, Math.round((w - gridW) / 2));
-  const sy = y + Math.max(1, Math.round((h - gridH) / 2));
+  const gridW = cols * PX - 1.5, gridH = rows * PY - 3 + dH;
+  const sx = x + Math.max(1.5, (w - gridW) / 2);
+  const sy = y + Math.max(2, (h - gridH) / 2);   // ≥2 tiles from top wall
   const list = []; let n = 0;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols && n < cap; c++, n++) {
     const dx = sx + c * PX, dy = sy + r * PY;
-    obj(map, DESK.c, DESK.r, DESK.w, DESK.h, dx, dy);
-    obj(map, CHAIR.c, CHAIR.r, 1, 1, dx+1, dy+2);
-    list.push(seatPct(dx+1, dy+2));
+    objS(DESK.c, DESK.r, DESK.w, DESK.h, dx, dy);
+    const chairX = dx + dW/2 - CHAIR.w*F/2, chairY = dy + dH;
+    objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY);
+    list.push(seatPct(chairX + CHAIR.w*F/2, chairY + CHAIR.h*F/2));
   }
   seats[id] = list;
 }
 function furnishMeeting(rm) {
   const { x, y, w, h } = rm;
-  const tw = Math.min(TABLE.w, w-4), tx = x + Math.floor((w-tw)/2), ty = y + Math.floor(h/2)-1;
-  obj(map, TABLE.c, TABLE.r, tw, TABLE.h, tx, ty);
-  for (let i = 0; i < tw; i++) { obj(map, CHAIR.c, CHAIR.r, 1, 1, tx+i, ty-1); obj(map, CHAIR.c, CHAIR.r, 1, 1, tx+i, ty+2); }
+  const tw = TABLE.w, tx = x + (w - tw*F)/2, ty = y + h/2 - 1;
+  objS(TABLE.c, TABLE.r, tw, TABLE.h, tx, ty);
+  for (let i = 0; i < 3; i++) { objS(CHAIR.c, CHAIR.r, 1, 1, tx + i*1.8, ty - 1.6); objS(CHAIR.c, CHAIR.r, 1, 1, tx + i*1.8, ty + TABLE.h*F + 0.2); }
 }
 function furnishLounge(rm) {
-  const { x, y, w, h } = rm; const cx = x + Math.floor(w/2);
-  obj(map, SOFA.c, SOFA.r, SOFA.w, SOFA.h, cx-2, y+2);
-  obj(map, TABLE.c, TABLE.r, 2, 2, cx-1, y+5);
+  const { x, y, w, h } = rm; const cx = x + w/2;
+  objS(SOFA.c, SOFA.r, SOFA.w, SOFA.h, cx - SOFA.w*F/2, y+2);
+  objS(TABLE.c, TABLE.r, 2, 2, cx - 1.5, y+5.5);
 }
 function furnishPantry(rm) {
   const { x, y, w, h } = rm;
-  obj(map, COUNTER.c, COUNTER.r, Math.min(COUNTER.w, w-3), COUNTER.h, x+2, y+2);
-  obj(map, FRIDGE.c, FRIDGE.r, FRIDGE.w, FRIDGE.h, x+w-4, y+2);
-  obj(map, COOLER.c, COOLER.r, 1, 2, x+2, y+h-4);
+  objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, x+2, y+2);
+  objS(FRIDGE.c, FRIDGE.r, FRIDGE.w, FRIDGE.h, x+w-4.5, y+2);
+  objS(COOLER.c, COOLER.r, 1, 2, x+2, y+h-4.5);
 }
 function furnishReception(rm) {
-  const { x, y, w, h } = rm;
-  obj(map, COUNTER.c, COUNTER.r, Math.min(COUNTER.w, w-4), COUNTER.h, x + Math.floor((w-4)/2), y+2);
-  obj(map, PLANT.c, PLANT.r, 1, 2, x+2, y+h-4); obj(map, PLANT.c, PLANT.r, 1, 2, x+w-3, y+h-4);
-  obj(map, ARMCH.c, ARMCH.r, 1, 1, x+Math.floor(w/2)-1, y+h-3); obj(map, ARMCH.c, ARMCH.r, 1, 1, x+Math.floor(w/2)+1, y+h-3);
+  const { x, y, w, h } = rm; const cx = x + w/2;
+  objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, cx - COUNTER.w*F/2, y+2);
+  objS(PLANT.c, PLANT.r, 1, 2, x+2, y+h-4); objS(PLANT.c, PLANT.r, 1, 2, x+w-3, y+h-4);
+  objS(ARMCH.c, ARMCH.r, 1, 1, cx-2, y+h-3); objS(ARMCH.c, ARMCH.r, 1, 1, cx+1, y+h-3);
 }
 
 for (const rm of ROOMS) drawRoom(rm);
