@@ -155,12 +155,13 @@ function ConsoleView({
   const cats = con.digest.categories;
   const pendingApproval = [...cats.urgent, ...cats.nonUrgent].filter((it) => (it.summary || it.review) && !it.decision).length;
   const generated = con.digest.generatedAt ? new Date(con.digest.generatedAt) : null;
-  // Surface a silently-stale board: the pipeline refreshes ~4×/day on weekdays
-  // (longest normal gap is the 22:00→11:30 overnight, ~13.5h), so >16h old means
-  // at least one scheduled run was missed (e.g. an agent run failed). The
-  // watchdog already kills genuinely-stuck runs; this just tells the reader the
-  // numbers below may be behind Asana.
-  const STALE_MS = 16 * 60 * 60 * 1000;
+  // Surface a silently-stale board: the pipeline refreshes 2×/day on weekdays
+  // (12:00 + 16:00), so the longest NORMAL weekday gap is the 16:00→12:00 overnight
+  // (~20h). >22h old therefore means a scheduled run was likely missed (e.g. an
+  // agent run failed) — not just a normal overnight/weekend gap. The watchdog
+  // already kills genuinely-stuck runs; this just flags that the numbers below may
+  // be behind Asana. (Users can always press 更新 to force a re-sync.)
+  const STALE_MS = 22 * 60 * 60 * 1000;
   const isStale = generated ? Date.now() - generated.getTime() > STALE_MS : false;
 
   return (
