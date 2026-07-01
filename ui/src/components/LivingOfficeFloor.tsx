@@ -4,6 +4,7 @@ import type { LiveRunForIssue } from "../api/heartbeats";
 import { OfficeAvatar } from "./OfficeAvatar";
 import { agentTeams } from "../lib/agent-teams";
 import { resolveGender } from "../lib/office-avatars";
+import { displayAgentName } from "../lib/agent-name";
 import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
 
 // ── Floor / zone definitions ───────────────────────────────────────────────
@@ -208,7 +209,7 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, mov
             marginRight: 3, marginBottom: 1, verticalAlign: "middle",
             boxShadow: status !== "idle" ? `0 0 5px ${color}` : undefined,
           }} />
-          {agent.name}
+          {displayAgentName(agent.name)}
         </div>
       )}
     </div>

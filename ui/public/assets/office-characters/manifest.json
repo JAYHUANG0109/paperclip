@@ -8,7 +8,17 @@
     "north": "/assets/office-characters/male/north.png",
     "north-west": "/assets/office-characters/male/north-west.png",
     "west": "/assets/office-characters/male/west.png",
-    "south-west": "/assets/office-characters/male/south-west.png"
+    "south-west": "/assets/office-characters/male/south-west.png",
+    "walk": {
+      "south-east": "/assets/office-characters/male/walk/south-east.gif",
+      "south-west": "/assets/office-characters/male/walk/south-west.gif",
+      "north-east": "/assets/office-characters/male/walk/north-east.gif",
+      "north-west": "/assets/office-characters/male/walk/north-west.gif",
+      "north": "/assets/office-characters/male/walk/north.gif",
+      "south": "/assets/office-characters/male/walk/south.gif",
+      "east": "/assets/office-characters/male/walk/east.gif",
+      "west": "/assets/office-characters/male/walk/west.gif"
+    }
   },
   "female": {
     "name": "female",
@@ -19,6 +29,16 @@
     "north": "/assets/office-characters/female/north.png",
     "north-west": "/assets/office-characters/female/north-west.png",
     "west": "/assets/office-characters/female/west.png",
-    "south-west": "/assets/office-characters/female/south-west.png"
+    "south-west": "/assets/office-characters/female/south-west.png",
+    "walk": {
+      "south-east": "/assets/office-characters/female/walk/south-east.gif",
+      "south-west": "/assets/office-characters/female/walk/south-west.gif",
+      "north-east": "/assets/office-characters/female/walk/north-east.gif",
+      "north-west": "/assets/office-characters/female/walk/north-west.gif",
+      "north": "/assets/office-characters/female/walk/north.gif",
+      "south": "/assets/office-characters/female/walk/south.gif",
+      "east": "/assets/office-characters/female/walk/east.gif",
+      "west": "/assets/office-characters/female/walk/west.gif"
+    }
   }
 }

@@ -12,6 +12,7 @@ import { leaderboardApi, type LeaderboardEntry } from "../api/leaderboard";
 import { OfficeAvatar } from "../components/OfficeAvatar";
 import { LivingOfficeFloor } from "../components/LivingOfficeFloor";
 import { OfficeCharacterPicker } from "../components/OfficeCharacterPicker";
+import { displayAgentName } from "../lib/agent-name";
 import { TeamFilterBar } from "../components/TeamFilterBar";
 import { ViewSwitchButton } from "../components/ViewSwitchButton";
 import { agentMatchesTeams, listAllTeams, useAgentTeamFilter } from "../lib/agent-teams";
@@ -184,7 +185,7 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
             )}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-lg font-bold">{agent.name}</div>
+            <div className="truncate text-lg font-bold">{displayAgentName(agent.name)}</div>
             <div className="truncate text-sm text-muted-foreground">{agent.title ?? agent.role}</div>
             <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs">
               <span className={cn("h-2 w-2 rounded-full", status.dot)} />

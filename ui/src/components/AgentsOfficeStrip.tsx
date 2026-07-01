@@ -4,6 +4,7 @@ import { Building2, ChevronDown, Zap } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { OfficeAvatar } from "./OfficeAvatar";
 import { agentUrl, cn } from "../lib/utils";
+import { displayAgentName } from "../lib/agent-name";
 import type { Agent } from "@paperclipai/shared";
 
 /**
@@ -67,26 +68,26 @@ export function AgentsOfficeStrip({
               key={agent.id}
               to={agentUrl(agent)}
               title={agent.name}
-              className="group flex w-[68px] shrink-0 flex-col items-center gap-1 rounded-lg p-1.5 text-center transition-colors hover:bg-accent/50"
+              className="group flex w-[92px] shrink-0 flex-col items-center gap-1 rounded-lg p-1.5 text-center transition-colors hover:bg-accent/50"
             >
-              <div className="relative h-10 w-10">
+              <div className="relative h-16 w-16">
                 <div
                   className={cn(
                     "absolute inset-0 rounded-full border bg-background",
                     working ? "border-emerald-400/70" : "border-border",
                   )}
                 />
-                <div className="absolute inset-x-0 -top-1.5 flex justify-center">
-                  <OfficeAvatar agent={agent} size={44} animated={false} />
+                <div className="absolute inset-x-0 -top-2 flex justify-center">
+                  <OfficeAvatar agent={agent} size={72} animated={false} />
                 </div>
                 {working && (
-                  <span className="absolute -right-0.5 -top-0.5 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-white">
-                    <Zap className="h-2 w-2" />
+                  <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
+                    <Zap className="h-2.5 w-2.5" />
                   </span>
                 )}
               </div>
-              <span className="w-full truncate text-[10px] leading-tight text-foreground/80">
-                {agent.name}
+              <span className="w-full truncate text-[11px] leading-tight text-foreground/80">
+                {displayAgentName(agent.name)}
               </span>
             </Link>
           );
