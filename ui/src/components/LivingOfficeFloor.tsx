@@ -10,13 +10,15 @@ import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, type CatalogManifest, t
 interface Zone {
   id: string;
   name: string;
+  // The team whose agents sit here (must match agentTeams()). null = a decorative
+  // room (meeting/lounge/茶水間) with no agents.
+  team: string | null;
   // Room rectangle (walls) — used for the overlay border + label. % of map.
   x: number;
   y: number;
   w: number;
   h: number;
   // Interior floor rectangle — where agents are actually seated. % of map.
-  // Tighter than the room so avatars sit on open floor, not on walls/furniture.
   fx: number;
   fy: number;
   fw: number;
@@ -35,27 +37,28 @@ interface FloorDef {
 
 // Coordinates below are hand-tuned to the two pixel-art maps so agents land on
 // the open floor of each room (roughly on the workstation rows), not on walls.
+// Square office generated from the Donarg tileset by scripts/office-map/generate-office.mjs.
+// Rooms are sized to team headcount (教學組 biggest, 系統自動化 smallest) + meeting/
+// lounge/茶水間. Each zone maps to one team; decorative rooms have team: null.
 const FLOORS: FloorDef[] = [
   {
-    id: "floor1",
-    label: "Floor 1",
-    image: "/assets/pixelart/Office%20Level%204.png",
-    natW: 640,
-    natH: 800,
+    id: "square",
+    label: "Office",
+    image: "/assets/pixelart/Office%20Square.png",
+    natW: 800,
+    natH: 640,
     zones: [
-      { id: "planning", name: "Planning Studio", x: 32, y: 3,  w: 36, h: 27, fx: 35, fy: 15, fw: 30, fh: 14, color: "#8B5CF6" },
-      { id: "shipyard", name: "Shipyard",        x: 4,  y: 32, w: 50, h: 37, fx: 8,  fy: 46, fw: 44, fh: 22, color: "#3B82F6" },
-      { id: "systems",  name: "Systems Bay",     x: 64, y: 45, w: 32, h: 18, fx: 66, fy: 47, fw: 29, fh: 14, color: "#10B981" },
-      { id: "commons",  name: "Commons",         x: 4,  y: 69, w: 50, h: 28, fx: 7,  fy: 76, fw: 45, fh: 20, color: "#F59E0B" },
-      { id: "signal",   name: "Signal Room",     x: 64, y: 69, w: 32, h: 28, fx: 66, fy: 73, fw: 29, fh: 22, color: "#EC4899" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 2, y: 2.5, w: 44, h: 55, fx: 5, fy: 6.3, fw: 38, fh: 47.5, color: "#8B5CF6" },
+      { id: "it", name: "資訊部", team: "資訊部", x: 2, y: 60, w: 44, h: 37.5, fx: 5, fy: 63.7, fw: 38, fh: 30, color: "#3B82F6" },
+      { id: "meeting", name: "會議室", team: null, x: 48, y: 2.5, w: 26, h: 32.5, fx: 51, fy: 6.3, fw: 20, fh: 25, color: "#10B981" },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 48, y: 37.5, w: 26, h: 25, fx: 51, fy: 41.3, fw: 20, fh: 17.5, color: "#F59E0B" },
+      { id: "lounge", name: "休息室", team: null, x: 48, y: 65, w: 26, h: 32.5, fx: 51, fy: 68.8, fw: 20, fh: 25, color: "#EC4899" },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 76, y: 2.5, w: 22, h: 27.5, fx: 79, fy: 6.3, fw: 16, fh: 20, color: "#6366F1" },
+      { id: "pantry", name: "茶水間", team: null, x: 76, y: 32.5, w: 22, h: 27.5, fx: 79, fy: 36.3, fw: 16, fh: 20, color: "#14B8A6" },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 76, y: 65, w: 14, h: 20, fx: 79, fy: 68.8, fw: 8, fh: 12.5, color: "#F97316" },
     ],
   },
 ];
-
-// Native-pixel area of a zone's FLOOR — used for capacity-aware team placement.
-function zoneAreaPx(z: Zone, f: FloorDef) {
-  return (z.fw / 100) * f.natW * (z.fh / 100) * f.natH;
-}
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -198,15 +201,14 @@ function ZoneOverlay({ zone, teamName, count, workingCount }: {
   zone: Zone; teamName: string; count: number; workingCount: number;
 }) {
   const [hovered, setHovered] = useState(false);
-  const isActive = workingCount > 0;
   const label = teamName && teamName !== "__ungrouped__" ? teamName : zone.name;
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{
+      // The map image already has painted walls, so no border here — just a subtle
+      // hover tint + the room label.
       position: "absolute", left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.w}%`, height: `${zone.h}%`,
-      border: `1.5px solid ${zone.color}${hovered ? "90" : "40"}`, borderRadius: 6,
-      background: hovered ? `${zone.color}1a` : isActive ? `${zone.color}0c` : "transparent",
-      boxShadow: isActive ? `inset 0 0 24px ${zone.color}10` : "none",
-      transition: "border-color .2s, background .2s", zIndex: 2, cursor: "default",
+      background: hovered ? `${zone.color}14` : "transparent",
+      transition: "background .2s", zIndex: 2, cursor: "default",
     }}>
       <div style={{
         position: "absolute", top: 4, left: 5, fontSize: 8, fontWeight: 800, color: zone.color,
@@ -328,42 +330,37 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     (liveRuns ?? []).filter(r => r.currentStatusMessage).map(r => [r.agentId, r.currentStatusMessage!])
   ), [liveRuns]);
 
-  // Teams sorted by size (largest first)
-  const teamList = useMemo(() => {
+  // Group agents by their team.
+  const byTeam = useMemo(() => {
     const map = new Map<string, Agent[]>();
     for (const a of agents) {
       const key = agentTeams(a)[0] ?? "__ungrouped__";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(a);
     }
-    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
+    return map;
   }, [agents]);
 
-  // Capacity-aware assignment: fill Floor 1 rooms first (biggest team → biggest
-  // room by native-pixel area), then overflow to Floor 2. This keeps the default
-  // floor populated and routes large teams into the largest rooms.
+  // Explicit team→room mapping: each zone declares its team (decorative rooms have
+  // team: null). Agents whose team has no room fall into the first team-less spare
+  // room, else the biggest room.
   const zoneAssignments = useMemo(() => {
-    const ordered = FLOORS.flatMap((f, fi) =>
-      f.zones
-        .map(z => ({ zone: z, floorIdx: fi, area: zoneAreaPx(z, f) }))
-        .sort((a, b) => b.area - a.area)   // within a floor, biggest first
-    ); // floor 0 zones (by area) then floor 1 zones (by area)
-
-    const assignments = ordered.map(o => ({
-      zone: o.zone, floorIdx: o.floorIdx, teamName: "", members: [] as Agent[],
+    const zones = FLOORS[floorIdx].zones;
+    const assignments = zones.map(zone => ({
+      zone, floorIdx, teamName: zone.team ?? zone.name, members: [] as Agent[],
     }));
-
-    teamList.forEach(([name, members], i) => {
-      if (i < assignments.length) {
-        assignments[i].teamName = name;
-        assignments[i].members  = members;
-      } else {
-        const zi = i % assignments.length; // rare overflow: merge into an existing room
-        assignments[zi].members = [...assignments[zi].members, ...members];
-      }
-    });
+    const claimed = new Set<string>();
+    for (const a of assignments) {
+      if (a.zone.team && byTeam.has(a.zone.team)) { a.members = byTeam.get(a.zone.team)!; claimed.add(a.zone.team); }
+    }
+    // Any team without a matching room → drop into the largest team room.
+    const spare = assignments.filter(a => a.zone.team).sort((x, y) =>
+      (y.zone.fw * y.zone.fh) - (x.zone.fw * x.zone.fh))[0];
+    for (const [team, members] of byTeam) {
+      if (!claimed.has(team) && spare) spare.members = [...spare.members, ...members];
+    }
     return assignments;
-  }, [teamList]);
+  }, [byTeam, floorIdx]);
 
   const floorZones = useMemo(
     () => zoneAssignments.filter(za => za.floorIdx === floorIdx),
