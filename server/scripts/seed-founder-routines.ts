@@ -24,10 +24,8 @@ const VARIANT = (process.argv[4] || "founder") as "founder" | "principal" | "pri
 const DB_URL = process.env.SEED_DB_URL || "postgres://paperclip:paperclip@127.0.0.1:54329/paperclip";
 
 const TRIGGERS = [
-  { label: "11:30 晨間彙整", cron: "30 11 * * 1-5" },
-  { label: "15:30 午後彙整", cron: "30 15 * * 1-5" },
-  { label: "19:30 傍晚彙整", cron: "30 19 * * 1-5" },
-  { label: "22:00 夜間全量複查", cron: "0 22 * * 1-5" },
+  { label: "12:00 中午彙整", cron: "0 12 * * 1-5" },
+  { label: "16:00 午後彙整", cron: "0 16 * * 1-5" },
 ];
 
 // Shared tail describing the founder-review-item / founder-close-item contract.

@@ -92,9 +92,25 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
     (decide.isPending ? decide.variables?.gid : undefined) ?? (close.isPending ? close.variables?.gid : undefined);
   const commentingGid = comment.isPending ? comment.variables?.gid : undefined;
 
+  // Manual "更新": wake the caller's own agent to re-sync from Asana. The agent
+  // regenerates asynchronously, so we pull the fresh digest a couple of times
+  // after firing, and keep the button in its spinning state until then.
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useMutation({
+    mutationFn: () => dashboardApi.refreshFounderDigest(companyId),
+    onMutate: () => setRefreshing(true),
+    onSuccess: () => {
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: KEY(companyId) }), 8000);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: KEY(companyId) });
+        setRefreshing(false);
+      }, 22000);
+    },
+    onError: () => setRefreshing(false),
+  });
+
   const consoles = data?.consoles ?? [];
   if (consoles.length === 0) return null;
-  const showTitle = consoles.length > 1; // only label each group when there's more than one
 
   return (
     <div className="space-y-6">
@@ -102,9 +118,10 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
         <ConsoleView
           key={con.key}
           console={con}
-          showTitle={showTitle}
           pendingGid={pendingGid}
           commentingGid={commentingGid}
+          refreshing={refreshing}
+          onRefresh={() => refresh.mutate()}
           onDecide={(gid, decision, note) => decide.mutate({ gid, decision, note })}
           onClose={(gid, closed) => close.mutate({ gid, closed })}
           onComment={(gid, text) => comment.mutate({ gid, text })}
@@ -117,17 +134,19 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
 /** One console: the status-tile bar + four priority blocks. */
 function ConsoleView({
   console: con,
-  showTitle,
   pendingGid,
   commentingGid,
+  refreshing,
+  onRefresh,
   onDecide,
   onClose,
   onComment,
 }: {
   console: DailyConsole;
-  showTitle: boolean;
   pendingGid: string | undefined;
   commentingGid: string | undefined;
+  refreshing: boolean;
+  onRefresh: () => void;
   onDecide: (gid: string, decision: FounderDecision | null, note?: string) => void;
   onClose: (gid: string, closed: boolean) => void;
   onComment: (gid: string, text: string) => void;
@@ -146,7 +165,25 @@ function ConsoleView({
 
   return (
     <div className="space-y-3">
-      {showTitle && <h2 className="text-sm font-semibold text-foreground/80">{con.title}</h2>}
+      {/* Console title + manual 更新 (re-sync from Asana) on the same row. */}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-foreground/80">{con.title}</h2>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          title={t("founder.refreshHint", { defaultValue: "從 Asana 重新整理（手動更新）" })}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium",
+            "hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60",
+          )}
+        >
+          <RotateCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+          {refreshing
+            ? t("founder.refreshing", { defaultValue: "更新中…" })
+            : t("founder.refresh", { defaultValue: "更新" })}
+        </button>
+      </div>
       {/* Workflow status bar */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile label="🔴 急件待批" value={cats.urgent.length} tone="red" />

@@ -242,6 +242,32 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     res.json(digest);
   });
 
+  // Manual refresh: the 創辦人/園長 presses "更新" on their console. Wakes their OWN
+  // agent to re-run the daily digest pipeline now (re-read Asana → regenerate
+  // summaries + drafts → rewrite the digest), giving on-demand control alongside
+  // the 12:00 / 16:00 schedule. Never posts Asana comments or decisions.
+  router.post("/companies/:companyId/founder-digest/refresh", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account to refresh from Asana." });
+      return;
+    }
+    await heartbeat.wakeup(agentId, {
+      source: "on_demand",
+      triggerDetail: "manual",
+      reason: "founder-digest-refresh",
+      payload: { directive: "founder-digest-refresh" },
+      idempotencyKey: `founder-refresh:${agentId}:${Math.floor(Date.now() / 60000)}`,
+      requestedByActorType: "user",
+      requestedByActorId: userId ?? null,
+    });
+    res.json({ ok: true });
+  });
+
   // Record the founder's decision on a 待批閱 item's draft 批閱 — 核准 (approved) /
   // 請求變更 (changes_requested) / 拒絕 (rejected), with an optional note (the
   // founder's comment, suggestion, or regards). Optimistically flags the stored
