@@ -86,6 +86,17 @@ export type CatalogManifest = Record<string, SpriteSet & { name?: string }>;
 /** Public URL of the catalog manifest the office fetches at runtime. */
 export const CATALOG_MANIFEST_URL = "/assets/office-characters/manifest.json";
 
+// Bump when the sprite PNGs are regenerated — the filenames stay the same, so
+// without this the browser serves stale cached images. Appended as ?v= to every
+// sprite URL so a redeploy always shows the latest art.
+export const ART_VERSION = "2";
+
+/** Append the art-version cache-buster to a sprite URL. */
+export function bustCache(url: string): string {
+  if (!url) return url;
+  return url.includes("?") ? url : `${url}?v=${ART_VERSION}`;
+}
+
 /**
  * The catalog character id to show for an agent: their explicit choice if set,
  * otherwise the gender-default ("male"/"female") so seeded agents get sensible

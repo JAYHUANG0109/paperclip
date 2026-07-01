@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { CartoonAvatar } from "./CartoonAvatar";
 import { resolveAvatarSources, resolveGender, isSpriteSource } from "../lib/office-avatars";
+import { bustCache } from "../lib/office-sprite-catalog";
 import { cn } from "../lib/utils";
 
 interface Props {
@@ -20,8 +21,9 @@ export function OfficeAvatar({ agent, size = 56, className, animated = true, sty
   const [idx, setIdx] = useState(0);
 
   if (idx < sources.length) {
-    const src = sources[idx]!;
-    const sprite = isSpriteSource(src);
+    const rawSrc = sources[idx]!;
+    const sprite = isSpriteSource(rawSrc);
+    const src = sprite ? bustCache(rawSrc) : rawSrc;
     return (
       <img
         src={src}

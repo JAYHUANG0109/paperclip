@@ -4,7 +4,7 @@ import type { LiveRunForIssue } from "../api/heartbeats";
 import { OfficeAvatar } from "./OfficeAvatar";
 import { agentTeams } from "../lib/agent-teams";
 import { resolveGender } from "../lib/office-avatars";
-import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
+import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
 
 // ── Floor / zone definitions ───────────────────────────────────────────────
 interface Zone {
@@ -58,6 +58,11 @@ function zoneAreaPx(z: Zone, f: FloorDef) {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+// Fixed on-floor character footprint in native map px — uniform for every agent
+// (≈ chair-sized). Visible sprite is AGENT_SIZE * SPRITE_SCALE.
+const AGENT_SIZE = 30;
+const SPRITE_SCALE = 1.6;
 
 // 8-way facing from a screen-space velocity (y points down → south).
 type Dir = "south" | "south-east" | "east" | "north-east" | "north" | "north-west" | "west" | "south-west";
@@ -153,7 +158,7 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, mov
             }} />
             <img src={spriteUrl} alt={agent.name ?? ""} draggable={false} style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-52%)",
-              width: size * 1.9, height: size * 1.9, objectFit: "contain",
+              width: size * SPRITE_SCALE, height: size * SPRITE_SCALE, objectFit: "contain",
               imageRendering: "pixelated", pointerEvents: "none",
               filter: status === "idle" || status === "paused"
                 ? "saturate(0.7) brightness(0.85)"
@@ -297,11 +302,13 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
 
   const fitZoom = useMemo(() => {
     if (!viewport.w || !viewport.h) return 1;
-    // Contain-fit the whole floor to the viewport — fill the limiting dimension so
-    // the map (and everyone on it) is as large as fits without cropping. Uniform
-    // scale, so proportions are always preserved. Users can still zoom with +/−.
-    const contain = Math.min(viewport.w / mapW, viewport.h / mapH);
-    return clamp(contain, 0.3, 3);
+    // Contain-fit the whole floor to the viewport, leaving a small gutter so the
+    // map never quite touches the edges — this prevents the scrollbar-appears →
+    // width-shrinks → refit → scrollbar-disappears feedback loop that made the map
+    // twitch (時大時小). Rounded to 2dp to kill sub-pixel jitter. Uniform scale, so
+    // proportions are always preserved.
+    const contain = Math.min((viewport.w - 12) / mapW, (viewport.h - 12) / mapH);
+    return Math.round(clamp(contain, 0.3, 3) * 100) / 100;
   }, [viewport, mapW, mapH]);
   const zoom = userZoom ?? fitZoom;
 
@@ -366,12 +373,12 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
       const usableWpx = (zone.fw / 100) * mapW;
       const usableHpx = (zone.fh / 100) * mapH;
 
-      // columns matched to room aspect ratio, then a square cell
+      // columns matched to room aspect ratio (spacing adapts to crowding), but the
+      // character SIZE is FIXED so everyone is the same size — roughly chair-sized
+      // in native map px — regardless of how full their room is.
       const cols = clamp(Math.round(Math.sqrt(N * (usableWpx / usableHpx))), 1, N);
       const rows = Math.ceil(N / cols);
-      const cellW = usableWpx / cols;
-      const cellH = usableHpx / rows;
-      const size = clamp(Math.min(cellW * 0.92, cellH * 0.8), 24, 84);
+      const size = AGENT_SIZE;
       minSize = Math.min(minSize, size);
 
       const stepXpct = zone.fw / cols;
@@ -492,10 +499,14 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
       </div>
 
       {/* ── Body: full-bleed map, frameless ──────────────────────────── */}
+      {/* Outer is MEASURED and overflow:hidden so it never grows a scrollbar — that
+          stability is what stops the resize↔scrollbar twitch. The inner layer does
+          the actual scrolling (only when the user zooms in past fit). */}
       <div ref={viewportRef} style={{
-        height: "calc(100vh - 112px)", minHeight: 480, overflow: "auto", position: "relative",
+        height: "calc(100dvh - 132px)", minHeight: 480, overflow: "hidden", position: "relative",
         borderRadius: 12,
       }}>
+        <div style={{ position: "absolute", inset: 0, overflow: "auto" }}>
         <div style={{
           width: Math.max(viewport.w, scaledW), height: Math.max(viewport.h, scaledH), position: "relative",
         }}>
@@ -519,7 +530,8 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const ly = m?.y ?? pin.y;
               const dir = m?.dir ?? "south";
               const set = spriteSetFor(pin.agent);
-              const spriteUrl = set ? (set[dir] ?? set.south ?? null) : null;
+              const rawSprite = set ? (set[dir] ?? set.south ?? null) : null;
+              const spriteUrl = rawSprite ? bustCache(rawSprite) : null;
               return (
               <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}
                 status={getStatus(pin.agent, workingIds.has(pin.agent.id))}
@@ -531,6 +543,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               );
             })}
           </div>
+        </div>
         </div>
       </div>
     </div>

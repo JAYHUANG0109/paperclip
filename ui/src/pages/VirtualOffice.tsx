@@ -158,10 +158,10 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
         {/* Hero */}
         <div className="flex items-center gap-4">
           <div className={cn(
-            "relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 bg-background",
+            "relative flex h-28 w-28 shrink-0 items-center justify-center rounded-full border-2 bg-background",
             working ? "border-emerald-400/70" : "border-border",
           )}>
-            <OfficeAvatar agent={agent} size={72} animated={false} />
+            <OfficeAvatar agent={agent} size={104} animated={false} />
             {canManage && (
               <>
                 <button
