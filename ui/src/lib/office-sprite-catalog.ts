@@ -109,7 +109,7 @@ export function bustCache(url: string): string {
 // The male art reads visually smaller at the same scale, so it renders larger.
 // Used on the floor AND for the circular avatars so they stay consistent.
 // (The agent-browsing top strip caps this at 1.1 via charScaleCap.)
-export const CHARACTER_SCALE: Record<string, number> = { male: 1.3 };
+export const CHARACTER_SCALE: Record<string, number> = { male: 1.2 };
 export function characterScale(id: string | null | undefined): number {
   return (id != null && CHARACTER_SCALE[id]) || 1;
 }
