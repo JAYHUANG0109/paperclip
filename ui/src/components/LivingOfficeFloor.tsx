@@ -583,9 +583,10 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const working = workingIds.has(pin.agent.id);
               const gender = resolveGender(pin.agent);
               const lx = working ? pin.x : (m?.x ?? pin.x);
-              // A working agent stands just forward of its chair (between chair and
-              // desk) and faces its screen: male → north, female → north-west.
-              const ly = (working ? pin.y : (m?.y ?? pin.y)) - (working ? 3 : 0);
+              // A working agent sits at its own desk (unchanged position, so it
+              // never covers the monitor) and just turns to face its screen:
+              // male → north, female → north-west.
+              const ly = working ? pin.y : (m?.y ?? pin.y);
               const dir = working ? (gender === "male" ? "north" : "north-west") : (m?.dir ?? "south");
               const set = spriteSetFor(pin.agent);
               // While moving (never while working), play the walk GIF for the
