@@ -94,15 +94,14 @@ build_release() {
   log "Installing dependencies (pnpm install --frozen-lockfile)"
   ( cd "$rel" && pnpm install --frozen-lockfile ) || { rm -rf "$rel"; die "pnpm install failed — live untouched ($(basename "$(current_release)") still serving)"; }
 
-  # The server runs from TS source via tsx (workspace packages export ./src/*),
-  # so it needs no package build — only a typecheck to validate. The UI, however,
-  # is served as a static prebuilt bundle, so ui/dist MUST be built. Both run in
-  # this isolated release dir; a failure aborts before any flip (live untouched).
-  log "Validating server (tsc --noEmit)"
-  ( cd "$rel" && pnpm --filter @paperclipai/server exec tsc --noEmit -p tsconfig.json ) || { rm -rf "$rel"; die "server typecheck FAILED — live untouched ($(basename "$(current_release)") still serving)"; }
-
-  log "Building UI bundle (pnpm --filter @paperclipai/ui build)"
-  ( cd "$rel" && pnpm --filter @paperclipai/ui build ) || { rm -rf "$rel"; die "UI build FAILED — live untouched ($(basename "$(current_release)") still serving)"; }
+  # Build the whole repo in topological order (pnpm run build): this builds the
+  # dist-exporting packages the server imports at runtime (@paperclipai/plugin-sdk,
+  # the plugins) AND the static UI bundle (ui/dist) the server serves. The server
+  # itself runs from TS source via tsx, so its final gate is the post-flip health
+  # check, not tsc. Everything happens in this isolated release dir; a failure
+  # aborts before any flip (live untouched).
+  log "Building repo (pnpm run build) — packages + UI bundle"
+  ( cd "$rel" && pnpm run build ) || { rm -rf "$rel"; die "Build FAILED — live untouched ($(basename "$(current_release)") still serving)"; }
   [ -d "$rel/ui/dist" ] || { rm -rf "$rel"; die "Build produced no ui/dist — live untouched"; }
 
   REL="$rel"
