@@ -173,10 +173,13 @@ function AgentPin({ agent, x, y, size, status, bubble, showLabel, spriteUrl, spr
         }}>
         {spriteUrl ? (
           <>
-            {/* ground shadow so the character reads as standing on the floor */}
+            {/* ground shadow, anchored under the character's FEET (which sit at
+                ~0.4*spriteH below the box centre given the sprite's -52% offset and
+                its ~8% bottom margin) so agents read as standing, not floating. */}
             <div style={{
-              position: "absolute", left: "50%", bottom: -size * 0.04, transform: "translateX(-50%)",
-              width: size * 0.62, height: size * 0.16, borderRadius: "50%",
+              position: "absolute", left: "50%", top: size * (0.5 + 0.4 * spriteScale),
+              transform: "translate(-50%,-50%)",
+              width: size * 0.31 * spriteScale, height: size * 0.08 * spriteScale, borderRadius: "50%",
               background: "rgba(0,0,0,0.38)", filter: "blur(1px)", pointerEvents: "none",
             }} />
             <img src={spriteUrl} alt={agent.name ?? ""} draggable={false} style={{
@@ -316,7 +319,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   // outranks bespoke so the whole floor shares one consistent look until a user
   // picks a specific character.
   const spriteSetFor = useMemo(() => {
-    return (agent: Agent): (SpriteSet & { walk?: SpriteSet; walkScale?: number }) | null => {
+    return (agent: Agent): (SpriteSet & { walk?: SpriteSet; walkScale?: number; scale?: number }) | null => {
       const chosen = agent.metadata?.officeCharacterId;
       if (typeof chosen === "string" && CATALOG_BY_ID.has(chosen)) {
         const set = catalog[chosen];
@@ -559,9 +562,11 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const walkUrl = moving && set?.walk ? (set.walk[dir] ?? set.walk.south ?? null) : null;
               const rawSprite = walkUrl ?? (set ? (set[dir] ?? set.south ?? null) : null);
               const spriteUrl = rawSprite ? bustCache(rawSprite) : null;
-              // Walk GIFs aren't trimmed → scale them up (walkScale) so the moving
-              // character matches the static sprite's size.
-              const spriteScale = walkUrl ? SPRITE_SCALE * (set?.walkScale ?? 1) : SPRITE_SCALE;
+              // Walk GIFs are re-framed to match the static sprite (walkScale ≈ 1).
+              // A per-character `scale` then sizes the whole look (e.g. male 1.2×);
+              // it applies to both the static PNG and the walk GIF uniformly.
+              const base = walkUrl ? SPRITE_SCALE * (set?.walkScale ?? 1) : SPRITE_SCALE;
+              const spriteScale = base * (set?.scale ?? 1);
               return (
               <AgentPin key={pin.agent.id} agent={pin.agent} x={lx} y={ly} size={pin.size}
                 status={getStatus(pin.agent, workingIds.has(pin.agent.id))}

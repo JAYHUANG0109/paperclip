@@ -19,7 +19,8 @@
       "east": "/assets/office-characters/male/walk/east.gif",
       "west": "/assets/office-characters/male/walk/west.gif"
     },
-    "walkScale": 1
+    "walkScale": 1,
+    "scale": 1.2
   },
   "female": {
     "name": "female",
