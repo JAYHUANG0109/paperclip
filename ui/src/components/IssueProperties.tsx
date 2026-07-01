@@ -28,6 +28,7 @@ import {
 import { getRecentProjectIds, trackRecentProject } from "../lib/recent-projects";
 import { orderItemsBySelectedAndRecent } from "../lib/recent-selections";
 import { formatAssigneeUserLabel } from "../lib/assignees";
+import { displayAgentName } from "../lib/agent-name";
 import { buildExecutionPolicy, stageParticipantValues } from "../lib/issue-execution-policy";
 import { formatMonitorOffset } from "../lib/issue-monitor";
 import { formatRetryReason } from "../lib/runRetryState";
@@ -527,7 +528,7 @@ export function IssueProperties({
   const agentName = (id: string | null) => {
     if (!id || !agents) return null;
     const agent = agents.find((a) => a.id === id);
-    return agent?.name ?? id.slice(0, 8);
+    return agent ? displayAgentName(agent.name) : id.slice(0, 8);
   };
 
   const projectName = (id: string | null) => {
@@ -1314,7 +1315,7 @@ export function IssueProperties({
   );
 
   const assigneeTrigger = assignee ? (
-    <Identity name={assignee.name} size="sm" />
+    <Identity name={displayAgentName(assignee.name)} size="sm" />
   ) : assigneeUserLabel ? (
     <>
       <User className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1359,7 +1360,7 @@ export function IssueProperties({
         id: `agent:${agent.id}`,
         kind: "agent" as const,
         agent,
-        label: agent.name,
+        label: displayAgentName(agent.name),
         searchText: `${agent.name} ${agent.role} ${agent.title ?? ""}`,
       })),
     ],
@@ -1499,7 +1500,7 @@ export function IssueProperties({
                 onClick={() => toggleExecutionParticipant(stageType, encoded)}
               >
                 <AgentIcon icon={agent.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
-                {agent.name}
+                {displayAgentName(agent.name)}
               </button>
             );
           })}

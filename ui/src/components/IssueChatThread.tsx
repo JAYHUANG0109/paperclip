@@ -102,6 +102,7 @@ import {
   shouldPreserveComposerViewport,
 } from "../lib/issue-chat-scroll";
 import { formatAssigneeUserLabel } from "../lib/assignees";
+import { displayAgentName } from "../lib/agent-name";
 import { useOptionalToastActions } from "../context/ToastContext";
 import type { CompanyUserProfile } from "../lib/company-members";
 import { timeAgo } from "../lib/timeAgo";
@@ -704,7 +705,7 @@ function formatTimelineAssigneeLabel(
   userLabelMap?: ReadonlyMap<string, string> | null,
 ) {
   if (assignee.agentId) {
-    return agentMap?.get(assignee.agentId)?.name ?? assignee.agentId.slice(0, 8);
+    return displayAgentName(agentMap?.get(assignee.agentId)?.name) || assignee.agentId.slice(0, 8);
   }
   if (assignee.userId) {
     return formatAssigneeUserLabel(assignee.userId, currentUserId, userLabelMap) ?? t("issues.chat.board");
@@ -728,7 +729,7 @@ function formatInteractionActorLabel(args: {
   userLabelMap?: ReadonlyMap<string, string> | null;
 }) {
   const { agentId, userId, agentMap, currentUserId, userLabelMap } = args;
-  if (agentId) return agentMap?.get(agentId)?.name ?? agentId.slice(0, 8);
+  if (agentId) return displayAgentName(agentMap?.get(agentId)?.name) || agentId.slice(0, 8);
   if (userId) {
     return userLabelMap?.get(userId)
       ?? formatAssigneeUserLabel(userId, currentUserId, userLabelMap)
@@ -1455,11 +1456,13 @@ function IssueChatAssistantMessage({
   } = useContext(IssueChatCtx);
   const custom = message.metadata.custom as Record<string, unknown>;
   const anchorId = typeof custom.anchorId === "string" ? custom.anchorId : undefined;
-  const authorName = typeof custom.authorName === "string"
+  const rawAuthorName = typeof custom.authorName === "string"
     ? custom.authorName
     : typeof custom.runAgentName === "string"
       ? custom.runAgentName
-      : t("issues.chat.agent");
+      : null;
+  // Agent authors are stored as name_role_id; show name_role only (display-only).
+  const authorName = rawAuthorName ? displayAgentName(rawAuthorName) : t("issues.chat.agent");
   const authorAgentId = typeof custom.authorAgentId === "string" ? custom.authorAgentId : null;
   const runId = typeof custom.runId === "string" ? custom.runId : null;
   const runAgentId = typeof custom.runAgentId === "string" ? custom.runAgentId : null;
@@ -2266,7 +2269,7 @@ function SystemNoticeCommentRow({
   const [copiedLink, setCopiedLink] = useState(false);
 
   const source = (() => {
-    const runAgentName = runAgentId ? agentMap?.get(runAgentId)?.name ?? null : null;
+    const runAgentName = runAgentId ? displayAgentName(agentMap?.get(runAgentId)?.name) || null : null;
     if (authorType === "system") {
       const label = runAgentName ?? "Paperclip";
       if (runAgentId && runId) return { label, href: `/agents/${runAgentId}/runs/${runId}` };
@@ -2526,7 +2529,7 @@ function IssueChatSystemMessage({ message }: { message: ThreadMessage }) {
     );
   }
 
-  const displayedRunAgentName = runAgentName ?? (runAgentId ? agentMap?.get(runAgentId)?.name ?? runAgentId.slice(0, 8) : null);
+  const displayedRunAgentName = runAgentName ?? (runAgentId ? displayAgentName(agentMap?.get(runAgentId)?.name) || runAgentId.slice(0, 8) : null);
   const runAgentIcon = runAgentId ? agentMap?.get(runAgentId)?.icon : undefined;
   if (custom.kind === "run" && runId && runAgentId && displayedRunAgentName && runStatus) {
     return (
@@ -4329,7 +4332,7 @@ export function IssueChatThread({
                     scheduledRetry={scheduledRetry}
                     agentName={
                       successfulRunHandoff?.assigneeAgentId
-                        ? agentMap?.get(successfulRunHandoff.assigneeAgentId)?.name ?? null
+                        ? displayAgentName(agentMap?.get(successfulRunHandoff.assigneeAgentId)?.name) || null
                         : null
                     }
                   />

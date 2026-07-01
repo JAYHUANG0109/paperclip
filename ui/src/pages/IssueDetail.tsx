@@ -20,6 +20,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { useToastActions } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { assigneeValueFromSelection, suggestedCommentAssigneeValue } from "../lib/assignees";
+import { displayAgentName } from "../lib/agent-name";
 import { buildCompanyUserInlineOptions, buildCompanyUserLabelMap, buildCompanyUserProfileMap, buildMarkdownMentionOptions } from "../lib/company-members";
 import { extractIssueTimelineEvents } from "../lib/issue-timeline-events";
 import { queryKeys } from "../lib/queryKeys";
@@ -374,7 +375,7 @@ function ActorIdentity({ evt, agentMap, userProfileMap }: { evt: ActivityEvent; 
   const id = evt.actorId;
   if (evt.actorType === "agent") {
     const agent = agentMap.get(id);
-    return <Identity name={agent?.name ?? id.slice(0, 8)} size="sm" />;
+    return <Identity name={displayAgentName(agent?.name) || id.slice(0, 8)} size="sm" />;
   }
   if (evt.actorType === "system") return <Identity name="System" size="sm" />;
   if (evt.actorType === "user") {
@@ -1595,7 +1596,7 @@ export function IssueDetail() {
       .filter((agent) => agent.status !== "terminated")
       .sort((a, b) => a.name.localeCompare(b.name));
     for (const agent of activeAgents) {
-      options.push({ id: `agent:${agent.id}`, label: agent.name });
+      options.push({ id: `agent:${agent.id}`, label: displayAgentName(agent.name) });
     }
     if (currentUserId) {
       options.push({ id: `user:${currentUserId}`, label: t("issues.props.me") });

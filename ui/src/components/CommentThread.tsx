@@ -21,6 +21,7 @@ import { OutputFeedbackButtons } from "./OutputFeedbackButtons";
 import { ApprovalCard } from "./ApprovalCard";
 import { AgentIcon } from "./AgentIconPicker";
 import { formatAssigneeUserLabel } from "../lib/assignees";
+import { displayAgentName } from "../lib/agent-name";
 import { formatTimelineWorkspaceLabel, type IssueTimelineAssignee, type IssueTimelineEvent } from "../lib/issue-timeline-events";
 import { timeAgo } from "../lib/timeAgo";
 import { cn, formatDateTime } from "../lib/utils";
@@ -180,7 +181,7 @@ function formatTimelineAssigneeLabel(
   currentUserId?: string | null,
 ) {
   if (assignee.agentId) {
-    return agentMap?.get(assignee.agentId)?.name ?? assignee.agentId.slice(0, 8);
+    return displayAgentName(agentMap?.get(assignee.agentId)?.name) || assignee.agentId.slice(0, 8);
   }
   if (assignee.userId) {
     return formatAssigneeUserLabel(assignee.userId, currentUserId) ?? t("commentThread.board");
@@ -195,7 +196,7 @@ function formatTimelineActorName(
   currentUserId?: string | null,
 ) {
   if (actorType === "agent") {
-    return agentMap?.get(actorId)?.name ?? actorId.slice(0, 8);
+    return displayAgentName(agentMap?.get(actorId)?.name) || actorId.slice(0, 8);
   }
   if (actorType === "system") {
     return t("commentThread.system");
@@ -368,7 +369,7 @@ function CommentCard({
         {comment.authorAgentId ? (
           <Link to={`/agents/${comment.authorAgentId}`} className="hover:underline">
             <Identity
-              name={agentMap?.get(comment.authorAgentId)?.name ?? comment.authorAgentId.slice(0, 8)}
+              name={displayAgentName(agentMap?.get(comment.authorAgentId)?.name) || comment.authorAgentId.slice(0, 8)}
               size="sm"
             />
           </Link>
@@ -646,7 +647,7 @@ const TimelineList = memo(function TimelineList({
 
         if (item.kind === "run") {
           const run = item.run;
-          const actorName = agentMap?.get(run.agentId)?.name ?? run.agentId.slice(0, 8);
+          const actorName = displayAgentName(agentMap?.get(run.agentId)?.name) || run.agentId.slice(0, 8);
           return (
             <div id={`run-${run.runId}`} key={`run:${run.runId}`} className="flex items-center gap-2.5 py-1.5">
               <Avatar size="sm">

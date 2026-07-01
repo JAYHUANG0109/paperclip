@@ -6,6 +6,7 @@ import { formatAssigneeUserLabel } from "../lib/assignees";
 import { buildCompanyUserInlineOptions, buildCompanyUserLabelMap } from "../lib/company-members";
 import { queryKeys } from "../lib/queryKeys";
 import { sortAgentsByRecency, getRecentAssigneeIds } from "../lib/recent-assignees";
+import { displayAgentName } from "../lib/agent-name";
 import {
   buildExecutionPolicy,
   stageParticipantValues,
@@ -63,7 +64,7 @@ export function ExecutionParticipantPicker({
 
   const agentName = (id: string) => {
     const agent = agents.find((a) => a.id === id);
-    return agent?.name ?? id.slice(0, 8);
+    return agent ? displayAgentName(agent.name) : id.slice(0, 8);
   };
 
   const participantLabel = (value: string) => {
@@ -190,7 +191,7 @@ export function ExecutionParticipantPicker({
                   onClick={() => toggle(encoded)}
                 >
                   <AgentIcon icon={agent.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
-                  {agent.name}
+                  {displayAgentName(agent.name)}
                 </button>
               );
             })}
