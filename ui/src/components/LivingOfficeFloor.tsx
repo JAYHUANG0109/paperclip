@@ -61,8 +61,8 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 // Fixed on-floor character footprint in native map px — uniform for every agent
 // (≈ chair-sized). Visible sprite is AGENT_SIZE * SPRITE_SCALE.
-const AGENT_SIZE = 30;
-const SPRITE_SCALE = 1.6;
+const AGENT_SIZE = 40;
+const SPRITE_SCALE = 1.5;
 
 // 8-way facing from a screen-space velocity (y points down → south).
 type Dir = "south" | "south-east" | "east" | "north-east" | "north" | "north-west" | "west" | "south-west";
@@ -236,18 +236,30 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   const floorIdx = 0; // single floor (Office Level 4) — Floor 2 removed
 
   // Map viewport measurement → contain-fit zoom so the whole floor is as large as it can be.
+  const rootRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
+  // Height available from the map's top edge to the bottom of the screen — measured
+  // (not a 100vh guess) so the page never overflows into a scrollbar regardless of
+  // the breadcrumb bar, filter row, or <main> padding above it.
+  const [availH, setAvailH] = useState(560);
   const [userZoom, setUserZoom] = useState<number | null>(null); // null = auto-fit
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
-    if (!el) return;
-    const update = () => setViewport({ w: el.clientWidth, h: el.clientHeight });
+    const root = rootRef.current;
+    if (!el || !root) return;
+    const update = () => {
+      const top = root.getBoundingClientRect().top;
+      const h = Math.max(360, Math.round(window.innerHeight - top - 20)); // 20px bottom gutter
+      setAvailH(h);
+      setViewport({ w: el.clientWidth, h: el.clientHeight });
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    return () => { ro.disconnect(); window.removeEventListener("resize", update); };
   }, []);
 
   // Reset to auto-fit whenever the floor changes.
@@ -485,7 +497,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   const offsetY = Math.max(0, (viewport.h - scaledH) / 2);
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={rootRef} style={{ position: "relative" }}>
       {/* Floating zoom control (no frame/top bar — team filters live above the map) */}
       <div style={{
         position: "absolute", top: 10, right: 10, zIndex: 20,
@@ -503,7 +515,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
           stability is what stops the resize↔scrollbar twitch. The inner layer does
           the actual scrolling (only when the user zooms in past fit). */}
       <div ref={viewportRef} style={{
-        height: "calc(100dvh - 132px)", minHeight: 480, overflow: "hidden", position: "relative",
+        height: availH, minHeight: 360, overflow: "hidden", position: "relative",
         borderRadius: 12,
       }}>
         <div style={{ position: "absolute", inset: 0, overflow: "auto" }}>
@@ -514,7 +526,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
             position: "absolute", left: offsetX, top: offsetY, width: mapW, height: mapH,
             transform: `scale(${zoom})`, transformOrigin: "top left",
           }}>
-            <img src={floor.image} alt={floor.label} draggable={false} style={{
+            <img src={bustCache(floor.image)} alt={floor.label} draggable={false} style={{
               position: "absolute", inset: 0, width: "100%", height: "100%",
               imageRendering: "pixelated", display: "block", userSelect: "none", pointerEvents: "none",
               boxShadow: "0 0 80px rgba(0,0,0,.6)", borderRadius: 2,
