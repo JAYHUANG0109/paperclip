@@ -13,17 +13,15 @@ interface Zone {
   // The team whose agents sit here (must match agentTeams()). null = a decorative
   // room (meeting/lounge/茶水間) with no agents.
   team: string | null;
-  // Room rectangle (walls) — used for the overlay border + label. % of map.
+  // Room rectangle (walls) — used for the overlay label + hover. % of map.
   x: number;
   y: number;
   w: number;
   h: number;
-  // Interior floor rectangle — where agents are actually seated. % of map.
-  fx: number;
-  fy: number;
-  fw: number;
-  fh: number;
   color: string;
+  // Exact desk seat positions (% of map) generated with the map. Agent i sits at
+  // seats[i]; overflow beyond the seats falls into a grid in the room.
+  seats?: { x: number; y: number }[];
 }
 
 interface FloorDef {
@@ -45,17 +43,17 @@ const FLOORS: FloorDef[] = [
     id: "square",
     label: "Office",
     image: "/assets/pixelart/Office%20Square.png",
-    natW: 800,
-    natH: 640,
+    natW: 960,
+    natH: 736,
     zones: [
-      { id: "teaching", name: "教學組", team: "教學組", x: 2, y: 2.5, w: 44, h: 55, fx: 5, fy: 6.3, fw: 38, fh: 47.5, color: "#8B5CF6" },
-      { id: "it", name: "資訊部", team: "資訊部", x: 2, y: 60, w: 44, h: 37.5, fx: 5, fy: 63.7, fw: 38, fh: 30, color: "#3B82F6" },
-      { id: "meeting", name: "會議室", team: null, x: 48, y: 2.5, w: 26, h: 32.5, fx: 51, fy: 6.3, fw: 20, fh: 25, color: "#10B981" },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 48, y: 37.5, w: 26, h: 25, fx: 51, fy: 41.3, fw: 20, fh: 17.5, color: "#F59E0B" },
-      { id: "lounge", name: "休息室", team: null, x: 48, y: 65, w: 26, h: 32.5, fx: 51, fy: 68.8, fw: 20, fh: 25, color: "#EC4899" },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 76, y: 2.5, w: 22, h: 27.5, fx: 79, fy: 6.3, fw: 16, fh: 20, color: "#6366F1" },
-      { id: "pantry", name: "茶水間", team: null, x: 76, y: 32.5, w: 22, h: 27.5, fx: 79, fy: 36.3, fw: 16, fh: 20, color: "#14B8A6" },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 76, y: 65, w: 14, h: 20, fx: 79, fy: 68.8, fw: 8, fh: 12.5, color: "#F97316" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 1.7, y: 2.2, w: 50, h: 56.5, color: "#8B5CF6", seats: [{"x":7.5,"y":12.17},{"x":14.17,"y":12.17},{"x":20.83,"y":12.17},{"x":27.5,"y":12.17},{"x":34.17,"y":12.17},{"x":40.83,"y":12.17},{"x":7.5,"y":23.04},{"x":14.17,"y":23.04},{"x":20.83,"y":23.04},{"x":27.5,"y":23.04},{"x":34.17,"y":23.04},{"x":40.83,"y":23.04},{"x":7.5,"y":33.91},{"x":14.17,"y":33.91},{"x":20.83,"y":33.91},{"x":27.5,"y":33.91},{"x":34.17,"y":33.91},{"x":40.83,"y":33.91}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 1.7, y: 60.9, w: 50, h: 37, color: "#3B82F6", seats: [{"x":7.5,"y":70.87},{"x":14.17,"y":70.87},{"x":20.83,"y":70.87},{"x":27.5,"y":70.87},{"x":34.17,"y":70.87},{"x":40.83,"y":70.87},{"x":7.5,"y":81.74},{"x":14.17,"y":81.74},{"x":20.83,"y":81.74},{"x":27.5,"y":81.74},{"x":34.17,"y":81.74},{"x":40.83,"y":81.74},{"x":7.5,"y":92.61},{"x":14.17,"y":92.61},{"x":20.83,"y":92.61},{"x":27.5,"y":92.61},{"x":34.17,"y":92.61},{"x":40.83,"y":92.61}] },
+      { id: "meeting", name: "會議室", team: null, x: 53.3, y: 2.2, w: 26.7, h: 37, color: "#10B981" },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 53.3, y: 41.3, w: 26.7, h: 26.1, color: "#F59E0B", seats: [{"x":59.17,"y":51.3},{"x":65.83,"y":51.3},{"x":72.5,"y":51.3},{"x":59.17,"y":62.17},{"x":65.83,"y":62.17},{"x":72.5,"y":62.17}] },
+      { id: "lounge", name: "休息室", team: null, x: 53.3, y: 69.6, w: 26.7, h: 28.3, color: "#EC4899" },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 81.7, y: 2.2, w: 16.7, h: 28.3, color: "#6366F1", seats: [{"x":87.5,"y":12.17},{"x":87.5,"y":23.04}] },
+      { id: "pantry", name: "茶水間", team: null, x: 81.7, y: 32.6, w: 16.7, h: 30.4, color: "#14B8A6" },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 81.7, y: 65.2, w: 13.3, h: 19.6, color: "#F97316", seats: [{"x":87.5,"y":75.22}] },
     ],
   },
 ];
@@ -355,7 +353,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     }
     // Any team without a matching room → drop into the largest team room.
     const spare = assignments.filter(a => a.zone.team).sort((x, y) =>
-      (y.zone.fw * y.zone.fh) - (x.zone.fw * x.zone.fh))[0];
+      (y.zone.w * y.zone.h) - (x.zone.w * x.zone.h))[0];
     for (const [team, members] of byTeam) {
       if (!claimed.has(team) && spare) spare.members = [...spare.members, ...members];
     }
@@ -367,49 +365,32 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     [zoneAssignments, floorIdx]
   );
 
-  // Pin layout + DYNAMIC avatar size per room. Avatars shrink as a room fills so
-  // crowded teams never overlap, and grow when a room is sparse.
+  // Pin layout: each agent sits at a generated desk SEAT. Overflow beyond the
+  // seats falls into a tidy grid in the lower half of the room. Size is fixed.
   const { pins, labelSize } = useMemo(() => {
     const out: { agent: Agent; x: number; y: number; size: number; floor: { fx: number; fy: number; fw: number; fh: number } }[] = [];
-    let minSize = Infinity;
     for (const za of floorZones) {
       const { zone, members } = za;
-      const N = members.length;
-      if (N === 0) continue;
-
-      // Place agents in an aligned grid centered on the room's INTERIOR FLOOR
-      // rectangle (fx/fy/fw/fh) so they sit on open floor in tidy rows.
-      const usableWpx = (zone.fw / 100) * mapW;
-      const usableHpx = (zone.fh / 100) * mapH;
-
-      // columns matched to room aspect ratio (spacing adapts to crowding), but the
-      // character SIZE is FIXED so everyone is the same size — roughly chair-sized
-      // in native map px — regardless of how full their room is.
-      const cols = clamp(Math.round(Math.sqrt(N * (usableWpx / usableHpx))), 1, N);
-      const rows = Math.ceil(N / cols);
-      const size = AGENT_SIZE;
-      minSize = Math.min(minSize, size);
-
-      const stepXpct = zone.fw / cols;
-      const stepYpct = zone.fh / rows;
+      if (members.length === 0) continue;
+      const seats = zone.seats ?? [];
+      // interior box for overflow placement + (unused) wander bounds
+      const floor = { fx: zone.x + 2, fy: zone.y + zone.h * 0.55, fw: zone.w - 4, fh: zone.h * 0.4 };
+      const overflow = members.length - seats.length;
+      const cols = Math.max(1, Math.min(overflow, Math.floor(floor.fw / 7)));
 
       members.forEach((agent, i) => {
-        const c = i % cols, rr = Math.floor(i / cols);
-        // Center the last (possibly short) row so rows stay visually balanced.
-        const inRow = Math.min(cols, N - rr * cols);
-        const rowOffset = (cols - inRow) / 2;
-        out.push({
-          agent,
-          x: zone.fx + (c + rowOffset + 0.5) * stepXpct,
-          y: zone.fy + (rr + 0.5) * stepYpct,
-          size,
-          floor: { fx: zone.fx, fy: zone.fy, fw: zone.fw, fh: zone.fh },
-        });
+        let x: number, y: number;
+        if (i < seats.length) { x = seats[i]!.x; y = seats[i]!.y; }
+        else {
+          const j = i - seats.length, c = j % cols, r = Math.floor(j / cols);
+          x = floor.fx + (c + 0.5) * (floor.fw / cols);
+          y = floor.fy + (r + 0.5) * 6;
+        }
+        out.push({ agent, x, y, size: AGENT_SIZE, floor });
       });
     }
-    // Hide name labels only when avatars get very small (would collide).
-    return { pins: out, labelSize: minSize };
-  }, [floorZones, mapW, mapH]);
+    return { pins: out, labelSize: AGENT_SIZE };
+  }, [floorZones]);
 
   // ── Wandering engine ──────────────────────────────────────────────────────
   // Agents mostly sit at their desk (facing south). Occasionally one strolls to
@@ -421,11 +402,8 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     walkable: boolean;
     floor: { fx: number; fy: number; fw: number; fh: number };
   }
-  // An agent may wander only if it has a full directional sprite set — otherwise
-  // a front-facing sprite sliding sideways looks like moonwalking. Agents without
-  // the full set stay seated until their sprites are generated.
-  const ALL_DIRS: Dir[] = ["south", "south-east", "east", "north-east", "north", "north-west", "west", "south-west"];
-  const hasAllDirs = (set?: Partial<Record<Dir, string>>) => !!set && ALL_DIRS.every(d => !!set[d]);
+  // Agents now sit at fixed desk seats, so wandering is off (walkable: false) — a
+  // seated office reads cleaner than sprites sliding between desks.
   const motion = useRef<Map<string, Motion>>(new Map());
   const [, setMotionTick] = useState(0);
   const reduceMotion = useRef(false);
@@ -442,7 +420,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   useEffect(() => {
     const next = new Map<string, Motion>();
     for (const p of pins) {
-      const walkable = hasAllDirs(spriteSetFor(p.agent) ?? undefined);
+      const walkable = false; // seated office
       const prev = motion.current.get(p.agent.id);
       next.set(p.agent.id, prev
         ? { ...prev, hx: p.x, hy: p.y, floor: p.floor, walkable }
