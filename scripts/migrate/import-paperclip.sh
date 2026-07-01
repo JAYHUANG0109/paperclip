@@ -46,6 +46,15 @@ echo "▶ Restoring ~/.paperclip…"
 mkdir -p "$HOME/.paperclip"
 rsync -a "$STAGE/dot-paperclip/" "$HOME/.paperclip/"
 
+# Rewrite the old home path in every TEXT file under ~/.paperclip (grep -Il skips
+# binaries, so the Postgres data dir is untouched). Handles a different username
+# on this Mac. The DB itself is rewritten separately (see the printed steps).
+if [ "$OLD_HOME" != "$HOME" ]; then
+  echo "▶ Rewriting $OLD_HOME → $HOME in instance text files…"
+  grep -rIl --null "$OLD_HOME" "$HOME/.paperclip" 2>/dev/null \
+    | xargs -0 -I{} sed -i '' "s#$OLD_HOME#$HOME#g" {} 2>/dev/null || true
+fi
+
 echo "▶ Installing launchd services (path fixup: $OLD_HOME → $HOME)…"
 for p in "$STAGE"/LaunchAgents/*.plist; do
   [ -f "$p" ] || continue
@@ -64,6 +73,11 @@ REMAINING STEPS on this Mac:
        git clone <repo> $HOME/paperclip-live && (cd $HOME/paperclip-live && git checkout <branch>)
   2) Install deps + build the UI once:
        cd $HOME/paperclip-live && pnpm install --frozen-lockfile && pnpm --filter @paperclipai/ui build
+  2b) Start the service so the DB comes up, then rewrite the DB's stored paths
+      ($OLD_HOME → $HOME) — needed because the username differs:
+       launchctl bootstrap gui/$UID_NUM $LA/com.seasonarts.paperclip.plist
+       OLD_HOME=$OLD_HOME server/node_modules/.bin/tsx server/scripts/rewrite-db-paths.ts
+       launchctl kickstart -k gui/$UID_NUM/com.seasonarts.paperclip
   3) Update DEVICE-SPECIFIC config (does not transfer):
        • Tailscale: this Mac has a different tailnet hostname — set up Tailscale + funnel.
        • scripts/deploy-live.sh: update PUBLIC_URL and LIVE=$HOME/paperclip-live.

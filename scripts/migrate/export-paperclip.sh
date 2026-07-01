@@ -52,12 +52,17 @@ restart_service() {
 }
 trap restart_service EXIT
 
-echo "▶ Staging ~/.paperclip (excluding backups + logs)…"
+echo "▶ Staging ~/.paperclip (excluding regenerable logs + caches)…"
+# Everything excluded below is regenerable AND tends to hold stale absolute paths,
+# so dropping it both shrinks the bundle and avoids carrying dead paths to the new
+# machine. The DB, secrets, tokens, AGENTS.md, workspaces, skills and assets stay.
 rsync -a \
   --exclude 'instances/default/data/backups' \
   --exclude 'instances/default/data/run-logs' \
   --exclude 'instances/default/data/workspace-operation-logs' \
   --exclude 'instances/default/logs' \
+  --exclude 'instances/default/runtime-services' \
+  --exclude 'instances/*/companies/*/claude-prompt-cache' \
   --exclude '*.bak-*' \
   "$PAPERCLIP_HOME/" "$STAGE/dot-paperclip/"
 

@@ -9,14 +9,26 @@ Target chain: **M2 MacBook → M4 Pro Mac mini → M3 Ultra Mac Studio** — all
 Silicon on the same embedded Postgres major version, so a direct file copy of the
 DB is faithful (no dump/restore needed).
 
-## One rule that makes this painless: keep the same macOS username
+## Different username on the new Mac? Handled.
 
-Absolute paths are baked into the DB and token files (e.g. each agent's
-`ASANA_TOKEN_PATH` points at `/Users/<you>/.paperclip/...`). If every Mac uses the
-**same username**, home is `/Users/<you>` everywhere and nothing needs rewriting.
-If the username changes, the launchd plists are auto-fixed by the import script,
-but DB-stored absolute paths would also need rewriting — avoid that by keeping the
-username consistent.
+These are shared office Macs, so the username (and `$HOME`) differs from the old
+machine. Absolute paths (`/Users/<old>/...`) are baked into a few places; the
+migration rewrites all of them for you:
+
+- **launchd plists** and **instance text files** → rewritten by `import-paperclip.sh`
+  (it seds `OLD_HOME → $HOME` across every text file under `~/.paperclip`).
+- **The database** stores an absolute path in exactly one spot — each agent's
+  `adapter_config.env.ASANA_TOKEN_PATH`. After the DB is up you run
+  `server/scripts/rewrite-db-paths.ts` (one step in the runbook) to swap it.
+
+So a different username is fine. **`scripts/migrate/RUNBOOK.md` is the end-to-end
+script for the new Mac** — you can literally tell Claude Code on that Mac
+"follow scripts/migrate/RUNBOOK.md" and it will know exactly what to run.
+
+> Want it *truly* zero-rewrite forever? Relocate the deployment base to a
+> username-independent path like `/Users/Shared/paperclip` (exists on every Mac).
+> Then every future transfer is a plain file copy with no rewriting at all. It's a
+> one-time change to this live system — ask me and I'll do it.
 
 ## Steps
 
