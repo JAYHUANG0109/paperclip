@@ -139,8 +139,8 @@ export const dashboardApi = {
   founderConsoles: (companyId: string) =>
     api.get<FounderConsolesResponse>(`/companies/${companyId}/founder-digest/me`),
   // Manual "更新": wake the caller's own agent to re-sync from Asana now.
-  refreshFounderDigest: (companyId: string) =>
-    api.post<{ ok: boolean }>(`/companies/${companyId}/founder-digest/refresh`, {}),
+  refreshFounderDigest: (companyId: string, console?: ConsoleKey) =>
+    api.post<{ ok: boolean }>(`/companies/${companyId}/founder-digest/refresh`, console ? { console } : {}),
   // Submit the founder's verdict on a draft 批閱 (+ optional comment). `decision:
   // null` reverts it to undecided.
   decideFounderItem: (companyId: string, gid: string, decision: FounderDecision | null, note?: string) =>

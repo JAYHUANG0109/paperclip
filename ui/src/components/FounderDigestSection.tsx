@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw, Send } from "lucide-react";
 import { useTranslation } from "@/i18n";
-import { dashboardApi, type DailyConsole, type FounderComment, type FounderConsolesResponse, type FounderDecision, type FounderItem } from "../api/dashboard";
+import { dashboardApi, type ConsoleKey, type DailyConsole, type FounderComment, type FounderConsolesResponse, type FounderDecision, type FounderItem } from "../api/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "../lib/utils";
 
@@ -105,7 +105,7 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
   // after firing, and keep the button in its spinning state until then.
   const [refreshing, setRefreshing] = useState(false);
   const refresh = useMutation({
-    mutationFn: () => dashboardApi.refreshFounderDigest(companyId),
+    mutationFn: (consoleKey?: ConsoleKey) => dashboardApi.refreshFounderDigest(companyId, consoleKey),
     onMutate: () => setRefreshing(true),
     onSuccess: () => {
       setTimeout(() => queryClient.invalidateQueries({ queryKey: KEY(companyId) }), 8000);
@@ -129,7 +129,7 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
           pendingGid={pendingGid}
           commentingGid={commentingGid}
           refreshing={refreshing}
-          onRefresh={() => refresh.mutate()}
+          onRefresh={() => refresh.mutate(con.key)}
           onDecide={(gid, decision, note) => decide.mutate({ gid, decision, note })}
           onClose={(gid, closed) => close.mutate({ gid, closed })}
           onComment={(gid, text) => comment.mutate({ gid, text })}

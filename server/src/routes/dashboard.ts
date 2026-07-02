@@ -395,6 +395,36 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       res.status(404).json({ error: "No agent is linked to your account to refresh from Asana." });
       return;
     }
+    // Immediately forward the CURRENT console(s) to the caller's Google Chat —
+    // server-direct, zero tokens, reliable. This no longer depends on the async
+    // agent re-run producing a valid write (which could land in the wrong slot or
+    // be empty), and uses a per-Taipei-hour MANUAL dedupe key so it still fires
+    // after the scheduled 12:00 run already sent today's (that uses a per-DAY key).
+    try {
+      const wanted = toConsoleKey((req.body as { console?: unknown })?.console); // null → all caller's consoles
+      const consoles = await getConsolesForUser(db, companyId, email);
+      const targets = wanted ? consoles.filter((c) => c.key === wanted) : consoles;
+      if (userId && targets.length > 0) {
+        const hourLabel = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 13);
+        for (const con of targets) {
+          const cats = con.digest.categories;
+          const total = cats.urgent.length + cats.meetings.length + cats.nonUrgent.length + cats.reminders.length;
+          if (total === 0) continue; // nothing worth pinging about
+          await notifications.create({
+            companyId,
+            userId,
+            kind: "founder_digest",
+            title: `🗂️ ${CONSOLE_TITLE[con.key]}`,
+            body: `急件 ${cats.urgent.length} · 會議 ${cats.meetings.length} · 提醒 ${cats.reminders.length} · 其他 ${cats.nonUrgent.length}（詳見儀表板裁示）`,
+            link: "/dashboard",
+            dedupeKey: `founder-digest-manual:${userId}:${con.key}:${hourLabel}`,
+          });
+        }
+      }
+    } catch {
+      /* forward is best-effort — never let it affect the refresh/wake */
+    }
+    // Still wake the agent to regenerate the numbers from Asana for next time.
     await heartbeat.wakeup(agentId, {
       source: "on_demand",
       triggerDetail: "manual",
