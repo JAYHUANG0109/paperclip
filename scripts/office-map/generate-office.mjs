@@ -8,7 +8,7 @@ const PACK = "/Users/jayhuang/dev/paperclip/paperclip/Office Tileset";
 const A5 = decode(PACK + "/Office VX Ace/A5 Office Floors & Walls.png");
 const M = decode(PACK + "/Office Tileset All 16x16.png");
 const T = 16;
-const DESK_F = 1.6, CHAIR_F = 2.0, DEC_F = 1.7;
+const DESK_F = 1.8, CHAIR_F = 2.25, DEC_F = 1.9;  // ~1.13× larger furniture (agents scaled to match)
 
 const ROOM_FLOOR = { c: 8, r: 18 };
 let map;
@@ -30,7 +30,7 @@ const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
 // Keyboard = ONLY the keys. The full tile (c12,r23) bundles the monitor stand,
 // so we blit just the keys pixel-strip (y 376..383 of the sheet) via objPx.
 const KEYBOARD_PX = { sx: 12*T, sy: 376, sw: T, sh: 7 };
-const KB_F = 2.2;                               // keyboard scale
+const KB_F = 2.5;                               // keyboard scale (~1.13× larger)
 // Preview WHITE desk (same shape/size as DESK). Applied to ONE agent's desk for
 // review before rolling the white look out to everyone.
 const WHITE_DESK = { c: 5, r: 2, w: 3 };
@@ -132,10 +132,10 @@ function furnishFounder(rm) {
   const deskTop = seatRow - 1.2;   // desk+keyboard+plants sit a touch south of the monitor
   objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, cx - dW/2, deskTop, df);
   const kW = (KEYBOARD_PX.sw/T)*KB_F;
-  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2, deskTop + 1.9, KB_F);
-  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.5, deskTop + 0.9, 1.6);      // 盆栽 to the right
-  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 1.9, deskTop + 0.7, 1.4);  // fern to the left
-  const chairX = cx - cW/2, chairY = seatRow + dH;
+  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2, deskTop + 1.55, KB_F);
+  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.5, deskTop + 0.9, 1.8);      // 盆栽 to the right
+  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.1, deskTop + 0.7, 1.6);  // fern to the left
+  const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
   objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
 }
