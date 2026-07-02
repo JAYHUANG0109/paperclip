@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { notifications, authUsers } from "@paperclipai/db";
+import { notifications, authUsers, companies } from "@paperclipai/db";
 import { publishPluginDomainEvent } from "./activity-log.js";
 import { loadConfig } from "../config.js";
 
@@ -24,13 +24,28 @@ function resolvePublicBaseOrigin(): string | null {
   }
   return publicBaseOrigin;
 }
-function toAbsoluteLink(link: string | null | undefined): string | null {
+/**
+ * Board routes are company-scoped in the UI: "/dashboard" actually lives at
+ * "/{ISSUE_PREFIX}/dashboard" (the first path segment is the company code, e.g.
+ * SEAAA). App-relative notification links omit that segment because the client
+ * injects the active company — but an external Chat link has no company context,
+ * so we splice the prefix in here. Skips if the link already carries it.
+ */
+function withCompanyPrefix(link: string, issuePrefix: string | null | undefined): string {
+  const prefix = issuePrefix?.trim().toUpperCase();
+  if (!prefix || !link.startsWith("/")) return link;
+  const firstSeg = link.split("/").filter(Boolean)[0]?.toUpperCase();
+  if (firstSeg === prefix) return link; // already prefixed
+  return `/${prefix}${link}`;
+}
+function toAbsoluteLink(link: string | null | undefined, issuePrefix?: string | null): string | null {
   const l = link?.trim();
   if (!l) return null;
   if (/^https?:\/\//i.test(l)) return l; // already absolute
   const base = resolvePublicBaseOrigin();
   if (!base) return l; // no known origin — leave relative
-  return `${base}${l.startsWith("/") ? "" : "/"}${l}`;
+  const scoped = withCompanyPrefix(l, issuePrefix);
+  return `${base}${scoped.startsWith("/") ? "" : "/"}${scoped}`;
 }
 
 export function notificationService(db: Db) {
@@ -65,6 +80,8 @@ export function notificationService(db: Db) {
     if (row) {
       try {
         const u = (await db.select({ email: authUsers.email }).from(authUsers).where(eq(authUsers.id, input.userId)))[0];
+        // Company code (issue prefix) that scopes board URLs like /dashboard.
+        const c = (await db.select({ p: companies.issuePrefix }).from(companies).where(eq(companies.id, input.companyId)))[0];
         publishPluginDomainEvent({
           eventId: randomUUID(),
           eventType: "notification.created",
@@ -80,7 +97,7 @@ export function notificationService(db: Db) {
             kind: input.kind,
             title: input.title,
             body: input.body ?? null,
-            link: toAbsoluteLink(input.link),
+            link: toAbsoluteLink(input.link, c?.p),
           },
         });
       } catch {
