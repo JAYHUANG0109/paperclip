@@ -3,7 +3,8 @@ import type { Db } from "@paperclipai/db";
 import { agentMemberships, authUsers, issues } from "@paperclipai/db";
 import { notificationService } from "./notifications.js";
 
-export type SummaryKind = "daily" | "weekly";
+// Daily summaries were removed (token/clutter reduction) — weekly only.
+export type SummaryKind = "weekly";
 
 // Mirror of the UI's resolveLocale rule (ui/src/i18n/resolveLocale.ts): English
 // for a small allowlist, Traditional Chinese for everyone else. Keep IN SYNC.
@@ -42,12 +43,12 @@ function renderSummary(
 ): { title: string; body: string } {
   const list = titles.map((tk) => `• ${tk}`).join("\n");
   if (locale === "en") {
-    const title = kind === "daily" ? `Daily summary · ${label}` : `Weekly summary · week of ${label}`;
-    const head = kind === "daily" ? `Completed ${count} task(s) today.` : `Completed ${count} task(s) this week.`;
+    const title = `Weekly summary · week of ${label}`;
+    const head = `Completed ${count} task(s) this week.`;
     return { title, body: list ? `${head}\n${list}` : head };
   }
-  const title = kind === "daily" ? `每日摘要 · ${label}` : `每週摘要 · ${label} 當週`;
-  const head = kind === "daily" ? `今日完成 ${count} 件任務。` : `本週完成 ${count} 件任務。`;
+  const title = `每週摘要 · ${label} 當週`;
+  const head = `本週完成 ${count} 件任務。`;
   return { title, body: list ? `${head}\n${list}` : head };
 }
 
@@ -63,8 +64,8 @@ export function summaryService(db: Db) {
    */
   async function generate(companyId: string, kind: SummaryKind, now: Date): Promise<number> {
     const end = now;
-    const start = kind === "daily" ? taipeiDayStartUtc(now) : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const label = kind === "daily" ? taipeiDateLabel(now) : taipeiFridayLabel(now);
+    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const label = taipeiFridayLabel(now);
 
     // user -> their agent ids
     const memberships = await db

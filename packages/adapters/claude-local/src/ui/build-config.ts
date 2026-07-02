@@ -7,13 +7,6 @@ function parseCommaArgs(value: string): string[] {
     .filter(Boolean);
 }
 
-function parseLineList(value: string): string[] {
-  return value
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function parseEnvVars(text: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
@@ -102,6 +95,5 @@ export function buildClaudeLocalConfig(v: CreateConfigValues): Record<string, un
   }
   if (v.command) ac.command = v.command;
   if (v.extraArgs) ac.extraArgs = parseCommaArgs(v.extraArgs);
-  if (v.claudeAccountConfigDirs) ac.accountConfigDirs = parseLineList(v.claudeAccountConfigDirs);
   return ac;
 }

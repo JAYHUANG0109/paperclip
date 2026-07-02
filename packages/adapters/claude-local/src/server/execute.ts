@@ -359,7 +359,7 @@ export async function runClaudeLogin(input: {
     authToken: input.authToken,
   });
 
-  const proc = await runAdapterExecutionTargetProcess(input.runId, null, runtime.command, ["login"], {
+  const proc = await runAdapterExecutionTargetProcess(input.runId, null, runtime.command, ["auth", "login", "--claudeai"], {
     cwd: runtime.cwd,
     env: runtime.env,
     timeoutSec: runtime.timeoutSec,
@@ -452,6 +452,143 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     ),
   );
   const billingType = resolveClaudeBillingType(effectiveEnv);
+  let accountSwitchedForQuota = false;
+  const quotaSwitchThresholdPercent = resolveClaudeQuotaSwitchThreshold(config);
+  const autoSwitchAccountOnQuota = asBoolean(config.autoSwitchAccountOnQuota, true);
+  if (
+    autoSwitchAccountOnQuota &&
+    !executionTargetIsRemote &&
+    billingType === "subscription"
+  ) {
+    let quotaSwitchStarted = false;
+    try {
+      const quota = await getQuotaWindowsForEnv(effectiveEnv);
+      if (!quota.ok) {
+        await onLog(
+          "stderr",
+          `[paperclip] Could not check Claude quota before this heartbeat: ${quota.error ?? "unknown error"}. Continuing with the current account.\n`,
+        );
+      } else {
+        const maxUsed = maxQuotaUsedPercent(quota.windows);
+        if (maxUsed != null && maxUsed >= quotaSwitchThresholdPercent) {
+          quotaSwitchStarted = true;
+          await onLog(
+            "stdout",
+            `[paperclip] Claude quota usage is ${maxUsed}% (threshold ${quotaSwitchThresholdPercent}%). Opening Claude's browser account switch flow before starting this heartbeat.\n`,
+          );
+          const switchTimeoutSec = Math.max(
+            30,
+            asNumber(config.quotaAccountSwitchTimeoutSec, 300),
+          );
+          const switchProc = await runAdapterExecutionTargetProcess(
+            `${runId}-switch-account`,
+            null,
+            command,
+            ["auth", "login", "--claudeai"],
+            {
+              cwd,
+              env,
+              timeoutSec: switchTimeoutSec,
+              graceSec,
+              onLog,
+            },
+          );
+          const switchLoginMeta = detectClaudeLoginRequired({
+            parsed: null,
+            stdout: switchProc.stdout,
+            stderr: switchProc.stderr,
+          });
+          const switchErrorMeta = switchLoginMeta.loginUrl
+            ? { loginUrl: switchLoginMeta.loginUrl }
+            : undefined;
+          if (switchProc.timedOut || (switchProc.exitCode ?? 0) !== 0) {
+            return {
+              exitCode: switchProc.exitCode,
+              signal: switchProc.signal,
+              timedOut: switchProc.timedOut,
+              errorCode: "claude_account_switch_required",
+              errorMessage: switchProc.timedOut
+                ? `Claude account switching was not completed within ${switchTimeoutSec}s`
+                : `Claude account switching exited with code ${switchProc.exitCode ?? -1}`,
+              errorMeta: switchErrorMeta,
+              resultJson: {
+                stdout: switchProc.stdout,
+                stderr: switchProc.stderr,
+                quotaUsedPercent: maxUsed,
+                quotaSwitchThresholdPercent,
+              },
+              clearSession: true,
+            };
+          }
+
+          const switchedQuota = await getQuotaWindowsForEnv(effectiveEnv);
+          const switchedMaxUsed = switchedQuota.ok
+            ? maxQuotaUsedPercent(switchedQuota.windows)
+            : null;
+          if (!switchedQuota.ok || switchedMaxUsed == null) {
+            return {
+              exitCode: 1,
+              signal: null,
+              timedOut: false,
+              errorCode: "claude_account_switch_required",
+              errorMessage:
+                `Claude account switching completed, but Paperclip could not verify the new account quota: ${switchedQuota.error ?? "no quota window returned"}`,
+              errorMeta: switchErrorMeta,
+              resultJson: {
+                stdout: switchProc.stdout,
+                stderr: switchProc.stderr,
+                quotaSwitchThresholdPercent,
+              },
+              clearSession: true,
+            };
+          }
+          if (switchedMaxUsed >= quotaSwitchThresholdPercent) {
+            return {
+              exitCode: 1,
+              signal: null,
+              timedOut: false,
+              errorCode: "claude_account_switch_required",
+              errorMessage:
+                `The selected Claude account is also at ${switchedMaxUsed}% quota usage. Retry the heartbeat and choose an account below ${quotaSwitchThresholdPercent}%.`,
+              errorMeta: switchErrorMeta,
+              resultJson: {
+                stdout: switchProc.stdout,
+                stderr: switchProc.stderr,
+                quotaUsedPercent: switchedMaxUsed,
+                quotaSwitchThresholdPercent,
+              },
+              clearSession: true,
+            };
+          }
+
+          accountSwitchedForQuota = true;
+          await onLog(
+            "stdout",
+            `[paperclip] Claude account switch completed; new quota usage is ${switchedMaxUsed}%. Starting this heartbeat with a fresh Claude session.\n`,
+          );
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (quotaSwitchStarted) {
+        return {
+          exitCode: 1,
+          signal: null,
+          timedOut: false,
+          errorCode: "claude_account_switch_required",
+          errorMessage: `Claude account switching failed: ${message}`,
+          resultJson: {
+            quotaSwitchThresholdPercent,
+          },
+          clearSession: true,
+        };
+      }
+      await onLog(
+        "stderr",
+        `[paperclip] Could not check Claude quota before this heartbeat: ${message}. Continuing with the current account.\n`,
+      );
+    }
+  }
   const claudeSkillEntries = await readPaperclipRuntimeSkillEntries(config, __moduleDir);
   const desiredSkillNames = new Set(resolveClaudeDesiredSkillNames(config, claudeSkillEntries));
   // When instructionsFilePath is configured, build a stable content-addressed
@@ -638,6 +775,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     runtimePromptBundleKey.length === 0 || runtimePromptBundleKey === promptBundle.bundleKey;
   const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runtimeSessionId);
   const canResumeSession =
+    !accountSwitchedForQuota &&
     runtimeSessionId.length > 0 &&
     isValidUuid &&
     hasMatchingPromptBundle &&
