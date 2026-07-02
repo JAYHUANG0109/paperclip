@@ -35,6 +35,7 @@ const ARMCH_L = { c: 3, r: 16, w: 1, h: 1 };  // armchair facing left (west)
 const SOFA   = { c: 4,  r: 2,  w: 4, h: 2 };
 const PLANT  = { c: 4,  r: 28, w: 1, h: 2 };  // tall fern
 const POT    = { c: 2,  r: 28, w: 1, h: 2 };  // small potted plant (盆栽), brown pot
+const POT_W  = { c: 3,  r: 28, w: 1, h: 2 };  // small potted plant (盆栽), white pot
 const COOLER = { c: 5,  r: 16, w: 1, h: 2 };
 const FRIDGE = { c: 12, r: 16, w: 2, h: 3 };  // double-door fridge spans r16-18 (bottom door in r18)
 const TABLE  = { c: 4,  r: 1,  w: 4, h: 2 };
@@ -194,11 +195,12 @@ function furnishFounder(rm) {
   const kW = (KEYBOARD_PX.sw/TS)*KB_F;
   // Keyboard at the FRONT (south) edge of the table so the monitor overlay doesn't cover it.
   objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.4, deskTop + 2.7, KB_F);
-  // Two white-pot 盆栽 stacked vertically on each side of the table (symmetric).
+  // Two 盆栽 stacked vertically on each side of the table: white pots on the left,
+  // brown pots on the right.
   const potXR = cx + dW/2 + 1.0, potXL = cx - dW/2 - 2.6;
-  for (const px of [potXL, potXR]) {
-    objS(POT.c, POT.r, 1, 2, px, deskTop + 1.2, 1.6);
-    objS(POT.c, POT.r, 1, 2, px, deskTop + 3.0, 1.6);
+  for (const [px, t] of [[potXL, POT_W], [potXR, POT]]) {
+    objS(t.c, t.r, 1, 2, px, deskTop + 1.2, 1.6);
+    objS(t.c, t.r, 1, 2, px, deskTop + 3.0, 1.6);
   }
   const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
   chairBlit(CHAIR, chairX, chairY);
