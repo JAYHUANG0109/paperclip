@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef, useLayoutEffect, useEffect } from "react";
+import { useTranslation } from "@/i18n";
 import type { Agent } from "@paperclipai/shared";
 import type { LiveRunForIssue } from "../api/heartbeats";
 import { OfficeAvatar } from "./OfficeAvatar";
-import { agentTeams } from "../lib/agent-teams";
+import { agentTeams, localizeTeamName } from "../lib/agent-teams";
 import { resolveGender } from "../lib/office-avatars";
 import { displayAgentName } from "../lib/agent-name";
 import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, characterScale, resolveAgentCharacterId, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
@@ -246,7 +247,10 @@ function ZoneOverlay({ zone, teamName, count, workingCount }: {
   zone: Zone; teamName: string; count: number; workingCount: number;
 }) {
   const [hovered, setHovered] = useState(false);
-  const label = teamName && teamName !== "__ungrouped__" ? teamName : zone.name;
+  const { i18n } = useTranslation();
+  const label = teamName && teamName !== "__ungrouped__"
+    ? localizeTeamName(teamName, i18n.language)
+    : zone.name;
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{
       // The map image already has painted walls, so no border here — just a subtle

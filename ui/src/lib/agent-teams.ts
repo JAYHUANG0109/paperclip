@@ -18,6 +18,24 @@ export function agentTeams(agent: Pick<Agent, "metadata">): string[] {
   return out;
 }
 
+// English labels for the org's Chinese team names, so team folders/chips read in
+// English when the platform language is English. Unmapped teams fall back to their
+// original name. Only the DISPLAY label is localized — grouping/filtering still
+// keys off the raw (Chinese) team name, so this is display-only and safe.
+const TEAM_EN: Record<string, string> = {
+  "教學組": "Teaching",
+  "人才發展": "Talent Development",
+  "領導團隊": "Leadership",
+  "資訊部": "IT",
+  "系統自動化": "System Automation",
+};
+
+/** Display label for a team name under the given language. */
+export function localizeTeamName(name: string, lang: string | null | undefined): string {
+  const isEn = !(lang ?? "").toLowerCase().startsWith("zh");
+  return isEn ? (TEAM_EN[name] ?? name) : name;
+}
+
 /** Unique, sorted list of every team present across the given agents. */
 export function listAllTeams(agents: Pick<Agent, "metadata">[]): string[] {
   const set = new Set<string>();

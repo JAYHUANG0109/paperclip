@@ -1005,21 +1005,9 @@ export function DiscoveryGrid({
   scanStatus: string | null;
 }) {
   const { t, i18n } = useTranslation();
-  // 中/EN toggle for skill names, descriptions and category labels. Defaults to
-  // the app's current language (persisted per browser), independent of the app
-  // locale so a zh-TW user can still read the original English if they want.
-  const [skillLang, setSkillLang] = useState<SkillLang>(() => {
-    const stored = typeof window !== "undefined" ? window.localStorage.getItem("skill-store-lang") : null;
-    if (stored === "en" || stored === "zh") return stored;
-    return (i18n.language ?? "").toLowerCase().startsWith("zh") ? "zh" : "en";
-  });
-  const toggleSkillLang = () => {
-    setSkillLang((prev) => {
-      const next: SkillLang = prev === "zh" ? "en" : "zh";
-      if (typeof window !== "undefined") window.localStorage.setItem("skill-store-lang", next);
-      return next;
-    });
-  };
+  // Skill names, descriptions and category labels follow the platform language
+  // directly (no separate store-level switcher — that was redundant).
+  const skillLang: SkillLang = (i18n.language ?? "").toLowerCase().startsWith("zh") ? "zh" : "en";
   // Source filter (github / skills.sh / local / …) lives in the grid so it
   // narrows whatever the parent already filtered by tab/category/search (PAP-10907 E).
   const [sourceBadgeFilter, setSourceBadgeFilter] = useState<string>("all");
@@ -1076,31 +1064,6 @@ export function DiscoveryGrid({
               placeholder={t("companySkills.searchPlaceholder", { defaultValue: "Search skills, authors, categories…" })}
               className="h-full w-full bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
             />
-          </div>
-          {/* 中/EN toggle — flips skill names, descriptions and category labels. */}
-          <div className="inline-flex h-9 shrink-0 items-center rounded-md border border-border p-0.5 text-xs">
-            <button
-              type="button"
-              onClick={() => skillLang !== "zh" && toggleSkillLang()}
-              aria-pressed={skillLang === "zh"}
-              className={cn(
-                "rounded px-2 py-1 font-medium transition-colors",
-                skillLang === "zh" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              中文
-            </button>
-            <button
-              type="button"
-              onClick={() => skillLang !== "en" && toggleSkillLang()}
-              aria-pressed={skillLang === "en"}
-              className={cn(
-                "rounded px-2 py-1 font-medium transition-colors",
-                skillLang === "en" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              EN
-            </button>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -1,5 +1,6 @@
 import { useTranslation } from "@/i18n";
 import { cn } from "../lib/utils";
+import { localizeTeamName } from "../lib/agent-teams";
 
 /**
  * Visual multiselect team filter: a wrapping bar of toggle chips (one per team)
@@ -18,7 +19,7 @@ export function TeamFilterBar({
   onToggle: (team: string) => void;
   onClear: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   if (teams.length === 0) return null;
   const none = selected.length === 0;
 
@@ -43,7 +44,7 @@ export function TeamFilterBar({
           aria-pressed={selected.includes(team)}
           className={chip(selected.includes(team))}
         >
-          {team}
+          {localizeTeamName(team, i18n.language)}
         </button>
       ))}
     </div>

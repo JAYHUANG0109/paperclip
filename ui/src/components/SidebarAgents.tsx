@@ -26,6 +26,7 @@ import { SIDEBAR_SCROLL_RESET_STATE } from "../lib/navigation-scroll";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { displayAgentName } from "../lib/agent-name";
+import { localizeTeamName } from "../lib/agent-teams";
 import { useAgentOrder } from "../hooks/useAgentOrder";
 import { resourceMembershipState, useResourceMembershipMutation, useResourceMemberships } from "../hooks/useResourceMemberships";
 import {
@@ -263,7 +264,7 @@ function SidebarAgentItem({
 }
 
 export function SidebarAgents({ streamlined: _streamlined }: { streamlined?: boolean } = {}) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const sortChoices = useMemo<SidebarSectionRadioChoice[]>(
     () => [
       { value: "top", label: t("sort.top", { defaultValue: "Top" }) },
@@ -525,8 +526,9 @@ export function SidebarAgents({ streamlined: _streamlined }: { streamlined?: boo
         // Grouped into collapsible team folders; ungrouped agents fall into a final folder.
         return teamGroups.map((group) => {
           const collapsed = collapsedTeams.has(group.key);
-          const label =
-            group.team ?? t("sidebarAgents.ungrouped", { defaultValue: "Ungrouped" });
+          const label = group.team
+            ? localizeTeamName(group.team, i18n.language)
+            : t("sidebarAgents.ungrouped", { defaultValue: "Ungrouped" });
           return (
             <div key={group.key} className="mb-0.5">
               <button
