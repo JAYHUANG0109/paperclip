@@ -448,3 +448,159 @@ MIT &copy; 2026 [Paperclip Labs, Inc](https://paperclip.ing)
 <p align="center">
   <sub>Open source under MIT. Built for people who want to get work done, not babysit agents.</sub>
 </p>
+
+---
+
+## Moving this instance to another Mac (self-hosted transfer)
+
+> This section documents how **this fork's** self-hosted deployment is moved between Macs
+> without losing any state. It applies to a laptop-hosted instance served over Tailscale and
+> managed by the `ops/deploy.sh` blue-green pipeline. English first, 繁體中文 below.
+
+### What moves vs. what rebuilds
+
+- **Moves (all state, ~1 GB):** `~/.paperclip/instances/default` — every agent, company, task,
+  the embedded Postgres database, per-agent Asana tokens, **and the secrets `.env`** that lives
+  inside it (`GOOGLE_CLIENT_ID/SECRET`, `BETTER_AUTH_SECRET`, `PAPERCLIP_AGENT_JWT_SECRET`). The
+  server loads that `.env` from a fixed path on every boot, so it travels with the instance dir.
+  The launchd service definition (`~/Library/LaunchAgents/com.seasonarts.paperclip.plist`) moves too.
+- **Rebuilds (never copied):** the code and its `node_modules` / `ui/dist`. The new Mac clones the
+  repo and rebuilds fresh via `ops/deploy.sh setup`. (Don't copy `~/paperclip/releases` — it's
+  many GB of regenerable build output.)
+
+Both machines are Apple Silicon (arm64), so the embedded Postgres data and native modules are
+binary-compatible.
+
+### ⚠️ The one thing that isn't automatic: the public URL
+
+A new Mac is a new Tailscale device with a **new `*.ts.net` hostname**, so the public URL changes.
+Because the app uses Google SSO, you must update, on the new Mac:
+
+1. `~/.paperclip/instances/default/.env` → `PAPERCLIP_AUTH_PUBLIC_BASE_URL` and `PAPERCLIP_ALLOWED_HOSTNAMES`
+2. Google Cloud Console → the OAuth client → add the new host's redirect URI
+3. Tell users the temporary URL (their bookmarks change)
+
+`BETTER_AUTH_SECRET` and `PAPERCLIP_AGENT_JWT_SECRET` must stay identical (copying the instance
+`.env` handles this) so existing sessions and agent JWTs remain valid.
+
+### Steps
+
+**On the OLD Mac** — package everything into one archive (briefly stops the service to snapshot the
+DB consistently, then restarts it so this Mac keeps serving until the new one is verified):
+
+```bash
+ops/migrate-to-new-mac.sh          # → ~/paperclip-migrate-<date>.tgz
+```
+
+Copy that `.tgz` to the new Mac (AirDrop / scp / Tailscale).
+
+**On the NEW Mac (M2)** — install tooling once, then restore:
+
+```bash
+# one-time tooling
+brew install node pnpm git
+# + install the Tailscale app and the Claude CLI, then:
+ln -sf ~/.local/bin/claude /opt/homebrew/bin/claude   # so agents can spawn `claude`
+
+# restore state + code (does the mechanical restore, prints the manual steps)
+ops/restore-on-new-mac.sh ~/paperclip-migrate-<date>.tgz
+```
+
+Then do the two manual steps it prints (Tailscale funnel + the URL/OAuth update), and start it:
+
+```bash
+cd <repo> && ops/deploy.sh setup <branch>
+```
+
+**Verify:** the site loads over the new funnel · Google login works · an agent run succeeds
+(`claude` resolves on the launchd PATH) · calendar + skills render.
+
+**Once the new Mac is confirmed good,** stop the old one:
+
+```bash
+launchctl bootout gui/$(id -u)/com.seasonarts.paperclip
+```
+
+### Rollback / safety
+
+- The old Mac keeps running until you stop it — if the new Mac has trouble, you lose nothing.
+- On the new Mac, `restore-on-new-mac.sh` backs up any pre-existing instance dir to
+  `~/.paperclip/instances/default.bak-<ts>` before restoring.
+- `ops/deploy.sh` builds + health-checks in isolation and auto-rolls-back the code; the DB you've
+  already carried over intact.
+
+---
+
+## 將此實例搬移到另一台 Mac（自架轉移）
+
+> 本節說明如何在不遺失任何狀態的前提下，把**本 fork** 的自架部署從一台 Mac 搬到另一台。適用於以
+> 筆電自架、透過 Tailscale 對外服務、並以 `ops/deploy.sh` 藍綠部署管線管理的實例。（上為英文，下為繁體中文。）
+
+### 哪些要搬、哪些重建
+
+- **要搬（全部狀態，約 1 GB）：** `~/.paperclip/instances/default`——所有代理、公司、任務、內嵌
+  Postgres 資料庫、各代理的 Asana token，**以及其中的機密 `.env`**（`GOOGLE_CLIENT_ID/SECRET`、
+  `BETTER_AUTH_SECRET`、`PAPERCLIP_AGENT_JWT_SECRET`）。伺服器每次啟動都從固定路徑載入該 `.env`，
+  因此它會隨實例資料夾一起搬移。launchd 服務定義
+  （`~/Library/LaunchAgents/com.seasonarts.paperclip.plist`）也要搬。
+- **重建（絕不複製）：** 程式碼與其 `node_modules` / `ui/dist`。新 Mac 會 clone 倉庫並以
+  `ops/deploy.sh setup` 重新建置。（不要複製 `~/paperclip/releases`——那是好幾 GB、可重新產生的建置產物。）
+
+兩台都是 Apple Silicon（arm64），因此內嵌 Postgres 資料與原生模組二進位相容。
+
+### ⚠️ 唯一無法自動化的部分：對外網址
+
+新 Mac 是新的 Tailscale 裝置，會有**新的 `*.ts.net` 主機名**，對外網址因此改變。由於本 App 使用
+Google 單一登入（SSO），你必須在新 Mac 上更新：
+
+1. `~/.paperclip/instances/default/.env` → `PAPERCLIP_AUTH_PUBLIC_BASE_URL` 與 `PAPERCLIP_ALLOWED_HOSTNAMES`
+2. Google Cloud Console → OAuth 用戶端 → 新增新主機名的 redirect URI
+3. 告知使用者臨時網址（他們的書籤會改變）
+
+`BETTER_AUTH_SECRET` 與 `PAPERCLIP_AGENT_JWT_SECRET` 必須保持一致（複製實例 `.env` 即可），
+既有的登入工作階段與代理 JWT 才會繼續有效。
+
+### 步驟
+
+**在舊 Mac** ——把所有東西打包成單一封存檔（會短暫停止服務以取得一致的資料庫快照，然後重新啟動，
+讓這台在新機驗證完成前持續服務）：
+
+```bash
+ops/migrate-to-new-mac.sh          # → ~/paperclip-migrate-<日期>.tgz
+```
+
+把該 `.tgz` 傳到新 Mac（AirDrop／scp／Tailscale）。
+
+**在新 Mac（M2）** ——先安裝一次性工具，再還原：
+
+```bash
+# 一次性工具
+brew install node pnpm git
+# 另外安裝 Tailscale App 與 Claude CLI，然後：
+ln -sf ~/.local/bin/claude /opt/homebrew/bin/claude   # 讓代理能啟動 `claude`
+
+# 還原狀態與程式碼（自動完成機械式還原，並印出手動步驟）
+ops/restore-on-new-mac.sh ~/paperclip-migrate-<日期>.tgz
+```
+
+接著完成它印出的兩個手動步驟（Tailscale funnel ＋ 網址／OAuth 更新），再啟動：
+
+```bash
+cd <倉庫> && ops/deploy.sh setup <分支>
+```
+
+**驗證：** 網站可透過新的 funnel 載入 · Google 登入正常 · 代理執行成功
+（launchd 的 PATH 找得到 `claude`）· 行事曆與技能正常顯示。
+
+**確認新 Mac 一切正常後**，再停止舊的：
+
+```bash
+launchctl bootout gui/$(id -u)/com.seasonarts.paperclip
+```
+
+### 回復／安全性
+
+- 舊 Mac 在你手動停止前會持續運行——新 Mac 若有問題，不會損失任何東西。
+- 在新 Mac 上，`restore-on-new-mac.sh` 會先把既有的實例資料夾備份到
+  `~/.paperclip/instances/default.bak-<時間戳>` 再還原。
+- `ops/deploy.sh` 會在隔離環境中建置並健康檢查，程式碼可自動回復；資料庫你已完整搬移。
