@@ -26,6 +26,8 @@ const DESK   = { c: 0,  r: 2,  w: 3, h: 2 };  // the light/white desk (rolled ou
 const CHAIR  = { c: 5,  r: 16, w: 1, h: 1 };  // office chair from behind (agent faces the desk)
 const ARMCH  = { c: 0,  r: 16, w: 1, h: 1 };  // armchair, front (we see the seat)
 const ARMCH_BACK = { c: 1, r: 16, w: 1, h: 1 };  // armchair, back (backrest toward us)
+const ARMCH_R = { c: 2, r: 16, w: 1, h: 1 };  // armchair facing right (east)
+const ARMCH_L = { c: 3, r: 16, w: 1, h: 1 };  // armchair facing left (west)
 const SOFA   = { c: 4,  r: 2,  w: 4, h: 2 };
 const PLANT  = { c: 4,  r: 28, w: 1, h: 2 };  // tall fern
 const POT    = { c: 2,  r: 28, w: 1, h: 2 };  // small potted plant (盆栽), brown pot
@@ -152,10 +154,15 @@ function furnishMeeting(rm) {
     objS(ARMCH.c, ARMCH.r, 1, 1, chX, ty - 0.65, CHAIR_F);                    // top: faces table, tight
     objS(ARMCH_BACK.c, ARMCH_BACK.r, 1, 1, chX, ty + benchH - 1.3, CHAIR_F);  // bottom: backs to us, tight
   }
+  // Head chairs at the short ends of the table (same row as the table centre):
+  // left end faces east, right end faces west.
+  const endY = ty + benchH*0.59 - chW/2;
+  objS(ARMCH_R.c, ARMCH_R.r, 1, 1, tx - chW - 0.1, endY, CHAIR_F);    // left end, faces the table (east)
+  objS(ARMCH_L.c, ARMCH_L.r, 1, 1, tx + tw - 0.1, endY, CHAIR_F);     // right end, faces the table (west)
 }
 function furnishLounge(rm) {
-  // Intentionally empty except for a clock (the furniture never read well here).
-  drawClock(rm);
+  // Duplicate the 茶水間 layout exactly (same counter/fridge/water cooler/vending/clock).
+  furnishPantry(rm);
 }
 function furnishPantry(rm) {
   const { x, y, w, h } = rm;
@@ -183,8 +190,12 @@ function furnishFounder(rm) {
   const kW = (KEYBOARD_PX.sw/TS)*KB_F;
   // Keyboard at the FRONT (south) edge of the table so the monitor overlay doesn't cover it.
   objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.4, deskTop + 2.7, KB_F);
-  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 1.0, deskTop + 1.2, 1.8);      // 盆栽, wider right
-  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.6, deskTop + 1.0, 1.6);  // fern, wider left
+  // Left: the tall plant, nudged south so it clears the painting on the back wall.
+  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.6, deskTop + 1.5, 1.6);
+  // Right: two matching 盆栽 stacked vertically (mirrors the left), nudged a touch left.
+  const potX = cx + dW/2 + 1.0;
+  objS(POT.c, POT.r, 1, 2, potX, deskTop + 1.2, 1.6);
+  objS(POT.c, POT.r, 1, 2, potX, deskTop + 3.0, 1.6);
   const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
   objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
