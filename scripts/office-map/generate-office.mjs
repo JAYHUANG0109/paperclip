@@ -144,9 +144,13 @@ function furnishMeeting(rm) {
   // with tight gaps to the table.
   const bf = 2.9, tw = GREY_BENCH.w*bf, benchH = GREY_BENCH.h*bf, tx = cx - tw/2, ty = y + h/2 - 1.4;
   objS(GREY_BENCH.c, GREY_BENCH.r, GREY_BENCH.w, GREY_BENCH.h, tx, ty, bf);
+  // Two chairs per row, symmetric + centred on the table (centre = cx), gaps pulled tight:
+  // top row nudged south toward the table, bottom row nudged north toward it.
+  const chW = CHAIR_F, cGap = 2.7;                 // distance between the two chair centres
   for (let i = 0; i < 2; i++) {
-    objS(ARMCH.c, ARMCH.r, 1, 1, tx + 1.2 + i*3.0, ty - 1.55, CHAIR_F);                       // top: face table, tight
-    objS(ARMCH_BACK.c, ARMCH_BACK.r, 1, 1, tx + 1.2 + i*3.0, ty + benchH - 0.7, CHAIR_F);     // bottom: backs to us, tight
+    const chX = cx + (i === 0 ? -cGap/2 : cGap/2) - chW/2;
+    objS(ARMCH.c, ARMCH.r, 1, 1, chX, ty - 0.65, CHAIR_F);                    // top: faces table, tight
+    objS(ARMCH_BACK.c, ARMCH_BACK.r, 1, 1, chX, ty + benchH - 1.3, CHAIR_F);  // bottom: backs to us, tight
   }
 }
 function furnishLounge(rm) {
@@ -163,7 +167,6 @@ function furnishPantry(rm) {
   // Water cooler: whole jug + stand + base (r16-18), standing on the floor below the counter.
   const wf = 1.9;
   objS(WATER.c, WATER.r, WATER.w, WATER.h, x+2.5, y+3.3, wf);
-  objS(CUP.c, CUP.r, 1, 1, x+2.5+WATER.w*wf+0.3, y+h-3.4, 1.4);
   objS(VENDING.c, VENDING.r, VENDING.w, VENDING.h, x+w-VENDING.w*1.5-2, y+h-VENDING.h*1.5-0.8, 1.5);
   drawClock(rm);
 }
@@ -179,7 +182,7 @@ function furnishFounder(rm) {
   objS(WHITE_TABLE.c, WHITE_TABLE.r, WHITE_TABLE.w, 2, cx - dW/2, deskTop, df);   // wide white table
   const kW = (KEYBOARD_PX.sw/TS)*KB_F;
   // Keyboard at the FRONT (south) edge of the table so the monitor overlay doesn't cover it.
-  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.4, deskTop + 3.2, KB_F);
+  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.4, deskTop + 2.7, KB_F);
   objS(POT.c, POT.r, 1, 2, cx + dW/2 + 1.0, deskTop + 1.2, 1.8);      // 盆栽, wider right
   objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.6, deskTop + 1.0, 1.6);  // fern, wider left
   const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
