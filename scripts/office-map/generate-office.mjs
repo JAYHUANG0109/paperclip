@@ -37,8 +37,8 @@ const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
 // Keyboard = just the keys strip, in 48×48-sheet px (3× the 16×16 coords).
 const KEYBOARD_PX = { sx: 12*TS, sy: 376*3, sw: TS, sh: 21 };
 const KB_F = 2.42;                              // keyboard scale (1.1×)
-const GREY_DESK  = { c: 1,  r: 2,  w: 3 };  // Jay's grey desk
-const WHITE_DESK = { c: 5,  r: 2,  w: 3 };  // founder's white table
+const GREY_DESK  = { c: 0,  r: 2,  w: 3 };  // Jay's grey desk (full, clean)
+const WHITE_DESK = { c: 5,  r: 2,  w: 3 };  // founder's white-top table
 // Decoration tiles (verified against the sheet).
 const CLOCK      = { c: 0,  r: 22, w: 1, h: 1 };
 const WATER      = { c: 9,  r: 16, w: 1, h: 2 };  // water cooler
@@ -121,21 +121,22 @@ function furnishTeam(rm) {
     }
   }
   seats[id] = list;
-  // ── Room decorations (kept in the wall margins so they don't hit the desks) ──
-  objS(CLOCK.c, CLOCK.r, 1, 1, x + w - 2.4, y + 0.5, 1.3);                       // clock, top-right
+  // ── Room decorations (kept fully inside the walls) ──
+  objS(CLOCK.c, CLOCK.r, 1, 1, x + w - 2.6, y + 0.4, 1.7);                        // clock, top-right (bigger)
   const big = w > 30;                                                            // 教學組 / 資訊部
-  const pt = big ? PAINT_BIG : PAINT_SM; const pf = 0.9, pw = pt.w*pf;
-  objS(pt.c, pt.r, pt.w, 2, x + w/2 - pw/2, y + 0.25, pf);                        // painting on the top wall
-  objS(BOOKSH_W.c, BOOKSH_W.r, BOOKSH_W.w, BOOKSH_W.h, x + 1.3, y + h - 3.1, DEC_F); // bookshelf, bottom-left
-  if (big) objS(BOXES.c, BOXES.r, BOXES.w, BOXES.h, x + w - 5, y + h - 3.3, DEC_F);  // boxes (教學組/資訊部)
-  if (id === "teaching") objS(PRINTER.c, PRINTER.r, PRINTER.w, PRINTER.h, x + w - 9, y + h - 3.3, DEC_F); // printer
+  const pt = big ? PAINT_BIG : PAINT_SM; const pf = big ? 1.5 : 1.2, pw = pt.w*pf;
+  objS(pt.c, pt.r, pt.w, 2, x + w/2 - pw/2, y + 0.15, pf);                        // larger painting on the top wall
+  const shf = 1.4;                                                               // bookshelf/box scale (fits the margin)
+  objS(BOOKSH_W.c, BOOKSH_W.r, BOOKSH_W.w, BOOKSH_W.h, x + 1.4, y + h - BOOKSH_W.h*shf - 1.1, shf); // bottom-left, inside
+  if (big) objS(BOXES.c, BOXES.r, BOXES.w, BOXES.h, x + w - BOXES.w*shf - 1.4, y + h - BOXES.h*shf - 1.1, shf); // bottom-right, inside
+  if (id === "teaching") objS(PRINTER.c, PRINTER.r, PRINTER.w, PRINTER.h, x + w - BOXES.w*shf - PRINTER.w*shf - 2.2, y + h - PRINTER.h*shf - 1.1, shf);
 }
 function furnishMeeting(rm) {
   const { x, y, w, h } = rm; const cx = x + w/2;
   // Chalkboard + presentation boards on the back wall, plus a clock.
-  objS(CHALK.c, CHALK.r, CHALK.w, CHALK.h, x + 1.3, y + 0.4, 1.4);
-  objS(PRES_BAR.c, PRES_BAR.r, PRES_BAR.w, PRES_BAR.h, x + w - 5.2, y + 0.5, 1.2);
-  objS(CLOCK.c, CLOCK.r, 1, 1, x + w/2 - 0.5, y + 0.5, 1.3);
+  objS(CHALK.c, CHALK.r, CHALK.w, CHALK.h, x + 1.2, y + 0.3, 1.9);
+  objS(PRES_BAR.c, PRES_BAR.r, PRES_BAR.w, PRES_BAR.h, x + w - CHALK.w*1.7 - 1.2, y + 0.4, 1.7);
+  objS(CLOCK.c, CLOCK.r, 1, 1, x + w/2 - 0.5, y + 0.4, 1.7);
   // Grey conference bench with mauve armchairs around it (replaces old table/chairs).
   const tw = GREY_BENCH.w*DEC_F, tx = cx - tw/2, ty = y + h/2;
   objS(GREY_BENCH.c, GREY_BENCH.r, GREY_BENCH.w, GREY_BENCH.h, tx, ty);
@@ -148,7 +149,7 @@ function furnishLounge(rm) {
   const { x, y, w, h } = rm; const cx = x + w/2;
   objS(SOFA.c, SOFA.r, SOFA.w, SOFA.h, cx - SOFA.w*DEC_F/2, y+2);
   objS(TABLE.c, TABLE.r, 2, 2, cx - 1.7, y+6);
-  objS(CLOCK.c, CLOCK.r, 1, 1, x + w - 2.4, y + 0.5, 1.3);
+  objS(CLOCK.c, CLOCK.r, 1, 1, x + w - 2.4, y + 0.5, 1.7);
 }
 function furnishPantry(rm) {
   const { x, y, w, h } = rm;
@@ -159,7 +160,7 @@ function furnishPantry(rm) {
   objS(WATER.c, WATER.r, WATER.w, WATER.h, x+2, y+h-4.5, DEC_F);
   objS(CUP.c, CUP.r, 1, 1, x+2+WATER.w*DEC_F+0.1, y+h-3, 1.3);
   objS(VENDING.c, VENDING.r, VENDING.w, VENDING.h, x+w-VENDING.w*1.5-1.2, y+h-VENDING.h*1.5-0.8, 1.5);
-  objS(CLOCK.c, CLOCK.r, 1, 1, x + w/2 - 0.5, y + 0.5, 1.3);
+  objS(CLOCK.c, CLOCK.r, 1, 1, x + w/2 - 0.5, y + 0.5, 1.7);
 }
 function furnishFounder(rm) {
   const { x, y, w, h, id } = rm;
@@ -179,10 +180,10 @@ function furnishFounder(rm) {
   objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
   // Landscape paintings across the back wall + a clock.
-  objS(PAINT_BIG.c, PAINT_BIG.r, PAINT_BIG.w, PAINT_BIG.h, cx - PAINT_BIG.w*0.75/2, y + 0.2, 0.75);
-  objS(PAINT_MED.c, PAINT_MED.r, PAINT_MED.w, PAINT_MED.h, x + 3, y + 0.25, 0.7);
-  objS(PAINT_SM.c, PAINT_SM.r, PAINT_SM.w, PAINT_SM.h, x + w - 4.5, y + 0.25, 0.8);
-  objS(CLOCK.c, CLOCK.r, 1, 1, x + 1.4, y + 0.5, 1.3);
+  objS(PAINT_BIG.c, PAINT_BIG.r, PAINT_BIG.w, PAINT_BIG.h, cx - PAINT_BIG.w*1.3/2, y + 0.15, 1.3);
+  objS(PAINT_MED.c, PAINT_MED.r, PAINT_MED.w, PAINT_MED.h, x + 3.5, y + 0.2, 1.15);
+  objS(PAINT_SM.c, PAINT_SM.r, PAINT_SM.w, PAINT_SM.h, x + w - 5, y + 0.2, 1.15);
+  objS(CLOCK.c, CLOCK.r, 1, 1, x + 1.4, y + 0.4, 1.7);
 }
 
 for (const rm of ROOMS) drawRoom(rm);

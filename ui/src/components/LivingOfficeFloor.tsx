@@ -599,7 +599,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
               const st = getStatus(pin.agent, workingIds.has(pin.agent.id));
               // Non-founder monitors sit a bit further north so they don't cover
               // the keyboard on the desk; the founder's is already tuned.
-              return <DeskMonitor key={`mon-${pin.agent.id}`} x={pin.x} y={pin.y} size={pin.size} status={st} offsetFactor={pin.solo ? 0.9 : 1.08} />;
+              return <DeskMonitor key={`mon-${pin.agent.id}`} x={pin.x} y={pin.y} size={pin.size} status={st} offsetFactor={pin.solo ? 0.9 : 1.0} />;
             })}
             {pins.map((pin, idx) => {
               const m = motion.current.get(pin.agent.id);
