@@ -116,6 +116,7 @@ Before ending any heartbeat, apply this final-disposition checklist:
 - `blocked`: work cannot continue until first-class `blockedByIssueIds` resolve or a named owner takes a concrete unblock action.
 - Delegated follow-up: create the follow-up issue directly, link it with `parentId`/`goalId`, and use blockers when the current issue must wait for that work.
 - Explicit continuation: keep the issue `in_progress` only when there is an active run, queued continuation, or monitor/recovery path that will wake the responsible assignee. Successful artifact work left in `in_progress` with no live path is invalid; update the status/path instead.
+- **Routine/scheduled execution issues (common trap):** every routine fire creates a NEW execution issue, so a completed routine run has no reason to stay open. Once the work is done (e.g. the digest/summary is posted), mark the issue `done` — or `in_review` only if you are genuinely waiting on a specific person's input. **NEVER leave a routine issue `in_progress` "waiting for the next schedule" or "waiting for a dashboard button."** The next schedule tick and any dashboard button (e.g. a review/close action) wake a *fresh* run via their own event; they do not need this issue held open. Leaving it `in_progress` with no live run gets it flagged as a stranded "missing disposition" issue, which escalates up the reporting chain to your manager and makes them re-run the whole task in a token-burning loop.
 
 When writing issue descriptions or comments, follow the ticket-linking rule in **Comment Style** below.
 
