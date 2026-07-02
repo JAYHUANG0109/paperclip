@@ -58,7 +58,7 @@ const FLOORS: FloorDef[] = [
       { id: "it", name: "資訊部", team: "資訊部", x: 26.2, y: 39.3, w: 52.4, h: 35.7, color: "#3B82F6", seats: [{"x":34.08,"y":51.11},{"x":46.28,"y":51.11},{"x":58.48,"y":51.11},{"x":70.68,"y":51.11},{"x":40.18,"y":65.84},{"x":52.38,"y":65.84},{"x":64.58,"y":65.84}] },
       { id: "lounge", name: "休息室", team: null, x: 81, y: 46.4, w: 15.5, h: 21.4, color: "#EC4899" },
       { id: "pantry", name: "茶水間", team: null, x: 4.8, y: 78.6, w: 16.7, h: 17.9, color: "#14B8A6" },
-      { id: "founder", name: "創辦人辦公室", team: null, x: 36.9, y: 76.8, w: 31, h: 19.6, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":52.38,"y":89.89}] },
+      { id: "founder", name: "創辦人辦公室", team: null, x: 36.9, y: 76.8, w: 31, h: 19.6, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":52.38,"y":90}] },
       { id: "auto", name: "系統自動化", team: "系統自動化", x: 82.1, y: 78.6, w: 14.3, h: 17.9, color: "#F97316", seats: [{"x":89.29,"y":90.39}] },
     ],
   },

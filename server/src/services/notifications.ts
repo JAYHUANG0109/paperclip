@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { notifications } from "@paperclipai/db";
+import { notifications, authUsers } from "@paperclipai/db";
+import { publishPluginDomainEvent } from "./activity-log.js";
 
 export function notificationService(db: Db) {
   // Idempotent on (companyId, dedupeKey): the same dedupeKey won't create a 2nd row.
@@ -26,6 +28,36 @@ export function notificationService(db: Db) {
       })
       .onConflictDoNothing({ target: [notifications.companyId, notifications.dedupeKey] })
       .returning({ id: notifications.id });
+    // Emit a plugin event only for a genuinely NEW notification (a deduped
+    // insert returns no row). Connectors like Google Chat subscribe to this to
+    // forward the item to the user's own channel. The recipient's email is
+    // resolved here (plugins have no users API) so the handler can map it to a
+    // chat DM. Fully guarded — forwarding must never break the notification.
+    if (row) {
+      try {
+        const u = (await db.select({ email: authUsers.email }).from(authUsers).where(eq(authUsers.id, input.userId)))[0];
+        publishPluginDomainEvent({
+          eventId: randomUUID(),
+          eventType: "notification.created",
+          occurredAt: new Date().toISOString(),
+          actorType: "system",
+          entityId: row.id,
+          entityType: "notification",
+          companyId: input.companyId,
+          payload: {
+            notificationId: row.id,
+            userId: input.userId,
+            email: u?.email?.trim().toLowerCase() ?? null,
+            kind: input.kind,
+            title: input.title,
+            body: input.body ?? null,
+            link: input.link ?? null,
+          },
+        });
+      } catch {
+        /* best-effort: never let event fan-out affect the write */
+      }
+    }
     return row ?? null;
   }
 

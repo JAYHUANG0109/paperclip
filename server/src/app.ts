@@ -606,9 +606,10 @@ export async function createApp(
   monthlyRollupTimer.unref?.();
   void runMonthlyRollups();
 
-  // "Tasks done" summaries → each user's inbox. Daily after ~17:30 and weekly
-  // (Fri) after ~17:45 Asia/Taipei. A ~5-min idempotent tick: once the local
-  // time passes the threshold the per-user summary is created exactly once
+  // "Tasks done" summaries → each user's inbox. WEEKLY ONLY (Fri) after ~17:45
+  // Asia/Taipei. The daily summary was intentionally disabled to save tokens —
+  // only the weekly recap is generated now. A ~5-min idempotent tick: once the
+  // local time passes the threshold the per-user summary is created exactly once
   // (notification dedupeKey guards re-runs), so this is safe to re-run/restart.
   let summaryTimer: ReturnType<typeof setInterval> | null = null;
   const runDueSummaries = async () => {
@@ -619,16 +620,14 @@ export async function createApp(
       const hour = tp.getUTCHours();
       const minute = tp.getUTCMinutes();
       const weekday = tp.getUTCDay(); // 0=Sun .. 6=Sat
-      const pastDaily = hour > 17 || (hour === 17 && minute >= 30);
       const pastWeekly =
         (weekday === 5 && (hour > 17 || (hour === 17 && minute >= 45))) ||
         weekday === 6 ||
         weekday === 0; // Fri 17:45 onward, plus weekend catch-up (same week, deduped)
-      if (!pastDaily && !pastWeekly) return;
+      if (!pastWeekly) return;
       const rows = await db.select({ id: companies.id }).from(companies);
       for (const c of rows) {
-        if (pastDaily) await summaries.generate(c.id, "daily", now);
-        if (pastWeekly) await summaries.generate(c.id, "weekly", now);
+        await summaries.generate(c.id, "weekly", now);
       }
     } catch (err) {
       logger.warn({ err }, "scheduled summaries tick failed");
