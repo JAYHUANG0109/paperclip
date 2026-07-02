@@ -652,8 +652,9 @@ const plugin = definePlugin({
 
         const lines = [`🔔 ${p.title ?? "Paperclip 通知 / Notification"}`];
         if (p.body) lines.push(p.body);
-        // Links are app-relative (e.g. "/dashboard"); surface as a hint, not a
-        // broken URL. The user opens Paperclip from their existing bookmark.
+        // The server resolves the link to an absolute URL (from authPublicBaseUrl)
+        // so it's directly clickable in Chat. It may still be relative if the
+        // origin isn't configured — in that case it's just a hint, not a link.
         if (p.link) lines.push(`↗ Paperclip：${p.link}`);
         await postFormatted(ctx, config, { spaceName }, lines.join("\n\n"));
         ctx.logger.info("Forwarded notification to Chat", { email, kind: p.kind, space: spaceName });

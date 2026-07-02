@@ -3,6 +3,35 @@ import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { notifications, authUsers } from "@paperclipai/db";
 import { publishPluginDomainEvent } from "./activity-log.js";
+import { loadConfig } from "../config.js";
+
+/**
+ * The app's public origin (e.g. https://host.ts.net), read once from config.
+ * Used to turn app-relative notification links ("/dashboard") into absolute,
+ * clickable URLs for EXTERNAL forwards (Google Chat). The in-app inbox keeps
+ * the relative link for client-side routing; only the emitted event payload is
+ * made absolute. Best-effort: if config/parsing fails, we fall back to null and
+ * the link stays relative (a harmless hint) rather than breaking the notify.
+ */
+let publicBaseOrigin: string | null | undefined;
+function resolvePublicBaseOrigin(): string | null {
+  if (publicBaseOrigin !== undefined) return publicBaseOrigin;
+  try {
+    const raw = loadConfig().authPublicBaseUrl?.trim();
+    publicBaseOrigin = raw ? new URL(raw).origin : null;
+  } catch {
+    publicBaseOrigin = null;
+  }
+  return publicBaseOrigin;
+}
+function toAbsoluteLink(link: string | null | undefined): string | null {
+  const l = link?.trim();
+  if (!l) return null;
+  if (/^https?:\/\//i.test(l)) return l; // already absolute
+  const base = resolvePublicBaseOrigin();
+  if (!base) return l; // no known origin — leave relative
+  return `${base}${l.startsWith("/") ? "" : "/"}${l}`;
+}
 
 export function notificationService(db: Db) {
   // Idempotent on (companyId, dedupeKey): the same dedupeKey won't create a 2nd row.
@@ -51,7 +80,7 @@ export function notificationService(db: Db) {
             kind: input.kind,
             title: input.title,
             body: input.body ?? null,
-            link: input.link ?? null,
+            link: toAbsoluteLink(input.link),
           },
         });
       } catch {
