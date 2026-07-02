@@ -194,12 +194,12 @@ function furnishFounder(rm) {
   const kW = (KEYBOARD_PX.sw/TS)*KB_F;
   // Keyboard at the FRONT (south) edge of the table so the monitor overlay doesn't cover it.
   objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.4, deskTop + 2.7, KB_F);
-  // Left: the tall plant, nudged south so it clears the painting on the back wall.
-  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.6, deskTop + 1.5, 1.6);
-  // Right: two matching 盆栽 stacked vertically (mirrors the left), nudged a touch left.
-  const potX = cx + dW/2 + 1.0;
-  objS(POT.c, POT.r, 1, 2, potX, deskTop + 1.2, 1.6);
-  objS(POT.c, POT.r, 1, 2, potX, deskTop + 3.0, 1.6);
+  // Two white-pot 盆栽 stacked vertically on each side of the table (symmetric).
+  const potXR = cx + dW/2 + 1.0, potXL = cx - dW/2 - 2.6;
+  for (const px of [potXL, potXR]) {
+    objS(POT.c, POT.r, 1, 2, px, deskTop + 1.2, 1.6);
+    objS(POT.c, POT.r, 1, 2, px, deskTop + 3.0, 1.6);
+  }
   const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
   chairBlit(CHAIR, chairX, chairY);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
