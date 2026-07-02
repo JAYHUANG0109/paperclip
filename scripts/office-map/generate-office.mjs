@@ -116,10 +116,10 @@ function furnishTeam(rm) {
       const centerX = x + 1.5 + (c + off + 0.5) * cellW;
       const rowTop = y + 2 + r * cellH;
       objS(DESK.c, DESK.r, DESK.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
-      // Keyboard on the desk surface, directly under the (DOM) monitor, set very
-      // slightly in from the front edge (north).
+      // Keyboard centred (mouse to the right), nudged a touch east + south so the
+      // keys sit under the monitor and the mouse is beside them.
       const kW = (KEYBOARD_PX.sw/TS)*KB_F;
-      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2, rowTop + 0.45, KB_F);
+      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2 + 0.7, rowTop + 0.7, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
       objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
       list.push(seatPct(chairX + cW/2, chairY + cH/2));
@@ -151,18 +151,13 @@ function furnishMeeting(rm) {
   // with tight gaps to the table.
   const bf = 2.9, tw = GREY_BENCH.w*bf, benchH = GREY_BENCH.h*bf, tx = cx - tw/2, ty = y + h/2 - 1.4;
   objS(GREY_BENCH.c, GREY_BENCH.r, GREY_BENCH.w, GREY_BENCH.h, tx, ty, bf);
-  const seatGap = 2.2;
   for (let i = 0; i < 2; i++) {
-    objS(ARMCH.c, ARMCH.r, 1, 1, tx + 1.2 + i*3.0, ty - seatGap, CHAIR_F);                    // top: face table
-    objS(ARMCH_BACK.c, ARMCH_BACK.r, 1, 1, tx + 1.2 + i*3.0, ty + benchH - 0.4, CHAIR_F);     // bottom: backs to us
+    objS(ARMCH.c, ARMCH.r, 1, 1, tx + 1.2 + i*3.0, ty - 1.55, CHAIR_F);                       // top: face table, tight
+    objS(ARMCH_BACK.c, ARMCH_BACK.r, 1, 1, tx + 1.2 + i*3.0, ty + benchH - 0.7, CHAIR_F);     // bottom: backs to us, tight
   }
 }
 function furnishLounge(rm) {
-  const { x, y, w, h } = rm; const cx = x + w/2;
-  // Grey couch + coffee table + a printer, plus a clock.
-  objS(WHITE_TABLE.c, WHITE_TABLE.r, WHITE_TABLE.w, WHITE_TABLE.h, cx - WHITE_TABLE.w*DEC_F/2, y + 2, DEC_F);
-  objS(TABLE.c, TABLE.r, 2, 2, cx - 2*DEC_F/2, y + 2 + WHITE_TABLE.h*DEC_F + 0.4, DEC_F);
-  objS(PRINTER.c, PRINTER.r, PRINTER.w, PRINTER.h, x + w - PRINTER.w*DEC_F - 1.4, y + h - PRINTER.h*DEC_F - 1.3, DEC_F);
+  // Intentionally empty except for a clock (the furniture never read well here).
   drawClock(rm);
 }
 function furnishPantry(rm) {
@@ -178,17 +173,17 @@ function furnishPantry(rm) {
 function furnishFounder(rm) {
   const { x, y, w, h, id } = rm;
   const cx = x + w/2;
-  const df = DEC_F;
+  const df = 2.4;   // founder table shown wider (fills fully, no right-edge clip)
   const dW = WHITE_TABLE.w*df, dH = 2*df, cW = CHAIR.w*CHAIR_F, cH = CHAIR.h*CHAIR_F;
   // The chair/seat (and thus the DOM monitor, at seat − 0.9*AGENT_SIZE) stay put.
   // The white desk + keyboard + plants sit just under the monitor.
   const seatRow = y + Math.max(2, h*0.30);
   const deskTop = seatRow - 1.2;
-  objS(WHITE_TABLE.c, WHITE_TABLE.r, WHITE_TABLE.w, 2, cx - dW/2, deskTop, df);   // white table
+  objS(WHITE_TABLE.c, WHITE_TABLE.r, WHITE_TABLE.w, 2, cx - dW/2, deskTop, df);   // wide white table
   const kW = (KEYBOARD_PX.sw/TS)*KB_F;
-  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2, deskTop + 1.55, KB_F);
-  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.5, deskTop + 0.9, 1.8);      // 盆栽 to the right
-  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.1, deskTop + 0.7, 1.6);  // fern to the left
+  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.7, deskTop + 1.9, KB_F);
+  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 1.0, deskTop + 1.2, 1.8);      // 盆栽, wider right
+  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.6, deskTop + 1.0, 1.6);  // fern, wider left
   const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
   objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
