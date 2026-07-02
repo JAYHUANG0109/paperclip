@@ -59,7 +59,7 @@ function createItem(overrides: Partial<WorkspaceFileListFileItem> = {}): Workspa
     byteSize: 2048,
     modifiedAt: new Date(Date.now() - 120_000).toISOString(),
     previewKind: "text",
-    capabilities: { preview: true, download: false, listChildren: false },
+    capabilities: { preview: true, download: true, listChildren: false },
     ...overrides,
   };
 }

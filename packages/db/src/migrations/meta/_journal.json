@@ -780,98 +780,210 @@
 			"breakpoints": true
 		},
 		{
-			"idx": 9001,
+			"idx": 111,
+			"version": "7",
+			"when": 1781902500000,
+			"tag": "0111_backfill_skill_create_human_defaults",
+			"breakpoints": true
+		},
+		{
+			"idx": 112,
+			"version": "7",
+			"when": 1781902600000,
+			"tag": "0112_rename_skill_create_permission_key",
+			"breakpoints": true
+		},
+		{
+			"idx": 113,
+			"version": "7",
+			"when": 1781902700000,
+			"tag": "0113_pipeline_foundation",
+			"breakpoints": true
+		},
+		{
+			"idx": 114,
+			"version": "7",
+			"when": 1781902800000,
+			"tag": "0114_pipeline_case_issue_unlinked_event",
+			"breakpoints": true
+		},
+		{
+			"idx": 115,
+			"version": "7",
+			"when": 1781902900000,
+			"tag": "0115_pipeline_routine_origin",
+			"breakpoints": true
+		},
+		{
+			"idx": 116,
+			"version": "7",
+			"when": 1781903000000,
+			"tag": "0116_pipeline_upstream_drift_event",
+			"breakpoints": true
+		},
+		{
+			"idx": 117,
+			"version": "7",
+			"when": 1781903100000,
+			"tag": "0117_pipeline_transition_forced_event",
+			"breakpoints": true
+		},
+		{
+			"idx": 118,
+			"version": "7",
+			"when": 1781903200000,
+			"tag": "0118_pipeline_case_agent_fanout",
+			"breakpoints": true
+		},
+		{
+			"idx": 119,
+			"version": "7",
+			"when": 1781903300000,
+			"tag": "0119_pipeline_drift_acknowledged_event",
+			"breakpoints": true
+		},
+		{
+			"idx": 120,
+			"version": "7",
+			"when": 1781903400000,
+			"tag": "0120_pipeline_stage_working_primitives",
+			"breakpoints": true
+		},
+		{
+			"idx": 121,
+			"version": "7",
+			"when": 1781903500000,
+			"tag": "0121_pipeline_automation_retry_effects",
+			"breakpoints": true
+		},
+		{
+			"idx": 122,
+			"version": "7",
+			"when": 1781903600000,
+			"tag": "0122_pipeline_case_documents",
+			"breakpoints": true
+		},
+		{
+			"idx": 123,
+			"version": "7",
+			"when": 1781903700000,
+			"tag": "0123_document_annotation_source_trust",
+			"breakpoints": true
+		},
+		{
+			"idx": 124,
+			"version": "7",
+			"when": 1782440000000,
+			"tag": "0124_agent_api_key_scope_config",
+			"breakpoints": true
+		},
+		{
+			"idx": 125,
+			"version": "7",
+			"when": 1782440100000,
+			"tag": "0125_environment_custom_image_templates",
+			"breakpoints": true
+		},
+		{
+			"idx": 126,
+			"version": "7",
+			"when": 1782526400000,
+			"tag": "0126_issue_comment_derived_attribution",
+			"breakpoints": true
+		},
+		{
+			"idx": 127,
 			"version": "7",
 			"when": 1782289918252,
 			"tag": "9001_colorful_human_cannonball",
 			"breakpoints": true
 		},
 		{
-			"idx": 9002,
+			"idx": 128,
 			"version": "7",
 			"when": 1782292347775,
 			"tag": "9002_bright_black_tarantula",
 			"breakpoints": true
 		},
 		{
-			"idx": 9003,
+			"idx": 129,
 			"version": "7",
 			"when": 1782346899022,
 			"tag": "9003_mighty_ares",
 			"breakpoints": true
 		},
 		{
-			"idx": 9004,
+			"idx": 130,
 			"version": "7",
 			"when": 1782360198071,
 			"tag": "9004_smart_madame_masque",
 			"breakpoints": true
 		},
 		{
-			"idx": 9005,
+			"idx": 131,
 			"version": "7",
 			"when": 1782366102990,
 			"tag": "9005_aromatic_khan",
 			"breakpoints": true
 		},
 		{
-			"idx": 9006,
+			"idx": 132,
 			"version": "7",
 			"when": 1782366103990,
 			"tag": "9006_skill_sharing",
 			"breakpoints": true
 		},
 		{
-			"idx": 9007,
+			"idx": 133,
 			"version": "7",
 			"when": 1782366104990,
 			"tag": "9007_skill_approval",
 			"breakpoints": true
 		},
 		{
-			"idx": 9008,
+			"idx": 134,
 			"version": "7",
 			"when": 1782366105990,
 			"tag": "9008_skill_usage",
 			"breakpoints": true
 		},
 		{
-			"idx": 9009,
+			"idx": 135,
 			"version": "7",
 			"when": 1782366106990,
 			"tag": "9009_skill_bounties",
 			"breakpoints": true
 		},
 		{
-			"idx": 9010,
+			"idx": 136,
 			"version": "7",
 			"when": 1782366107990,
 			"tag": "9010_monthly_awards",
 			"breakpoints": true
 		},
 		{
-			"idx": 9011,
+			"idx": 137,
 			"version": "7",
 			"when": 1782366108990,
 			"tag": "9011_skill_teams",
 			"breakpoints": true
 		},
 		{
-			"idx": 9012,
+			"idx": 138,
 			"version": "7",
 			"when": 1782366109990,
 			"tag": "9012_skill_usage_events",
 			"breakpoints": true
 		},
 		{
-			"idx": 9013,
+			"idx": 139,
 			"version": "7",
 			"when": 1782366110990,
 			"tag": "9013_notifications",
 			"breakpoints": true
 		},
 		{
-			"idx": 9014,
+			"idx": 140,
 			"version": "7",
 			"when": 1782366111990,
 			"tag": "9014_user_calendar_preferences",

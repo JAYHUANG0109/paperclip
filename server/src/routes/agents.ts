@@ -148,7 +148,6 @@ export function agentRoutes(
     codex_local: "instructionsFilePath",
     droid_local: "instructionsFilePath",
     gemini_local: "instructionsFilePath",
-    hermes_local: "instructionsFilePath",
     opencode_local: "instructionsFilePath",
     cursor: "instructionsFilePath",
     pi_local: "instructionsFilePath",
@@ -371,6 +370,11 @@ export function agentRoutes(
         issueId: null,
         heartbeatRunId: null,
         persistedExecutionWorkspace: null,
+        // Apply the active custom-image template so the Test boots with the
+        // operator's captured sandbox customizations and prepared image state,
+        // matching what real agent runs use. Without this the test would
+        // silently fall back to the base image.
+        applyCustomImageTemplate: true,
       });
     } catch (err) {
       return {
@@ -1136,7 +1140,10 @@ export function agentRoutes(
     const normalizedAdapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
       input.companyId,
       input.adapterConfig,
-      { strictMode: strictSecretsMode },
+      {
+        strictMode: strictSecretsMode,
+        adapterType: input.adapterType ?? null,
+      },
     );
     await assertAdapterConfigConstraints(
       input.adapterType,
@@ -1674,11 +1681,13 @@ export function agentRoutes(
       const normalizedAdapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
         companyId,
         inputAdapterConfig,
-        { strictMode: strictSecretsMode },
+        { strictMode: strictSecretsMode, adapterType: type },
       );
       const { config: runtimeAdapterConfig } = await secretsSvc.resolveAdapterConfigForRuntime(
         companyId,
         normalizedAdapterConfig,
+        undefined,
+        { adapterType: type },
       );
 
       const { executionTarget, environmentName, fallbackChecks, release } =
@@ -2013,6 +2022,18 @@ export function agentRoutes(
     }
     if (trustPreset.kind === "low_trust_review") {
       res.json(buildLowTrustSelfView(agent));
+      return;
+    }
+    if (req.actor.keyScope?.kind === "task_bridge") {
+      res.json({
+        id: agent.id,
+        companyId: agent.companyId,
+        name: agent.name,
+        role: agent.role,
+        title: agent.title,
+        status: agent.status,
+        keyScope: req.actor.keyScope,
+      });
       return;
     }
     res.json(await buildAgentDetail(agent));
@@ -2648,6 +2669,7 @@ export function agentRoutes(
       entityId: agent.id,
       details: {
         canCreateAgents: agent.permissions?.canCreateAgents ?? false,
+        canCreateSkills: agent.permissions?.canCreateSkills ?? true,
         canAssignTasks: effectiveCanAssignTasks,
         trustPreset: agent.permissions?.trustPreset ?? "standard",
       },
@@ -2692,7 +2714,7 @@ export function agentRoutes(
     const normalizedAdapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
       existing.companyId,
       syncedAdapterConfig,
-      { strictMode: strictSecretsMode },
+      { strictMode: strictSecretsMode, adapterType: existing.adapterType },
     );
     const actor = getActorInfo(req);
     const agent = await svc.update(
@@ -2763,7 +2785,7 @@ export function agentRoutes(
     const normalizedAdapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
       existing.companyId,
       adapterConfig,
-      { strictMode: strictSecretsMode },
+      { strictMode: strictSecretsMode, adapterType: existing.adapterType },
     );
     await svc.update(
       id,
@@ -2831,7 +2853,7 @@ export function agentRoutes(
     const normalizedAdapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
       existing.companyId,
       result.adapterConfig,
-      { strictMode: strictSecretsMode },
+      { strictMode: strictSecretsMode, adapterType: existing.adapterType },
     );
     await svc.update(
       id,
@@ -3304,7 +3326,7 @@ export function agentRoutes(
     if (!agent) {
       return;
     }
-    const key = await svc.createApiKey(id, req.body.name);
+    const key = await svc.createApiKey(id, req.body.name, req.body.scope);
 
     await logActivity(db, {
       companyId: agent.companyId,
@@ -3313,7 +3335,7 @@ export function agentRoutes(
       action: "agent.key_created",
       entityType: "agent",
       entityId: agent.id,
-      details: { keyId: key.id, name: key.name },
+      details: { keyId: key.id, name: key.name, scope: key.scope },
     });
 
     res.status(201).json(key);
