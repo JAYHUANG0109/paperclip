@@ -92,7 +92,7 @@ function furnishTeam(rm) {
       // Keyboard on the desk surface, directly under the (DOM) monitor, set very
       // slightly in from the front edge (north).
       const kW = (KEYBOARD_PX.sw/T)*KB_F;
-      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2, rowTop + 0.55, KB_F);
+      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2, rowTop + 0.45, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
       objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
       list.push(seatPct(chairX + cW/2, chairY + cH/2));
@@ -129,7 +129,7 @@ function furnishFounder(rm) {
   // that monitor height looks good. The desk + keyboard + plants are raised toward
   // the monitor so the workstation reads as one unit under the screen.
   const seatRow = y + Math.max(2, h*0.30);
-  const deskTop = seatRow - 1.6;
+  const deskTop = seatRow - 1.2;   // desk+keyboard+plants sit a touch south of the monitor
   objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, cx - dW/2, deskTop, df);
   const kW = (KEYBOARD_PX.sw/T)*KB_F;
   objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2, deskTop + 1.9, KB_F);

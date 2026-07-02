@@ -96,7 +96,7 @@ export const CATALOG_MANIFEST_URL = "/assets/office-characters/manifest.json";
 // Bump when the sprite PNGs are regenerated — the filenames stay the same, so
 // without this the browser serves stale cached images. Appended as ?v= to every
 // sprite URL so a redeploy always shows the latest art.
-export const ART_VERSION = "17";
+export const ART_VERSION = "18";
 
 /** Append the art-version cache-buster to a sprite URL. */
 export function bustCache(url: string): string {
