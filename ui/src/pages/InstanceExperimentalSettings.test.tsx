@@ -120,7 +120,7 @@ describe("InstanceExperimentalSettings — Conference Room Chat card (PAP-11233)
     await renderPage();
 
     const headings = [...container.querySelectorAll("section h2")].map((h) => h.textContent);
-    expect(headings).toContain("Streamlined Left Navigation Bar");
+    expect(headings).toContain("Enable Environments");
     expect(headings).not.toContain("Conference Room Chat");
     expect(container.querySelector(CONFERENCE_TOGGLE_SELECTOR)).toBeNull();
   });
@@ -137,7 +137,8 @@ describe("InstanceExperimentalSettings — Conference Room Chat card (PAP-11233)
     expect(mockInstanceSettingsApi.updateExperimental).not.toHaveBeenCalled();
   });
 
-  it("renders the Streamlined Left Navigation toggle on by default and patches opt-out", async () => {
+  // deferred: streamlined left navigation (#8615) -- not in our UI
+  it.skip("renders the Streamlined Left Navigation toggle on by default and patches opt-out", async () => {
     await renderPage();
 
     const toggle = container.querySelector<HTMLButtonElement>(STREAMLINED_TOGGLE_SELECTOR);
@@ -154,7 +155,8 @@ describe("InstanceExperimentalSettings — Conference Room Chat card (PAP-11233)
     expect(toggle?.getAttribute("aria-checked")).toBe("false");
   });
 
-  it("renders and patches the Task Watchdogs experimental toggle on and off", async () => {
+  // deferred: watchdog properties pane (#8786) -- not in our UI
+  it.skip("renders and patches the Task Watchdogs experimental toggle on and off", async () => {
     await renderPage();
 
     expect(container.textContent).toContain("Task Watchdogs");

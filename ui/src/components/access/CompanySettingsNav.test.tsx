@@ -98,6 +98,7 @@ describe("CompanySettingsNav", () => {
         value: "members",
         items: [
           { value: "general", label: "General" },
+          { value: "environments", label: "Environments" },
           { value: "cloud-upstream", label: "Cloud upstream" },
           { value: "members", label: "Members" },
           { value: "invites", label: "Invites" },

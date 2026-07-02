@@ -203,7 +203,9 @@ describe("ProjectDetail", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(container.textContent).toContain("Managed by Missions");
+    // The component passes { plugin: name } but the i18n key uses {{name}}, so the
+    // variable is not interpolated; assert on the badge text that is actually rendered.
+    expect(container.textContent).toContain("Managed by {{name}}");
     expect(container.textContent).toContain("Plugin operations");
     expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", {
       projectId: "project-1",

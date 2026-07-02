@@ -130,7 +130,7 @@ describe("PluginPage", () => {
     const root = await renderPage(container);
 
     expect(mockSetBreadcrumbs).toHaveBeenCalledWith([
-      { label: "Plugins", href: "/company/settings/instance/plugins" },
+      { label: "Plugins", href: "/instance/settings/plugins" },
       { label: "LLM Wiki" },
     ]);
     expect(container.textContent).toContain("Back");

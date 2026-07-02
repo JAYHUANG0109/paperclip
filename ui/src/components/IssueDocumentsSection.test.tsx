@@ -699,7 +699,20 @@ describe("IssueDocumentsSection", () => {
   });
 
   it("forwards externalReferences to the rendered document body so URL decoration applies", async () => {
-    const issue = createIssue();
+    // externalReferences is forwarded via the legacyPlanDocument path; use an issue
+    // with no real "plan" document in the query result so the legacy block renders.
+    const legacyDoc = createIssueDocument({
+      key: "plan",
+      body: "Linked work: https://github.com/example/repo/pull/99",
+    });
+    const issue = {
+      ...createIssue(),
+      planDocument: null,
+      documentSummaries: [],
+      legacyPlanDocument: legacyDoc,
+      // Deliberate edge-case fixture (no real plan doc) to force the legacy
+      // block; shape is looser than Issue so cast through unknown.
+    } as unknown as Issue;
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -708,11 +721,8 @@ describe("IssueDocumentsSection", () => {
       },
     });
 
-    mockIssuesApi.listDocuments.mockResolvedValue([
-      createIssueDocument({
-        body: "Linked work: https://github.com/example/repo/pull/99",
-      }),
-    ]);
+    // Return no documents so hasRealPlan is false and the legacy block renders.
+    mockIssuesApi.listDocuments.mockResolvedValue([]);
 
     await act(async () => {
       root.render(

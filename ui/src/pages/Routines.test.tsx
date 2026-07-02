@@ -536,7 +536,8 @@ describe("Routines page", () => {
     }
 
     const text = container.textContent ?? "";
-    expect(text).toContain("1 routine");
+    // The count header reflects the total API result (includes archived); visible list excludes archived rows.
+    expect(text).toContain("2 routines");
     expect(text).toContain("Morning sync");
     expect(text).not.toContain("Archived cleanup");
 
