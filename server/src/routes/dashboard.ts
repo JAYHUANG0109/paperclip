@@ -383,7 +383,8 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
   // Manual refresh: the 創辦人/園長 presses "更新" on their console. Wakes their OWN
   // agent to re-run the daily digest pipeline now (re-read Asana → regenerate
   // summaries + drafts → rewrite the digest), giving on-demand control alongside
-  // the 12:00 / 16:00 schedule. Never posts Asana comments or decisions.
+  // the scheduled run (once daily at 12:00 Asia/Taipei, Mon–Fri — see the
+  // routine trigger). Never posts Asana comments or decisions.
   router.post("/companies/:companyId/founder-digest/refresh", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
