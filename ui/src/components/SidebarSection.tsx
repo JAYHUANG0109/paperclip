@@ -61,6 +61,8 @@ interface SidebarSectionProps {
   };
   menu?: SidebarSectionMenu;
   headerAction?: SidebarSectionHeaderAction;
+  /** Optional total shown on the header row (e.g. total agent count). */
+  count?: number;
 }
 
 function SidebarSectionHeader({
@@ -68,7 +70,8 @@ function SidebarSectionHeader({
   headerAction,
   label,
   menu,
-}: Pick<SidebarSectionProps, "collapsible" | "headerAction" | "label" | "menu">) {
+  count,
+}: Pick<SidebarSectionProps, "collapsible" | "headerAction" | "label" | "menu" | "count">) {
   const { isMobile } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
   // Keep the collapsed-rail peek open while this menu is open (its content
@@ -170,6 +173,9 @@ function SidebarSectionHeader({
           </CollapsibleTrigger>
         ) : null}
         {headingControl}
+        {typeof count === "number" ? (
+          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{count}</span>
+        ) : null}
         {headerAction && HeaderActionIcon ? (
           <Button
             variant="ghost"
@@ -192,6 +198,7 @@ export function SidebarSection({
   collapsible,
   menu,
   headerAction,
+  count,
 }: SidebarSectionProps) {
   const { collapsed, peeking } = useSidebar();
   const forceExpanded = useSidebarNavExpanded();
@@ -229,6 +236,7 @@ export function SidebarSection({
           collapsible={collapsible}
           menu={menu}
           headerAction={headerAction}
+          count={count}
         />
         <CollapsibleContent>{content}</CollapsibleContent>
       </Collapsible>
@@ -237,7 +245,7 @@ export function SidebarSection({
 
   return (
     <div>
-      <SidebarSectionHeader label={label} menu={menu} headerAction={headerAction} />
+      <SidebarSectionHeader label={label} menu={menu} headerAction={headerAction} count={count} />
       {content}
     </div>
   );

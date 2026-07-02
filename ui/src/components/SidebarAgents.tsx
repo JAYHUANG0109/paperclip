@@ -478,6 +478,7 @@ export function SidebarAgents({ streamlined: _streamlined }: { streamlined?: boo
   return (
     <SidebarSection
       label={t("nav.agents", { defaultValue: "Agents" })}
+      count={sortedAgents.length || undefined}
       collapsible={{ open, onOpenChange: setOpen }}
       headerAction={{
         ariaLabel: t("nav.newAgent", { defaultValue: "New agent" }),
