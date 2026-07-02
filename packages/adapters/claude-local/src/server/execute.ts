@@ -66,6 +66,7 @@ import { resolveClaudeDesiredSkillNames } from "./skills.js";
 import { isBedrockModelId } from "./models.js";
 import { prepareClaudePromptBundle } from "./prompt-cache.js";
 import { buildClaudeExecutionPermissionArgs } from "./permissions.js";
+import { getQuotaWindowsForEnv } from "./quota.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -134,6 +135,19 @@ function isBedrockAuth(env: Record<string, string>): boolean {
 function resolveClaudeBillingType(env: Record<string, string>): "api" | "subscription" | "metered_api" {
   if (isBedrockAuth(env)) return "metered_api";
   return hasNonEmptyEnvValue(env, "ANTHROPIC_API_KEY") ? "api" : "subscription";
+}
+
+function maxQuotaUsedPercent(windows: Array<{ usedPercent?: number | null }>): number | null {
+  const values = windows
+    .map((window) => window.usedPercent)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function resolveClaudeQuotaSwitchThreshold(config: Record<string, unknown>): number {
+  const raw = asNumber(config.quotaSwitchThresholdPercent, 95);
+  if (!Number.isFinite(raw) || raw <= 0) return 95;
+  return Math.min(100, Math.max(1, raw));
 }
 
 async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<ClaudeRuntimeConfig> {

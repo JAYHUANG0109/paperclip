@@ -161,9 +161,9 @@ function furnishMeeting(rm) {
   }
   // Head chairs at the short ends of the table (same row as the table centre):
   // left end faces east, right end faces west.
-  const endY = ty + benchH*0.59 - chW/2;
+  const endY = ty + benchH*0.5 - chW/2;        // a touch north
   chairBlit(ARMCH_R, tx - chW - 0.1, endY);    // left end, faces the table (east)
-  chairBlit(ARMCH_L, tx + tw - 0.1, endY);     // right end, faces the table (west)
+  chairBlit(ARMCH_L, tx + tw + 0.1, endY);     // right end, faces the table (west), matched gap
 }
 function furnishLounge(rm) {
   // Duplicate the 茶水間 layout exactly (same counter/fridge/water cooler/vending/clock).
