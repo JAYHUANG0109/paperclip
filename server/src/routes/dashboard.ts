@@ -21,7 +21,7 @@ import {
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
-import { postAsanaComment, setAsanaTaskCompleted } from "../services/agent-asana.js";
+import { getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted } from "../services/agent-asana.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
@@ -204,17 +204,38 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       return;
     }
     const completed = req.body?.completed !== false; // default true
+    // Server-direct: write to Asana synchronously with the user's OWN token so
+    // the UI gets an immediate confirmed/failed result (drives the checkbox
+    // state machine) — and no agent LLM wake, so it costs zero tokens.
+    const ok = await setAsanaTaskCompleted(db, companyId, agentId, gid, completed);
+    if (!ok) {
+      res.status(502).json({ ok: false, confirmed: false, error: "Could not update the task in Asana." });
+      return;
+    }
     const digest = await setDigestTaskCompleted(db, agentId, gid, completed);
-    await heartbeat.wakeup(agentId, {
-      source: "on_demand",
-      triggerDetail: "manual",
-      reason: completed ? "complete-asana-task" : "reopen-asana-task",
-      payload: { directive: completed ? "complete-asana-task" : "reopen-asana-task", taskGid: gid },
-      idempotencyKey: `asana-task-complete:${gid}:${completed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
-      requestedByActorType: "user",
-      requestedByActorId: userId ?? null,
-    });
-    res.json({ ok: true, digest });
+    res.json({ ok: true, confirmed: true, digest });
+  });
+
+  // On-demand comments for one task, fetched server-direct with the caller's OWN
+  // token when they expand a row. Deliberately NOT part of the bulk digest, so
+  // the digest run stays cheap; only the task the user opens is fetched.
+  router.get("/companies/:companyId/asana-digest/tasks/:gid/comments", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const gid = req.params.gid as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account to read Asana." });
+      return;
+    }
+    const comments = await getAsanaTaskComments(db, companyId, agentId, gid);
+    if (comments === null) {
+      res.status(502).json({ error: "Could not load comments from Asana." });
+      return;
+    }
+    res.json({ comments, count: comments.length });
   });
 
   // ── Daily-calendar consoles (創辦人 / 園長 每日行事曆) ──────────────────────

@@ -20,6 +20,13 @@ export interface AsanaDigest {
   sample?: boolean;
 }
 
+export interface AsanaTaskComment {
+  id: string;
+  author: string | null;
+  text: string;
+  createdAt: string | null;
+}
+
 export type FounderDecision = "approved" | "changes_requested" | "rejected";
 
 export interface FounderComment {
@@ -113,9 +120,13 @@ export const dashboardApi = {
     api.put<CalendarAliasesResponse>(`/companies/${companyId}/google-calendar/aliases`, { aliases }),
   asanaDigest: (companyId: string) => api.get<AsanaDigest>(`/companies/${companyId}/asana-digest/me`),
   completeAsanaTask: (companyId: string, gid: string, completed: boolean) =>
-    api.post<{ ok: boolean; digest: AsanaDigest | null }>(
+    api.post<{ ok: boolean; confirmed: boolean; digest: AsanaDigest | null }>(
       `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/complete`,
       { completed },
+    ),
+  asanaTaskComments: (companyId: string, gid: string) =>
+    api.get<{ comments: AsanaTaskComment[]; count: number }>(
+      `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/comments`,
     ),
   // Every daily console the caller has (創辦人 / 園長). Most users have one.
   founderConsoles: (companyId: string) =>

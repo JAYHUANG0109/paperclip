@@ -5686,7 +5686,16 @@
     "detailDue": "截止",
     "detailLink": "連結",
     "openInAsana": "在 Asana 開啟",
-    "detailDescription": "說明"
+    "detailDescription": "說明",
+    "openCount": "{{count}} 項待辦",
+    "retryComplete": "更新失敗 — 點擊重試",
+    "updateFailed": "無法在 Asana 更新 — 點擊重試",
+    "updateFailedShort": "失敗",
+    "comments": "留言",
+    "loadingComments": "載入留言中…",
+    "commentsError": "無法載入留言。",
+    "noComments": "沒有留言。",
+    "commentAuthorUnknown": "某人"
   },
   "founder": {
     "close": "結案",
