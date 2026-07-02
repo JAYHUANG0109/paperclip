@@ -14,6 +14,8 @@ const ROOM_FLOOR = { c: 8, r: 18 };
 let map;
 const tileAt = (t, tx, ty) => blit(map, A5, t.c*T, t.r*T, T, T, tx*T, ty*T);
 const objS = (mc, mr, wc, hc, tx, ty, f = DEC_F) => blitScaled(map, M, mc*T, mr*T, wc*T, hc*T, tx*T, ty*T, f);
+// Blit an arbitrary pixel region of the sheet (for sub-tile items like the keyboard).
+const objPx = (sx, sy, sw, sh, tx, ty, f) => blitScaled(map, M, sx, sy, sw, sh, Math.round(tx*T), Math.round(ty*T), f);
 
 const DESK   = { c: 1,  r: 0,  w: 3, h: 2 };
 const CHAIR  = { c: 4,  r: 16, w: 1, h: 1 };
@@ -25,24 +27,13 @@ const COOLER = { c: 5,  r: 16, w: 1, h: 2 };
 const FRIDGE = { c: 12, r: 16, w: 2, h: 2 };
 const TABLE  = { c: 4,  r: 1,  w: 4, h: 2 };
 const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
-const KEYBOARD = { c: 12, r: 23, w: 1, h: 1 }; // keyboard, sits on the desk below the monitor
-const KB_F = 1.4;                              // keyboard scale
-
-// Desk/table styles available in the tileset (top-left tile, width; all h=2).
-// Shown as a showcase row in the founder's office so a favourite can be chosen.
-const DESK_OPTIONS = [
-  { c: 1,  r: 0, w: 3 },  // 1 light wood + drawers (current default)
-  { c: 4,  r: 0, w: 4 },  // 2 plain light-wood table
-  { c: 8,  r: 0, w: 4 },  // 3 wood counter (panel front)
-  { c: 11, r: 0, w: 3 },  // 4 white / grey top
-  { c: 1,  r: 2, w: 3 },  // 5 grey
-  { c: 5,  r: 2, w: 3 },  // 6 cream / white
-  { c: 8,  r: 2, w: 4 },  // 7 grey long
-  { c: 1,  r: 4, w: 3 },  // 8 medium wood
-  { c: 1,  r: 6, w: 3 },  // 9 tan
-  { c: 4,  r: 6, w: 3 },  // 10 tan (darker)
-];
-const FOUNDER_DESK = { c: 1, r: 0, w: 3 }; // clean wood desk (pick a fancier one from the showcase)
+// Keyboard = ONLY the keys. The full tile (c12,r23) bundles the monitor stand,
+// so we blit just the keys pixel-strip (y 376..383 of the sheet) via objPx.
+const KEYBOARD_PX = { sx: 12*T, sy: 376, sw: T, sh: 7 };
+const KB_F = 2.2;                               // keyboard scale
+// Preview WHITE desk (same shape/size as DESK). Applied to ONE agent's desk for
+// review before rolling the white look out to everyone.
+const WHITE_DESK = { c: 5, r: 2, w: 3 };
 
 // wide grid, tight 1-tile gaps. Center column is wide for the big team rooms.
 const COLX = [1, 22, 67], COLW = [20, 44, 16];
@@ -97,10 +88,12 @@ function furnishTeam(rm) {
     for (let c = 0; c < inRow; c++, n++) {
       const centerX = x + 1.5 + (c + off + 0.5) * cellW;
       const rowTop = y + 2 + r * cellH;
-      objS(DESK.c, DESK.r, DESK.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
-      // Keyboard on the desk surface, front-centre (below where the monitor sits).
-      const kW = KEYBOARD.w*KB_F;
-      objS(KEYBOARD.c, KEYBOARD.r, 1, 1, centerX - kW/2, rowTop + dH*0.5, KB_F);
+      // PREVIEW: give the first 資訊部 desk the white table so it can be reviewed.
+      const desk = (id === "it" && n === 0) ? WHITE_DESK : DESK;
+      objS(desk.c, desk.r, desk.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
+      // Keyboard on the desk surface, directly under the (DOM) monitor.
+      const kW = (KEYBOARD_PX.sw/T)*KB_F;
+      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2, rowTop + 0.7, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
       objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
       list.push(seatPct(chairX + cW/2, chairY + cH/2));
@@ -127,25 +120,18 @@ function furnishPantry(rm) {
 }
 function furnishFounder(rm) {
   const { x, y, w, h, id } = rm;
-  // Showcase: a row of every desk style along the back wall, so a favourite can
-  // be picked. Numbered 1..N left→right (matches DESK_OPTIONS order/comments).
-  const n = DESK_OPTIONS.length;
-  const slot = (w - 3) / n;
-  const showF = Math.min(0.85, slot / 4.2);      // fit each desk inside its slot
-  DESK_OPTIONS.forEach((d, i) => {
-    const cx0 = x + 1.5 + (i + 0.5) * slot;
-    objS(d.c, d.r, d.w, 2, cx0 - d.w*showF/2, y + 1, showF);
-  });
-  // Founder's workstation, centred lower: big desk + keyboard + plant. The
-  // status monitor is a DOM overlay drawn on top by the app.
+  // Founder desk = the wooden 茶水間 counter, same size (COUNTER @ DEC_F).
+  // Centred and toward the top (north) of the room; the status monitor is a DOM
+  // overlay drawn on top by the app, with the keyboard on the desk below it.
   const cx = x + w/2;
-  const dW = FOUNDER_DESK.w*DESK_F, dH = 2*DESK_F, cW = CHAIR.w*CHAIR_F, cH = CHAIR.h*CHAIR_F;
-  const rowTop = y + h - 6;
-  objS(FOUNDER_DESK.c, FOUNDER_DESK.r, FOUNDER_DESK.w, 2, cx - dW/2, rowTop, DESK_F);
-  const kW = KEYBOARD.w*KB_F;
-  objS(KEYBOARD.c, KEYBOARD.r, 1, 1, cx - kW/2, rowTop + dH*0.5, KB_F);
-  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.4, rowTop, 1.6);   // 盆栽 beside the desk
-  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 1.6, rowTop, 1.4); // fern on the other side
+  const df = DEC_F;                              // matches the 茶水間 table scale
+  const dW = COUNTER.w*df, dH = COUNTER.h*df, cW = CHAIR.w*CHAIR_F, cH = CHAIR.h*CHAIR_F;
+  const rowTop = y + Math.max(2, h*0.30);
+  objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, cx - dW/2, rowTop, df);
+  const kW = (KEYBOARD_PX.sw/T)*KB_F;
+  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2, rowTop + 0.8, KB_F);
+  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.5, rowTop + 0.4, 1.6);      // 盆栽 to the right
+  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 1.9, rowTop + 0.2, 1.4);  // fern to the left
   const chairX = cx - cW/2, chairY = rowTop + dH;
   objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
