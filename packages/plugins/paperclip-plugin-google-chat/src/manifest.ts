@@ -45,9 +45,10 @@ export const DEFAULT_CONFIG = {
    *  the recipient's Google Chat DM. Master switch for the outbound relay. */
   forwardNotifications: true,
   /** Allowlist of recipient emails whose notifications get forwarded. Empty =
-   *  forward for everyone reachable. Starts scoped to a single tester so the
-   *  relay can be validated before going org-wide. */
-  forwardNotificationEmails: ["jay20020109@seasonart.org"] as string[]
+   *  forward for everyone reachable. Rolled out org-wide after validation — the
+   *  relay only reaches people who have messaged the SeasonartsAI bot (i.e. have
+   *  a learned DM space), so an empty allowlist stays naturally opt-in. */
+  forwardNotificationEmails: [] as string[]
 } as const;
 
 const manifest: PaperclipPluginManifestV1 = {
