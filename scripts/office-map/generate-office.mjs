@@ -70,20 +70,21 @@ const BOXES      = { c: 8,  r: 28, w: 2, h: 2 };  // stacked boxes
 const GREY_BENCH = { c: 0,  r: 20, w: 2, h: 2 };  // grey bench/table (meeting)
 
 // wide grid, tight 1-tile gaps. Center column is wide for the big team rooms.
-const COLX = [1, 22, 67], COLW = [20, 44, 16];
+// Widened (agent rooms use more of the horizontal space) → 1488x896.
+const COLX = [1, 23, 74], COLW = [21, 50, 18];
 const ROWY = [1, 22, 43], ROWH = [20, 20, 12];
-const MW = 84, MH = 56;   // 1344x896
+const MW = 93, MH = 56;   // 1488x896
 
 const ROOMS = [
-  { id:"meeting",  team:null,         name:"會議室",    cell:[0,0], dw:14, dh:14, kind:"meeting" },
+  { id:"meeting",  team:null,         name:"會議室",    cell:[0,0], dw:18, dh:14, kind:"meeting" },
   { id:"teaching", team:"教學組",     name:"教學組",    cell:[1,0], cap:8 },
-  { id:"talent",   team:"人才發展",   name:"人才發展",  cell:[2,0], dw:13, dh:13, cap:1 },
+  { id:"talent",   team:"人才發展",   name:"人才發展",  cell:[2,0], dw:16, dh:13, cap:1 },
   { id:"lead",     team:"領導團隊",   name:"領導團隊",  cell:[0,1], cap:4, deskCols:2 },
   { id:"it",       team:"資訊部",     name:"資訊部",    cell:[1,1], cap:7 },
-  { id:"lounge",   team:null,         name:"休息室",    cell:[2,1], dw:13, dh:12, kind:"lounge" },
-  { id:"pantry",   team:null,         name:"茶水間",    cell:[0,2], dw:14, dh:10, kind:"pantry" },
-  { id:"founder",  team:null,         name:"創辦人辦公室", cell:[1,2], dw:26, dh:11, kind:"founder", soloAgent:"創辦人" },
-  { id:"auto",     team:"系統自動化", name:"系統自動化",cell:[2,2], dw:12, dh:10, cap:1 },
+  { id:"lounge",   team:null,         name:"休息室",    cell:[2,1], dw:16, dh:12, kind:"lounge" },
+  { id:"pantry",   team:null,         name:"茶水間",    cell:[0,2], dw:18, dh:10, kind:"pantry" },
+  { id:"founder",  team:null,         name:"創辦人辦公室", cell:[1,2], dw:34, dh:11, kind:"founder", soloAgent:"創辦人" },
+  { id:"auto",     team:"系統自動化", name:"系統自動化",cell:[2,2], dw:16, dh:10, cap:1 },
 ];
 for (const rm of ROOMS) {
   const [c, r] = rm.cell; const cw = COLW[c], ch = ROWH[r], cx = COLX[c], cy = ROWY[r];

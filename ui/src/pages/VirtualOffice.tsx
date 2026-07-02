@@ -28,6 +28,10 @@ export function VirtualOffice() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
+  // Zoom lives here (not in the floor) so its control can sit in the filters row.
+  const [userZoom, setUserZoom] = useState<number | null>(null); // null = auto-fit
+  const [fitZoom, setFitZoom] = useState(1);
+  const clampZoom = (v: number) => Math.min(4, Math.max(0.3, v));
 
   useEffect(() => {
     setBreadcrumbs([{ label: t("office.title", { defaultValue: "Virtual Office" }) }]);
@@ -91,13 +95,36 @@ export function VirtualOffice() {
         <div className="min-w-0 flex-1">
           <TeamFilterBar teams={allTeams} selected={teamFilter} onToggle={toggleTeam} onClear={clearTeams} />
         </div>
+        {/* Zoom control — same row as the filters, left of the view switch. Uses
+            theme tokens so it flips with dark/light mode (dark bg + light text in
+            dark mode, and the reverse in light mode). */}
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setUserZoom(clampZoom((userZoom ?? fitZoom) - 0.2))}
+            title="Zoom out"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-sm font-bold text-foreground transition-colors hover:bg-accent"
+          >−</button>
+          <button
+            type="button"
+            onClick={() => setUserZoom(null)}
+            title="Fit to screen"
+            className="inline-flex h-7 items-center justify-center rounded-md border border-border bg-background px-2.5 text-xs font-bold text-foreground transition-colors hover:bg-accent"
+          >FIT</button>
+          <button
+            type="button"
+            onClick={() => setUserZoom(clampZoom((userZoom ?? fitZoom) + 0.2))}
+            title="Zoom in"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-sm font-bold text-foreground transition-colors hover:bg-accent"
+          >+</button>
+        </div>
         <ViewSwitchButton to="/agents" label={t("office.browseAgents", { defaultValue: "Browse agents" })} icon={Users} />
       </div>
 
       {/* Break out of the page's padding so the floor uses the full width/height —
           less wasted black space around the rooms. */}
       <div className="-mx-4 -mb-4 md:-mx-6 md:-mb-6">
-        <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} />
+        <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} userZoom={userZoom} onFitZoomChange={setFitZoom} />
       </div>
 
       <AgentModal

@@ -48,18 +48,18 @@ const FLOORS: FloorDef[] = [
     id: "square",
     label: "Office",
     image: "/assets/pixelart/Office%20Square.png",
-    natW: 1344,
+    natW: 1488,
     natH: 896,
     zones: [
-      { id: "meeting", name: "會議室", team: null, x: 4.8, y: 7.1, w: 16.7, h: 25, color: "#10B981" },
-      { id: "teaching", name: "教學組", team: "教學組", x: 26.2, y: 1.8, w: 52.4, h: 35.7, color: "#8B5CF6", seats: [{"x":34.08,"y":13.61},{"x":46.28,"y":13.61},{"x":58.48,"y":13.61},{"x":70.68,"y":13.61},{"x":34.08,"y":28.34},{"x":46.28,"y":28.34},{"x":58.48,"y":28.34},{"x":70.68,"y":28.34}] },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 81, y: 7.1, w: 15.5, h: 23.2, color: "#6366F1", seats: [{"x":88.69,"y":18.96}] },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.2, y: 39.3, w: 23.8, h: 35.7, color: "#F59E0B", seats: [{"x":8.04,"y":51.11},{"x":18.15,"y":51.11},{"x":8.04,"y":65.84},{"x":18.15,"y":65.84}] },
-      { id: "it", name: "資訊部", team: "資訊部", x: 26.2, y: 39.3, w: 52.4, h: 35.7, color: "#3B82F6", seats: [{"x":34.08,"y":51.11},{"x":46.28,"y":51.11},{"x":58.48,"y":51.11},{"x":70.68,"y":51.11},{"x":40.18,"y":65.84},{"x":52.38,"y":65.84},{"x":64.58,"y":65.84}] },
-      { id: "lounge", name: "休息室", team: null, x: 81, y: 46.4, w: 15.5, h: 21.4, color: "#EC4899" },
-      { id: "pantry", name: "茶水間", team: null, x: 4.8, y: 78.6, w: 16.7, h: 17.9, color: "#14B8A6" },
-      { id: "founder", name: "創辦人辦公室", team: null, x: 36.9, y: 76.8, w: 31, h: 19.6, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":52.38,"y":90}] },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 82.1, y: 78.6, w: 14.3, h: 17.9, color: "#F97316", seats: [{"x":89.29,"y":90.39}] },
+      { id: "meeting", name: "會議室", team: null, x: 2.2, y: 7.1, w: 19.4, h: 25, color: "#10B981" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 24.7, y: 1.8, w: 53.8, h: 35.7, color: "#8B5CF6", seats: [{"x":32.66,"y":13.61},{"x":45.3,"y":13.61},{"x":57.93,"y":13.61},{"x":70.56,"y":13.61},{"x":32.66,"y":28.34},{"x":45.3,"y":28.34},{"x":57.93,"y":28.34},{"x":70.56,"y":28.34}] },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 80.6, y: 7.1, w: 17.2, h: 23.2, color: "#6366F1", seats: [{"x":89.25,"y":18.96}] },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.1, y: 39.3, w: 22.6, h: 35.7, color: "#F59E0B", seats: [{"x":7.53,"y":51.11},{"x":17.2,"y":51.11},{"x":7.53,"y":65.84},{"x":17.2,"y":65.84}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 24.7, y: 39.3, w: 53.8, h: 35.7, color: "#3B82F6", seats: [{"x":32.66,"y":51.11},{"x":45.3,"y":51.11},{"x":57.93,"y":51.11},{"x":70.56,"y":51.11},{"x":38.98,"y":65.84},{"x":51.61,"y":65.84},{"x":64.25,"y":65.84}] },
+      { id: "lounge", name: "休息室", team: null, x: 80.6, y: 46.4, w: 17.2, h: 21.4, color: "#EC4899" },
+      { id: "pantry", name: "茶水間", team: null, x: 2.2, y: 78.6, w: 19.4, h: 17.9, color: "#14B8A6" },
+      { id: "founder", name: "創辦人辦公室", team: null, x: 33.3, y: 76.8, w: 36.6, h: 19.6, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":51.61,"y":90}] },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 80.6, y: 78.6, w: 17.2, h: 17.9, color: "#F97316", seats: [{"x":89.25,"y":90.39}] },
     ],
   },
 ];
@@ -273,12 +273,14 @@ function ZoneOverlay({ zone, teamName, count, workingCount }: {
 }
 
 // ── Public export ──────────────────────────────────────────────────────────
-export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
+export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen, userZoom = null, onFitZoomChange }: {
   agents: Agent[];
   workingIds: Set<string>;
   skillCounts?: Record<string, number>;
   liveRuns?: LiveRunForIssue[];
   onOpen: (agent: Agent) => void;
+  userZoom?: number | null;         // null = auto-fit; owned by the parent so the
+  onFitZoomChange?: (z: number) => void; // zoom control can live in the filters row
 }) {
   const floorIdx = 0; // single floor (Office Level 4) — Floor 2 removed
 
@@ -290,7 +292,6 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   // (not a 100vh guess) so the page never overflows into a scrollbar regardless of
   // the breadcrumb bar, filter row, or <main> padding above it.
   const [availH, setAvailH] = useState(560);
-  const [userZoom, setUserZoom] = useState<number | null>(null); // null = auto-fit
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -370,6 +371,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     return Math.round(clamp(contain, 0.3, 3) * 100) / 100;
   }, [viewport, mapW, mapH]);
   const zoom = userZoom ?? fitZoom;
+  useEffect(() => { onFitZoomChange?.(fitZoom); }, [fitZoom, onFitZoomChange]);
 
   const bubbles = useMemo(() => new Map<string, string>(
     (liveRuns ?? []).filter(r => r.currentStatusMessage).map(r => [r.agentId, r.currentStatusMessage!])
@@ -553,18 +555,6 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
 
   return (
     <div ref={rootRef} style={{ position: "relative" }}>
-      {/* Floating zoom control (no frame/top bar — team filters live above the map) */}
-      <div style={{
-        position: "absolute", top: 10, right: 10, zIndex: 20,
-        display: "flex", gap: 3, alignItems: "center",
-        background: "rgba(10,13,20,0.6)", backdropFilter: "blur(4px)",
-        borderRadius: 8, padding: 3,
-      }}>
-        <button type="button" onClick={() => setUserZoom(z => clamp((z ?? fitZoom) - 0.2, 0.3, 4))} style={zoomBtnStyle} title="Zoom out">−</button>
-        <button type="button" onClick={() => setUserZoom(null)} style={{ ...zoomBtnStyle, width: "auto", padding: "0 8px", fontSize: 10, fontWeight: 700 }} title="Fit to screen">FIT</button>
-        <button type="button" onClick={() => setUserZoom(z => clamp((z ?? fitZoom) + 0.2, 0.3, 4))} style={zoomBtnStyle} title="Zoom in">+</button>
-      </div>
-
       {/* ── Body: full-bleed map, frameless ──────────────────────────── */}
       {/* Outer is MEASURED and overflow:hidden so it never grows a scrollbar — that
           stability is what stops the resize↔scrollbar twitch. The inner layer does
@@ -645,9 +635,3 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   );
 }
 
-const zoomBtnStyle: React.CSSProperties = {
-  width: 24, height: 24, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6,
-  background: "rgba(255,255,255,0.04)", color: "#94a3b8", cursor: "pointer",
-  fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center",
-  justifyContent: "center", lineHeight: 1, padding: 0, outline: "none",
-};

@@ -19,11 +19,9 @@ export function TaskSummaryCard({ companyId }: { companyId: string }) {
   const list = data?.notifications ?? [];
   const weekly = list.find((n) => n.kind === "weekly_summary");
   if (!weekly) return null;
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <SummaryBlock n={weekly} />
-    </div>
-  );
+  // Full-width, like the 我的行程 (My Schedule) block — the daily summary that
+  // used to sit beside it was removed, so the weekly recap spans the page.
+  return <SummaryBlock n={weekly} />;
 }
 
 function SummaryBlock({ n }: { n: AppNotification }) {
