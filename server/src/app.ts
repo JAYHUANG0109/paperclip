@@ -19,6 +19,7 @@ import { bountyRoutes } from "./routes/bounties.js";
 import { leaderboardService } from "./services/leaderboard.js";
 import { progressionNotifications } from "./services/office-progression.js";
 import { summaryService } from "./services/summaries.js";
+import { asanaDigestPingService } from "./services/asana-digest-ping.js";
 import { notificationService } from "./services/notifications.js";
 import { teamsCatalogRoutes } from "./routes/teams-catalog.js";
 import { agentRoutes } from "./routes/agents.js";
@@ -636,6 +637,35 @@ export async function createApp(
   summaryTimer = setInterval(() => { void runDueSummaries(); }, 5 * 60 * 1000);
   summaryTimer.unref?.();
   void runDueSummaries();
+
+  // Daily Asana "you have N tasks" reminder → each user's inbox (the Google Chat
+  // plugin forwards it to their DM). Replaces the retired per-user agent digest
+  // routine: built server-side from each user's own token, so it costs zero LLM
+  // tokens. Fires once per weekday after ~08:15 Asia/Taipei; dedupeKey guards
+  // re-runs, so the ~5-min tick is safe to repeat/restart.
+  let digestPingTimer: ReturnType<typeof setInterval> | null = null;
+  const runDueDigestPings = async () => {
+    try {
+      const now = new Date();
+      const tp = new Date(now.getTime() + 8 * 60 * 60 * 1000); // Asia/Taipei
+      const hour = tp.getUTCHours();
+      const minute = tp.getUTCMinutes();
+      const weekday = tp.getUTCDay(); // 0=Sun .. 6=Sat
+      const isWeekday = weekday >= 1 && weekday <= 5;
+      const past0815 = hour > 8 || (hour === 8 && minute >= 15);
+      if (!isWeekday || !past0815) return;
+      const ping = asanaDigestPingService(db);
+      const rows = await db.select({ id: companies.id }).from(companies);
+      for (const c of rows) {
+        await ping.generate(c.id, now);
+      }
+    } catch (err) {
+      logger.warn({ err }, "scheduled Asana digest ping tick failed");
+    }
+  };
+  digestPingTimer = setInterval(() => { void runDueDigestPings(); }, 5 * 60 * 1000);
+  digestPingTimer.unref?.();
+  void runDueDigestPings();
   void toolDispatcher.initialize().catch((err) => {
     logger.error({ err }, "Failed to initialize plugin tool dispatcher");
   });
