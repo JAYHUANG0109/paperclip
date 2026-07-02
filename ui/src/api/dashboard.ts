@@ -10,6 +10,8 @@ export interface AsanaDigestTask {
   permalinkUrl: string | null;
   completed: boolean;
   notes?: string | null;
+  /** Comment count baked into the digest so collapsed rows show it without a per-task fetch. */
+  commentCount?: number;
 }
 
 export interface AsanaDigest {

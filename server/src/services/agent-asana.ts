@@ -173,7 +173,26 @@ export async function buildAsanaDigestBody(
       notes: typeof r.notes === "string" ? r.notes : null,
       priority: null,
       completed: false,
+      commentCount: 0,
     }));
+
+  // Comment counts for the collapsed task rows: token-free (direct REST, no LLM)
+  // and cheap — one minimal `stories?opt_fields=type` call per task (payload is
+  // just the story types), capped at 8 concurrent. This runs only during the
+  // ~10-min digest rebuild; dashboard loads read the cached digest, so the
+  // per-load cost is zero. Best-effort: a failed/empty count stays 0.
+  for (let i = 0; i < tasks.length; i += 8) {
+    await Promise.all(
+      tasks.slice(i, i + 8).map(async (task) => {
+        const sres = await asanaGetJson(
+          t.token,
+          `/tasks/${encodeURIComponent(task.gid)}/stories?opt_fields=type&limit=100`,
+        );
+        const srows = sres && Array.isArray(sres.data) ? (sres.data as Record<string, unknown>[]) : [];
+        task.commentCount = srows.filter((s) => s?.type === "comment").length;
+      }),
+    );
+  }
 
   // dated ascending first, then undated (keeps undated tasks visible)
   const byDue = (a: { dueOn: string | null }, b: { dueOn: string | null }) => {

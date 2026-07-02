@@ -201,7 +201,9 @@ function AsanaTaskRow({
     enabled: everOpened,
     staleTime: 60_000,
   });
-  const commentCount = comments.data?.count;
+  // Collapsed rows use the count baked into the digest (server-side, cached, no
+  // per-row fetch); once the row is opened, the freshly-loaded exact count wins.
+  const commentCount = comments.data?.count ?? task.commentCount;
 
   useEffect(() => {
     if (open) setEverOpened(true);
