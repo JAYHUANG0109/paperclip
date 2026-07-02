@@ -21,6 +21,10 @@ const tileAt = (t, tx, ty) => blit(map, A5, t.c*T, t.r*T, T, T, tx*T, ty*T);
 const objS = (mc, mr, wc, hc, tx, ty, f = DEC_F) => blitScaled(map, M, mc*TS, mr*TS, wc*TS, hc*TS, tx*T, ty*T, f*T/TS);
 // Blit an arbitrary 48×48-px region of the sheet (sub-tile items like the keyboard).
 const objPx = (sx, sy, sw, sh, tx, ty, f) => blitScaled(map, M, sx, sy, sw, sh, Math.round(tx*T), Math.round(ty*T), f*T/TS);
+// Chairs: the seat is one tile but the legs/wheels run ~6px into the next row, so
+// blit 1.2 tiles tall to show them in full. Seat/layout math still uses h:1.
+const CHAIR_LEGS = 1.2;
+const chairBlit = (t, tx, ty, f = CHAIR_F) => objS(t.c, t.r, 1, CHAIR_LEGS, tx, ty, f);
 
 const DESK   = { c: 0,  r: 2,  w: 3, h: 2 };  // the light/white desk (rolled out to everyone)
 const CHAIR  = { c: 5,  r: 16, w: 1, h: 1 };  // office chair from behind (agent faces the desk)
@@ -123,7 +127,7 @@ function furnishTeam(rm) {
       const kW = (KEYBOARD_PX.sw/TS)*KB_F;
       objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2 + 0.4, rowTop + 0.7, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
-      objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
+      chairBlit(CHAIR, chairX, chairY);
       list.push(seatPct(chairX + cW/2, chairY + cH/2));
     }
   }
@@ -151,14 +155,14 @@ function furnishMeeting(rm) {
   const chW = CHAIR_F, cGap = 2.7;                 // distance between the two chair centres
   for (let i = 0; i < 2; i++) {
     const chX = cx + (i === 0 ? -cGap/2 : cGap/2) - chW/2;
-    objS(ARMCH.c, ARMCH.r, 1, 1, chX, ty - 0.65, CHAIR_F);                    // top: faces table, tight
-    objS(ARMCH_BACK.c, ARMCH_BACK.r, 1, 1, chX, ty + benchH - 1.3, CHAIR_F);  // bottom: backs to us, tight
+    chairBlit(ARMCH, chX, ty - 0.65);                    // top: faces table, tight
+    chairBlit(ARMCH_BACK, chX, ty + benchH - 1.3);       // bottom: backs to us, tight
   }
   // Head chairs at the short ends of the table (same row as the table centre):
   // left end faces east, right end faces west.
   const endY = ty + benchH*0.59 - chW/2;
-  objS(ARMCH_R.c, ARMCH_R.r, 1, 1, tx - chW - 0.1, endY, CHAIR_F);    // left end, faces the table (east)
-  objS(ARMCH_L.c, ARMCH_L.r, 1, 1, tx + tw - 0.1, endY, CHAIR_F);     // right end, faces the table (west)
+  chairBlit(ARMCH_R, tx - chW - 0.1, endY);    // left end, faces the table (east)
+  chairBlit(ARMCH_L, tx + tw - 0.1, endY);     // right end, faces the table (west)
 }
 function furnishLounge(rm) {
   // Duplicate the 茶水間 layout exactly (same counter/fridge/water cooler/vending/clock).
@@ -197,7 +201,7 @@ function furnishFounder(rm) {
   objS(POT.c, POT.r, 1, 2, potX, deskTop + 1.2, 1.6);
   objS(POT.c, POT.r, 1, 2, potX, deskTop + 3.0, 1.6);
   const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
-  objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
+  chairBlit(CHAIR, chairX, chairY);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
   // Landscape paintings across the back wall — kept off-centre so the monitor
   // (at the room centre) never blocks the big one. Plus a clock.
