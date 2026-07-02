@@ -30,7 +30,7 @@ const SOFA   = { c: 4,  r: 2,  w: 4, h: 2 };
 const PLANT  = { c: 4,  r: 28, w: 1, h: 2 };  // tall fern
 const POT    = { c: 2,  r: 28, w: 1, h: 2 };  // small potted plant (盆栽), brown pot
 const COOLER = { c: 5,  r: 16, w: 1, h: 2 };
-const FRIDGE = { c: 12, r: 16, w: 2, h: 2 };
+const FRIDGE = { c: 12, r: 16, w: 2, h: 3 };  // double-door fridge spans r16-18 (bottom door in r18)
 const TABLE  = { c: 4,  r: 1,  w: 4, h: 2 };
 const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
 // Keyboard + mouse — just the keys band (the top of r23 is the monitor stand,
@@ -47,7 +47,7 @@ const drawClock = (rm) => {
   const col = CLOCK_COL[rm.id] ?? 0;
   objPx(col*TS + 6, 22*TS + 39, 33, 33, rm.x + rm.w - 3, rm.y + 0.6, 2.6);
 };
-const WATER      = { c: 9,  r: 16, w: 1, h: 2 };  // water cooler
+const WATER      = { c: 9,  r: 16, w: 1, h: 3 };  // water cooler spans r16-18 (base in r18)
 const CUP        = { c: 8,  r: 17, w: 1, h: 1 };  // paper cup
 const VENDING    = { c: 14, r: 16, w: 2, h: 3 };  // vending machine
 const BOOKSH_W   = { c: 8,  r: 9,  w: 1, h: 2 };  // wood bookshelf w/ books
@@ -119,7 +119,7 @@ function furnishTeam(rm) {
       // Keyboard centred (mouse to the right), nudged a touch east + south so the
       // keys sit under the monitor and the mouse is beside them.
       const kW = (KEYBOARD_PX.sw/TS)*KB_F;
-      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2 + 0.7, rowTop + 0.7, KB_F);
+      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2 + 0.4, rowTop + 0.7, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
       objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
       list.push(seatPct(chairX + cW/2, chairY + cH/2));
@@ -157,13 +157,13 @@ function furnishPantry(rm) {
   const { x, y, w, h } = rm;
   // Counter shortened to 3 tiles so it clears the fridge (no overlap that reads as a cut).
   objS(COUNTER.c, COUNTER.r, 3, COUNTER.h, x+1.5, y+2);
-  // Fridge: bigger, whole two-door unit, sitting clear of the counter and inside the right wall.
-  const ff = 2.3, fW = FRIDGE.w*ff;
-  objS(FRIDGE.c, FRIDGE.r, FRIDGE.w, FRIDGE.h, x+w-fW-1.6, y+2, ff);
-  // Water cooler: bigger, whole jug + stand, off the bottom wall.
-  const wf = 2.3;
-  objS(WATER.c, WATER.r, WATER.w, WATER.h, x+2.5, y+h-6, wf);
-  objS(CUP.c, CUP.r, 1, 1, x+2.5+WATER.w*wf+0.3, y+h-4.3, 1.4);
+  // Fridge: whole two-door unit (r16-18), clear of the counter and inside the right wall.
+  const ff = 2.0, fW = FRIDGE.w*ff;
+  objS(FRIDGE.c, FRIDGE.r, FRIDGE.w, FRIDGE.h, x+w-fW-1.6, y+1, ff);
+  // Water cooler: whole jug + stand + base (r16-18), standing on the floor below the counter.
+  const wf = 1.9;
+  objS(WATER.c, WATER.r, WATER.w, WATER.h, x+2.5, y+3.3, wf);
+  objS(CUP.c, CUP.r, 1, 1, x+2.5+WATER.w*wf+0.3, y+h-3.4, 1.4);
   objS(VENDING.c, VENDING.r, VENDING.w, VENDING.h, x+w-VENDING.w*1.5-2, y+h-VENDING.h*1.5-0.8, 1.5);
   drawClock(rm);
 }
@@ -174,11 +174,12 @@ function furnishFounder(rm) {
   const dW = WHITE_TABLE.w*df, dH = 2*df, cW = CHAIR.w*CHAIR_F, cH = CHAIR.h*CHAIR_F;
   // The chair/seat (and thus the DOM monitor, at seat − 0.9*AGENT_SIZE) stay put.
   // The white desk + keyboard + plants sit just under the monitor.
-  const seatRow = y + Math.max(2, h*0.30);
+  const seatRow = y + Math.max(2, h*0.30) - 1.0;   // whole kit a touch north
   const deskTop = seatRow - 1.2;
   objS(WHITE_TABLE.c, WHITE_TABLE.r, WHITE_TABLE.w, 2, cx - dW/2, deskTop, df);   // wide white table
   const kW = (KEYBOARD_PX.sw/TS)*KB_F;
-  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.7, deskTop + 1.9, KB_F);
+  // Keyboard at the FRONT (south) edge of the table so the monitor overlay doesn't cover it.
+  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.4, deskTop + 3.2, KB_F);
   objS(POT.c, POT.r, 1, 2, cx + dW/2 + 1.0, deskTop + 1.2, 1.8);      // 盆栽, wider right
   objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.6, deskTop + 1.0, 1.6);  // fern, wider left
   const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
