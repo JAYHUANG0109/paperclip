@@ -88,12 +88,11 @@ function furnishTeam(rm) {
     for (let c = 0; c < inRow; c++, n++) {
       const centerX = x + 1.5 + (c + off + 0.5) * cellW;
       const rowTop = y + 2 + r * cellH;
-      // PREVIEW: give the first 資訊部 desk the white table so it can be reviewed.
-      const desk = (id === "it" && n === 0) ? WHITE_DESK : DESK;
-      objS(desk.c, desk.r, desk.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
-      // Keyboard on the desk surface, directly under the (DOM) monitor.
+      objS(DESK.c, DESK.r, DESK.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
+      // Keyboard on the desk surface, directly under the (DOM) monitor, set very
+      // slightly in from the front edge (north).
       const kW = (KEYBOARD_PX.sw/T)*KB_F;
-      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2, rowTop + 0.7, KB_F);
+      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2, rowTop + 0.55, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
       objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
       list.push(seatPct(chairX + cW/2, chairY + cH/2));
@@ -126,13 +125,17 @@ function furnishFounder(rm) {
   const cx = x + w/2;
   const df = DEC_F;                              // matches the 茶水間 table scale
   const dW = COUNTER.w*df, dH = COUNTER.h*df, cW = CHAIR.w*CHAIR_F, cH = CHAIR.h*CHAIR_F;
-  const rowTop = y + Math.max(2, h*0.30);
-  objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, cx - dW/2, rowTop, df);
+  // The chair/seat (and thus the DOM monitor, at seat − 0.9*AGENT_SIZE) stay put —
+  // that monitor height looks good. The desk + keyboard + plants are raised toward
+  // the monitor so the workstation reads as one unit under the screen.
+  const seatRow = y + Math.max(2, h*0.30);
+  const deskTop = seatRow - 1.6;
+  objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, cx - dW/2, deskTop, df);
   const kW = (KEYBOARD_PX.sw/T)*KB_F;
-  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2, rowTop + 0.8, KB_F);
-  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.5, rowTop + 0.4, 1.6);      // 盆栽 to the right
-  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 1.9, rowTop + 0.2, 1.4);  // fern to the left
-  const chairX = cx - cW/2, chairY = rowTop + dH;
+  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2, deskTop + 1.9, KB_F);
+  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.5, deskTop + 0.9, 1.6);      // 盆栽 to the right
+  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 1.9, deskTop + 0.7, 1.4);  // fern to the left
+  const chairX = cx - cW/2, chairY = seatRow + dH;
   objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
 }
