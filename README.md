@@ -521,6 +521,8 @@ cd <repo> && ops/deploy.sh setup <branch>
 launchctl bootout gui/$(id -u)/com.seasonarts.paperclip
 ```
 
+**Flow (TL;DR):** `ops/migrate-to-new-mac.sh` → copy the `.tgz` → `ops/restore-on-new-mac.sh <tgz>` → do the 3 URL/OAuth updates → `ops/deploy.sh setup <branch>` → verify → stop the old Mac.
+
 ### Rollback / safety
 
 - The old Mac keeps running until you stop it — if the new Mac has trouble, you lose nothing.
@@ -597,6 +599,8 @@ cd <倉庫> && ops/deploy.sh setup <分支>
 ```bash
 launchctl bootout gui/$(id -u)/com.seasonarts.paperclip
 ```
+
+**流程（懶人包）：** `ops/migrate-to-new-mac.sh` → 複製 `.tgz` → `ops/restore-on-new-mac.sh <tgz>` → 完成 3 項網址／OAuth 更新 → `ops/deploy.sh setup <分支>` → 驗證 → 停止舊 Mac。
 
 ### 回復／安全性
 
