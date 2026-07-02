@@ -272,6 +272,29 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     res.json({ comments, count: comments.length });
   });
 
+  // Manual refresh: the user presses "更新" on the Asana tasks card. Rebuilds the
+  // digest server-side using the caller's OWN Asana token — no LLM, no agent
+  // wakeup. Returns the fresh digest in the response so the UI can update
+  // immediately (no polling needed).
+  router.post("/companies/:companyId/asana-digest/refresh", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account to refresh from Asana." });
+      return;
+    }
+    const body = await buildAsanaDigestBody(db, companyId, agentId);
+    if (!body) {
+      res.status(502).json({ error: "Could not refresh digest from Asana." });
+      return;
+    }
+    const digest = await writeAsanaDigestForAgent(db, companyId, agentId, body);
+    res.json({ ok: true, digest });
+  });
+
   // ── Daily-calendar consoles (創辦人 / 園長 每日行事曆) ──────────────────────
   // Read every console the caller has on their own agent (each = 4 priority
   // categories + agent drafts). Most users have one; the preview account may

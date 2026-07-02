@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarRange, CheckCircle2, ChevronRight, Circle, ExternalLink, ListTodo, Loader2, MessageSquare, XCircle } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarRange, CheckCircle2, ChevronRight, Circle, ExternalLink, ListTodo, Loader2, MessageSquare, RotateCcw, XCircle } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { dashboardApi, type AsanaDigest, type AsanaDigestTask } from "../api/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +35,17 @@ export function AsanaTasksSection({ companyId }: { companyId: string }) {
     queryFn: () => dashboardApi.asanaDigest(companyId),
     enabled: !!companyId,
     staleTime: 60_000,
+  });
+
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useMutation({
+    mutationFn: () => dashboardApi.refreshAsanaDigest(companyId),
+    onMutate: () => setRefreshing(true),
+    onSuccess: (res) => {
+      if (res.digest) queryClient.setQueryData<AsanaDigest>(DIGEST_KEY(companyId), res.digest);
+      setRefreshing(false);
+    },
+    onError: () => setRefreshing(false),
   });
 
   // Row lifecycle state, keyed by task gid. `removed` rows are filtered out.
@@ -89,11 +100,28 @@ export function AsanaTasksSection({ companyId }: { companyId: string }) {
             </span>
           )}
         </h2>
-        {generated && (
-          <span className="text-[11px] text-muted-foreground">
-            {t("asana.updatedAt", { defaultValue: "Updated" })} {generated.toLocaleString()}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {generated && (
+            <span className="text-[11px] text-muted-foreground">
+              {t("asana.updatedAt", { defaultValue: "Updated" })} {generated.toLocaleString()}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => refresh.mutate()}
+            disabled={refreshing}
+            title={t("asana.refreshHint", { defaultValue: "從 Asana 重新整理（手動更新）" })}
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium",
+              "hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60",
+            )}
+          >
+            <RotateCcw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+            {refreshing
+              ? t("asana.refreshing", { defaultValue: "更新中…" })
+              : t("asana.refresh", { defaultValue: "更新" })}
+          </button>
+        </div>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <TaskCard

@@ -130,6 +130,11 @@ export const dashboardApi = {
     api.get<{ comments: AsanaTaskComment[]; count: number }>(
       `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/comments`,
     ),
+  refreshAsanaDigest: (companyId: string) =>
+    api.post<{ ok: boolean; digest: AsanaDigest | null }>(
+      `/companies/${companyId}/asana-digest/refresh`,
+      {},
+    ),
   // Every daily console the caller has (創辦人 / 園長). Most users have one.
   founderConsoles: (companyId: string) =>
     api.get<FounderConsolesResponse>(`/companies/${companyId}/founder-digest/me`),
