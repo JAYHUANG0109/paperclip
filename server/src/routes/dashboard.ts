@@ -292,6 +292,35 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       return;
     }
     const digest = await writeAsanaDigestForAgent(db, companyId, agentId, body);
+    // Best-effort: a manual 更新 should also push the fresh digest to the user's
+    // Google Chat (same forward path as the daily auto-ping — server-direct, zero
+    // tokens). Throttled to at most once per Taipei-hour via the dedupeKey so
+    // rapid clicking can't spam the DM; a distinct key from the daily ping so a
+    // manual pull still fires even after today's scheduled nudge already went out.
+    try {
+      const dailyOpen = digest.daily?.length ?? 0;
+      const weeklyOpen = digest.weekly?.length ?? 0;
+      if (userId && dailyOpen + weeklyOpen > 0) {
+        // Asia/Taipei is UTC+8 (no DST) → "2026-07-02T14" = per-hour bucket.
+        const hourLabel = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 13);
+        const en = (email?.trim().toLowerCase() ?? "") === "jay20020109@seasonart.org";
+        const title = en ? "📋 Your Asana tasks (refreshed)" : "📋 你的 Asana 任務（已更新）";
+        const text = en
+          ? `${dailyOpen} due today/overdue · ${weeklyOpen} this week. See your dashboard.`
+          : `今日到期／逾期 ${dailyOpen} 件、本週 ${weeklyOpen} 件。詳見儀表板。`;
+        await notifications.create({
+          companyId,
+          userId,
+          kind: "asana_digest",
+          title,
+          body: text,
+          link: "/dashboard",
+          dedupeKey: `asana-digest-manual:${userId}:${hourLabel}`,
+        });
+      }
+    } catch {
+      /* forward is best-effort — never let it affect the refresh response */
+    }
     res.json({ ok: true, digest });
   });
 
