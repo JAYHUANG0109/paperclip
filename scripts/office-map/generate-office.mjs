@@ -6,19 +6,24 @@ import { decode, make, blit, blitScaled, fillRect, encode } from "./pnglib.mjs";
 
 const PACK = "/Users/jayhuang/dev/paperclip/paperclip/Office Tileset";
 const A5 = decode(PACK + "/Office VX Ace/A5 Office Floors & Walls.png");
-const M = decode(PACK + "/Office Tileset All 16x16.png");
-const T = 16;
-const DESK_F = 1.8, CHAIR_F = 2.25, DEC_F = 1.9;  // ~1.13× larger furniture (agents scaled to match)
+// Furniture is blitted from the 48×48 sheet (3× res of the 16×16) and scaled
+// DOWN to the map — crisp, not the blurry upscaled 16×16.
+const M = decode(PACK + "/Office Tileset All 48x48.png");
+const T = 16;      // map/floor tile size
+const TS = 48;     // furniture source tile size
+const DESK_F = 1.76, CHAIR_F = 2.2, DEC_F = 1.87;  // 1.1× larger furniture (agents scaled to match)
 
 const ROOM_FLOOR = { c: 8, r: 18 };
 let map;
 const tileAt = (t, tx, ty) => blit(map, A5, t.c*T, t.r*T, T, T, tx*T, ty*T);
-const objS = (mc, mr, wc, hc, tx, ty, f = DEC_F) => blitScaled(map, M, mc*T, mr*T, wc*T, hc*T, tx*T, ty*T, f);
-// Blit an arbitrary pixel region of the sheet (for sub-tile items like the keyboard).
-const objPx = (sx, sy, sw, sh, tx, ty, f) => blitScaled(map, M, sx, sy, sw, sh, Math.round(tx*T), Math.round(ty*T), f);
+// Furniture: source region is in 48×48 px; scale by f*T/TS so the on-map size is
+// still f× a 16px tile (same footprint as before, but sourced from the crisp sheet).
+const objS = (mc, mr, wc, hc, tx, ty, f = DEC_F) => blitScaled(map, M, mc*TS, mr*TS, wc*TS, hc*TS, tx*T, ty*T, f*T/TS);
+// Blit an arbitrary 48×48-px region of the sheet (sub-tile items like the keyboard).
+const objPx = (sx, sy, sw, sh, tx, ty, f) => blitScaled(map, M, sx, sy, sw, sh, Math.round(tx*T), Math.round(ty*T), f*T/TS);
 
 const DESK   = { c: 1,  r: 0,  w: 3, h: 2 };
-const CHAIR  = { c: 4,  r: 16, w: 1, h: 1 };
+const CHAIR  = { c: 5,  r: 16, w: 1, h: 1 };  // office chair from behind (agent faces the desk)
 const ARMCH  = { c: 0,  r: 16, w: 1, h: 1 };
 const SOFA   = { c: 4,  r: 2,  w: 4, h: 2 };
 const PLANT  = { c: 4,  r: 28, w: 1, h: 2 };  // tall fern
@@ -29,8 +34,9 @@ const TABLE  = { c: 4,  r: 1,  w: 4, h: 2 };
 const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
 // Keyboard = ONLY the keys. The full tile (c12,r23) bundles the monitor stand,
 // so we blit just the keys pixel-strip (y 376..383 of the sheet) via objPx.
-const KEYBOARD_PX = { sx: 12*T, sy: 376, sw: T, sh: 7 };
-const KB_F = 2.5;                               // keyboard scale (~1.13× larger)
+// Keyboard = just the keys strip, in 48×48-sheet px (3× the 16×16 coords).
+const KEYBOARD_PX = { sx: 12*TS, sy: 376*3, sw: TS, sh: 21 };
+const KB_F = 2.42;                              // keyboard scale (1.1×)
 const GREY_DESK  = { c: 1,  r: 2,  w: 3 };  // Jay's grey desk
 const WHITE_DESK = { c: 5,  r: 2,  w: 3 };  // founder's white table
 // Decoration tiles (verified against the sheet).
@@ -52,18 +58,18 @@ const GREY_BENCH = { c: 0,  r: 20, w: 2, h: 2 };  // grey bench/table (meeting)
 
 // wide grid, tight 1-tile gaps. Center column is wide for the big team rooms.
 const COLX = [1, 22, 67], COLW = [20, 44, 16];
-const ROWY = [1, 22, 43], ROWH = [20, 20, 20];   // bottom row now full height (holds 教學組 after the swap)
-const MW = 84, MH = 64;   // 1344x1024
+const ROWY = [1, 22, 43], ROWH = [20, 20, 12];
+const MW = 84, MH = 56;   // 1344x896
 
 const ROOMS = [
   { id:"meeting",  team:null,         name:"會議室",    cell:[0,0], dw:14, dh:14, kind:"meeting" },
-  { id:"teaching", team:"教學組",     name:"教學組",    cell:[1,2], cap:8 },
+  { id:"teaching", team:"教學組",     name:"教學組",    cell:[1,0], cap:8 },
   { id:"talent",   team:"人才發展",   name:"人才發展",  cell:[2,0], dw:13, dh:13, cap:1 },
   { id:"lead",     team:"領導團隊",   name:"領導團隊",  cell:[0,1], cap:4, deskCols:2 },
   { id:"it",       team:"資訊部",     name:"資訊部",    cell:[1,1], cap:7 },
   { id:"lounge",   team:null,         name:"休息室",    cell:[2,1], dw:13, dh:12, kind:"lounge" },
   { id:"pantry",   team:null,         name:"茶水間",    cell:[0,2], dw:14, dh:10, kind:"pantry" },
-  { id:"founder",  team:null,         name:"創辦人辦公室", cell:[1,0], dw:26, dh:11, kind:"founder", soloAgent:"創辦人" },
+  { id:"founder",  team:null,         name:"創辦人辦公室", cell:[1,2], dw:26, dh:11, kind:"founder", soloAgent:"創辦人" },
   { id:"auto",     team:"系統自動化", name:"系統自動化",cell:[2,2], dw:12, dh:10, cap:1 },
 ];
 for (const rm of ROOMS) {
@@ -107,7 +113,7 @@ function furnishTeam(rm) {
       objS(desk.c, desk.r, desk.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
       // Keyboard on the desk surface, directly under the (DOM) monitor, set very
       // slightly in from the front edge (north).
-      const kW = (KEYBOARD_PX.sw/T)*KB_F;
+      const kW = (KEYBOARD_PX.sw/TS)*KB_F;
       objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2, rowTop + 0.45, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
       objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
@@ -165,7 +171,7 @@ function furnishFounder(rm) {
   const seatRow = y + Math.max(2, h*0.30);
   const deskTop = seatRow - 1.2;
   objS(WHITE_DESK.c, WHITE_DESK.r, WHITE_DESK.w, 2, cx - dW/2, deskTop, df);   // white table
-  const kW = (KEYBOARD_PX.sw/T)*KB_F;
+  const kW = (KEYBOARD_PX.sw/TS)*KB_F;
   objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2, deskTop + 1.55, KB_F);
   objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.5, deskTop + 0.9, 1.8);      // 盆栽 to the right
   objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.1, deskTop + 0.7, 1.6);  // fern to the left

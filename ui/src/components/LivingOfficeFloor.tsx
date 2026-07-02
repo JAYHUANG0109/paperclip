@@ -49,17 +49,17 @@ const FLOORS: FloorDef[] = [
     label: "Office",
     image: "/assets/pixelart/Office%20Square.png",
     natW: 1344,
-    natH: 1024,
+    natH: 896,
     zones: [
-      { id: "meeting", name: "會議室", team: null, x: 4.8, y: 6.3, w: 16.7, h: 21.9, color: "#10B981" },
-      { id: "teaching", name: "教學組", team: "教學組", x: 26.2, y: 67.2, w: 52.4, h: 31.3, color: "#8B5CF6", seats: [{"x":34.08,"y":77.7},{"x":46.28,"y":77.7},{"x":58.48,"y":77.7},{"x":70.68,"y":77.7},{"x":34.08,"y":90.59},{"x":46.28,"y":90.59},{"x":58.48,"y":90.59},{"x":70.68,"y":90.59}] },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 81, y: 6.3, w: 15.5, h: 20.3, color: "#6366F1", seats: [{"x":88.69,"y":16.76}] },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.2, y: 34.4, w: 23.8, h: 31.3, color: "#F59E0B", seats: [{"x":8.04,"y":44.88},{"x":18.15,"y":44.88},{"x":8.04,"y":57.77},{"x":18.15,"y":57.77}] },
-      { id: "it", name: "資訊部", team: "資訊部", x: 26.2, y: 34.4, w: 52.4, h: 31.3, color: "#3B82F6", seats: [{"x":34.08,"y":44.88},{"x":46.28,"y":44.88},{"x":58.48,"y":44.88},{"x":70.68,"y":44.88},{"x":40.18,"y":57.77},{"x":52.38,"y":57.77},{"x":64.58,"y":57.77}] },
-      { id: "lounge", name: "休息室", team: null, x: 81, y: 40.6, w: 15.5, h: 18.8, color: "#EC4899" },
-      { id: "pantry", name: "茶水間", team: null, x: 4.8, y: 75, w: 16.7, h: 15.6, color: "#14B8A6" },
-      { id: "founder", name: "創辦人辦公室", team: null, x: 36.9, y: 7.8, w: 31, h: 17.2, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":52.38,"y":19.41}] },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 82.1, y: 75, w: 14.3, h: 15.6, color: "#F97316", seats: [{"x":89.29,"y":85.51}] },
+      { id: "meeting", name: "會議室", team: null, x: 4.8, y: 7.1, w: 16.7, h: 25, color: "#10B981" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 26.2, y: 1.8, w: 52.4, h: 35.7, color: "#8B5CF6", seats: [{"x":34.08,"y":13.61},{"x":46.28,"y":13.61},{"x":58.48,"y":13.61},{"x":70.68,"y":13.61},{"x":34.08,"y":28.34},{"x":46.28,"y":28.34},{"x":58.48,"y":28.34},{"x":70.68,"y":28.34}] },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 81, y: 7.1, w: 15.5, h: 23.2, color: "#6366F1", seats: [{"x":88.69,"y":18.96}] },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.2, y: 39.3, w: 23.8, h: 35.7, color: "#F59E0B", seats: [{"x":8.04,"y":51.11},{"x":18.15,"y":51.11},{"x":8.04,"y":65.84},{"x":18.15,"y":65.84}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 26.2, y: 39.3, w: 52.4, h: 35.7, color: "#3B82F6", seats: [{"x":34.08,"y":51.11},{"x":46.28,"y":51.11},{"x":58.48,"y":51.11},{"x":70.68,"y":51.11},{"x":40.18,"y":65.84},{"x":52.38,"y":65.84},{"x":64.58,"y":65.84}] },
+      { id: "lounge", name: "休息室", team: null, x: 81, y: 46.4, w: 15.5, h: 21.4, color: "#EC4899" },
+      { id: "pantry", name: "茶水間", team: null, x: 4.8, y: 78.6, w: 16.7, h: 17.9, color: "#14B8A6" },
+      { id: "founder", name: "創辦人辦公室", team: null, x: 36.9, y: 76.8, w: 31, h: 19.6, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":52.38,"y":89.89}] },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 82.1, y: 78.6, w: 14.3, h: 17.9, color: "#F97316", seats: [{"x":89.29,"y":90.39}] },
     ],
   },
 ];
@@ -73,7 +73,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 // (maxWidth:none on the img), SPRITE_SCALE=1 keeps that same visible size while
 // per-character scale (male 1.3×) finally takes effect.
 const AGENT_SIZE = 84;
-const SPRITE_SCALE = 1.13;   // scaled up ~1.13× to match the larger furniture
+const SPRITE_SCALE = 1.1;    // scaled up ~1.1× to match the furniture
 
 // 8-way facing from a screen-space velocity (y points down → south).
 type Dir = "south" | "south-east" | "east" | "north-east" | "north" | "north-west" | "west" | "south-west";
