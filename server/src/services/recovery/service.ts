@@ -23,6 +23,7 @@ import {
   issueRelations,
   issueThreadInteractions,
   issues,
+  routineTriggers,
 } from "@paperclipai/db";
 import { parseObject, asBoolean, asNumber } from "../../adapters/utils.js";
 import { runningProcesses } from "../../adapters/index.js";
@@ -2586,6 +2587,57 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         previousStatus: input.previousStatus,
         latestRun: input.latestRun,
       });
+    }
+
+    // Recurring routine executions (e.g. the daily 行事曆／待決議 digests) must NOT
+    // escalate up the reports_to chain. Each scheduled fire creates a fresh
+    // execution issue, so a stale one is superseded by the next run — escalating
+    // it just reassigns every agent's missed daily digest onto their manager
+    // (ultimately the founder), who then re-runs someone else's work. Cancel it
+    // instead: a terminal state stops the recovery chase, and the routine re-fires
+    // on schedule with its own correct owner. Gated to scheduled routines so
+    // one-shot/event routine executions still escalate normally.
+    if (input.issue.originKind === "routine_execution" && input.issue.originId) {
+      const [scheduled] = await db
+        .select({ id: routineTriggers.id })
+        .from(routineTriggers)
+        .where(
+          and(
+            eq(routineTriggers.companyId, input.issue.companyId),
+            eq(routineTriggers.routineId, input.issue.originId),
+            eq(routineTriggers.kind, "schedule"),
+            eq(routineTriggers.enabled, true),
+          ),
+        )
+        .limit(1);
+      if (scheduled) {
+        const cancelled = await issuesSvc.update(input.issue.id, { status: "cancelled" });
+        await issuesSvc.addComment(
+          input.issue.id,
+          "Auto-resolved by recovery: this scheduled routine execution was left without a disposition. The next scheduled run supersedes it, so the stale execution is cancelled instead of escalating to a manager. End routine runs with an explicit `done`/`cancelled` to avoid this.",
+          {},
+          { authorType: "system" },
+        );
+        await logActivity(db, {
+          companyId: input.issue.companyId,
+          actorType: "system",
+          actorId: "system",
+          agentId: null,
+          runId: null,
+          action: "issue.updated",
+          entityType: "issue",
+          entityId: input.issue.id,
+          details: {
+            identifier: input.issue.identifier,
+            status: "cancelled",
+            previousStatus: input.previousStatus,
+            source: "recovery.cancel_stale_recurring_routine_execution",
+            recoveryCause: input.recoveryCause ?? "stranded_assigned_issue",
+            routineId: input.issue.originId,
+          },
+        });
+        return cancelled ?? null;
+      }
     }
 
     const recoveryCause = input.recoveryCause ?? "stranded_assigned_issue";
