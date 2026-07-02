@@ -16,15 +16,6 @@ function localeForEmail(email: string | null | undefined): "en" | "zh-TW" {
 
 // Asia/Taipei is UTC+8 with no DST — safe to offset by a fixed 8h.
 const TPE_OFFSET_MS = 8 * 60 * 60 * 1000;
-function taipeiDateLabel(d: Date): string {
-  const tp = new Date(d.getTime() + TPE_OFFSET_MS);
-  return tp.toISOString().slice(0, 10); // YYYY-MM-DD in Taipei
-}
-function taipeiDayStartUtc(d: Date): Date {
-  const tp = new Date(d.getTime() + TPE_OFFSET_MS);
-  const startTpMs = Date.UTC(tp.getUTCFullYear(), tp.getUTCMonth(), tp.getUTCDate(), 0, 0, 0, 0);
-  return new Date(startTpMs - TPE_OFFSET_MS);
-}
 // The Taipei date of the current week's Friday — used as the weekly label +
 // dedupe key so a Fri/Sat/Sun catch-up run all resolve to the same week.
 function taipeiFridayLabel(d: Date): string {
@@ -57,7 +48,7 @@ export function summaryService(db: Db) {
 
   /**
    * Generate per-user "tasks done" summaries for a company and drop them into
-   * each user's inbox (as notifications, kind daily_summary/weekly_summary).
+   * each user's inbox (as notifications, kind weekly_summary).
    * Idempotent: the notification dedupeKey is per (user, period), so calling
    * this repeatedly in a window creates each summary at most once. Only users
    * who actually completed something get a summary (no empty spam).
@@ -121,7 +112,7 @@ export function summaryService(db: Db) {
       const row = await notifications.create({
         companyId,
         userId,
-        kind: kind === "daily" ? "daily_summary" : "weekly_summary",
+        kind: "weekly_summary",
         title,
         body,
         link: "/dashboard",

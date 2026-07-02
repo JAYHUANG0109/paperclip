@@ -47,8 +47,9 @@ export function notificationRoutes(db: Db) {
     res.json({ ok: true });
   });
 
-  // Manual trigger (board-only) to generate today's summaries on demand — for
-  // testing without waiting for the scheduled 17:30/17:45 window. Idempotent.
+  // Manual trigger (board-only) to generate the weekly summary on demand — for
+  // testing without waiting for the scheduled Friday window. Idempotent.
+  // (Daily summaries were removed to save tokens; weekly only.)
   router.post("/companies/:companyId/summaries/run", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -56,9 +57,8 @@ export function notificationRoutes(db: Db) {
       res.status(403).json({ error: "Board only." });
       return;
     }
-    const kind = req.body?.kind === "weekly" ? "weekly" : "daily";
-    const created = await summaries.generate(companyId, kind, new Date());
-    res.json({ ok: true, kind, created });
+    const created = await summaries.generate(companyId, "weekly", new Date());
+    res.json({ ok: true, kind: "weekly", created });
   });
 
   return router;
