@@ -275,14 +275,22 @@ describe("plugin-worker-manager stderr failure context", () => {
     }
   });
 
-  it("rejects performAction nested host calls that omit the invocation id", async () => {
+  // Fork divergence (single-tenant): a nested host call that OMITS the invocation
+  // id is treated as scope-less and permitted rather than rejected, so background
+  // plugin calls (e.g. the Google Chat connector mirroring a comment from an
+  // `issue.comment.created` handler) are not blocked. See the rationale on
+  // `contextForWorkerMessage` in plugin-worker-manager.ts. Upstream rejects this;
+  // we accept it because the deployment is single-tenant. A forged *unknown* id is
+  // still rejected (covered below).
+  it("permits performAction nested host calls that omit the invocation id (single-tenant)", async () => {
+    const companiesGet = vi.fn(async (params: { companyId: string }) => ({ id: params.companyId }));
     const handlers = createHostClientHandlers({
       pluginId: "test.plugin",
       capabilities: ["companies.read"],
       services: {
         companies: {
           list: vi.fn(async () => []),
-          get: vi.fn(async (params: { companyId: string }) => ({ id: params.companyId })),
+          get: companiesGet,
         },
       } as unknown as HostServices,
     });
@@ -314,10 +322,8 @@ describe("plugin-worker-manager stderr failure context", () => {
           companyId: "company-a",
         },
         renderEnvironment: null,
-      })).rejects.toMatchObject({
-        code: PLUGIN_RPC_ERROR_CODES.INVOCATION_SCOPE_DENIED,
-        message: expect.stringContaining("unknown invocation scope"),
-      });
+      })).resolves.toMatchObject({ id: "company-b" });
+      expect(companiesGet).toHaveBeenCalledTimes(1);
     } finally {
       await handle.stop().catch(() => undefined);
     }
@@ -373,7 +379,11 @@ describe("plugin-worker-manager stderr failure context", () => {
     }
   });
 
-  it("rejects missing or unknown invocation ids while a company invocation is active", async () => {
+  // Fork divergence (single-tenant): an omitted invocation id is permitted
+  // (scope-less), but an explicitly forged *unknown* id is still rejected — the
+  // relaxation only covers a genuinely absent id. See `contextForWorkerMessage`
+  // in plugin-worker-manager.ts.
+  it("permits omitted invocation ids but rejects forged unknown ids while an invocation is active (single-tenant)", async () => {
     const companiesGet = vi.fn(async () => ({ id: "company-2" }));
     const hostHandlers = createHostClientHandlers({
       pluginId: "test.plugin",
@@ -399,20 +409,23 @@ describe("plugin-worker-manager stderr failure context", () => {
     try {
       await handle.start();
 
-      for (const mode of ["omit", "unknown"]) {
-        await expect(handle.call("getData", {
-          key: "probe",
-          companyId: "company-1",
-          params: {
-            mode,
-            requestedCompanyId: "company-2",
-          },
-        } as HostToWorkerMethods["getData"][0])).rejects.toMatchObject({
-          code: PLUGIN_RPC_ERROR_CODES.INVOCATION_SCOPE_DENIED,
-        });
-      }
+      // Omitted id → permitted (scope-less background call).
+      await expect(handle.call("getData", {
+        key: "probe",
+        companyId: "company-1",
+        params: { mode: "omit", requestedCompanyId: "company-2" },
+      } as HostToWorkerMethods["getData"][0])).resolves.toMatchObject({ id: "company-2" });
+      expect(companiesGet).toHaveBeenCalledTimes(1);
 
-      expect(companiesGet).not.toHaveBeenCalled();
+      // Forged unknown id → still rejected.
+      await expect(handle.call("getData", {
+        key: "probe",
+        companyId: "company-1",
+        params: { mode: "unknown", requestedCompanyId: "company-2" },
+      } as HostToWorkerMethods["getData"][0])).rejects.toMatchObject({
+        code: PLUGIN_RPC_ERROR_CODES.INVOCATION_SCOPE_DENIED,
+      });
+      expect(companiesGet).toHaveBeenCalledTimes(1);
     } finally {
       await handle.stop().catch(() => undefined);
     }

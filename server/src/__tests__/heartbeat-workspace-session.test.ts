@@ -1767,26 +1767,32 @@ describe("deriveTaskKeyWithHeartbeatFallback", () => {
 
 describe("comment wake batching", () => {
   it("preserves ordered wake comment ids when coalescing queued follow-up wakes", () => {
+    // Real wake comment ids are issue_comments.id UUIDs (extract/merge drop
+    // non-uuid values so synthetic optimistic "pending-…" ids never reach the
+    // uuid lookup). Use uuid-shaped ids here so this exercises ordering, not
+    // the uuid guard.
+    const commentA = "11111111-1111-4111-8111-111111111111";
+    const commentB = "22222222-2222-4222-8222-222222222222";
     const merged = mergeCoalescedContextSnapshot(
       {
         issueId: "issue-1",
         wakeReason: "issue_commented",
-        wakeCommentId: "comment-1",
-        wakeCommentIds: ["comment-1"],
+        wakeCommentId: commentA,
+        wakeCommentIds: [commentA],
         paperclipWake: {
-          latestCommentId: "comment-1",
+          latestCommentId: commentA,
         },
       },
       {
         issueId: "issue-1",
         wakeReason: "issue_commented",
-        wakeCommentId: "comment-2",
+        wakeCommentId: commentB,
       },
     );
 
-    expect(extractWakeCommentIds(merged)).toEqual(["comment-1", "comment-2"]);
-    expect(merged.commentId).toBe("comment-2");
-    expect(merged.wakeCommentId).toBe("comment-2");
+    expect(extractWakeCommentIds(merged)).toEqual([commentA, commentB]);
+    expect(merged.commentId).toBe(commentB);
+    expect(merged.wakeCommentId).toBe(commentB);
     expect(merged.paperclipWake).toBeUndefined();
   });
 
