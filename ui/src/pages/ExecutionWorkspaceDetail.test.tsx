@@ -293,7 +293,7 @@ describe("ExecutionWorkspaceDetail plugin slots", () => {
     await render();
 
     expect(container.textContent).toContain("Workspace plugin tab is not available.");
-    expect(container.querySelector('a[href="/execution-workspaces/workspace-1/issues"]')?.textContent).toBe("Back to tasks");
+    expect(container.querySelector('a[href="/execution-workspaces/workspace-1/issues"]')?.textContent).toBe("Back to issues");
     expect(container.textContent).not.toContain("Workspace routines");
     expect(container.querySelector('[data-testid="plugin-slot-mount"]')).toBeNull();
   });

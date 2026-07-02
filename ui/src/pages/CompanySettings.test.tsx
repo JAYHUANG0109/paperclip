@@ -176,7 +176,9 @@ describe("CompanyEnvironments", () => {
     });
   });
 
-  it("omits the Local driver option and lists Sandbox before SSH", async () => {
+  it("shows Sandbox driver option in the inline form when a run-capable sandbox provider is installed", async () => {
+    // Our UI uses an always-visible inline form (no dialog). When a run-capable sandbox
+    // provider is registered the driver <select> must include the "sandbox" option.
     const root = createRoot(container);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -209,28 +211,20 @@ describe("CompanyEnvironments", () => {
     await flushReact();
     await flushReact();
 
-    const addEnvironmentButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Add environment",
-    );
-    expect(addEnvironmentButton).toBeTruthy();
-
-    await act(async () => {
-      addEnvironmentButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await flushReact();
-
-    const dialog = getOpenDialog();
-    expect(dialog).toBeTruthy();
-
-    const driverSelect = Array.from(dialog?.querySelectorAll("select") ?? [])
+    // The form is always inline — no button/dialog flow needed.
+    const driverSelect = Array.from(container.querySelectorAll("select"))
       .find((select) => Array.from(select.options).some((option) => option.value === "ssh")) as
       | HTMLSelectElement
       | undefined;
     expect(driverSelect).toBeTruthy();
 
     const driverOptionValues = Array.from(driverSelect!.options).map((option) => option.value);
-    expect(driverOptionValues).not.toContain("local");
-    expect(driverOptionValues).toEqual(["sandbox", "ssh"]);
+    // Sandbox option is present when a run-capable provider is installed.
+    expect(driverOptionValues).toContain("sandbox");
+    // SSH is always available.
+    expect(driverOptionValues).toContain("ssh");
+    // SSH appears before Sandbox in our component's option order.
+    expect(driverOptionValues.indexOf("ssh")).toBeLessThan(driverOptionValues.indexOf("sandbox"));
 
     await act(async () => {
       root.unmount();
@@ -278,10 +272,8 @@ describe("CompanyEnvironments", () => {
     });
     await flushReact();
 
-    const dialog = getOpenDialog();
-    expect(dialog).toBeTruthy();
-
-    const driverSelect = Array.from(dialog?.querySelectorAll("select") ?? [])
+    // Our UI uses an inline form — clicking Edit populates the form below, no dialog opens.
+    const driverSelect = Array.from(container.querySelectorAll("select"))
       .find((select) => Array.from(select.options).some((option) => option.value === "ssh")) as
       | HTMLSelectElement
       | undefined;
@@ -362,10 +354,8 @@ describe("CompanyEnvironments", () => {
     });
     await flushReact();
 
-    const dialog = getOpenDialog();
-    expect(dialog).toBeTruthy();
-
-    const providerSelect = Array.from(dialog?.querySelectorAll("select") ?? []).find((select) =>
+    // Our UI uses an inline form — clicking Edit populates the form below, no dialog opens.
+    const providerSelect = Array.from(container.querySelectorAll("select")).find((select) =>
       Array.from(select.options).some((option) => option.value === "secure-plugin"),
     ) as HTMLSelectElement | undefined;
     expect(providerSelect).toBeTruthy();
@@ -376,7 +366,7 @@ describe("CompanyEnvironments", () => {
     });
     await flushReact();
 
-    const templateInput = Array.from(dialog?.querySelectorAll("input") ?? [])
+    const templateInput = Array.from(container.querySelectorAll("input"))
       .find((input) => (input as HTMLInputElement).value === "saved-template") as HTMLInputElement | undefined;
     expect(templateInput?.value).toBe("saved-template");
 

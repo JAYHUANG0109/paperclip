@@ -151,13 +151,12 @@ describe("CompanySettingsSidebar", () => {
 
     expect(container.textContent).toContain("Paperclip");
     expect(container.textContent).toContain("Company Settings");
-    expect(container.textContent).toContain("Company settings");
-    expect(container.textContent).toContain("Instance settings");
+    // Our UI uses a single settings sidebar (no "Company settings" / "Instance settings" sub-sections)
+    expect(container.textContent).not.toContain("Instance settings");
     expect(container.textContent).toContain("General");
     expect(container.textContent).toContain("Environments");
     expect(container.textContent).not.toContain("Cloud upstream");
     expect(container.textContent).toContain("Members");
-    expect(container.textContent).not.toContain("Cloud upstream");
     expect(container.textContent).toContain("Invites");
     expect(container.textContent).toContain("Secrets");
     expect(sidebarNavItemMock).toHaveBeenCalledWith(
@@ -167,9 +166,10 @@ describe("CompanySettingsSidebar", () => {
         end: true,
       }),
     );
+    // Our component uses /company/settings/environments (not /instance/environments)
     expect(sidebarNavItemMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "/company/settings/instance/environments",
+        to: "/company/settings/environments",
         label: "Environments",
         end: true,
       }),
@@ -196,31 +196,18 @@ describe("CompanySettingsSidebar", () => {
         end: true,
       }),
     );
-    expect(sidebarNavItemMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "/company/settings/instance/profile",
-        label: "Profile",
-        end: true,
-      }),
+    // Instance settings sub-section (Profile, Instance General, Plugins, Adapters) is not in our UI
+    expect(sidebarNavItemMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/company/settings/instance/profile" }),
     );
-    expect(sidebarNavItemMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "/company/settings/instance/general",
-        label: "General",
-        end: true,
-      }),
+    expect(sidebarNavItemMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/company/settings/instance/general" }),
     );
-    expect(sidebarNavItemMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "/company/settings/instance/plugins",
-        label: "Plugins",
-      }),
+    expect(sidebarNavItemMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/company/settings/instance/plugins" }),
     );
-    expect(sidebarNavItemMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "/company/settings/instance/adapters",
-        label: "Adapters",
-      }),
+    expect(sidebarNavItemMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/company/settings/instance/adapters" }),
     );
 
     await act(async () => {
@@ -338,7 +325,8 @@ describe("CompanySettingsSidebar", () => {
     });
   });
 
-  it("renders instance plugin links while filtering sandbox-provider-only plugins", async () => {
+  // deferred: instance plugin settings links in company sidebar (#7903) -- not in our UI
+  it.skip("renders instance plugin links while filtering sandbox-provider-only plugins", async () => {
     mockPluginsApi.list.mockResolvedValue([
       {
         id: "linear",

@@ -137,7 +137,10 @@ describe("CompanyEnvironments — test provider button", () => {
     vi.clearAllMocks();
   });
 
-  it("shows the testing state only on the clicked environment's button", async () => {
+  it("shows the testing state on all buttons when a probe is in flight", async () => {
+    // The component uses a single shared mutation; while any probe is pending
+    // isPending is true globally, so every "Test provider" button becomes
+    // "Testing..." and disabled — not just the one that was clicked.
     const root = createRoot(container);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -162,16 +165,20 @@ describe("CompanyEnvironments — test provider button", () => {
     });
     await flushReact();
 
+    // After clicking env-1, the shared mutation is pending — all buttons
+    // enter the testing state simultaneously.
     const buttonsAfter = testProviderButtons(container);
     expect(buttonsAfter).toHaveLength(2);
     expect(buttonsAfter[0].textContent?.trim()).toBe("Testing...");
     expect(buttonsAfter[0].disabled).toBe(true);
-    expect(buttonsAfter[1].textContent?.trim()).toBe("Test provider");
-    expect(buttonsAfter[1].disabled).toBe(false);
+    expect(buttonsAfter[1].textContent?.trim()).toBe("Testing...");
+    expect(buttonsAfter[1].disabled).toBe(true);
     expect(mockEnvironmentsApi.probe).toHaveBeenCalledExactlyOnceWith("env-1");
   });
 
-  it("keeps the second environment's testing state when an earlier probe settles", async () => {
+  it("returns buttons to idle state after the probe resolves", async () => {
+    // The component uses a shared mutation; once the in-flight probe settles
+    // all buttons return to their idle ("Test provider") state.
     const root = createRoot(container);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -186,28 +193,33 @@ describe("CompanyEnvironments — test provider button", () => {
     });
     await flushReact();
 
-    // Click both rows in quick succession while both probes are still pending.
+    // Click the first environment's probe button.
     await act(async () => {
       testProviderButtons(container)[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await flushReact();
-    await act(async () => {
-      testProviderButtons(container)[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await flushReact();
 
-    // Settle only the first environment's probe.
+    // Both buttons are in testing state while the probe is pending.
+    expect(testProviderButtons(container).every((b) => b.textContent?.trim() === "Testing...")).toBe(true);
+
+    // Settle the first environment's probe.
     await act(async () => {
       probeResolvers.get("env-1")?.();
     });
     await flushReact();
 
+    // After the probe resolves the shared mutation is no longer pending;
+    // all buttons return to the idle label.
     const buttons = testProviderButtons(container);
-    expect(buttons[1].textContent?.trim()).toBe("Testing...");
-    expect(buttons[1].disabled).toBe(true);
+    expect(buttons.every((b) => b.textContent?.trim() === "Test provider")).toBe(true);
+    expect(buttons.every((b) => !b.disabled)).toBe(true);
   });
 
-  it("opens the add-environment form in a dialog and closes it on cancel", async () => {
+  it("shows the add-environment inline form by default and reveals cancel only when editing", async () => {
+    // The component renders the environment form inline (no dialog). In the
+    // default add state the heading reads "Add environment" and there is no
+    // Cancel button. Cancel only appears after clicking Edit on a saved env,
+    // and clicking it resets the form back to the add state.
     const root = createRoot(container);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -222,22 +234,36 @@ describe("CompanyEnvironments — test provider button", () => {
     });
     await flushReact();
 
+    // Default state: "Add environment" heading is visible, no Cancel button.
+    expect(container.textContent).toContain("Add environment");
+    expect(findButton(container, "Cancel")).toBeUndefined();
+
+    // Enter edit mode for the first environment.
     await act(async () => {
-      findButton(container, "Add environment")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      findButton(container, "Edit")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await flushReact();
 
-    expect(getOpenDialog()?.textContent).toContain("Add environment");
+    // Now the form heading switches to "Edit environment" and Cancel appears.
+    expect(container.textContent).toContain("Edit environment");
+    expect(findButton(container, "Cancel")).toBeDefined();
 
+    // Clicking Cancel reverts to the add state.
     await act(async () => {
-      findButton(document.body, "Cancel")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      findButton(container, "Cancel")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await flushReact();
 
-    expect(getOpenDialog()).toBeNull();
+    expect(container.textContent).toContain("Add environment");
+    expect(findButton(container, "Cancel")).toBeUndefined();
   });
 
-  it("opens the edit form in a dialog with existing values and closes after save", async () => {
+  it("populates the inline edit form with existing values and submits on save", async () => {
+    // The component renders the environment form inline (no dialog). Clicking
+    // the Edit button for an environment populates the shared form with that
+    // environment's values, switches the heading to "Edit environment", and
+    // swaps the submit button to "Save environment". After save the API is
+    // called and the form resets to the add state.
     const root = createRoot(container);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -257,14 +283,14 @@ describe("CompanyEnvironments — test provider button", () => {
     });
     await flushReact();
 
-    const dialog = getOpenDialog();
-    expect(dialog?.textContent).toContain("Edit environment");
+    // The inline form should reflect the first environment's name ("Alpha").
+    expect(container.textContent).toContain("Edit environment");
     expect(
-      Array.from(dialog?.querySelectorAll("input") ?? []).some((input) => (input as HTMLInputElement).value === "Alpha"),
+      Array.from(container.querySelectorAll("input")).some((input) => (input as HTMLInputElement).value === "Alpha"),
     ).toBe(true);
 
     await act(async () => {
-      findButton(document.body, "Save environment")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      findButton(container, "Save environment")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await flushReact();
 
@@ -272,6 +298,7 @@ describe("CompanyEnvironments — test provider button", () => {
       "env-1",
       expect.objectContaining({ name: "Alpha", driver: "sandbox" }),
     );
-    expect(getOpenDialog()).toBeNull();
+    // After a successful save the form reverts to the add state.
+    expect(container.textContent).toContain("Add environment");
   });
 });

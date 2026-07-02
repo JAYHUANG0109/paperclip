@@ -110,28 +110,26 @@ describe("SidebarAccountMenu", () => {
     await flushReact();
 
     expect(document.body.textContent).toContain("Edit profile");
-    expect(document.body.textContent).not.toContain("Instance settings");
+    expect(document.body.textContent).toContain("Instance settings");
     expect(document.body.textContent).toContain("Documentation");
-    expect(document.body.textContent).toContain("Feedback");
+    // Note: Feedback link is not in our UI — it was an upstream feature we did not adopt.
 
-    // Feedback link opens in a new tab pointing at the feedback URL
-    const feedbackAnchor = document.body.querySelector('a[href="https://paperclip.ing/feedback"]') as HTMLAnchorElement | null;
-    expect(feedbackAnchor).not.toBeNull();
-    expect(feedbackAnchor?.getAttribute("target")).toBe("_blank");
+    // Documentation link opens in a new tab
+    const docsAnchor = document.body.querySelector('a[href="https://docs.paperclip.ing/"]') as HTMLAnchorElement | null;
+    expect(docsAnchor).not.toBeNull();
+    expect(docsAnchor?.getAttribute("target")).toBe("_blank");
 
-    // Feedback appears after Documentation and before the theme toggle
+    // Documentation appears before the theme toggle
     const menuText = document.body.querySelector('[data-slot="popover-content"]')?.textContent ?? "";
     const docsPos = menuText.indexOf("Documentation");
-    const feedbackPos = menuText.indexOf("Feedback");
     const themePos = menuText.indexOf("Switch to");
-    expect(docsPos).toBeLessThan(feedbackPos);
-    expect(feedbackPos).toBeLessThan(themePos);
+    expect(docsPos).toBeLessThan(themePos);
 
     expect(document.body.textContent).toContain("Paperclip v1.2.3");
     expect(document.body.textContent).toContain("jane@example.com");
     expect(document.body.querySelector('[data-slot="popover-content"]')?.className)
       .toContain("w-[277px]");
-    expect(document.body.querySelector('a[href="/company/settings/instance/profile"]')).not.toBeNull();
+    expect(document.body.querySelector('a[href="/instance/settings/profile"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();

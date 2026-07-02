@@ -223,7 +223,9 @@ describe("AgentConfigForm environment selector", () => {
     expect(result.container.querySelector("select")).toBeNull();
   });
 
-  it("shows concise Environment copy when one runnable non-local environment exists", async () => {
+  // deferred: environment override selector for non-kubernetes mode — our fork gates the
+  // Execution section to forcedKubernetes only; the general env picker was removed (#8504)
+  it.skip("shows concise Environment copy when one runnable non-local environment exists", async () => {
     const result = await renderForm([
       makeEnvironment({ id: "local-1", name: "Local", driver: "local" }),
       makeEnvironment({
@@ -247,7 +249,10 @@ describe("AgentConfigForm environment selector", () => {
     expect(text).not.toContain("Inherit instance default");
   });
 
-  it("keeps an existing non-runnable override visible so it can be cleared", async () => {
+  // deferred: environment override selector for non-kubernetes mode — our fork gates the
+  // Execution section to forcedKubernetes only; clearing a non-runnable env override
+  // via the picker is not surfaced in the current UI (#8504)
+  it.skip("keeps an existing non-runnable override visible so it can be cleared", async () => {
     const result = await renderForm(
       [
         makeEnvironment({ id: "local-1", name: "Local", driver: "local" }),

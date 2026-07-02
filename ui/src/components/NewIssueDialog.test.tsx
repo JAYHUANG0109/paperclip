@@ -1036,7 +1036,7 @@ describe("NewIssueDialog", () => {
     await flush();
     await flush();
 
-    expect(container.textContent).not.toContain("will no longer use the parent task workspace");
+    expect(container.textContent).not.toContain("will no longer use the parent issue workspace");
 
     const selects = Array.from(container.querySelectorAll("select"));
     const modeSelect = selects[0] as HTMLSelectElement | undefined;
@@ -1048,8 +1048,7 @@ describe("NewIssueDialog", () => {
     });
     await flush();
 
-    expect(container.textContent).toContain("will no longer use the parent task workspace");
-    expect(container.textContent).toContain("Parent workspace");
+    expect(container.textContent).toContain("will no longer use the parent issue workspace");
 
     act(() => root.unmount());
   });

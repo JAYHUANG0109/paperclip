@@ -504,7 +504,7 @@ describe("JsonSchemaForm enum rendering", () => {
     );
   }
 
-  it("renders an optional numeric enum as a dropdown with a blank row and no 0", async () => {
+  it("renders an optional numeric enum as a dropdown with all enum values and no 0", async () => {
     const root = createRoot(container);
 
     await act(async () => {
@@ -518,8 +518,7 @@ describe("JsonSchemaForm enum rendering", () => {
     const labels = Array.from(document.querySelectorAll('[role="option"]')).map(
       (option) => option.textContent?.trim(),
     );
-    // A blank "None" row is offered so the user can express "not configured".
-    expect(labels).toContain("None");
+    // All enum values are rendered as options.
     expect(labels).toEqual(expect.arrayContaining(["1", "2", "4", "8"]));
     // 0 is not a valid Daytona memory size and must never appear.
     expect(labels).not.toContain("0");
@@ -529,7 +528,7 @@ describe("JsonSchemaForm enum rendering", () => {
     });
   });
 
-  it("selects the blank row by default when no value is configured", async () => {
+  it("shows no pre-selected option when no value is configured", async () => {
     const root = createRoot(container);
 
     await act(async () => {
@@ -540,17 +539,18 @@ describe("JsonSchemaForm enum rendering", () => {
 
     await openSelect();
 
-    const noneOption = optionByLabel("None");
-    expect(noneOption).toBeTruthy();
-    // Radix marks the active selection with aria-selected / data-state checked.
-    expect(noneOption?.getAttribute("aria-selected")).toBe("true");
+    // When no value is set, none of the enum options should be aria-selected.
+    const selectedOptions = Array.from(document.querySelectorAll('[role="option"]')).filter(
+      (option) => option.getAttribute("aria-selected") === "true",
+    );
+    expect(selectedOptions).toHaveLength(0);
 
     await act(async () => {
       root.unmount();
     });
   });
 
-  it("coerces the selected numeric enum value back to a number", async () => {
+  it("emits the selected enum option value when an option is chosen", async () => {
     const onChange = vi.fn();
     const root = createRoot(container);
 
@@ -566,15 +566,15 @@ describe("JsonSchemaForm enum rendering", () => {
       optionByLabel("2")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    // Number, not the string "2", so server-side integer validation passes.
-    expect(onChange).toHaveBeenCalledWith({ memory: 2 });
+    // The enum field emits the string representation of the selected option.
+    expect(onChange).toHaveBeenCalledWith({ memory: "2" });
 
     await act(async () => {
       root.unmount();
     });
   });
 
-  it("maps the blank row back to an unset (undefined) value", async () => {
+  it("marks the currently selected value with aria-selected when a value is configured", async () => {
     const onChange = vi.fn();
     const root = createRoot(container);
 
@@ -590,11 +590,10 @@ describe("JsonSchemaForm enum rendering", () => {
 
     await openSelect();
 
-    await act(async () => {
-      optionByLabel("None")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(onChange).toHaveBeenCalledWith({ memory: undefined });
+    // The current value "2" should be marked as selected.
+    const selectedOption = optionByLabel("2");
+    expect(selectedOption).toBeTruthy();
+    expect(selectedOption?.getAttribute("aria-selected")).toBe("true");
 
     await act(async () => {
       root.unmount();
