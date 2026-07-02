@@ -173,9 +173,6 @@ function SidebarSectionHeader({
           </CollapsibleTrigger>
         ) : null}
         {headingControl}
-        {typeof count === "number" ? (
-          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{count}</span>
-        ) : null}
         {headerAction && HeaderActionIcon ? (
           <Button
             variant="ghost"
@@ -186,6 +183,10 @@ function SidebarSectionHeader({
           >
             <HeaderActionIcon className="h-3.5 w-3.5" />
           </Button>
+        ) : null}
+        {typeof count === "number" ? (
+          // Right-aligned so it lines up vertically with each team folder's count.
+          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{count}</span>
         ) : null}
       </div>
     </div>
