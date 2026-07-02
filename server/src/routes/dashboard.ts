@@ -18,6 +18,8 @@ import {
   setFounderItemClosed,
   appendFounderItemComment,
   getFounderItemByGid,
+  CONSOLE_TITLE,
+  toConsoleKey,
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
@@ -292,6 +294,37 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       return;
     }
     const digest = await writeFounderDigestForAgent(db, companyId, req.actor.agentId, req.body);
+    // Best-effort: notify the console owner that their 待決議／行事曆 console was
+    // refreshed. Distinct KIND + title from the personal "📋 你的 Asana 任務" ping
+    // so a principal who gets both can tell them apart (待決議 console vs. tasks).
+    // Guarded — a failure here must never affect the digest write.
+    try {
+      const consoleKey = toConsoleKey((req.body as { console?: unknown })?.console);
+      const cats = digest.categories;
+      const total =
+        cats.urgent.length + cats.meetings.length + cats.nonUrgent.length + cats.reminders.length;
+      if (consoleKey && total > 0) {
+        const [m] = await db
+          .select({ userId: agentMemberships.userId })
+          .from(agentMemberships)
+          .where(and(eq(agentMemberships.agentId, req.actor.agentId), eq(agentMemberships.state, "joined")))
+          .limit(1);
+        if (m?.userId) {
+          const day = new Date().toISOString().slice(0, 10);
+          await notifications.create({
+            companyId,
+            userId: m.userId,
+            kind: "founder_digest",
+            title: `🗂️ ${CONSOLE_TITLE[consoleKey]}`,
+            body: `急件 ${cats.urgent.length} · 會議 ${cats.meetings.length} · 提醒 ${cats.reminders.length} · 其他 ${cats.nonUrgent.length}（詳見儀表板裁示）`,
+            link: "/dashboard",
+            dedupeKey: `founder-digest:${m.userId}:${consoleKey}:${day}`,
+          });
+        }
+      }
+    } catch {
+      /* console notification is best-effort */
+    }
     res.json(digest);
   });
 

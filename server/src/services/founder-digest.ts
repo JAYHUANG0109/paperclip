@@ -96,11 +96,18 @@ const CONSOLE_META_KEY: Record<ConsoleKey, string> = {
   principalZhengXitun: "principalDigestZhengXitun",
 };
 /** Heading shown above each console's blocks on the dashboard. */
-const CONSOLE_TITLE: Record<ConsoleKey, string> = {
+export const CONSOLE_TITLE: Record<ConsoleKey, string> = {
   founder: "創辦人每日行事曆",
   principal: "仁美園長待決議與提醒",
   principalZhengXitun: "市政・西屯園長待決議與提醒",
 };
+
+/** Normalize an arbitrary console value to a ConsoleKey, or null. Exported so
+ *  routes can label a per-console notification without re-deriving the mapping. */
+export function toConsoleKey(v: unknown): ConsoleKey | null {
+  if (v === "founder" || v === "principal" || v === "principalZhengXitun") return v;
+  return null;
+}
 
 export interface DailyConsole {
   key: ConsoleKey;
