@@ -21,14 +21,21 @@ const tileAt = (t, tx, ty) => blit(map, A5, t.c*T, t.r*T, T, T, tx*T, ty*T);
 const objS = (mc, mr, wc, hc, tx, ty, f = DEC_F) => blitScaled(map, M, mc*TS, mr*TS, wc*TS, hc*TS, tx*T, ty*T, f*T/TS);
 // Blit an arbitrary 48×48-px region of the sheet (sub-tile items like the keyboard).
 const objPx = (sx, sy, sw, sh, tx, ty, f) => blitScaled(map, M, sx, sy, sw, sh, Math.round(tx*T), Math.round(ty*T), f*T/TS);
+// Chairs: the seat is one tile but the legs/wheels run ~6px into the next row, so
+// blit 1.2 tiles tall to show them in full. Seat/layout math still uses h:1.
+const CHAIR_LEGS = 1.2;
+const chairBlit = (t, tx, ty, f = CHAIR_F) => objS(t.c, t.r, 1, CHAIR_LEGS, tx, ty, f);
 
 const DESK   = { c: 0,  r: 2,  w: 3, h: 2 };  // the light/white desk (rolled out to everyone)
 const CHAIR  = { c: 5,  r: 16, w: 1, h: 1 };  // office chair from behind (agent faces the desk)
 const ARMCH  = { c: 0,  r: 16, w: 1, h: 1 };  // armchair, front (we see the seat)
 const ARMCH_BACK = { c: 1, r: 16, w: 1, h: 1 };  // armchair, back (backrest toward us)
+const ARMCH_R = { c: 2, r: 16, w: 1, h: 1 };  // armchair facing right (east)
+const ARMCH_L = { c: 3, r: 16, w: 1, h: 1 };  // armchair facing left (west)
 const SOFA   = { c: 4,  r: 2,  w: 4, h: 2 };
 const PLANT  = { c: 4,  r: 28, w: 1, h: 2 };  // tall fern
 const POT    = { c: 2,  r: 28, w: 1, h: 2 };  // small potted plant (盆栽), brown pot
+const POT_W  = { c: 3,  r: 28, w: 1, h: 2 };  // small potted plant (盆栽), white pot
 const COOLER = { c: 5,  r: 16, w: 1, h: 2 };
 const FRIDGE = { c: 12, r: 16, w: 2, h: 3 };  // double-door fridge spans r16-18 (bottom door in r18)
 const TABLE  = { c: 4,  r: 1,  w: 4, h: 2 };
@@ -121,7 +128,7 @@ function furnishTeam(rm) {
       const kW = (KEYBOARD_PX.sw/TS)*KB_F;
       objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2 + 0.4, rowTop + 0.7, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
-      objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
+      chairBlit(CHAIR, chairX, chairY);
       list.push(seatPct(chairX + cW/2, chairY + cH/2));
     }
   }
@@ -144,14 +151,23 @@ function furnishMeeting(rm) {
   // with tight gaps to the table.
   const bf = 2.9, tw = GREY_BENCH.w*bf, benchH = GREY_BENCH.h*bf, tx = cx - tw/2, ty = y + h/2 - 1.4;
   objS(GREY_BENCH.c, GREY_BENCH.r, GREY_BENCH.w, GREY_BENCH.h, tx, ty, bf);
+  // Two chairs per row, symmetric + centred on the table (centre = cx), gaps pulled tight:
+  // top row nudged south toward the table, bottom row nudged north toward it.
+  const chW = CHAIR_F, cGap = 2.7;                 // distance between the two chair centres
   for (let i = 0; i < 2; i++) {
-    objS(ARMCH.c, ARMCH.r, 1, 1, tx + 1.2 + i*3.0, ty - 1.55, CHAIR_F);                       // top: face table, tight
-    objS(ARMCH_BACK.c, ARMCH_BACK.r, 1, 1, tx + 1.2 + i*3.0, ty + benchH - 0.7, CHAIR_F);     // bottom: backs to us, tight
+    const chX = cx + (i === 0 ? -cGap/2 : cGap/2) - chW/2;
+    chairBlit(ARMCH, chX, ty - 0.65);                    // top: faces table, tight
+    chairBlit(ARMCH_BACK, chX, ty + benchH - 1.3);       // bottom: backs to us, tight
   }
+  // Head chairs at the short ends of the table (same row as the table centre):
+  // left end faces east, right end faces west.
+  const endY = ty + benchH*0.59 - chW/2;
+  chairBlit(ARMCH_R, tx - chW - 0.1, endY);    // left end, faces the table (east)
+  chairBlit(ARMCH_L, tx + tw - 0.1, endY);     // right end, faces the table (west)
 }
 function furnishLounge(rm) {
-  // Intentionally empty except for a clock (the furniture never read well here).
-  drawClock(rm);
+  // Duplicate the 茶水間 layout exactly (same counter/fridge/water cooler/vending/clock).
+  furnishPantry(rm);
 }
 function furnishPantry(rm) {
   const { x, y, w, h } = rm;
@@ -163,7 +179,6 @@ function furnishPantry(rm) {
   // Water cooler: whole jug + stand + base (r16-18), standing on the floor below the counter.
   const wf = 1.9;
   objS(WATER.c, WATER.r, WATER.w, WATER.h, x+2.5, y+3.3, wf);
-  objS(CUP.c, CUP.r, 1, 1, x+2.5+WATER.w*wf+0.3, y+h-3.4, 1.4);
   objS(VENDING.c, VENDING.r, VENDING.w, VENDING.h, x+w-VENDING.w*1.5-2, y+h-VENDING.h*1.5-0.8, 1.5);
   drawClock(rm);
 }
@@ -179,11 +194,16 @@ function furnishFounder(rm) {
   objS(WHITE_TABLE.c, WHITE_TABLE.r, WHITE_TABLE.w, 2, cx - dW/2, deskTop, df);   // wide white table
   const kW = (KEYBOARD_PX.sw/TS)*KB_F;
   // Keyboard at the FRONT (south) edge of the table so the monitor overlay doesn't cover it.
-  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.4, deskTop + 3.2, KB_F);
-  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 1.0, deskTop + 1.2, 1.8);      // 盆栽, wider right
-  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 2.6, deskTop + 1.0, 1.6);  // fern, wider left
+  objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, cx - kW/2 + 0.4, deskTop + 2.7, KB_F);
+  // Two 盆栽 stacked vertically on each side of the table: white pots on the left,
+  // brown pots on the right.
+  const potXR = cx + dW/2 + 1.0, potXL = cx - dW/2 - 2.6;
+  for (const [px, t] of [[potXL, POT_W], [potXR, POT]]) {
+    objS(t.c, t.r, 1, 2, px, deskTop + 1.2, 1.6);
+    objS(t.c, t.r, 1, 2, px, deskTop + 3.0, 1.6);
+  }
   const chairX = cx - cW/2, chairY = seatRow + dH - 0.8;             // chair a touch north
-  objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
+  chairBlit(CHAIR, chairX, chairY);
   seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
   // Landscape paintings across the back wall — kept off-centre so the monitor
   // (at the room centre) never blocks the big one. Plus a clock.

@@ -1,7 +1,7 @@
 /**
  * Admin one-off: create a daily-console Paperclip routine for an agent, with
- * four weekday schedule triggers (Asia/Taipei):
- *   11:30 晨間彙整 · 15:30 午後彙整 · 19:30 傍晚彙整 · 22:00 夜間全量複查
+ * one weekday schedule trigger (Asia/Taipei):
+ *   12:00 中午彙整
  *
  * Two variants share the same 4-block dashboard + directive contract; they only
  * differ in which Asana project the agent reads (see each agent's AGENTS.md):
@@ -25,7 +25,6 @@ const DB_URL = process.env.SEED_DB_URL || "postgres://paperclip:paperclip@127.0.
 
 const TRIGGERS = [
   { label: "12:00 中午彙整", cron: "0 12 * * 1-5" },
-  { label: "16:00 午後彙整", cron: "0 16 * * 1-5" },
 ];
 
 // Shared tail describing the founder-review-item / founder-close-item contract.
