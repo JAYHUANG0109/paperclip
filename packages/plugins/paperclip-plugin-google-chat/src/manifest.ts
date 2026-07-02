@@ -40,7 +40,14 @@ export const DEFAULT_CONFIG = {
   senderServiceAccountEmail: "service-455778754146@gcp-sa-gsuiteaddons.iam.gserviceaccount.com",
   /** Optional: if set, the inbound JWT `aud` must equal this (the app's public
    *  HTTPS endpoint URL). Left empty by default since the Funnel host can change. */
-  expectedAudience: ""
+  expectedAudience: "",
+  /** Forward Paperclip notifications (Asana digests, mentions, blockers, …) to
+   *  the recipient's Google Chat DM. Master switch for the outbound relay. */
+  forwardNotifications: true,
+  /** Allowlist of recipient emails whose notifications get forwarded. Empty =
+   *  forward for everyone reachable. Starts scoped to a single tester so the
+   *  relay can be validated before going org-wide. */
+  forwardNotificationEmails: ["jay20020109@seasonart.org"] as string[]
 } as const;
 
 const manifest: PaperclipPluginManifestV1 = {
@@ -176,6 +183,23 @@ const manifest: PaperclipPluginManifestV1 = {
         description:
           "If set, the inbound JWT audience must equal this exact HTTPS endpoint URL.",
         default: DEFAULT_CONFIG.expectedAudience
+      },
+      forwardNotifications: {
+        type: "boolean",
+        title: "Forward notifications to Chat",
+        description:
+          "Relay each Paperclip notification (Asana digest, @mention, blocker, …) to the " +
+          "recipient's Google Chat DM. Only reaches people who have messaged the bot before.",
+        default: DEFAULT_CONFIG.forwardNotifications
+      },
+      forwardNotificationEmails: {
+        type: "array",
+        items: { type: "string" },
+        title: "Forwarding allowlist (emails)",
+        description:
+          "Only forward notifications addressed to these emails. Leave empty to forward for " +
+          "everyone reachable. Start with one tester, then expand.",
+        default: DEFAULT_CONFIG.forwardNotificationEmails
       }
     }
   },

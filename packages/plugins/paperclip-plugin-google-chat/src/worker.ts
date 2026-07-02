@@ -50,6 +50,8 @@ interface GoogleChatConfig {
   defaultAgentUrlKey: string;
   gateUnassigned: boolean;
   unassignedMessage: string;
+  forwardNotifications: boolean;
+  forwardNotificationEmails: string[];
 }
 
 /** Set during setup() so the context-less onWebhook handler can reach host APIs. */
@@ -613,6 +615,50 @@ const plugin = definePlugin({
         await saveDelivered(ctx, issueId, delivered);
       } catch (err) {
         ctx.logger.error("Failed to mirror comment to Chat", {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    });
+
+    // Forward each NEW Paperclip notification (Asana digest, @mention, blocker,
+    // run failure, …) to the recipient's Google Chat DM. The server resolves the
+    // recipient email into the event payload; we map it to a learned DM space.
+    // Gated by an allowlist so the relay can be validated on one account first.
+    ctx.events.on("notification.created", async (event) => {
+      try {
+        const config = await getConfig(ctx);
+        if (!config.forwardNotifications) return;
+        const p = (event.payload ?? {}) as {
+          email?: string | null;
+          kind?: string;
+          title?: string;
+          body?: string | null;
+          link?: string | null;
+        };
+        const email = p.email?.trim().toLowerCase();
+        if (!email) return; // recipient has no resolvable email
+        const allow = config.forwardNotificationEmails ?? [];
+        if (allow.length > 0 && !allow.map((e) => e.trim().toLowerCase()).includes(email)) {
+          return; // not on the allowlist yet
+        }
+
+        const token = await getAccessToken(ctx, config);
+        const fetchImpl = (url: string, init?: RequestInit) => ctx.http.fetch(url, init);
+        const spaceName = await resolveDmSpace(ctx, fetchImpl, token, email);
+        if (!spaceName) {
+          ctx.logger.info("Skip notification forward: no known DM space", { email, kind: p.kind });
+          return; // user must message the bot once before we can DM them
+        }
+
+        const lines = [`🔔 ${p.title ?? "Paperclip 通知 / Notification"}`];
+        if (p.body) lines.push(p.body);
+        // Links are app-relative (e.g. "/dashboard"); surface as a hint, not a
+        // broken URL. The user opens Paperclip from their existing bookmark.
+        if (p.link) lines.push(`↗ Paperclip：${p.link}`);
+        await postFormatted(ctx, config, { spaceName }, lines.join("\n\n"));
+        ctx.logger.info("Forwarded notification to Chat", { email, kind: p.kind, space: spaceName });
+      } catch (err) {
+        ctx.logger.error("Failed to forward notification to Chat", {
           error: err instanceof Error ? err.message : String(err)
         });
       }
