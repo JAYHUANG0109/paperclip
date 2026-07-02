@@ -499,7 +499,9 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
             const dist = Math.hypot(dx, dy);
             const step = SPEED * dt;
             if (dist <= step || dist < 0.3) {
-              m.x = m.tx; m.y = m.ty; m.moving = false; m.dir = "south";
+              // Keep facing the way it was walking (don't snap back to south) so
+              // an idle agent naturally holds its last-travelled direction.
+              m.x = m.tx; m.y = m.ty; m.moving = false;
               m.waitUntil = now + 1500 + Math.random() * 4500;
             } else {
               m.x += (dx / dist) * step; m.y += (dy / dist) * step;
