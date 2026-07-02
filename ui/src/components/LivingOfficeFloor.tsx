@@ -49,17 +49,17 @@ const FLOORS: FloorDef[] = [
     label: "Office",
     image: "/assets/pixelart/Office%20Square.png",
     natW: 1344,
-    natH: 896,
+    natH: 1024,
     zones: [
-      { id: "meeting", name: "會議室", team: null, x: 4.8, y: 7.1, w: 16.7, h: 25, color: "#10B981" },
-      { id: "teaching", name: "教學組", team: "教學組", x: 26.2, y: 1.8, w: 52.4, h: 35.7, color: "#8B5CF6", seats: [{"x":34.08,"y":13.79},{"x":46.28,"y":13.79},{"x":58.48,"y":13.79},{"x":70.68,"y":13.79},{"x":34.08,"y":28.53},{"x":46.28,"y":28.53},{"x":58.48,"y":28.53},{"x":70.68,"y":28.53}] },
-      { id: "talent", name: "人才發展", team: "人才發展", x: 81, y: 7.1, w: 15.5, h: 23.2, color: "#6366F1", seats: [{"x":88.69,"y":19.15}] },
-      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.2, y: 39.3, w: 23.8, h: 35.7, color: "#F59E0B", seats: [{"x":8.04,"y":51.29},{"x":18.15,"y":51.29},{"x":8.04,"y":66.03},{"x":18.15,"y":66.03}] },
-      { id: "it", name: "資訊部", team: "資訊部", x: 26.2, y: 39.3, w: 52.4, h: 35.7, color: "#3B82F6", seats: [{"x":34.08,"y":51.29},{"x":46.28,"y":51.29},{"x":58.48,"y":51.29},{"x":70.68,"y":51.29},{"x":40.18,"y":66.03},{"x":52.38,"y":66.03},{"x":64.58,"y":66.03}] },
-      { id: "lounge", name: "休息室", team: null, x: 81, y: 46.4, w: 15.5, h: 21.4, color: "#EC4899" },
-      { id: "pantry", name: "茶水間", team: null, x: 4.8, y: 78.6, w: 16.7, h: 17.9, color: "#14B8A6" },
-      { id: "founder", name: "創辦人辦公室", team: null, x: 36.9, y: 76.8, w: 31, h: 19.6, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":52.38,"y":90.04}] },
-      { id: "auto", name: "系統自動化", team: "系統自動化", x: 82.1, y: 78.6, w: 14.3, h: 17.9, color: "#F97316", seats: [{"x":89.29,"y":90.58}] },
+      { id: "meeting", name: "會議室", team: null, x: 4.8, y: 6.3, w: 16.7, h: 21.9, color: "#10B981" },
+      { id: "teaching", name: "教學組", team: "教學組", x: 26.2, y: 67.2, w: 52.4, h: 31.3, color: "#8B5CF6", seats: [{"x":34.08,"y":77.7},{"x":46.28,"y":77.7},{"x":58.48,"y":77.7},{"x":70.68,"y":77.7},{"x":34.08,"y":90.59},{"x":46.28,"y":90.59},{"x":58.48,"y":90.59},{"x":70.68,"y":90.59}] },
+      { id: "talent", name: "人才發展", team: "人才發展", x: 81, y: 6.3, w: 15.5, h: 20.3, color: "#6366F1", seats: [{"x":88.69,"y":16.76}] },
+      { id: "lead", name: "領導團隊", team: "領導團隊", x: 1.2, y: 34.4, w: 23.8, h: 31.3, color: "#F59E0B", seats: [{"x":8.04,"y":44.88},{"x":18.15,"y":44.88},{"x":8.04,"y":57.77},{"x":18.15,"y":57.77}] },
+      { id: "it", name: "資訊部", team: "資訊部", x: 26.2, y: 34.4, w: 52.4, h: 31.3, color: "#3B82F6", seats: [{"x":34.08,"y":44.88},{"x":46.28,"y":44.88},{"x":58.48,"y":44.88},{"x":70.68,"y":44.88},{"x":40.18,"y":57.77},{"x":52.38,"y":57.77},{"x":64.58,"y":57.77}] },
+      { id: "lounge", name: "休息室", team: null, x: 81, y: 40.6, w: 15.5, h: 18.8, color: "#EC4899" },
+      { id: "pantry", name: "茶水間", team: null, x: 4.8, y: 75, w: 16.7, h: 15.6, color: "#14B8A6" },
+      { id: "founder", name: "創辦人辦公室", team: null, x: 36.9, y: 7.8, w: 31, h: 17.2, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":52.38,"y":19.41}] },
+      { id: "auto", name: "系統自動化", team: "系統自動化", x: 82.1, y: 75, w: 14.3, h: 15.6, color: "#F97316", seats: [{"x":89.29,"y":85.51}] },
     ],
   },
 ];
@@ -127,7 +127,7 @@ function SpeechBubble({ text, color }: { text: string; color: string }) {
 }
 
 // ── Desk monitor: sits on the desk, whole screen is the agent's status colour ──
-function DeskMonitor({ x, y, size, status }: { x: number; y: number; size: number; status: Status }) {
+function DeskMonitor({ x, y, size, status, offsetFactor = 0.9 }: { x: number; y: number; size: number; status: Status; offsetFactor?: number }) {
   const screen = STATUS_COLOR[status];
   const working = status === "working";
   const w = size * 0.52, h = size * 0.38;
@@ -137,7 +137,7 @@ function DeskMonitor({ x, y, size, status }: { x: number; y: number; size: numbe
       // Sit the monitor on the desk (~0.9*AGENT_SIZE above the seat). The offset
       // lives in `top` (reliable calc of % − px); doing it inside transform's
       // translate() left the monitor stuck at the seat/torso.
-      top: `calc(${y}% - ${size * 0.9}px)`,
+      top: `calc(${y}% - ${size * offsetFactor}px)`,
       transform: "translate(-50%, -50%)",
       width: w, height: h, zIndex: 6, pointerEvents: "none",
       // no bezel — the whole monitor is the status colour
@@ -426,10 +426,11 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
   // Pin layout: each agent sits at a generated desk SEAT. Overflow beyond the
   // seats falls into a tidy grid in the lower half of the room. Size is fixed.
   const { pins, labelSize } = useMemo(() => {
-    const out: { agent: Agent; x: number; y: number; size: number; floor: { fx: number; fy: number; fw: number; fh: number } }[] = [];
+    const out: { agent: Agent; x: number; y: number; size: number; solo: boolean; floor: { fx: number; fy: number; fw: number; fh: number } }[] = [];
     for (const za of floorZones) {
       const { zone, members } = za;
       if (members.length === 0) continue;
+      const solo = !!zone.soloAgent;   // founder's own office
       const seats = zone.seats ?? [];
       // Full room interior — used to clamp wandering so an agent never leaves its
       // own room. Wandering itself stays within a small radius of each desk (below).
@@ -447,7 +448,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
           x = lower.lx + (c + 0.5) * (lower.lw / cols);
           y = lower.ly + (r + 0.5) * 6;
         }
-        out.push({ agent, x, y, size: AGENT_SIZE, floor });
+        out.push({ agent, x, y, size: AGENT_SIZE, solo, floor });
       });
     }
     return { pins: out, labelSize: AGENT_SIZE };
@@ -596,7 +597,9 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
                 agent's status (green working / red attention / amber paused / grey idle). */}
             {pins.map((pin) => {
               const st = getStatus(pin.agent, workingIds.has(pin.agent.id));
-              return <DeskMonitor key={`mon-${pin.agent.id}`} x={pin.x} y={pin.y} size={pin.size} status={st} />;
+              // Non-founder monitors sit a bit further north so they don't cover
+              // the keyboard on the desk; the founder's is already tuned.
+              return <DeskMonitor key={`mon-${pin.agent.id}`} x={pin.x} y={pin.y} size={pin.size} status={st} offsetFactor={pin.solo ? 0.9 : 1.08} />;
             })}
             {pins.map((pin, idx) => {
               const m = motion.current.get(pin.agent.id);
