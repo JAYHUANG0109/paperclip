@@ -580,6 +580,7 @@ export function Costs() {
                   key={key}
                   variant={preset === key ? "secondary" : "ghost"}
                   size="sm"
+                  aria-pressed={preset === key}
                   onClick={() => setPreset(key)}
                 >
                   {t(`costs.preset.${key}`)}
