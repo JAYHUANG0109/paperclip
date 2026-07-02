@@ -94,7 +94,11 @@ export function VirtualOffice() {
         <ViewSwitchButton to="/agents" label={t("office.browseAgents", { defaultValue: "Browse agents" })} icon={Users} />
       </div>
 
-      <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} />
+      {/* Break out of the page's padding so the floor uses the full width/height —
+          less wasted black space around the rooms. */}
+      <div className="-mx-4 -mb-4 md:-mx-6 md:-mb-6">
+        <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} />
+      </div>
 
       <AgentModal
         agent={activeAgent}

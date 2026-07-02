@@ -19,11 +19,30 @@ const DESK   = { c: 1,  r: 0,  w: 3, h: 2 };
 const CHAIR  = { c: 4,  r: 16, w: 1, h: 1 };
 const ARMCH  = { c: 0,  r: 16, w: 1, h: 1 };
 const SOFA   = { c: 4,  r: 2,  w: 4, h: 2 };
-const PLANT  = { c: 4,  r: 28, w: 1, h: 2 };
+const PLANT  = { c: 4,  r: 28, w: 1, h: 2 };  // tall fern
+const POT    = { c: 2,  r: 28, w: 1, h: 2 };  // small potted plant (盆栽), brown pot
 const COOLER = { c: 5,  r: 16, w: 1, h: 2 };
 const FRIDGE = { c: 12, r: 16, w: 2, h: 2 };
 const TABLE  = { c: 4,  r: 1,  w: 4, h: 2 };
 const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
+const KEYBOARD = { c: 12, r: 23, w: 1, h: 1 }; // keyboard, sits on the desk below the monitor
+const KB_F = 1.4;                              // keyboard scale
+
+// Desk/table styles available in the tileset (top-left tile, width; all h=2).
+// Shown as a showcase row in the founder's office so a favourite can be chosen.
+const DESK_OPTIONS = [
+  { c: 1,  r: 0, w: 3 },  // 1 light wood + drawers (current default)
+  { c: 4,  r: 0, w: 4 },  // 2 plain light-wood table
+  { c: 8,  r: 0, w: 4 },  // 3 wood counter (panel front)
+  { c: 11, r: 0, w: 3 },  // 4 white / grey top
+  { c: 1,  r: 2, w: 3 },  // 5 grey
+  { c: 5,  r: 2, w: 3 },  // 6 cream / white
+  { c: 8,  r: 2, w: 4 },  // 7 grey long
+  { c: 1,  r: 4, w: 3 },  // 8 medium wood
+  { c: 1,  r: 6, w: 3 },  // 9 tan
+  { c: 4,  r: 6, w: 3 },  // 10 tan (darker)
+];
+const FOUNDER_DESK = { c: 1, r: 0, w: 3 }; // clean wood desk (pick a fancier one from the showcase)
 
 // wide grid, tight 1-tile gaps. Center column is wide for the big team rooms.
 const COLX = [1, 22, 67], COLW = [20, 44, 16];
@@ -38,7 +57,7 @@ const ROOMS = [
   { id:"it",       team:"資訊部",     name:"資訊部",    cell:[1,1], cap:7 },
   { id:"lounge",   team:null,         name:"休息室",    cell:[2,1], dw:13, dh:12, kind:"lounge" },
   { id:"pantry",   team:null,         name:"茶水間",    cell:[0,2], dw:14, dh:10, kind:"pantry" },
-  { id:"reception",team:null,         name:"接待處",    cell:[1,2], dw:26, dh:10, kind:"reception" },
+  { id:"founder",  team:null,         name:"創辦人辦公室", cell:[1,2], dw:26, dh:11, kind:"founder", soloAgent:"創辦人" },
   { id:"auto",     team:"系統自動化", name:"系統自動化",cell:[2,2], dw:12, dh:10, cap:1 },
 ];
 for (const rm of ROOMS) {
@@ -79,6 +98,9 @@ function furnishTeam(rm) {
       const centerX = x + 1.5 + (c + off + 0.5) * cellW;
       const rowTop = y + 2 + r * cellH;
       objS(DESK.c, DESK.r, DESK.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
+      // Keyboard on the desk surface, front-centre (below where the monitor sits).
+      const kW = KEYBOARD.w*KB_F;
+      objS(KEYBOARD.c, KEYBOARD.r, 1, 1, centerX - kW/2, rowTop + dH*0.5, KB_F);
       const chairX = centerX - cW/2, chairY = rowTop + dH;
       objS(CHAIR.c, CHAIR.r, CHAIR.w, CHAIR.h, chairX, chairY, CHAIR_F);
       list.push(seatPct(chairX + cW/2, chairY + cH/2));
@@ -103,11 +125,30 @@ function furnishPantry(rm) {
   objS(FRIDGE.c, FRIDGE.r, FRIDGE.w, FRIDGE.h, x+w-5, y+2);
   objS(COOLER.c, COOLER.r, 1, 2, x+2, y+h-5);
 }
-function furnishReception(rm) {
-  const { x, y, w, h } = rm; const cx = x + w/2;
-  objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, cx - COUNTER.w*DEC_F/2, y+2);
-  objS(PLANT.c, PLANT.r, 1, 2, x+2, y+h-4); objS(PLANT.c, PLANT.r, 1, 2, x+w-4, y+h-4);
-  objS(ARMCH.c, ARMCH.r, 1, 1, cx-3, y+h-4, CHAIR_F); objS(ARMCH.c, ARMCH.r, 1, 1, cx+1, y+h-4, CHAIR_F);
+function furnishFounder(rm) {
+  const { x, y, w, h, id } = rm;
+  // Showcase: a row of every desk style along the back wall, so a favourite can
+  // be picked. Numbered 1..N left→right (matches DESK_OPTIONS order/comments).
+  const n = DESK_OPTIONS.length;
+  const slot = (w - 3) / n;
+  const showF = Math.min(0.85, slot / 4.2);      // fit each desk inside its slot
+  DESK_OPTIONS.forEach((d, i) => {
+    const cx0 = x + 1.5 + (i + 0.5) * slot;
+    objS(d.c, d.r, d.w, 2, cx0 - d.w*showF/2, y + 1, showF);
+  });
+  // Founder's workstation, centred lower: big desk + keyboard + plant. The
+  // status monitor is a DOM overlay drawn on top by the app.
+  const cx = x + w/2;
+  const dW = FOUNDER_DESK.w*DESK_F, dH = 2*DESK_F, cW = CHAIR.w*CHAIR_F, cH = CHAIR.h*CHAIR_F;
+  const rowTop = y + h - 6;
+  objS(FOUNDER_DESK.c, FOUNDER_DESK.r, FOUNDER_DESK.w, 2, cx - dW/2, rowTop, DESK_F);
+  const kW = KEYBOARD.w*KB_F;
+  objS(KEYBOARD.c, KEYBOARD.r, 1, 1, cx - kW/2, rowTop + dH*0.5, KB_F);
+  objS(POT.c, POT.r, 1, 2, cx + dW/2 + 0.4, rowTop, 1.6);   // 盆栽 beside the desk
+  objS(PLANT.c, PLANT.r, 1, 2, cx - dW/2 - 1.6, rowTop, 1.4); // fern on the other side
+  const chairX = cx - cW/2, chairY = rowTop + dH;
+  objS(CHAIR.c, CHAIR.r, 1, 1, chairX, chairY, CHAIR_F);
+  seats[id] = [seatPct(chairX + cW/2, chairY + cH/2)];
 }
 
 for (const rm of ROOMS) drawRoom(rm);
@@ -115,17 +156,18 @@ for (const rm of ROOMS) {
   if (rm.kind === "meeting") furnishMeeting(rm);
   else if (rm.kind === "lounge") furnishLounge(rm);
   else if (rm.kind === "pantry") furnishPantry(rm);
-  else if (rm.kind === "reception") furnishReception(rm);
+  else if (rm.kind === "founder") furnishFounder(rm);
   else furnishTeam(rm);
 }
 
 encode(map, "preview/office-square.png");
 
-const COLORS = { meeting:"#10B981", lounge:"#EC4899", pantry:"#14B8A6", reception:"#A855F7", auto:"#F97316", teaching:"#8B5CF6", lead:"#F59E0B", talent:"#6366F1", it:"#3B82F6" };
+const COLORS = { meeting:"#10B981", lounge:"#EC4899", pantry:"#14B8A6", founder:"#A855F7", auto:"#F97316", teaching:"#8B5CF6", lead:"#F59E0B", talent:"#6366F1", it:"#3B82F6" };
 const pct = (v, tot) => +(v / tot * 100).toFixed(1);
 console.log(`Map ${MW*T}x${MH*T}. Zones:\n`);
 for (const rm of ROOMS) {
   const team = rm.team ? `"${rm.team}"` : "null";
   const s = seats[rm.id] ? JSON.stringify(seats[rm.id]) : "undefined";
-  console.log(`      { id: "${rm.id}", name: "${rm.name}", team: ${team}, x: ${pct(rm.x,MW)}, y: ${pct(rm.y,MH)}, w: ${pct(rm.w,MW)}, h: ${pct(rm.h,MH)}, color: "${COLORS[rm.id]}", seats: ${s} },`);
+  const solo = rm.soloAgent ? `, soloAgent: "${rm.soloAgent}"` : "";
+  console.log(`      { id: "${rm.id}", name: "${rm.name}", team: ${team}, x: ${pct(rm.x,MW)}, y: ${pct(rm.y,MH)}, w: ${pct(rm.w,MW)}, h: ${pct(rm.h,MH)}, color: "${COLORS[rm.id]}"${solo}, seats: ${s} },`);
 }

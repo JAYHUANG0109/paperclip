@@ -23,6 +23,10 @@ interface Zone {
   // Exact desk seat positions (% of map) generated with the map. Agent i sits at
   // seats[i]; overflow beyond the seats falls into a grid in the room.
   seats?: { x: number; y: number }[];
+  // A single named agent (name substring) reserved to this room, regardless of
+  // their team — e.g. the founder gets her own office. Claimed here first and
+  // removed from her team room.
+  soloAgent?: string;
 }
 
 interface FloorDef {
@@ -54,7 +58,7 @@ const FLOORS: FloorDef[] = [
       { id: "it", name: "資訊部", team: "資訊部", x: 26.2, y: 39.3, w: 52.4, h: 35.7, color: "#3B82F6", seats: [{"x":34.08,"y":50.36},{"x":46.28,"y":50.36},{"x":58.48,"y":50.36},{"x":70.68,"y":50.36},{"x":40.18,"y":65.09},{"x":52.38,"y":65.09},{"x":64.58,"y":65.09}] },
       { id: "lounge", name: "休息室", team: null, x: 81, y: 46.4, w: 15.5, h: 21.4, color: "#EC4899" },
       { id: "pantry", name: "茶水間", team: null, x: 4.8, y: 78.6, w: 16.7, h: 17.9, color: "#14B8A6" },
-      { id: "reception", name: "接待處", team: null, x: 36.9, y: 78.6, w: 31, h: 17.9, color: "#A855F7" },
+      { id: "founder", name: "創辦人辦公室", team: null, x: 36.9, y: 76.8, w: 31, h: 19.6, color: "#A855F7", soloAgent: "創辦人", seats: [{"x":52.38,"y":93.21}] },
       { id: "auto", name: "系統自動化", team: "系統自動化", x: 82.1, y: 78.6, w: 14.3, h: 17.9, color: "#F97316", seats: [{"x":89.29,"y":89.64}] },
     ],
   },
@@ -294,7 +298,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     if (!el || !root) return;
     const update = () => {
       const top = root.getBoundingClientRect().top;
-      const h = Math.max(360, Math.round(window.innerHeight - top - 34)); // clears <main>'s bottom padding
+      const h = Math.max(360, Math.round(window.innerHeight - top - 8)); // floor breaks out of <main> padding, so only a tiny reserve
       setAvailH(h);
       setViewport({ w: el.clientWidth, h: el.clientHeight });
     };
@@ -390,18 +394,29 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
     const assignments = zones.map(zone => ({
       zone, floorIdx, teamName: zone.team ?? zone.name, members: [] as Agent[],
     }));
+    // 1) Solo rooms: reserve a specific named agent to its own room (founder).
+    const soloClaimed = new Set<string>();
+    for (const a of assignments) {
+      if (!a.zone.soloAgent) continue;
+      const match = agents.find(ag => (ag.name ?? "").includes(a.zone.soloAgent!));
+      if (match) { a.members = [match]; soloClaimed.add(match.id); }
+    }
+    // 2) Team rooms: their team's agents, minus anyone reserved to a solo room.
     const claimed = new Set<string>();
     for (const a of assignments) {
-      if (a.zone.team && byTeam.has(a.zone.team)) { a.members = byTeam.get(a.zone.team)!; claimed.add(a.zone.team); }
+      if (a.zone.team && byTeam.has(a.zone.team)) {
+        a.members = byTeam.get(a.zone.team)!.filter(m => !soloClaimed.has(m.id));
+        claimed.add(a.zone.team);
+      }
     }
-    // Any team without a matching room → drop into the largest team room.
+    // 3) Any team without a matching room → drop into the largest team room.
     const spare = assignments.filter(a => a.zone.team).sort((x, y) =>
       (y.zone.w * y.zone.h) - (x.zone.w * x.zone.h))[0];
     for (const [team, members] of byTeam) {
-      if (!claimed.has(team) && spare) spare.members = [...spare.members, ...members];
+      if (!claimed.has(team) && spare) spare.members = [...spare.members, ...members.filter(m => !soloClaimed.has(m.id))];
     }
     return assignments;
-  }, [byTeam, floorIdx]);
+  }, [byTeam, floorIdx, agents]);
 
   const floorZones = useMemo(
     () => zoneAssignments.filter(za => za.floorIdx === floorIdx),
