@@ -21,7 +21,7 @@ import {
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
-import { getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted } from "../services/agent-asana.js";
+import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted } from "../services/agent-asana.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
@@ -55,6 +55,22 @@ function resolveCalendarRange(query: unknown): { timeMin: string; timeMax: strin
   };
 }
 
+// How long a server-built Asana digest stays fresh before the next dashboard
+// load rebuilds it from Asana. 10 min keeps it current without an Asana call
+// on every render.
+const DIGEST_REFRESH_MS = 10 * 60 * 1000;
+function digestNeedsRefresh(
+  digest: { generatedAt?: string | null; daily?: { permalinkUrl?: string | null }[]; weekly?: { permalinkUrl?: string | null }[] } | null,
+): boolean {
+  if (!digest) return true;
+  const gen = digest.generatedAt ? Date.parse(digest.generatedAt) : NaN;
+  if (!Number.isFinite(gen) || Date.now() - gen > DIGEST_REFRESH_MS) return true;
+  // Heal legacy digests written by the old agent path (no deep-link/notes).
+  const all = [...(digest.daily ?? []), ...(digest.weekly ?? [])];
+  if (all.length > 0 && all.some((t) => !t.permalinkUrl)) return true;
+  return false;
+}
+
 export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean } = {}) {
   const restrictVisibility = options.restrictVisibility ?? false;
   const router = Router();
@@ -81,7 +97,23 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     assertCompanyAccess(req, companyId);
     const userId = req.actor.type === "board" ? req.actor.userId : null;
     const email = await emailForUserId(db, userId);
-    const digest = await getAsanaDigestForUser(db, companyId, email);
+    let digest = await getAsanaDigestForUser(db, companyId, email);
+    // Self-healing server-side refresh: rebuild the digest from Asana with the
+    // user's OWN token (deterministic, complete fields, zero LLM tokens) when
+    // it's missing, stale (>10 min), or was written without deep-links/notes
+    // (the legacy agent path dropped those fields). Falls back to the stored
+    // digest if the Asana pull fails.
+    if (digestNeedsRefresh(digest)) {
+      const agentId = await resolveOwnAgentId(db, companyId, email);
+      if (agentId) {
+        try {
+          const body = await buildAsanaDigestBody(db, companyId, agentId);
+          if (body) digest = await writeAsanaDigestForAgent(db, companyId, agentId, body);
+        } catch {
+          /* keep the stored digest on any failure */
+        }
+      }
+    }
     res.json(digest ?? { generatedAt: null, daily: [], weekly: [], empty: true });
   });
 
