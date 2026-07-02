@@ -45,8 +45,9 @@ Core fields:
 - dangerouslySkipPermissions (boolean, optional, default true): allow non-interactive Claude runs to proceed without approval prompts. Local targets receive --dangerously-skip-permissions; remote targets receive a curated --allowedTools list so they do not inherit local bypass permissions.
 - command (string, optional): defaults to "claude"
 - extraArgs (string[], optional): additional CLI args
-- accountConfigDirs (string[], object[], or newline/comma-separated string, optional): ordered Claude account profiles for automatic account switching. String entries may be \`label=default\` for the normal Claude login or \`label=/path\` for a separate config directory; object entries may use \`{ label, configDir }\` or \`{ email, path }\`. Non-default directories should already be logged in with \`CLAUDE_CONFIG_DIR=/path claude login\`; when a run hits a Claude usage limit, Paperclip retries the heartbeat with the next profile.
-- quotaSwitchThresholdPercent (number, optional, default 95): when multiple account profiles are configured, Paperclip checks Claude quota before starting a run and skips accounts whose reported usage is at or above this percent.
+- autoSwitchAccountOnQuota (boolean, optional, default true): for local Claude subscription auth, check quota before a heartbeat and launch Claude's browser account-login flow when usage reaches the configured threshold. Paperclip verifies the newly selected account before starting work and never rotates saved credential directories.
+- quotaSwitchThresholdPercent (number, optional, default 95): usage percentage that triggers the browser account-switch flow.
+- quotaAccountSwitchTimeoutSec (number, optional, default 300): how long Paperclip waits for the browser account switch to finish.
 - env (object, optional): KEY=VALUE environment variables
 - workspaceStrategy (object, optional): execution workspace strategy; currently supports { type: "git_worktree", baseRef?, branchTemplate?, worktreeParentDir? }
 - workspaceRuntime (object, optional): reserved for workspace runtime metadata; workspace runtime services are manually controlled from the workspace UI and are not auto-started by heartbeats

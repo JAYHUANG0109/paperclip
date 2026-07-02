@@ -4,9 +4,10 @@ import { notificationsApi, type AppNotification } from "../api/notifications";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
- * Dashboard "tasks done" summary section. Reads the user's own daily/weekly
- * summary notifications (already localized server-side) and shows the latest of
- * each. Renders nothing until a summary exists, so it's inert by default.
+ * Dashboard "tasks done" summary section. Reads the user's own WEEKLY summary
+ * notification (already localized server-side) and shows the latest one. The
+ * daily summary was removed to save tokens. Renders nothing until a weekly
+ * summary exists, so it's inert by default.
  */
 export function TaskSummaryCard({ companyId }: { companyId: string }) {
   const { data } = useQuery({
@@ -16,13 +17,11 @@ export function TaskSummaryCard({ companyId }: { companyId: string }) {
     staleTime: 30_000,
   });
   const list = data?.notifications ?? [];
-  const daily = list.find((n) => n.kind === "daily_summary");
   const weekly = list.find((n) => n.kind === "weekly_summary");
-  if (!daily && !weekly) return null;
+  if (!weekly) return null;
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {daily && <SummaryBlock n={daily} />}
-      {weekly && <SummaryBlock n={weekly} />}
+      <SummaryBlock n={weekly} />
     </div>
   );
 }

@@ -586,7 +586,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen }: {
             <img src={bustCache(floor.image)} alt={floor.label} draggable={false} style={{
               position: "absolute", inset: 0, width: "100%", height: "100%",
               imageRendering: "pixelated", display: "block", userSelect: "none", pointerEvents: "none",
-              boxShadow: "0 0 80px rgba(0,0,0,.6)", borderRadius: 2,
+              borderRadius: 2,
             }} />
             {floorZones.map(za => (
               <ZoneOverlay key={za.zone.id} zone={za.zone} teamName={za.teamName}

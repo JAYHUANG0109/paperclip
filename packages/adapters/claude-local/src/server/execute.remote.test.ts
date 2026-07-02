@@ -373,37 +373,22 @@ describe("claude remote execution", () => {
     expect(call?.[2]).toContain("12345678-1234-4abc-9def-123456789012");
   });
 
-  it("switches local Claude account config dirs after a usage-limit failure", async () => {
+  it("does not rotate saved config directories after a usage-limit failure", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-claude-switch-"));
     cleanupDirs.push(rootDir);
     const workspaceDir = path.join(rootDir, "workspace");
-    const accountB = path.join(rootDir, "account-b");
     await mkdir(workspaceDir, { recursive: true });
 
-    runChildProcess
-      .mockResolvedValueOnce({
-        exitCode: 1,
-        signal: null,
-        timedOut: false,
-        stdout: "",
-        stderr: "Claude usage limit reached. Try again later.",
-        pid: 111,
-        startedAt: new Date().toISOString(),
-      })
-      .mockResolvedValueOnce({
-        exitCode: 0,
-        signal: null,
-        timedOut: false,
-        stdout: [
-          JSON.stringify({ type: "system", subtype: "init", session_id: "claude-session-b", model: "claude-sonnet" }),
-          JSON.stringify({ type: "result", session_id: "claude-session-b", result: "done", usage: { input_tokens: 2, cache_read_input_tokens: 0, output_tokens: 3 } }),
-        ].join("\n"),
-        stderr: "",
-        pid: 112,
-        startedAt: new Date().toISOString(),
-      });
+    runChildProcess.mockResolvedValueOnce({
+      exitCode: 1,
+      signal: null,
+      timedOut: false,
+      stdout: "",
+      stderr: "Claude usage limit reached. Try again later.",
+      pid: 111,
+      startedAt: new Date().toISOString(),
+    });
 
-    const logs: string[] = [];
     const metaEnvs: Array<Record<string, string>> = [];
     const result = await execute({
       runId: "run-switch",
@@ -425,37 +410,26 @@ describe("claude remote execution", () => {
         cwd: workspaceDir,
         accountConfigDirs: [
           "claude_bot_13@seasonart.org=default",
-          `claude_bot_08@seasonart.org=${accountB}`,
+          "claude_bot_08@seasonart.org=~/.claude-08",
         ],
       },
       context: {},
-      onLog: async (_stream, chunk) => {
-        logs.push(chunk);
-      },
+      onLog: async () => {},
       onMeta: async (meta) => {
         metaEnvs.push({ ...(meta.env ?? {}) });
       },
     });
 
-    expect(runChildProcess).toHaveBeenCalledTimes(2);
+    expect(runChildProcess).toHaveBeenCalledTimes(1);
     expect(metaEnvs[0]?.CLAUDE_CONFIG_DIR).toBeUndefined();
-    expect(metaEnvs[1]?.CLAUDE_CONFIG_DIR).toBe(accountB);
-    expect(logs.join("")).toContain('hit a usage limit; switching to "claude_bot_08@seasonart.org"');
-    expect(result.errorCode).toBeNull();
-    expect(result.sessionId).toBe("claude-session-b");
-    expect(result.sessionParams).toMatchObject({ claudeConfigDir: accountB });
-    expect(result.resultJson).toMatchObject({
-      claudeAccountConfigDir: accountB,
-      claudeAccountLabel: "claude_bot_08@seasonart.org",
-    });
+    expect(result.errorMessage).toContain("Claude exited with code 1");
+    expect(result.sessionId).toBeUndefined();
   });
 
-  it("proactively switches through three local Claude accounts at the quota threshold", async () => {
+  it("opens Claude auth in the browser at the quota threshold and resumes with a fresh session", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-claude-threshold-"));
     cleanupDirs.push(rootDir);
     const workspaceDir = path.join(rootDir, "workspace");
-    const accountB = path.join(rootDir, "account-b");
-    const accountC = path.join(rootDir, "account-c");
     await mkdir(workspaceDir, { recursive: true });
 
     getQuotaWindowsForEnv
@@ -469,17 +443,33 @@ describe("claude remote execution", () => {
         provider: "anthropic",
         source: "test",
         ok: true,
-        windows: [{ label: "Current session", usedPercent: 98, resetsAt: null, valueLabel: null, detail: null }],
+        windows: [{ label: "Current session", usedPercent: 40, resetsAt: null, valueLabel: null, detail: null }],
+      });
+    runChildProcess
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        stdout: "Login successful",
+        stderr: "",
+        pid: 111,
+        startedAt: new Date().toISOString(),
       })
       .mockResolvedValueOnce({
-        provider: "anthropic",
-        source: "test",
-        ok: true,
-        windows: [{ label: "Current session", usedPercent: 40, resetsAt: null, valueLabel: null, detail: null }],
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        stdout: [
+          JSON.stringify({ type: "system", subtype: "init", session_id: "claude-session-new", model: "claude-sonnet" }),
+          JSON.stringify({ type: "result", session_id: "claude-session-new", result: "done", usage: { input_tokens: 2, cache_read_input_tokens: 0, output_tokens: 3 } }),
+        ].join("\n"),
+        stderr: "",
+        pid: 112,
+        startedAt: new Date().toISOString(),
       });
 
     const logs: string[] = [];
-    const metaEnvs: Array<Record<string, string>> = [];
+    const metaArgs: string[][] = [];
     const result = await execute({
       runId: "run-threshold-switch",
       agent: {
@@ -490,23 +480,17 @@ describe("claude remote execution", () => {
         adapterConfig: {},
       },
       runtime: {
-        sessionId: "session-default",
+        sessionId: "12345678-1234-4abc-9def-123456789012",
         sessionParams: {
-          sessionId: "session-default",
+          sessionId: "12345678-1234-4abc-9def-123456789012",
           cwd: workspaceDir,
-          claudeConfigDir: "default",
         },
-        sessionDisplayId: "session-default",
+        sessionDisplayId: "12345678-1234-4abc-9def-123456789012",
         taskKey: null,
       },
       config: {
         command: "claude",
         cwd: workspaceDir,
-        accountConfigDirs: [
-          "claude_bot_13@seasonart.org=default",
-          `claude_bot_08@seasonart.org=${accountB}`,
-          `jay20020109@gmail.com=${accountC}`,
-        ],
         quotaSwitchThresholdPercent: 95,
       },
       context: {},
@@ -514,25 +498,20 @@ describe("claude remote execution", () => {
         logs.push(chunk);
       },
       onMeta: async (meta) => {
-        metaEnvs.push({ ...(meta.env ?? {}) });
+        metaArgs.push([...(meta.commandArgs ?? [])]);
       },
     });
 
-    expect(getQuotaWindowsForEnv).toHaveBeenCalledTimes(3);
-    expect(runChildProcess).toHaveBeenCalledTimes(1);
-    expect(metaEnvs).toHaveLength(1);
-    expect(metaEnvs[0]?.CLAUDE_CONFIG_DIR).toBe(accountC);
-    const call = runChildProcess.mock.calls[0] as unknown as [string, string, string[]] | undefined;
-    const commandArgs = call?.[2];
-    expect(commandArgs).not.toContain("--resume");
-    expect(logs.join("")).toContain('"claude_bot_13@seasonart.org" is at 95% quota usage');
-    expect(logs.join("")).toContain('"claude_bot_08@seasonart.org" is at 98% quota usage');
+    expect(getQuotaWindowsForEnv).toHaveBeenCalledTimes(2);
+    expect(runChildProcess).toHaveBeenCalledTimes(2);
+    const authCall = runChildProcess.mock.calls[0] as unknown as [string, string, string[]] | undefined;
+    expect(authCall?.[2]).toEqual(["auth", "login", "--claudeai"]);
+    expect(metaArgs).toHaveLength(1);
+    expect(metaArgs[0]).not.toContain("--resume");
+    expect(logs.join("")).toContain("Opening Claude's browser account switch flow");
+    expect(logs.join("")).toContain("new quota usage is 40%");
     expect(result.errorCode).toBeNull();
-    expect(result.resultJson).toMatchObject({
-      claudeAccountConfigDir: accountC,
-      claudeAccountLabel: "jay20020109@gmail.com",
-    });
-    expect(result.sessionParams).toMatchObject({ claudeConfigDir: accountC });
+    expect(result.sessionId).toBe("claude-session-new");
   });
 
 });
