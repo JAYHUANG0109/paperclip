@@ -37,7 +37,7 @@ const COUNTER= { c: 8,  r: 0,  w: 4, h: 2 };
 // which we skip). Keyboard is c12 y1132-1144, mouse is c13 at the same band.
 const KEYBOARD_PX = { sx: 12*TS, sy: 23*TS + 28, sw: 78, sh: 14 };
 const KB_F = 1.6;                               // keyboard+mouse scale
-const WHITE_TABLE = { c: 8,  r: 4,  w: 2, h: 2 };  // white table (founder desk + 休息室)
+const WHITE_TABLE = { c: 8,  r: 4,  w: 3, h: 2 };  // white table spans c8-10 (founder desk)
 // Decoration tiles (verified against the sheet).
 // Clocks come in 5 colours (cols 0-4 of row 22); each room gets its own. The
 // clock FACE is a 33×33 px region straddling rows 22-23 (grabbing the whole tile
@@ -131,14 +131,7 @@ function furnishTeam(rm) {
   const big = w > 30;                                                            // 教學組 / 資訊部
   const pt = big ? PAINT_BIG : PAINT_SM; const pf = big ? 1.5 : 1.2, pw = pt.w*pf;
   objS(pt.c, pt.r, pt.w, 2, x + w/2 - pw/2, y + 0.15, pf);                        // painting on the top wall
-  // A row of shelves (wood + grey) along the bottom-left wall. The shelf art
-  // fills the top ~1.5 tiles of its h2 region, so shTop keeps it off the wall.
-  const shf = 1.2, shTop = y + h - 1.5*shf - 1.4;
-  const shelves = big ? [BOOKSH_W, BOOKSH_G, BOOKSH_W] : [BOOKSH_W];
-  let sx0 = x + 1.4;
-  for (const s of shelves) { objS(s.c, s.r, s.w, s.h, sx0, shTop, shf); sx0 += s.w*shf + 0.4; }
-  if (big) objS(BOXES.c, BOXES.r, BOXES.w, BOXES.h, x + w - BOXES.w*shf - 1.4, shTop, shf);       // boxes, bottom-right
-  if (id === "teaching") objS(PRINTER.c, PRINTER.r, PRINTER.w, PRINTER.h, x + w - BOXES.w*shf - PRINTER.w*shf - 2.2, shTop, shf);
+  // (Shelves/boxes removed — they never rendered without clipping.)
 }
 function furnishMeeting(rm) {
   const { x, y, w, h } = rm; const cx = x + w/2;
@@ -162,11 +155,15 @@ function furnishLounge(rm) {
 }
 function furnishPantry(rm) {
   const { x, y, w, h } = rm;
-  objS(COUNTER.c, COUNTER.r, COUNTER.w, COUNTER.h, x+1.5, y+2);
-  // Fridge fully inside the right wall.
-  objS(FRIDGE.c, FRIDGE.r, FRIDGE.w, FRIDGE.h, x+w-FRIDGE.w*DEC_F-2, y+2);
-  objS(WATER.c, WATER.r, WATER.w, WATER.h, x+2.5, y+h-6, DEC_F);        // moved north, off the bottom wall
-  objS(CUP.c, CUP.r, 1, 1, x+2.5+WATER.w*DEC_F+0.2, y+h-4.3, 1.3);
+  // Counter shortened to 3 tiles so it clears the fridge (no overlap that reads as a cut).
+  objS(COUNTER.c, COUNTER.r, 3, COUNTER.h, x+1.5, y+2);
+  // Fridge: bigger, whole two-door unit, sitting clear of the counter and inside the right wall.
+  const ff = 2.3, fW = FRIDGE.w*ff;
+  objS(FRIDGE.c, FRIDGE.r, FRIDGE.w, FRIDGE.h, x+w-fW-1.6, y+2, ff);
+  // Water cooler: bigger, whole jug + stand, off the bottom wall.
+  const wf = 2.3;
+  objS(WATER.c, WATER.r, WATER.w, WATER.h, x+2.5, y+h-6, wf);
+  objS(CUP.c, CUP.r, 1, 1, x+2.5+WATER.w*wf+0.3, y+h-4.3, 1.4);
   objS(VENDING.c, VENDING.r, VENDING.w, VENDING.h, x+w-VENDING.w*1.5-2, y+h-VENDING.h*1.5-0.8, 1.5);
   drawClock(rm);
 }
@@ -193,10 +190,7 @@ function furnishFounder(rm) {
   objS(PAINT_MED.c, PAINT_MED.r, PAINT_MED.w, PAINT_MED.h, x + w*0.62, y + 0.2, 1.2);
   objS(PAINT_SM.c, PAINT_SM.r, PAINT_SM.w, PAINT_SM.h, x + w - 5, y + 0.2, 1.15);
   drawClock(rm);
-  // Shelves along the bottom wall (wood + grey + wood).
-  const shf = 1.2, shTop = y + h - 1.5*shf - 1.4;
-  let sx0 = x + 1.6;
-  for (const s of [BOOKSH_W, BOOKSH_G, BOOKSH_W]) { objS(s.c, s.r, s.w, s.h, sx0, shTop, shf); sx0 += s.w*shf + 0.5; }
+  // (Shelves removed — they never rendered without clipping.)
 }
 
 for (const rm of ROOMS) drawRoom(rm);
