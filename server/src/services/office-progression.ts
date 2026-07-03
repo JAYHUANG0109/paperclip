@@ -25,7 +25,7 @@ const PERSONAL_USAGE_WEIGHT = 0.5;
 /** Flat XP per completed skill bounty. */
 const XP_PER_BOUNTY = 300;
 
-/** The ten named tiers (L1–L10). Beyond L10 the top title holds + a prestige number. */
+/** The thirty named tiers (L1–L30). Beyond L30 the top title holds. */
 export const TITLES: { zh: string; en: string }[] = [
   { zh: "見習生", en: "Apprentice" },
   { zh: "自動化學徒", en: "Automation Trainee" },
@@ -37,6 +37,26 @@ export const TITLES: { zh: string; en: string }[] = [
   { zh: "效率宗師", en: "Efficiency Grandmaster" },
   { zh: "自動化宗師", en: "Automation Grandmaster" },
   { zh: "時間領主", en: "Time Lord" },
+  { zh: "時間賢者", en: "Time Sage" },
+  { zh: "流程宗匠", en: "Process Maestro" },
+  { zh: "自動化大師", en: "Automation Master" },
+  { zh: "效率統帥", en: "Efficiency Commander" },
+  { zh: "時序掌控者", en: "Chronomaster" },
+  { zh: "生產力先知", en: "Productivity Oracle" },
+  { zh: "自動化傳奇", en: "Automation Legend" },
+  { zh: "效率霸主", en: "Efficiency Sovereign" },
+  { zh: "時間織者", en: "Timeweaver" },
+  { zh: "生產力泰斗", en: "Productivity Titan" },
+  { zh: "時間執政官", en: "Time Consul" },
+  { zh: "自動化神匠", en: "Automation Artificer" },
+  { zh: "效率巨擘", en: "Efficiency Luminary" },
+  { zh: "時空舵手", en: "Spacetime Helmsman" },
+  { zh: "自動化至尊", en: "Automation Supreme" },
+  { zh: "時間主宰", en: "Master of Time" },
+  { zh: "恆久效率者", en: "The Eternal" },
+  { zh: "時間之神", en: "God of Time" },
+  { zh: "萬世效率", en: "Efficiency Everlasting" },
+  { zh: "時間創世神", en: "Time Genesis" },
 ];
 
 export interface BadgeDef {

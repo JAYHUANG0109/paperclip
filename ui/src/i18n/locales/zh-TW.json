@@ -5677,7 +5677,10 @@
     "guideTitle": "等級與徽章",
     "levelsHeading": "等級如何計算",
     "levelsIntro": "代理人透過完成工作累積 XP。XP 只增不減，決定等級與稱號。",
-    "badgesHeading": "徽章"
+    "badgesHeading": "徽章",
+    "leveledUp": "{{name}} 升到 Lv{{level}} · {{title}}",
+    "earnedBadgeToast": "{{name}} 解鎖徽章：{{badge}}",
+    "progressSummary": "{{count}} 位代理人升級或解鎖徽章"
   },
   "asana": {
     "myTasks": "我的任務 (Asana)",

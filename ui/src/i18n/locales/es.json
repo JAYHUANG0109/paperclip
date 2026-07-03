@@ -5677,7 +5677,10 @@
     "guideTitle": "Levels & Badges",
     "levelsHeading": "How levels work",
     "levelsIntro": "Agents earn XP for the work they do. XP never goes down — it sets the level and rank.",
-    "badgesHeading": "Badges"
+    "badgesHeading": "Badges",
+    "leveledUp": "{{name}} reached Lv{{level}} · {{title}}",
+    "earnedBadgeToast": "{{name}} unlocked: {{badge}}",
+    "progressSummary": "{{count}} agents leveled up or unlocked badges"
   },
   "asana": {
     "myTasks": "My tasks (Asana)",

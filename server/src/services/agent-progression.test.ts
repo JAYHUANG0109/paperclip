@@ -56,6 +56,17 @@ describe("agentProgressionFor", () => {
     expect(keys.size).toBe(15);
     expect(emoji.size).toBe(15);
   });
+
+  it("earns Priority Closer from high-priority tasks (re-wired off the unused bounty board)", () => {
+    const p = agentProgressionFor({ ...emptyMetrics(), highPriorityDone: 15 });
+    expect(p.badges.find((b) => b.key === "priority_closer")!.earned).toBe(true);
+    expect(p.badges.find((b) => b.key === "priority_closer")!.target).toBe(15);
+  });
+
+  it("earns Polymath from breadth across projects", () => {
+    expect(agentProgressionFor({ ...emptyMetrics(), distinctProjects: 3 }).badges.find((b) => b.key === "polymath")!.earned).toBe(true);
+    expect(agentProgressionFor({ ...emptyMetrics(), distinctProjects: 2 }).badges.find((b) => b.key === "polymath")!.earned).toBe(false);
+  });
 });
 
 describe("computeStreaks", () => {

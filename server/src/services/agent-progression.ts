@@ -32,35 +32,35 @@ const XP_PER_TASK = 20;
 
 export interface AgentBadgeMetrics {
   tasksCompleted: number;
+  highPriorityDone: number;
   aheadOfTime: number;
   rapidResponse: number;
   reviewsApproved: number;
   revisionsRequested: number;
   minutesSaved: number;
   distinctSkillsUsed: number;
-  distinctCategoriesUsed: number;
+  distinctProjects: number;
   streakDays: number;
   reliableWeeks: number;
   subReportsCompleted: number;
   handoffs: number;
-  bounties: number;
 }
 
 export function emptyMetrics(): AgentBadgeMetrics {
   return {
     tasksCompleted: 0,
+    highPriorityDone: 0,
     aheadOfTime: 0,
     rapidResponse: 0,
     reviewsApproved: 0,
     revisionsRequested: 0,
     minutesSaved: 0,
     distinctSkillsUsed: 0,
-    distinctCategoriesUsed: 0,
+    distinctProjects: 0,
     streakDays: 0,
     reliableWeeks: 0,
     subReportsCompleted: 0,
     handoffs: 0,
-    bounties: 0,
   };
 }
 
@@ -88,12 +88,12 @@ export const AGENT_BADGES: AgentBadgeDef[] = [
   { key: "time_saver", emoji: "⏱️", zh: "省時新星", en: "Time Saver", xp: 300, target: 1000, value: (m) => m.minutesSaved },
   { key: "time_architect", emoji: "🏛️", zh: "時間建築師", en: "Time Architect", xp: 800, target: 10000, value: (m) => m.minutesSaved },
   { key: "toolsmith", emoji: "🛠️", zh: "技能工匠", en: "Toolsmith", xp: 300, target: 10, value: (m) => m.distinctSkillsUsed },
-  { key: "bounty_breaker", emoji: "💰", zh: "懸賞剋星", en: "Bounty Breaker", xp: 400, target: 5, value: (m) => m.bounties },
+  { key: "priority_closer", emoji: "🚨", zh: "重案剋星", en: "Priority Closer", xp: 400, target: 15, value: (m) => m.highPriorityDone },
   { key: "flawless", emoji: "💎", zh: "零瑕紀錄", en: "Flawless Record", xp: 500, target: 20, value: (m) => (m.revisionsRequested === 0 ? m.tasksCompleted : 0) },
   { key: "one_shot", emoji: "🥇", zh: "一次到位", en: "One-Shot", xp: 400, target: 10, value: (m) => (m.revisionsRequested === 0 ? m.reviewsApproved : 0) },
   { key: "ahead_of_time", emoji: "🚀", zh: "超前交付", en: "Ahead of Time", xp: 400, target: 15, value: (m) => m.aheadOfTime },
   { key: "rapid_response", emoji: "⚡", zh: "神速回應", en: "Rapid Response", xp: 300, target: 10, value: (m) => m.rapidResponse },
-  { key: "polymath", emoji: "🧠", zh: "全能通才", en: "Polymath", xp: 400, target: 5, value: (m) => m.distinctCategoriesUsed },
+  { key: "polymath", emoji: "🧠", zh: "全能通才", en: "Polymath", xp: 400, target: 3, value: (m) => m.distinctProjects },
   { key: "reliable", emoji: "🛡️", zh: "全勤穩定", en: "Reliable", xp: 500, target: 4, value: (m) => m.reliableWeeks },
   { key: "on_a_roll", emoji: "🔥", zh: "連勝氣勢", en: "On a Roll", xp: 500, target: 30, value: (m) => m.streakDays },
   { key: "collaborator", emoji: "🤝", zh: "協作夥伴", en: "Collaborator", xp: 350, target: 25, value: (m) => m.handoffs },
@@ -222,7 +222,7 @@ export function agentProgressionService(db: Db) {
       return m;
     };
 
-    const [agentRows, issueAgg, delegRows, apprRows, usageRows, catRows, runDayRows] = await Promise.all([
+    const [agentRows, issueAgg, delegRows, apprRows, usageRows, runDayRows] = await Promise.all([
       db
         .select({ id: agents.id, reportsTo: agents.reportsTo, status: agents.status })
         .from(agents)
@@ -231,6 +231,8 @@ export function agentProgressionService(db: Db) {
         .select({
           agentId: issues.assigneeAgentId,
           done: sql<number>`count(*) filter (where ${issues.status} = 'done')::int`,
+          hiDone: sql<number>`count(*) filter (where ${issues.status} = 'done' and ${issues.priority} in ('high', 'urgent'))::int`,
+          projects: sql<number>`count(distinct ${issues.projectId}) filter (where ${issues.status} = 'done' and ${issues.projectId} is not null)::int`,
           ahead: sql<number>`count(*) filter (where ${issues.status} = 'done' and ${issues.dueDate} is not null and ${issues.completedAt} is not null and ${issues.completedAt}::date < ${issues.dueDate})::int`,
           rapid: sql<number>`count(*) filter (where ${issues.startedAt} is not null and ${issues.startedAt} <= ${issues.createdAt} + interval '15 minutes')::int`,
         })
@@ -265,11 +267,6 @@ export function agentProgressionService(db: Db) {
         .where(eq(skillUsageEvents.companyId, companyId))
         .groupBy(skillUsageEvents.usedByAgentId),
       db
-        .selectDistinct({ agentId: skillUsageEvents.usedByAgentId, skillId: skillUsageEvents.skillId, categories: companySkills.categories })
-        .from(skillUsageEvents)
-        .innerJoin(companySkills, eq(skillUsageEvents.skillId, companySkills.id))
-        .where(eq(skillUsageEvents.companyId, companyId)),
-      db
         .select({
           agentId: heartbeatRuns.agentId,
           day: sql<string>`to_char(date_trunc('day', ${heartbeatRuns.startedAt}), 'YYYY-MM-DD')`,
@@ -290,6 +287,8 @@ export function agentProgressionService(db: Db) {
       doneByAgent.set(r.agentId ?? "", Number(r.done) || 0);
       if (!m) continue;
       m.tasksCompleted = Number(r.done) || 0;
+      m.highPriorityDone = Number(r.hiDone) || 0;
+      m.distinctProjects = Number(r.projects) || 0;
       m.aheadOfTime = Number(r.ahead) || 0;
       m.rapidResponse = Number(r.rapid) || 0;
     }
@@ -310,18 +309,6 @@ export function agentProgressionService(db: Db) {
       m.distinctSkillsUsed = Number(r.distinctSkills) || 0;
     }
 
-    // Distinct domains exercised (union of categories across the agent's used skills).
-    const catsByAgent = new Map<string, Set<string>>();
-    for (const r of catRows) {
-      if (!r.agentId) continue;
-      const set = catsByAgent.get(r.agentId) ?? new Set<string>();
-      for (const c of r.categories ?? []) if (c) set.add(c);
-      catsByAgent.set(r.agentId, set);
-    }
-    for (const [agentId, set] of catsByAgent) {
-      const m = ensure(agentId);
-      if (m) m.distinctCategoriesUsed = set.size;
-    }
 
     // Streaks from active-day history.
     const daysByAgent = new Map<string, string[]>();

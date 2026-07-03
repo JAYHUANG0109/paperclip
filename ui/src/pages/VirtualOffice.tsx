@@ -4,6 +4,7 @@ import { Link } from "@/lib/router";
 import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users, Palette, LayoutGrid, Building2, Award } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
+import { useToastActions } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { agentsApi, type AgentProgression, type AgentBadgeState } from "../api/agents";
 import { assetsApi } from "../api/assets";
@@ -27,7 +28,8 @@ import type { Agent } from "@paperclipai/shared";
 const OFFICE_VIEW_KEY = "paperclip:office-view";
 
 export function VirtualOffice() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { pushToast } = useToastActions();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
@@ -111,6 +113,54 @@ export function VirtualOffice() {
     () => new Map((leaderboard?.entries ?? []).map((e) => [e.userId, e])),
     [leaderboard],
   );
+
+  // Game feel: when you open the office, toast any level-ups / newly-earned
+  // badges since you last looked. The per-company snapshot is stored locally and
+  // seeded silently on first ever view (no spam), so only real changes surface.
+  useEffect(() => {
+    if (!progressionByAgent || !selectedCompanyId) return;
+    const key = `paperclip:office-progress-seen:${selectedCompanyId}`;
+    let seen: Record<string, { level: number; badges: string[] }> | null = null;
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) seen = JSON.parse(raw);
+    } catch {
+      /* ignore */
+    }
+    const snapshot: Record<string, { level: number; badges: string[] }> = {};
+    for (const [id, p] of Object.entries(progressionByAgent)) {
+      snapshot[id] = { level: p.level, badges: p.badges.filter((b) => b.earned).map((b) => b.key) };
+    }
+    if (seen) {
+      const zh = i18n.language?.startsWith("zh");
+      const nameById = new Map((agents ?? []).map((a) => [a.id, displayAgentName(a.name)]));
+      const events: string[] = [];
+      for (const [id, cur] of Object.entries(snapshot)) {
+        const prev = seen[id];
+        if (!prev) continue; // agent new since last view — don't retro-toast
+        const name = nameById.get(id) ?? id.slice(0, 6);
+        if (cur.level > prev.level) {
+          const title = progressionByAgent[id]!.title;
+          events.push(`🆙 ${t("office.leveledUp", { name, level: cur.level, title: zh ? title.zh : title.en, defaultValue: `${name} reached Lv${cur.level} · ${zh ? title.zh : title.en}` })}`);
+        }
+        for (const bk of cur.badges.filter((k) => !prev.badges.includes(k))) {
+          const info = OFFICE_BADGE_BY_KEY[bk];
+          if (info) events.push(`${info.emoji} ${t("office.earnedBadgeToast", { name, badge: zh ? info.zh : info.en, defaultValue: `${name} unlocked: ${zh ? info.zh : info.en}` })}`);
+        }
+      }
+      if (events.length > 3) {
+        pushToast({ title: t("office.progressSummary", { count: events.length, defaultValue: `${events.length} agents leveled up or unlocked badges` }), tone: "success" });
+      } else {
+        for (const e of events) pushToast({ title: e, tone: "success" });
+      }
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify(snapshot));
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progressionByAgent, selectedCompanyId]);
 
   return (
     <div className="w-full space-y-2">
