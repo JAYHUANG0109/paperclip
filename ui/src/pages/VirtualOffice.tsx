@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users, Palette, LayoutGrid, Building2 } from "lucide-react";
+import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users, Palette, LayoutGrid, Building2, Award } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -21,6 +21,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { agentUrl } from "../lib/utils";
 import { cn } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
+import { OFFICE_BADGES, OFFICE_BADGE_BY_KEY, rankLadder, XP_SOURCES } from "../lib/office-badges";
 import type { Agent } from "@paperclipai/shared";
 
 const OFFICE_VIEW_KEY = "paperclip:office-view";
@@ -30,6 +31,7 @@ export function VirtualOffice() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
   // Two ways to look at the same (team-filtered) roster: the pixel-art floor, or
   // a catalog of player cards. The choice is remembered so a reload keeps it.
   const [view, setView] = useState<"office" | "catalog">(() => {
@@ -144,6 +146,16 @@ export function VirtualOffice() {
             >+</button>
           </div>
         )}
+        {/* Badge & level guide (圖鑑) — a static reference of all 15 badges and
+            how levels are earned. Available in both views. */}
+        <button
+          type="button"
+          onClick={() => setGuideOpen(true)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Award className="h-3.5 w-3.5" />
+          {t("office.guide", { defaultValue: "Guide" })}
+        </button>
         {/* Toggle between the pixel floor and the player-card catalog. The label
             names the view you'll switch TO, mirroring the ViewSwitchButton style. */}
         <button
@@ -173,8 +185,11 @@ export function VirtualOffice() {
           leaderboardByUser={leaderboardByUser}
           progressionByAgent={progressionByAgent}
           canView={canViewAgent}
+          onOpen={setActiveAgent}
         />
       )}
+
+      <OfficeGuideDialog open={guideOpen} onClose={() => setGuideOpen(false)} />
 
       <AgentModal
         agent={activeAgent}
@@ -260,20 +275,25 @@ function BadgeShelf({ progression, full }: { progression: AgentProgression; full
         </span>
       </div>
       <div className="grid grid-cols-5 gap-2">
-        {progression.badges.map((b) => (
-          <div
-            key={b.key}
-            title={`${label(b)} — ${b.earned ? t("office.badgeEarned", { defaultValue: "Earned" }) : `${b.current}/${b.target}`}`}
-            className={cn(
-              "flex flex-col items-center gap-1 rounded-lg border p-2 text-center",
-              b.earned ? "border-border bg-accent/40" : "border-border/60 opacity-50",
-            )}
-          >
-            <span className={cn("text-xl leading-none", b.earned ? "" : "grayscale")}>{b.emoji}</span>
-            <span className="line-clamp-2 text-[10px] leading-tight">{label(b)}</span>
-            {!b.earned && <span className="text-[9px] tabular-nums text-muted-foreground">{b.current}/{b.target}</span>}
-          </div>
-        ))}
+        {progression.badges.map((b) => {
+          const info = OFFICE_BADGE_BY_KEY[b.key];
+          const req = info ? (zh ? info.reqZh : info.reqEn) : "";
+          const state = b.earned ? t("office.badgeEarned", { defaultValue: "Earned" }) : `${b.current}/${b.target}`;
+          return (
+            <div
+              key={b.key}
+              title={`${label(b)} · +${b.xp} XP\n${req}\n(${state})`}
+              className={cn(
+                "flex flex-col items-center gap-1 rounded-lg border p-2 text-center",
+                b.earned ? "border-border bg-accent/40" : "border-border/60 opacity-50",
+              )}
+            >
+              <span className={cn("text-xl leading-none", b.earned ? "" : "grayscale")}>{b.emoji}</span>
+              <span className="line-clamp-2 text-[10px] leading-tight">{label(b)}</span>
+              {!b.earned && <span className="text-[9px] tabular-nums text-muted-foreground">{b.current}/{b.target}</span>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -423,13 +443,14 @@ function ModalStat({ icon: Icon, value, label }: { icon: typeof Wrench; value: n
 // Catalog view: the same player-card content as the modal, laid out as a
 // responsive grid of cards. Uses the already-team-filtered `agents`, so the
 // team chips filter this view exactly like they filter the floor.
-function AgentCatalog({ agents, workingIds, skillCounts, leaderboardByUser, progressionByAgent, canView }: {
+function AgentCatalog({ agents, workingIds, skillCounts, leaderboardByUser, progressionByAgent, canView, onOpen }: {
   agents: Agent[];
   workingIds: Set<string>;
   skillCounts: Record<string, number> | undefined;
   leaderboardByUser: Map<string, LeaderboardEntry>;
   progressionByAgent: Record<string, AgentProgression> | undefined;
   canView: (agentId: string) => boolean;
+  onOpen: (agent: Agent) => void;
 }) {
   const { t } = useTranslation();
   if (agents.length === 0) {
@@ -450,25 +471,34 @@ function AgentCatalog({ agents, workingIds, skillCounts, leaderboardByUser, prog
           leaderboard={findLeaderboardForAgent(leaderboardByUser, agent)}
           progression={progressionByAgent?.[agent.id] ?? null}
           canView={canView(agent.id)}
+          onOpen={onOpen}
         />
       ))}
     </div>
   );
 }
 
-function AgentCatalogCard({ agent, working, skillCount, leaderboard, progression, canView }: {
+function AgentCatalogCard({ agent, working, skillCount, leaderboard, progression, canView, onOpen }: {
   agent: Agent;
   working: boolean;
   skillCount: number;
   leaderboard: LeaderboardEntry | null;
   progression: AgentProgression | null;
   canView: boolean;
+  onOpen: (agent: Agent) => void;
 }) {
   const { t } = useTranslation();
   const status = statusInfo(agent, working, t);
   const lastSeen = agent.lastHeartbeatAt ? new Date(agent.lastHeartbeatAt).toLocaleString() : null;
   return (
-    <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 text-center transition-colors hover:border-foreground/25">
+    // The whole card opens the player-card detail (level + earned badges). The
+    // "view agent" button below stops propagation to go to the full agent page.
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(agent)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(agent); } }}
+      className="flex cursor-pointer flex-col items-center rounded-xl border border-border bg-card p-4 text-center transition-colors hover:border-foreground/30 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <div className={cn(
         "relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-2 bg-background",
         working ? "border-emerald-400/70" : "border-border",
@@ -499,6 +529,7 @@ function AgentCatalogCard({ agent, working, skillCount, leaderboard, progression
       {canView ? (
         <Link
           to={agentUrl(agent)}
+          onClick={(e) => e.stopPropagation()}
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
         >
           <ExternalLink className="h-3.5 w-3.5" />
@@ -511,5 +542,72 @@ function AgentCatalogCard({ agent, working, skillCount, leaderboard, progression
         </div>
       )}
     </div>
+  );
+}
+
+// The 圖鑑: a static reference of how levels are earned + all 15 badges and
+// their unlock requirements. Opened from the toolbar; independent of any agent.
+function OfficeGuideDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t, i18n } = useTranslation();
+  const zh = i18n.language?.startsWith("zh");
+  const ranks = rankLadder();
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <div className="flex items-center gap-2">
+          <Award className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-bold">{t("office.guideTitle", { defaultValue: "Levels & Badges" })}</h2>
+        </div>
+
+        {/* How levels work */}
+        <section className="mt-4">
+          <h3 className="text-sm font-semibold">{t("office.levelsHeading", { defaultValue: "How levels work" })}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("office.levelsIntro", { defaultValue: "Agents earn XP for the work they do. XP never goes down — it sets the level and rank." })}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {XP_SOURCES.map((s, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-xs">
+                <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-primary" />
+                <span>{zh ? s.zh : s.en}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg border border-border p-3 sm:grid-cols-2">
+            {ranks.map((r) => (
+              <div key={r.level} className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="truncate">
+                  <span className="font-semibold tabular-nums">Lv{r.level}</span>{" "}
+                  <span className="text-muted-foreground">{zh ? r.zh : r.en}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">{r.xp.toLocaleString()} XP</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* All badges */}
+        <section className="mt-5">
+          <h3 className="text-sm font-semibold">
+            {t("office.badgesHeading", { defaultValue: "Badges" })}{" "}
+            <span className="font-normal text-muted-foreground">({OFFICE_BADGES.length})</span>
+          </h3>
+          <ul className="mt-2 space-y-1.5">
+            {OFFICE_BADGES.map((b) => (
+              <li key={b.key} className="flex items-center gap-3 rounded-lg border border-border p-2.5">
+                <span className="text-2xl leading-none">{b.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{zh ? b.zh : b.en}</div>
+                  <div className="text-xs text-muted-foreground">{zh ? b.reqZh : b.reqEn}</div>
+                </div>
+                <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold tabular-nums text-accent-foreground">
+                  +{b.xp} XP
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </DialogContent>
+    </Dialog>
   );
 }

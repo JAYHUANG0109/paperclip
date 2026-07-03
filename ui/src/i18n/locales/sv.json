@@ -5672,7 +5672,12 @@
     "levelShort": "Lv",
     "badges": "Badges",
     "badgeEarned": "Earned",
-    "noBadgesYet": "No badges yet"
+    "noBadgesYet": "No badges yet",
+    "guide": "Guide",
+    "guideTitle": "Levels & Badges",
+    "levelsHeading": "How levels work",
+    "levelsIntro": "Agents earn XP for the work they do. XP never goes down — it sets the level and rank.",
+    "badgesHeading": "Badges"
   },
   "asana": {
     "myTasks": "My tasks (Asana)",

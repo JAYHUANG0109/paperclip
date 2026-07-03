@@ -5672,7 +5672,12 @@
     "levelShort": "Lv",
     "badges": "徽章",
     "badgeEarned": "已获得",
-    "noBadgesYet": "暂无徽章"
+    "noBadgesYet": "暂无徽章",
+    "guide": "图鉴",
+    "guideTitle": "等级与徽章",
+    "levelsHeading": "等级如何计算",
+    "levelsIntro": "代理人通过完成工作累积 XP。XP 只增不减，决定等级与称号。",
+    "badgesHeading": "徽章"
   },
   "asana": {
     "myTasks": "我的任务 (Asana)",
