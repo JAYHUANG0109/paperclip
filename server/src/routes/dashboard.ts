@@ -23,7 +23,7 @@ import {
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
-import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted } from "../services/agent-asana.js";
+import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, resolveFounderPostTargetGid } from "../services/agent-asana.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
@@ -496,13 +496,25 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
           ? "approved" // legacy one-button approve
           : null; // explicit reset / reopen
     const note = typeof body.note === "string" ? body.note.trim().slice(0, 2000) || null : null;
-    const digest = await setFounderItemDecision(db, agentId, gid, decision, note);
+    // HARD privacy guard: a decision on a private-linked restricted task (its note
+    // AND the verdict itself) must be applied to the inner private task, never the
+    // company-visible outer shell. Resolve the enforced target first; if a private
+    // link exists but can't be resolved, refuse any forward action (fail closed).
     const reviewItem = await getFounderItemByGid(db, agentId, gid);
+    const target = await resolveFounderPostTargetGid(db, companyId, agentId, gid, reviewItem?.commentTargetGid ?? null);
+    if (target.hasPrivateLink && target.blocked && (decision !== null || note)) {
+      res.status(409).json({
+        error: "此任務含私人連結，暫時無法確認私人任務位置；為保護機密資訊，裁示與留言未送出。請稍後再試。",
+      });
+      return;
+    }
+    const enforcedCommentTargetGid = target.hasPrivateLink ? target.targetGid : null;
+    const digest = await setFounderItemDecision(db, agentId, gid, decision, note);
     await heartbeat.wakeup(agentId, {
       source: "on_demand",
       triggerDetail: "manual",
       reason: "founder-review-item",
-      payload: { directive: "founder-review-item", taskGid: gid, commentTargetGid: reviewItem?.commentTargetGid ?? null, decision, note },
+      payload: { directive: "founder-review-item", taskGid: gid, commentTargetGid: enforcedCommentTargetGid, decision, note },
       idempotencyKey: `founder-review:${gid}:${decision ?? "reset"}:${Math.floor(Date.now() / 60000)}`,
       requestedByActorType: "user",
       requestedByActorId: userId ?? null,
@@ -528,17 +540,20 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     const closed = (req.body as { closed?: unknown })?.closed !== false; // default true
     const digest = await setFounderItemClosed(db, agentId, gid, closed);
     // Apply to Asana immediately with the agent's own token (instant, no heartbeat
-    // wait). Only fall back to waking the agent if the direct write didn't land.
-    // Use the item's commentTargetGid if set (private-linked inner task).
+    // wait). HARD privacy guard: complete the inner private task when the item is
+    // private-linked — never the public outer shell. If the private link can't be
+    // resolved, don't guess: hand off to the agent instead of touching the shell.
     const item = await getFounderItemByGid(db, agentId, gid);
-    const closeTargetGid = item?.commentTargetGid ?? gid;
-    const applied = await setAsanaTaskCompleted(db, companyId, agentId, closeTargetGid, closed);
+    const target = await resolveFounderPostTargetGid(db, companyId, agentId, gid, item?.commentTargetGid ?? null);
+    const applied = target.hasPrivateLink && target.blocked
+      ? false
+      : await setAsanaTaskCompleted(db, companyId, agentId, target.targetGid ?? gid, closed);
     if (!applied) {
       await heartbeat.wakeup(agentId, {
         source: "on_demand",
         triggerDetail: "manual",
         reason: "founder-close-item",
-        payload: { directive: "founder-close-item", taskGid: gid, commentTargetGid: item?.commentTargetGid ?? null, closed },
+        payload: { directive: "founder-close-item", taskGid: gid, commentTargetGid: target.hasPrivateLink ? target.targetGid : null, closed },
         idempotencyKey: `founder-close:${gid}:${closed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
         requestedByActorType: "user",
         requestedByActorId: userId ?? null,
@@ -568,14 +583,20 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       res.status(400).json({ error: "A non-empty comment is required." });
       return;
     }
-    // Post to Asana immediately with the agent's own token, so the comment lands
-    // in seconds instead of waiting for the agent's next heartbeat. Mark the
-    // stored comment confirmed when it posts; only fall back to the agent
-    // (founder-comment directive) if the direct write didn't land.
-    // If the item has a commentTargetGid (linked private task), post there instead.
+    // HARD privacy guard: if this item is a private-linked restricted task, the
+    // comment MUST land on the inner private task, NEVER the company-visible outer
+    // shell. Fail closed — if the private link can't be resolved, refuse to post
+    // rather than leak classified content.
     const commentItem = await getFounderItemByGid(db, agentId, gid);
-    const commentTargetGid = commentItem?.commentTargetGid ?? null;
-    const posted = await postAsanaComment(db, companyId, agentId, commentTargetGid ?? gid, text);
+    const target = await resolveFounderPostTargetGid(db, companyId, agentId, gid, commentItem?.commentTargetGid ?? null);
+    if (target.hasPrivateLink && target.blocked) {
+      res.status(409).json({
+        error: "此任務含私人連結，暫時無法確認私人任務位置；為保護機密資訊，留言未張貼。請稍後再試。",
+      });
+      return;
+    }
+    const commentTargetGid = target.hasPrivateLink ? target.targetGid : null;
+    const posted = await postAsanaComment(db, companyId, agentId, target.targetGid ?? gid, text);
     const id = `pending-${randomUUID()}`;
     const digest = await appendFounderItemComment(db, agentId, gid, {
       id,

@@ -54,6 +54,69 @@ async function asanaGetJson(token: string, pathAndQuery: string): Promise<{ data
   }
 }
 
+/**
+ * Extract the GID of a "Private link" task referenced inside a task's notes —
+ * i.e. a DIFFERENT Asana task URL than the task itself. The 創辦人/園長 行事曆 is
+ * company-visible, so restricted items live as a public outer shell whose notes
+ * link to a private inner task only the assigner/assignee/創辦人 can see. Matches
+ * the same URL shapes the agent scans for: `…/0/<project>/<taskGid>` and the
+ * newer `…/task/<taskGid>` form. Returns the first linked GID that isn't the
+ * outer task, or null when there is no private link.
+ */
+export function extractPrivateLinkGid(notes: string | null | undefined, outerGid: string): string | null {
+  if (!notes) return null;
+  const found = new Set<string>();
+  for (const m of notes.matchAll(/app\.asana\.com\/0\/\d+\/(\d+)/g)) found.add(m[1]!);
+  for (const m of notes.matchAll(/app\.asana\.com\/[^\s)]*?\/task\/(\d+)/g)) found.add(m[1]!);
+  for (const gid of found) {
+    if (gid && gid !== outerGid) return gid;
+  }
+  return null;
+}
+
+/**
+ * HARD privacy guard for the 創辦人/園長 console. Resolves WHERE a founder's
+ * comment / 批閱草稿 / decision note must be posted, and guarantees it never lands
+ * on the public outer shell when the item is a private-linked restricted task:
+ *
+ *  - No private link              → post on the task itself (`outerGid`).
+ *  - Private link, inner resolved → post on the inner private task.
+ *  - Private link, NOT resolvable → BLOCKED (targetGid=null): the caller MUST NOT
+ *    post anywhere. Failing closed is the whole point — leaking classified content
+ *    to the company-visible shell is worse than not posting.
+ *
+ * `knownInnerGid` (the item's agent-resolved `commentTargetGid`) is trusted as a
+ * fast path; otherwise we re-read the outer task's full notes from Asana with the
+ * founder's own token (the digest preview is truncated and unreliable) and verify
+ * the inner task is actually reachable before allowing a post.
+ */
+export async function resolveFounderPostTargetGid(
+  db: Db,
+  companyId: string,
+  agentId: string,
+  outerGid: string,
+  knownInnerGid?: string | null,
+): Promise<{ targetGid: string | null; hasPrivateLink: boolean; blocked: boolean }> {
+  if (knownInnerGid && knownInnerGid !== outerGid) {
+    return { targetGid: knownInnerGid, hasPrivateLink: true, blocked: false };
+  }
+  const t = await tokenFor(db, companyId, agentId);
+  if (!t) return { targetGid: null, hasPrivateLink: false, blocked: true }; // no token → never guess
+  const res = await asanaGetJson(t.token, `/tasks/${encodeURIComponent(outerGid)}?opt_fields=notes`);
+  const notes = res && typeof (res.data as { notes?: unknown } | undefined)?.notes === "string"
+    ? String((res.data as { notes?: string }).notes)
+    : null;
+  const innerGid = extractPrivateLinkGid(notes, outerGid);
+  if (!innerGid) return { targetGid: outerGid, hasPrivateLink: false, blocked: false };
+  // Private link present — confirm the inner task is reachable with this token
+  // before allowing any write. If not, fail closed.
+  const inner = await asanaGetJson(t.token, `/tasks/${encodeURIComponent(innerGid)}?opt_fields=gid`);
+  const reachable = Boolean(inner && (inner.data as { gid?: unknown } | undefined)?.gid);
+  return reachable
+    ? { targetGid: innerGid, hasPrivateLink: true, blocked: false }
+    : { targetGid: null, hasPrivateLink: true, blocked: true };
+}
+
 /** Post a comment (story) to an Asana task as the agent. Returns true on success. */
 export async function postAsanaComment(
   db: Db,
