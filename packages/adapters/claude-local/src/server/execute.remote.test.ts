@@ -89,7 +89,7 @@ vi.mock("./quota.js", async () => {
   };
 });
 
-import { execute } from "./execute.js";
+import { execute, resetClaudeQuotaSwitchStateForTests } from "./execute.js";
 
 describe("claude remote execution", () => {
   const cleanupDirs: string[] = [];
@@ -104,6 +104,7 @@ describe("claude remote execution", () => {
   });
 
   afterEach(async () => {
+    resetClaudeQuotaSwitchStateForTests();
     vi.clearAllMocks();
     getQuotaWindowsForEnv.mockResolvedValue({
       provider: "anthropic",
@@ -450,9 +451,18 @@ describe("claude remote execution", () => {
         exitCode: 0,
         signal: null,
         timedOut: false,
-        stdout: "Login successful",
+        stdout: "Logged out",
         stderr: "",
         pid: 111,
+        startedAt: new Date().toISOString(),
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        stdout: "Login successful",
+        stderr: "",
+        pid: 112,
         startedAt: new Date().toISOString(),
       })
       .mockResolvedValueOnce({
@@ -464,7 +474,7 @@ describe("claude remote execution", () => {
           JSON.stringify({ type: "result", session_id: "claude-session-new", result: "done", usage: { input_tokens: 2, cache_read_input_tokens: 0, output_tokens: 3 } }),
         ].join("\n"),
         stderr: "",
-        pid: 112,
+        pid: 113,
         startedAt: new Date().toISOString(),
       });
 
@@ -503,15 +513,130 @@ describe("claude remote execution", () => {
     });
 
     expect(getQuotaWindowsForEnv).toHaveBeenCalledTimes(2);
-    expect(runChildProcess).toHaveBeenCalledTimes(2);
-    const authCall = runChildProcess.mock.calls[0] as unknown as [string, string, string[]] | undefined;
-    expect(authCall?.[2]).toEqual(["auth", "login", "--claudeai"]);
+    expect(runChildProcess).toHaveBeenCalledTimes(3);
+    const logoutCall = runChildProcess.mock.calls[0] as unknown as [string, string, string[]] | undefined;
+    const loginCall = runChildProcess.mock.calls[1] as unknown as [string, string, string[]] | undefined;
+    expect(logoutCall?.[2]).toEqual(["auth", "logout"]);
+    expect(loginCall?.[2]).toEqual(["auth", "login", "--claudeai"]);
     expect(metaArgs).toHaveLength(1);
     expect(metaArgs[0]).not.toContain("--resume");
     expect(logs.join("")).toContain("Opening Claude's browser account switch flow");
     expect(logs.join("")).toContain("new quota usage is 40%");
     expect(result.errorCode).toBeNull();
     expect(result.sessionId).toBe("claude-session-new");
+  });
+
+  it("coalesces concurrent quota probes and host account-switch browser flows", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-claude-switch-single-flight-"));
+    cleanupDirs.push(rootDir);
+    const workspaceDir = path.join(rootDir, "workspace");
+    await mkdir(workspaceDir, { recursive: true });
+
+    getQuotaWindowsForEnv
+      .mockResolvedValueOnce({
+        provider: "anthropic",
+        source: "test",
+        ok: true,
+        windows: [{ label: "Current session", usedPercent: 95, resetsAt: null, valueLabel: null, detail: null }],
+      })
+      .mockResolvedValueOnce({
+        provider: "anthropic",
+        source: "test",
+        ok: true,
+        windows: [{ label: "Current session", usedPercent: 20, resetsAt: null, valueLabel: null, detail: null }],
+      });
+
+    let releaseLogin!: () => void;
+    const loginGate = new Promise<void>((resolve) => {
+      releaseLogin = resolve;
+    });
+    runChildProcess.mockImplementation(async (...rawArgs: unknown[]) => {
+      const [childRunId, , args] = rawArgs as [string, string, string[]];
+      if (args[0] === "auth" && args[1] === "logout") {
+        return {
+          exitCode: 0,
+          signal: null,
+          timedOut: false,
+          stdout: "Logged out",
+          stderr: "",
+          pid: 201,
+          startedAt: new Date().toISOString(),
+        };
+      }
+      if (args[0] === "auth" && args[1] === "login") {
+        await loginGate;
+        return {
+          exitCode: 0,
+          signal: null,
+          timedOut: false,
+          stdout: "Login successful",
+          stderr: "",
+          pid: 202,
+          startedAt: new Date().toISOString(),
+        };
+      }
+      return {
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        stdout: [
+          JSON.stringify({ type: "system", subtype: "init", session_id: `session-${childRunId}`, model: "claude-sonnet" }),
+          JSON.stringify({ type: "result", session_id: `session-${childRunId}`, result: "done", usage: { input_tokens: 1, cache_read_input_tokens: 0, output_tokens: 1 } }),
+        ].join("\n"),
+        stderr: "",
+        pid: 203,
+        startedAt: new Date().toISOString(),
+      };
+    });
+
+    const makeExecution = (runId: string) => execute({
+      runId,
+      agent: {
+        id: "agent-1",
+        companyId: "company-1",
+        name: "Claude Coder",
+        adapterType: "claude_local",
+        adapterConfig: {},
+      },
+      runtime: {
+        sessionId: null,
+        sessionParams: null,
+        sessionDisplayId: null,
+        taskKey: null,
+      },
+      config: {
+        command: "claude",
+        cwd: workspaceDir,
+        quotaSwitchThresholdPercent: 95,
+      },
+      context: {},
+      onLog: async () => {},
+    });
+
+    const first = makeExecution("run-concurrent-a");
+    const second = makeExecution("run-concurrent-b");
+    const commandArgsForCall = (call: unknown): string[] =>
+      (call as [string, string, string[]])[2];
+    await vi.waitFor(() => {
+      const loginCalls = runChildProcess.mock.calls.filter((call) => {
+        const args = commandArgsForCall(call);
+        return args[0] === "auth" && args[1] === "login";
+      });
+      expect(loginCalls).toHaveLength(1);
+    });
+    releaseLogin();
+
+    const results = await Promise.all([first, second]);
+    expect(results.every((result) => result.errorCode == null)).toBe(true);
+    expect(getQuotaWindowsForEnv).toHaveBeenCalledTimes(2);
+    const authCalls = runChildProcess.mock.calls.filter((call) => {
+      const args = commandArgsForCall(call);
+      return args[0] === "auth";
+    });
+    expect(authCalls.map(commandArgsForCall)).toEqual([
+      ["auth", "logout"],
+      ["auth", "login", "--claudeai"],
+    ]);
   });
 
 });

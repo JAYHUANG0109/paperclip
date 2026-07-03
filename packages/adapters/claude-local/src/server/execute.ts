@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AdapterExecutionContext, AdapterExecutionResult } from "@paperclipai/adapter-utils";
+import type {
+  AdapterExecutionContext,
+  AdapterExecutionResult,
+  ProviderQuotaResult,
+} from "@paperclipai/adapter-utils";
 import type { RunProcessResult } from "@paperclipai/adapter-utils/server-utils";
 import {
   adapterExecutionTargetIsRemote,
@@ -70,6 +74,19 @@ import { getQuotaWindowsForEnv } from "./quota.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const CLAUDE_QUOTA_CACHE_SUCCESS_MS = 60_000;
+const CLAUDE_QUOTA_CACHE_FAILURE_MS = 10_000;
+
+let claudeQuotaCache: {
+  key: string;
+  expiresAt: number;
+  result: ProviderQuotaResult;
+} | null = null;
+let claudeQuotaProbeInFlight: {
+  key: string;
+  task: Promise<ProviderQuotaResult>;
+} | null = null;
+let claudeHostAccountSwitchInFlight: Promise<RunProcessResult> | null = null;
 
 interface ClaudeExecutionInput {
   runId: string;
@@ -148,6 +165,119 @@ function resolveClaudeQuotaSwitchThreshold(config: Record<string, unknown>): num
   const raw = asNumber(config.quotaSwitchThresholdPercent, 95);
   if (!Number.isFinite(raw) || raw <= 0) return 95;
   return Math.min(100, Math.max(1, raw));
+}
+
+function claudeHostAuthKey(env: NodeJS.ProcessEnv): string {
+  const configDir =
+    typeof env.CLAUDE_CONFIG_DIR === "string" && env.CLAUDE_CONFIG_DIR.trim().length > 0
+      ? path.resolve(env.CLAUDE_CONFIG_DIR.trim())
+      : "default";
+  const home =
+    typeof env.HOME === "string" && env.HOME.trim().length > 0
+      ? path.resolve(env.HOME.trim())
+      : "";
+  return `${home}\0${configDir}`;
+}
+
+async function getSharedClaudeQuota(
+  env: NodeJS.ProcessEnv,
+  options: { forceRefresh?: boolean } = {},
+): Promise<ProviderQuotaResult> {
+  const key = claudeHostAuthKey(env);
+  const now = Date.now();
+  if (
+    !options.forceRefresh &&
+    claudeQuotaCache?.key === key &&
+    claudeQuotaCache.expiresAt > now
+  ) {
+    return claudeQuotaCache.result;
+  }
+  if (claudeQuotaProbeInFlight?.key === key) {
+    return claudeQuotaProbeInFlight.task;
+  }
+
+  const task = getQuotaWindowsForEnv(env).then((result) => {
+    claudeQuotaCache = {
+      key,
+      result,
+      expiresAt:
+        Date.now() +
+        (result.ok ? CLAUDE_QUOTA_CACHE_SUCCESS_MS : CLAUDE_QUOTA_CACHE_FAILURE_MS),
+    };
+    return result;
+  });
+  claudeQuotaProbeInFlight = { key, task };
+  try {
+    return await task;
+  } finally {
+    if (claudeQuotaProbeInFlight?.task === task) {
+      claudeQuotaProbeInFlight = null;
+    }
+  }
+}
+
+async function runHostClaudeAccountSwitch(input: {
+  runId: string;
+  command: string;
+  cwd: string;
+  env: Record<string, string>;
+  timeoutSec: number;
+  graceSec: number;
+  onLog: (stream: "stdout" | "stderr", chunk: string) => Promise<void>;
+}): Promise<RunProcessResult> {
+  if (claudeHostAccountSwitchInFlight) {
+    await input.onLog(
+      "stdout",
+      "[paperclip] Another local heartbeat already opened Claude's host account switch flow; waiting for it to finish.\n",
+    );
+    return claudeHostAccountSwitchInFlight;
+  }
+
+  const task = (async () => {
+    const logoutProc = await runAdapterExecutionTargetProcess(
+      `${input.runId}-switch-account-logout`,
+      null,
+      input.command,
+      ["auth", "logout"],
+      {
+        cwd: input.cwd,
+        env: input.env,
+        timeoutSec: Math.min(30, input.timeoutSec),
+        graceSec: input.graceSec,
+        onLog: input.onLog,
+      },
+    );
+    if (logoutProc.timedOut || (logoutProc.exitCode ?? 0) !== 0) {
+      return logoutProc;
+    }
+    return runAdapterExecutionTargetProcess(
+      `${input.runId}-switch-account-login`,
+      null,
+      input.command,
+      ["auth", "login", "--claudeai"],
+      {
+        cwd: input.cwd,
+        env: input.env,
+        timeoutSec: input.timeoutSec,
+        graceSec: input.graceSec,
+        onLog: input.onLog,
+      },
+    );
+  })();
+  claudeHostAccountSwitchInFlight = task;
+  try {
+    return await task;
+  } finally {
+    if (claudeHostAccountSwitchInFlight === task) {
+      claudeHostAccountSwitchInFlight = null;
+    }
+  }
+}
+
+export function resetClaudeQuotaSwitchStateForTests(): void {
+  claudeQuotaCache = null;
+  claudeQuotaProbeInFlight = null;
+  claudeHostAccountSwitchInFlight = null;
 }
 
 async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<ClaudeRuntimeConfig> {
@@ -462,7 +592,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   ) {
     let quotaSwitchStarted = false;
     try {
-      const quota = await getQuotaWindowsForEnv(effectiveEnv);
+      const quota = await getSharedClaudeQuota(effectiveEnv);
       if (!quota.ok) {
         await onLog(
           "stderr",
@@ -480,19 +610,15 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             30,
             asNumber(config.quotaAccountSwitchTimeoutSec, 300),
           );
-          const switchProc = await runAdapterExecutionTargetProcess(
-            `${runId}-switch-account`,
-            null,
+          const switchProc = await runHostClaudeAccountSwitch({
+            runId,
             command,
-            ["auth", "login", "--claudeai"],
-            {
-              cwd,
-              env,
-              timeoutSec: switchTimeoutSec,
-              graceSec,
-              onLog,
-            },
-          );
+            cwd,
+            env,
+            timeoutSec: switchTimeoutSec,
+            graceSec,
+            onLog,
+          });
           const switchLoginMeta = detectClaudeLoginRequired({
             parsed: null,
             stdout: switchProc.stdout,
@@ -521,7 +647,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             };
           }
 
-          const switchedQuota = await getQuotaWindowsForEnv(effectiveEnv);
+          const switchedQuota = await getSharedClaudeQuota(effectiveEnv, {
+            forceRefresh: true,
+          });
           const switchedMaxUsed = switchedQuota.ok
             ? maxQuotaUsedPercent(switchedQuota.windows)
             : null;

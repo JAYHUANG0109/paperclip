@@ -429,7 +429,10 @@ function quoteForShell(value: string): string {
 }
 
 function buildClaudeCliShellProbeCommand(): string {
-  const feed = "(sleep 2; printf '/usage\\r'; sleep 6; printf '\\033'; sleep 1; printf '\\003')";
+  // Claude can take several seconds to initialize the interactive status UI,
+  // especially when multiple Paperclip heartbeats start together. Keep the
+  // panel open long enough for the provider response to render.
+  const feed = "(sleep 3; printf '/usage\\r'; sleep 15; printf '\\033'; sleep 1; printf '\\003')";
   const claudeCommand = "claude --tools \"\"";
   if (process.platform === "darwin") {
     return `${feed} | script -q /dev/null ${claudeCommand}`;
@@ -437,7 +440,7 @@ function buildClaudeCliShellProbeCommand(): string {
   return `${feed} | script -q -e -f -c ${quoteForShell(claudeCommand)} /dev/null`;
 }
 
-export async function captureClaudeCliUsageText(timeoutMs = 12_000, envOverride?: NodeJS.ProcessEnv): Promise<string> {
+export async function captureClaudeCliUsageText(timeoutMs = 25_000, envOverride?: NodeJS.ProcessEnv): Promise<string> {
   const command = buildClaudeCliShellProbeCommand();
   try {
     const { stdout, stderr } = await execFileAsync("sh", ["-c", command], {
@@ -469,7 +472,7 @@ export async function captureClaudeCliUsageText(timeoutMs = 12_000, envOverride?
 }
 
 export async function fetchClaudeCliQuota(envOverride?: NodeJS.ProcessEnv): Promise<QuotaWindow[]> {
-  const rawText = await captureClaudeCliUsageText(12_000, envOverride);
+  const rawText = await captureClaudeCliUsageText(25_000, envOverride);
   return parseClaudeCliUsageText(rawText);
 }
 

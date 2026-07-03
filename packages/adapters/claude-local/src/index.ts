@@ -45,7 +45,7 @@ Core fields:
 - dangerouslySkipPermissions (boolean, optional, default true): allow non-interactive Claude runs to proceed without approval prompts. Local targets receive --dangerously-skip-permissions; remote targets receive a curated --allowedTools list so they do not inherit local bypass permissions.
 - command (string, optional): defaults to "claude"
 - extraArgs (string[], optional): additional CLI args
-- autoSwitchAccountOnQuota (boolean, optional, default true): for local Claude subscription auth, check quota before a heartbeat and launch Claude's browser account-login flow when usage reaches the configured threshold. Paperclip verifies the newly selected account before starting work and never rotates saved credential directories.
+- autoSwitchAccountOnQuota (boolean, optional, default true): for local Claude subscription auth, check quota before a heartbeat and launch Claude's host-local browser sign-out/sign-in flow when usage reaches the configured threshold. Only the computer running Paperclip opens the browser; connected board users receive no automatic browser action. Paperclip verifies the newly selected account before starting work and never rotates saved credential directories.
 - quotaSwitchThresholdPercent (number, optional, default 95): usage percentage that triggers the browser account-switch flow.
 - quotaAccountSwitchTimeoutSec (number, optional, default 300): how long Paperclip waits for the browser account switch to finish.
 - env (object, optional): KEY=VALUE environment variables
