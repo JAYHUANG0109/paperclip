@@ -598,28 +598,66 @@ export function NewIssueDialog() {
 
       return { issue, companyId, failures };
     },
-    onSuccess: ({ issue, companyId, failures }) => {
+    onSuccess: ({ issue, companyId, failures }, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listMineByMe(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listTouchedByMe(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
       if (draftTimer.current) clearTimeout(draftTimer.current);
+
+      // Always confirm creation with a toast. Without this, a successful create
+      // closed the dialog silently — and an unassigned task then went nowhere
+      // the creator was looking, so it felt like the task (and everything typed)
+      // had simply vanished. The action link makes the new task one click away.
+      const prefix = (companies.find((company) => company.id === companyId)?.issuePrefix ?? "").trim();
+      const issueRef = issue.identifier ?? issue.id;
+      const action = prefix
+        ? {
+            label: t("newIssue.openRef", { ref: issueRef, defaultValue: `Open ${issueRef}` }),
+            href: `/${prefix}/issues/${issueRef}`,
+          }
+        : undefined;
+      const wasAssigned = Boolean(variables.assigneeAgentId || variables.assigneeUserId);
+
       if (failures.length > 0) {
-        const prefix = (companies.find((company) => company.id === companyId)?.issuePrefix ?? "").trim();
-        const issueRef = issue.identifier ?? issue.id;
         pushToast({
-          title: `Created ${issueRef} with upload warnings`,
-          body: `${failures.length} staged ${failures.length === 1 ? "file" : "files"} could not be added.`,
+          title: t("newIssue.createdWithWarnings", { ref: issueRef, defaultValue: `Created ${issueRef} with upload warnings` }),
+          body: t("newIssue.filesCouldNotBeAdded", { count: failures.length, defaultValue: `${failures.length} staged files could not be added.` }),
           tone: "warn",
-          action: prefix
-            ? { label: `Open ${issueRef}`, href: `/${prefix}/issues/${issueRef}` }
-            : undefined,
+          action,
+        });
+      } else if (!wasAssigned) {
+        // Created, but with no assignee no agent will act on it — say so plainly.
+        pushToast({
+          title: t("newIssue.created", { ref: issueRef, defaultValue: `Created ${issueRef}` }),
+          body: t("newIssue.createdUnassignedBody", {
+            defaultValue: "This task has no assignee, so no agent will pick it up. Open it to assign someone.",
+          }),
+          tone: "warn",
+          action,
+        });
+      } else {
+        pushToast({
+          title: t("newIssue.created", { ref: issueRef, defaultValue: `Created ${issueRef}` }),
+          tone: "success",
+          action,
         });
       }
+
       clearDraft();
       reset();
       closeNewIssue();
+    },
+    onError: (error) => {
+      // Surface failures loudly. The dialog stays open and the draft is
+      // preserved (it is only cleared on success/discard), so nothing typed
+      // is lost — the user can fix the problem and retry.
+      pushToast({
+        title: t("newIssue.createFailed", { defaultValue: "Failed to create task. Try again." }),
+        body: error instanceof Error ? error.message : undefined,
+        tone: "error",
+      });
     },
   });
 

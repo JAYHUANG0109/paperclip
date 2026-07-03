@@ -720,6 +720,68 @@ describe("NewIssueDialog", () => {
     act(() => root.unmount());
   });
 
+  it("confirms creation with a toast and warns when there is no assignee", async () => {
+    const { root } = renderDialog(container);
+    await flush();
+
+    const titleInput = container.querySelector('textarea[placeholder="Task title"]') as HTMLTextAreaElement | null;
+    expect(titleInput).not.toBeNull();
+    await typeTextareaValue(titleInput!, "Orphan task");
+    await flush();
+
+    const submitButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Create Task"));
+    expect(submitButton).not.toBeUndefined();
+    await vi.waitFor(() => {
+      expect(submitButton?.hasAttribute("disabled")).toBe(false);
+    });
+
+    await act(async () => {
+      submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    // No assignee was chosen: the user must be told the task will sit idle,
+    // and given a one-click way to open the task that would otherwise "vanish".
+    expect(toastState.pushToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tone: "warn",
+        action: expect.objectContaining({ href: "/PAP/issues/PAP-2" }),
+      }),
+    );
+
+    act(() => root.unmount());
+  });
+
+  it("surfaces an error toast and keeps the dialog open when creation fails", async () => {
+    mockIssuesApi.create.mockRejectedValue(new Error("boom"));
+    const { root } = renderDialog(container);
+    await flush();
+
+    const titleInput = container.querySelector('textarea[placeholder="Task title"]') as HTMLTextAreaElement | null;
+    expect(titleInput).not.toBeNull();
+    await typeTextareaValue(titleInput!, "Will fail");
+    await flush();
+
+    const submitButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Create Task"));
+    await vi.waitFor(() => {
+      expect(submitButton?.hasAttribute("disabled")).toBe(false);
+    });
+    await act(async () => {
+      submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    expect(toastState.pushToast).toHaveBeenCalledWith(
+      expect.objectContaining({ tone: "error", body: "boom" }),
+    );
+    // Failure must not close the dialog or discard the draft.
+    expect(dialogState.closeNewIssue).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+  });
+
   it("submits Chinese, Japanese, and Hindi issue text without normalization", async () => {
     const title = "验证中文任务";
     const description = [

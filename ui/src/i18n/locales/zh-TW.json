@@ -4950,7 +4950,9 @@
     "laneCustomHint": "僅針對此任務覆寫模型與運算強度。",
     "upload": "上傳",
     "assignedBacklogNote": "指派代表可執行的意圖 — 僅在你刻意要擱置時才將狀態保留為「待辦清單」。受指派者在狀態移至「待辦」或「進行中」之前不會被喚醒。",
-    "lowTrustNote": "低信任審查代理人。它只能在其指派的審查邊界內行動；具體範圍由議題、專案或執行政策定義。"
+    "lowTrustNote": "低信任審查代理人。它只能在其指派的審查邊界內行動；具體範圍由議題、專案或執行政策定義。",
+    "created": "已建立 {{ref}}",
+    "createdUnassignedBody": "此任務尚未指派負責人，因此不會有代理人接手。開啟以指派。"
   },
   "routineDetail": {
     "concurrencyDesc": {

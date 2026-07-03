@@ -4950,7 +4950,9 @@
     "laneCustomHint": "Override the model and effort for this task only.",
     "upload": "Upload",
     "assignedBacklogNote": "Assigning implies executable intent — leave status as Backlog only to deliberately park this. The assignee will not be woken until status moves to Todo or In Progress.",
-    "lowTrustNote": "Low-trust review agent. It can only act inside its assigned review boundary; issue, project, or run policy defines the concrete scope."
+    "lowTrustNote": "Low-trust review agent. It can only act inside its assigned review boundary; issue, project, or run policy defines the concrete scope.",
+    "created": "已创建 {{ref}}",
+    "createdUnassignedBody": "此任务尚未指派负责人，因此不会有代理人接手。打开以指派。"
   },
   "routineDetail": {
     "concurrencyDesc": {
@@ -5686,7 +5688,16 @@
     "detailDue": "Due",
     "detailLink": "Link",
     "openInAsana": "Open in Asana",
-    "detailDescription": "Description"
+    "detailDescription": "Description",
+    "openCount": "{{count}} 项待办",
+    "retryComplete": "更新失败 — 点击重试",
+    "updateFailed": "无法在 Asana 更新 — 点击重试",
+    "updateFailedShort": "失败",
+    "comments": "评论",
+    "loadingComments": "正在加载评论…",
+    "commentsError": "无法加载评论。",
+    "noComments": "暂无评论。",
+    "commentAuthorUnknown": "某人"
   },
   "founder": {
     "close": "Close",

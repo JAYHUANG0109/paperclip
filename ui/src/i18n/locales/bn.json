@@ -4950,7 +4950,9 @@
     "laneCustomHint": "Override the model and effort for this task only.",
     "upload": "Upload",
     "assignedBacklogNote": "Assigning implies executable intent — leave status as Backlog only to deliberately park this. The assignee will not be woken until status moves to Todo or In Progress.",
-    "lowTrustNote": "Low-trust review agent. It can only act inside its assigned review boundary; issue, project, or run policy defines the concrete scope."
+    "lowTrustNote": "Low-trust review agent. It can only act inside its assigned review boundary; issue, project, or run policy defines the concrete scope.",
+    "created": "Created {{ref}}",
+    "createdUnassignedBody": "This task has no assignee, so no agent will pick it up. Open it to assign someone."
   },
   "routineDetail": {
     "concurrencyDesc": {
@@ -5686,7 +5688,16 @@
     "detailDue": "Due",
     "detailLink": "Link",
     "openInAsana": "Open in Asana",
-    "detailDescription": "Description"
+    "detailDescription": "Description",
+    "openCount": "{{count}} open",
+    "retryComplete": "Couldn't update — retry",
+    "updateFailed": "Couldn't update in Asana — click to retry",
+    "updateFailedShort": "Failed",
+    "comments": "Comments",
+    "loadingComments": "Loading comments…",
+    "commentsError": "Couldn't load comments.",
+    "noComments": "No comments.",
+    "commentAuthorUnknown": "Someone"
   },
   "founder": {
     "close": "Close",
