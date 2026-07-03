@@ -30,23 +30,31 @@ fi
 cd "$LIVE"
 BRANCH="$(git branch --show-current)"
 
-echo "▶ [1/4] Pulling pushed code on '$BRANCH' into the live checkout…"
+echo "▶ [1/5] Pulling pushed code on '$BRANCH' into the live checkout…"
 git fetch --quiet origin "$BRANCH"
 BEFORE="$(git rev-parse --short HEAD)"
 git reset --hard --quiet "origin/$BRANCH"
 AFTER="$(git rev-parse --short HEAD)"
 echo "  $BEFORE → $AFTER"
 
-echo "▶ [2/4] Installing dependencies (fast if unchanged)…"
+echo "▶ [2/5] Installing dependencies (fast if unchanged)…"
 pnpm install --frozen-lockfile --prefer-offline >/tmp/deploy-live-install.log 2>&1 \
   || { echo "✗ Dependency install failed — NOT restarting. See /tmp/deploy-live-install.log" >&2; exit 1; }
 
-echo "▶ [3/4] Building the UI bundle…"
-# UI-only build: the server runs from TS source via tsx (no server build needed),
-# and the workspace packages were built during setup. We deliberately do NOT run the
-# full `pnpm build` here because it re-fetches the skills-catalog manifest from GitHub
-# every time and fails when GitHub is unreachable/rate-limited. If you ever change a
-# workspace package (packages/*), run a full `pnpm build` in ~/paperclip-live manually.
+echo "▶ [3/5] Building the Claude adapter…"
+# The live server imports workspace adapter packages from their compiled dist
+# output, so adapter source fixes are not deployed until this package is rebuilt.
+if ! pnpm --filter @paperclipai/adapter-claude-local build; then
+  echo "" >&2
+  echo "✗ Claude adapter build FAILED — the service was NOT restarted." >&2
+  echo "  The live site keeps serving the previous working build. Fix and re-run." >&2
+  exit 1
+fi
+
+echo "▶ [4/5] Building the UI bundle…"
+# We deliberately do NOT run the full `pnpm build` here because it re-fetches
+# the skills-catalog manifest from GitHub every time and can fail when GitHub is
+# unreachable/rate-limited.
 if ! pnpm --filter @paperclipai/ui build; then
   echo "" >&2
   echo "✗ UI build FAILED — the service was NOT restarted." >&2
@@ -55,7 +63,7 @@ if ! pnpm --filter @paperclipai/ui build; then
 fi
 
 echo ""
-echo "▶ [4/4] Restarting service ($SERVICE)…"
+echo "▶ [5/5] Restarting service ($SERVICE)…"
 launchctl kickstart -k "gui/$(id -u)/$SERVICE"
 
 for i in $(seq 1 45); do
