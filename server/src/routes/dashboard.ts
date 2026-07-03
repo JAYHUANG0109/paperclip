@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentMemberships } from "@paperclipai/db";
+import { agentMemberships, routines as routinesTable, routineTriggers } from "@paperclipai/db";
 import { dashboardService } from "../services/dashboard.js";
 import { notificationService } from "../services/notifications.js";
 import {
@@ -35,6 +35,7 @@ import {
   eventIsMine,
 } from "../services/google-calendar.js";
 import { heartbeatService } from "../services/heartbeat.js";
+import { routineService } from "../services/routines.js";
 import { assertCompanyAccess, assertPrivilegedMemberView } from "./authz.js";
 
 /**
@@ -78,6 +79,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
   const router = Router();
   const svc = dashboardService(db);
   const heartbeat = heartbeatService(db);
+  const routineSvc = routineService(db);
   const notifications = notificationService(db);
 
   router.get("/companies/:companyId/dashboard", async (req, res) => {
@@ -424,17 +426,48 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     } catch {
       /* forward is best-effort — never let it affect the refresh/wake */
     }
-    // Still wake the agent to regenerate the numbers from Asana for next time.
-    await heartbeat.wakeup(agentId, {
-      source: "on_demand",
-      triggerDetail: "manual",
-      reason: "founder-digest-refresh",
-      payload: { directive: "founder-digest-refresh" },
-      idempotencyKey: `founder-refresh:${agentId}:${Math.floor(Date.now() / 60000)}`,
-      requestedByActorType: "user",
-      requestedByActorId: userId ?? null,
-    });
-    res.json({ ok: true });
+    // Regenerate by firing the agent's OWN daily-console routine on demand —
+    // exactly what the 12:00 schedule does. This creates a routine-execution task
+    // in the agent's inbox, which its normal heartbeat reliably picks up and runs
+    // (re-read Asana → regenerate → POST /founder-digest → mark done). A bare
+    // `wakeup` did NOT work: with an empty inbox the agent just exits without
+    // running the pipeline. Each console agent owns exactly one active scheduled
+    // routine, so this is unambiguous. Stranded executions auto-cancel (recovery)
+    // rather than escalating to the founder.
+    const [consoleRoutine] = await db
+      .select({ id: routinesTable.id })
+      .from(routinesTable)
+      .innerJoin(
+        routineTriggers,
+        and(
+          eq(routineTriggers.routineId, routinesTable.id),
+          eq(routineTriggers.kind, "schedule"),
+          eq(routineTriggers.enabled, true),
+        ),
+      )
+      .where(
+        and(
+          eq(routinesTable.companyId, companyId),
+          eq(routinesTable.assigneeAgentId, agentId),
+          eq(routinesTable.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (consoleRoutine) {
+      try {
+        await routineSvc.runRoutine(
+          consoleRoutine.id,
+          { source: "manual", idempotencyKey: `founder-refresh:${consoleRoutine.id}:${Math.floor(Date.now() / 60000)}` },
+          { agentId: null, userId: userId ?? null },
+        );
+      } catch {
+        /* a duplicate/idempotent dispatch is fine — the console will still refresh */
+      }
+    }
+    // If no console routine is assigned to this agent (e.g. a test/preview account
+    // viewing copied consoles), there is nothing to regenerate — the Chat forward
+    // above already ran. The response is fine either way.
+    res.json({ ok: true, regenerating: Boolean(consoleRoutine) });
   });
 
   // Record the founder's decision on a 待批閱 item's draft 批閱 — 核准 (approved) /
