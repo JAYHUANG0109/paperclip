@@ -115,7 +115,14 @@ export interface DailyConsole {
   digest: FounderDigest;
 }
 
-function asConsoleKey(v: unknown): ConsoleKey {
+/** Resolve an arbitrary console value to a ConsoleKey, defaulting to "founder"
+ *  when absent/unknown — this is the SAME defaulting `writeFounderDigestForAgent`
+ *  uses to pick the metadata slot. Routes that need to know which console was
+ *  actually written (e.g. to gate the per-console ping or the founder auto-post)
+ *  MUST use this, not `toConsoleKey` (which returns null on absent) — otherwise
+ *  an agent that omits `console` (single-console founder) writes the founder slot
+ *  but the route sees null and skips. */
+export function asConsoleKey(v: unknown): ConsoleKey {
   if (v === "principal") return "principal";
   if (v === "principalZhengXitun") return "principalZhengXitun";
   return "founder";

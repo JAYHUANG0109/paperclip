@@ -20,9 +20,11 @@ import {
   getFounderItemByGid,
   CONSOLE_TITLE,
   toConsoleKey,
+  asConsoleKey,
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
+import { logger } from "../middleware/logger.js";
 import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, resolveFounderPostTargetGid, autoPostFounderAiComments } from "../services/agent-asana.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
@@ -353,11 +355,14 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     // so a principal who gets both can tell them apart (待決議 console vs. tasks).
     // Guarded — a failure here must never affect the digest write.
     try {
-      const consoleKey = toConsoleKey((req.body as { console?: unknown })?.console);
+      // Match the slot the write actually used: an agent that omits `console`
+      // (single-console founder like 唐姐) writes the founder slot via the same
+      // default. Using toConsoleKey here (null on absent) skipped the ping.
+      const consoleKey = asConsoleKey((req.body as { console?: unknown })?.console);
       const cats = digest.categories;
       const total =
         cats.urgent.length + cats.meetings.length + cats.nonUrgent.length + cats.reminders.length;
-      if (consoleKey && total > 0) {
+      if (total > 0) {
         const [m] = await db
           .select({ userId: agentMemberships.userId })
           .from(agentMemberships)
@@ -388,11 +393,21 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     // the server is the sole writer, so a leak is structurally impossible. Runs
     // AFTER the response, fully guarded — it must never affect the digest write.
     try {
-      const consoleKey = toConsoleKey((req.body as { console?: unknown })?.console);
+      // Resolve the SAME way the write did (absent → founder); toConsoleKey
+      // returned null when 唐姐's agent omitted `console`, so this gate never
+      // fired and no AI comment was posted despite a finished run.
+      const consoleKey = asConsoleKey((req.body as { console?: unknown })?.console);
       const agentId = req.actor.agentId;
       if (consoleKey === "founder" && agentId) {
         const items = [...digest.categories.urgent, ...digest.categories.nonUrgent];
-        void autoPostFounderAiComments(db, companyId, agentId, items).catch(() => {});
+        void autoPostFounderAiComments(db, companyId, agentId, items)
+          .then((r) =>
+            logger.info(
+              { companyId, agentId, items: items.length, ...r },
+              "founder-digest auto-post complete",
+            ),
+          )
+          .catch((err) => logger.warn({ err }, "founder-digest auto-post failed"));
       }
     } catch {
       /* auto-post is best-effort */
