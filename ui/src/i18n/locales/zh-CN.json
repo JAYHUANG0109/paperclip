@@ -5668,7 +5668,11 @@
     "open": "前往办公室",
     "browseAgents": "浏览代理",
     "agentCatalog": "代理人目录",
-    "noAgents": "没有符合此筛选的代理人。"
+    "noAgents": "没有符合此筛选的代理人。",
+    "levelShort": "Lv",
+    "badges": "徽章",
+    "badgeEarned": "已获得",
+    "noBadgesYet": "暂无徽章"
   },
   "asana": {
     "myTasks": "我的任务 (Asana)",

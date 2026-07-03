@@ -5,7 +5,7 @@ import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, User
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { agentsApi } from "../api/agents";
+import { agentsApi, type AgentProgression, type AgentBadgeState } from "../api/agents";
 import { assetsApi } from "../api/assets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { leaderboardApi, type LeaderboardEntry } from "../api/leaderboard";
@@ -83,6 +83,11 @@ export function VirtualOffice() {
   const { data: viewable } = useQuery({
     queryKey: ["office-viewable-agents", selectedCompanyId],
     queryFn: () => agentsApi.myVisibleAgents(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const { data: progressionByAgent } = useQuery({
+    queryKey: ["office-agent-progression", selectedCompanyId],
+    queryFn: () => agentsApi.progression(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
   const canViewAgent = (agentId: string) =>
@@ -166,6 +171,7 @@ export function VirtualOffice() {
           workingIds={workingAgentIds}
           skillCounts={skillCounts}
           leaderboardByUser={leaderboardByUser}
+          progressionByAgent={progressionByAgent}
           canView={canViewAgent}
         />
       )}
@@ -179,6 +185,7 @@ export function VirtualOffice() {
         skillCount={activeAgent ? skillCounts?.[activeAgent.id] ?? 0 : 0}
         score={activeAgent && activeAgent.metadata ? null : null}
         leaderboard={activeAgent ? findLeaderboardForAgent(leaderboardByUser, activeAgent) : null}
+        progression={activeAgent ? progressionByAgent?.[activeAgent.id] ?? null : null}
         onClose={() => setActiveAgent(null)}
       />
     </div>
@@ -198,7 +205,81 @@ function statusInfo(agent: Agent, working: boolean, t: (k: string, o?: Record<st
   return { label: t("office.idle", { defaultValue: "Idle" }), dot: "bg-muted-foreground/40" };
 }
 
-function AgentModal({ agent, companyId, canManage, canView, working, skillCount, leaderboard, onClose }: {
+// Level + XP progress toward the next level. Reuses the shared rank ladder.
+function LevelBar({ progression, className }: { progression: AgentProgression; className?: string }) {
+  const { t, i18n } = useTranslation();
+  const zh = i18n.language?.startsWith("zh");
+  const span = Math.max(1, progression.nextLevelXp - progression.levelFloorXp);
+  const filled = Math.min(1, Math.max(0, (progression.totalXp - progression.levelFloorXp) / span));
+  return (
+    <div className={cn("w-full", className)}>
+      <div className="flex items-baseline justify-between gap-2 text-[11px]">
+        <span className="min-w-0 truncate font-semibold">
+          {t("office.levelShort", { defaultValue: "Lv" })}{progression.level} · {zh ? progression.title.zh : progression.title.en}
+        </span>
+        <span className="shrink-0 tabular-nums text-muted-foreground">{progression.totalXp.toLocaleString()} XP</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.round(filled * 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+// Badge shelf. Compact (catalog card) = earned emoji row + count; full (modal) =
+// all 15 with locked ones dimmed and showing progress toward their threshold.
+function BadgeShelf({ progression, full }: { progression: AgentProgression; full?: boolean }) {
+  const { t, i18n } = useTranslation();
+  const zh = i18n.language?.startsWith("zh");
+  const label = (b: AgentBadgeState) => (zh ? b.zh : b.en);
+  if (!full) {
+    const earned = progression.badges.filter((b) => b.earned);
+    return (
+      <div className="mt-2 flex min-h-5 w-full flex-wrap items-center justify-center gap-1">
+        {earned.length === 0 ? (
+          <span className="text-[11px] text-muted-foreground/70">{t("office.noBadgesYet", { defaultValue: "No badges yet" })}</span>
+        ) : (
+          <>
+            {earned.slice(0, 6).map((b) => (
+              <span key={b.key} title={label(b)} className="text-base leading-none">{b.emoji}</span>
+            ))}
+            <span className="ml-0.5 text-[11px] tabular-nums text-muted-foreground">
+              {earned.length}/{progression.badges.length}
+            </span>
+          </>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold">{t("office.badges", { defaultValue: "Badges" })}</span>
+        <span className="text-[11px] tabular-nums text-muted-foreground">
+          {progression.earnedCount}/{progression.badges.length}
+        </span>
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {progression.badges.map((b) => (
+          <div
+            key={b.key}
+            title={`${label(b)} — ${b.earned ? t("office.badgeEarned", { defaultValue: "Earned" }) : `${b.current}/${b.target}`}`}
+            className={cn(
+              "flex flex-col items-center gap-1 rounded-lg border p-2 text-center",
+              b.earned ? "border-border bg-accent/40" : "border-border/60 opacity-50",
+            )}
+          >
+            <span className={cn("text-xl leading-none", b.earned ? "" : "grayscale")}>{b.emoji}</span>
+            <span className="line-clamp-2 text-[10px] leading-tight">{label(b)}</span>
+            {!b.earned && <span className="text-[9px] tabular-nums text-muted-foreground">{b.current}/{b.target}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AgentModal({ agent, companyId, canManage, canView, working, skillCount, leaderboard, progression, onClose }: {
   agent: Agent | null;
   companyId: string;
   canManage: boolean;
@@ -207,6 +288,7 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
   skillCount: number;
   score: number | null;
   leaderboard: LeaderboardEntry | null;
+  progression: AgentProgression | null;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -268,6 +350,8 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
           </div>
         </div>
 
+        {progression && <LevelBar progression={progression} className="mt-4" />}
+
         {/* Stats */}
         <div className="mt-4 grid grid-cols-3 gap-3">
           <ModalStat icon={Wrench} value={skillCount} label={t("office.skills", { defaultValue: "skills" })} />
@@ -285,6 +369,8 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
         {agent.capabilities && (
           <p className="mt-3 line-clamp-3 text-xs text-muted-foreground">{agent.capabilities}</p>
         )}
+
+        {progression && <BadgeShelf progression={progression} full />}
 
         {canManage && (
           <button
@@ -337,11 +423,12 @@ function ModalStat({ icon: Icon, value, label }: { icon: typeof Wrench; value: n
 // Catalog view: the same player-card content as the modal, laid out as a
 // responsive grid of cards. Uses the already-team-filtered `agents`, so the
 // team chips filter this view exactly like they filter the floor.
-function AgentCatalog({ agents, workingIds, skillCounts, leaderboardByUser, canView }: {
+function AgentCatalog({ agents, workingIds, skillCounts, leaderboardByUser, progressionByAgent, canView }: {
   agents: Agent[];
   workingIds: Set<string>;
   skillCounts: Record<string, number> | undefined;
   leaderboardByUser: Map<string, LeaderboardEntry>;
+  progressionByAgent: Record<string, AgentProgression> | undefined;
   canView: (agentId: string) => boolean;
 }) {
   const { t } = useTranslation();
@@ -361,6 +448,7 @@ function AgentCatalog({ agents, workingIds, skillCounts, leaderboardByUser, canV
           working={workingIds.has(agent.id)}
           skillCount={skillCounts?.[agent.id] ?? 0}
           leaderboard={findLeaderboardForAgent(leaderboardByUser, agent)}
+          progression={progressionByAgent?.[agent.id] ?? null}
           canView={canView(agent.id)}
         />
       ))}
@@ -368,11 +456,12 @@ function AgentCatalog({ agents, workingIds, skillCounts, leaderboardByUser, canV
   );
 }
 
-function AgentCatalogCard({ agent, working, skillCount, leaderboard, canView }: {
+function AgentCatalogCard({ agent, working, skillCount, leaderboard, progression, canView }: {
   agent: Agent;
   working: boolean;
   skillCount: number;
   leaderboard: LeaderboardEntry | null;
+  progression: AgentProgression | null;
   canView: boolean;
 }) {
   const { t } = useTranslation();
@@ -394,11 +483,13 @@ function AgentCatalogCard({ agent, working, skillCount, leaderboard, canView }: 
           {status.label}
         </div>
       </div>
+      {progression && <LevelBar progression={progression} className="mt-3" />}
       <div className="mt-3 grid w-full grid-cols-3 gap-2">
         <ModalStat icon={Wrench} value={skillCount} label={t("office.skills", { defaultValue: "skills" })} />
         <ModalStat icon={Trophy} value={leaderboard?.score ?? 0} label={t("office.minutes", { defaultValue: "minutes" })} />
         <ModalStat icon={Zap} value={working ? t("office.busy", { defaultValue: "Working" }) : t("office.idle", { defaultValue: "Idle" })} label={t("office.status", { defaultValue: "status" })} />
       </div>
+      {progression && <BadgeShelf progression={progression} />}
       {lastSeen && (
         <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
           <Clock className="h-3 w-3" />

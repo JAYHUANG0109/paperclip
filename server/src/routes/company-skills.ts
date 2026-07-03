@@ -4,6 +4,7 @@ import { authUsers, companySkills } from "@paperclipai/db";
 import { eq, inArray } from "drizzle-orm";
 import { leaderboardService } from "../services/leaderboard.js";
 import { progressionFor } from "../services/office-progression.js";
+import { agentProgressionService } from "../services/agent-progression.js";
 import { notificationService } from "../services/notifications.js";
 import {
   catalogSkillListQuerySchema,
@@ -839,6 +840,14 @@ export function companySkillRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     res.json(await svc.agentSkillCounts(companyId));
+  });
+
+  // ---- Virtual office: per-agent progression (level + 15 badges) ----
+  const agentProgression = agentProgressionService(db);
+  router.get("/companies/:companyId/agent-progression", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(await agentProgression.computeForCompany(companyId));
   });
 
   // ---- Leaderboard (排行榜) ----

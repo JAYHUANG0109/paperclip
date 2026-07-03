@@ -5668,7 +5668,11 @@
     "open": "Open office",
     "browseAgents": "Browse agents",
     "agentCatalog": "Agent catalog",
-    "noAgents": "No agents match this filter."
+    "noAgents": "No agents match this filter.",
+    "levelShort": "Lv",
+    "badges": "Badges",
+    "badgeEarned": "Earned",
+    "noBadgesYet": "No badges yet"
   },
   "asana": {
     "myTasks": "My tasks (Asana)",

@@ -30,6 +30,29 @@ export interface AgentKey {
   revokedAt: Date | null;
 }
 
+// Virtual Office gamification — mirrors server/src/services/agent-progression.ts.
+export interface AgentBadgeState {
+  key: string;
+  emoji: string;
+  zh: string;
+  en: string;
+  xp: number;
+  earned: boolean;
+  current: number;
+  target: number;
+}
+
+export interface AgentProgression {
+  totalXp: number;
+  level: number;
+  title: { zh: string; en: string };
+  xpToNext: number;
+  levelFloorXp: number;
+  nextLevelXp: number;
+  earnedCount: number;
+  badges: AgentBadgeState[];
+}
+
 export interface AdapterModel {
   id: string;
   label: string;
@@ -233,6 +256,8 @@ export const agentsApi = {
     api.get<{ skills: AvailableSkill[] }>("/skills/available"),
   skillCounts: (companyId: string) =>
     api.get<Record<string, number>>(`/companies/${encodeURIComponent(companyId)}/agent-skill-counts`),
+  progression: (companyId: string) =>
+    api.get<Record<string, AgentProgression>>(`/companies/${encodeURIComponent(companyId)}/agent-progression`),
   myVisibleAgents: (companyId: string) =>
     api.get<{ privileged: boolean; agentIds: string[] }>(`/companies/${encodeURIComponent(companyId)}/my-visible-agents`),
   setOfficeAvatar: (id: string, url: string, companyId?: string) =>
