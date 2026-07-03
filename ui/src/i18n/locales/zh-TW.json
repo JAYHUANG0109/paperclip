@@ -5666,7 +5666,9 @@
     "noAccess": "您未管理此代理人",
     "uploadAvatar": "更換頭像",
     "open": "前往辦公室",
-    "browseAgents": "瀏覽代理"
+    "browseAgents": "瀏覽代理",
+    "agentCatalog": "代理人型錄",
+    "noAgents": "沒有符合此篩選的代理人。"
   },
   "asana": {
     "myTasks": "我的任務 (Asana)",

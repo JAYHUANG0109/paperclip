@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users, Palette } from "lucide-react";
+import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users, Palette, LayoutGrid, Building2 } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -23,11 +23,29 @@ import { cn } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
 import type { Agent } from "@paperclipai/shared";
 
+const OFFICE_VIEW_KEY = "paperclip:office-view";
+
 export function VirtualOffice() {
   const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
+  // Two ways to look at the same (team-filtered) roster: the pixel-art floor, or
+  // a catalog of player cards. The choice is remembered so a reload keeps it.
+  const [view, setView] = useState<"office" | "catalog">(() => {
+    try {
+      return localStorage.getItem(OFFICE_VIEW_KEY) === "catalog" ? "catalog" : "office";
+    } catch {
+      return "office";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(OFFICE_VIEW_KEY, view);
+    } catch {
+      /* ignore */
+    }
+  }, [view]);
   // Zoom lives here (not in the floor) so its control can sit in the filters row.
   const [userZoom, setUserZoom] = useState<number | null>(null); // null = auto-fit
   const [fitZoom, setFitZoom] = useState(1);
@@ -97,35 +115,60 @@ export function VirtualOffice() {
         </div>
         {/* Zoom control — same row as the filters, left of the view switch. Uses
             theme tokens so it flips with dark/light mode (dark bg + light text in
-            dark mode, and the reverse in light mode). */}
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setUserZoom(clampZoom((userZoom ?? fitZoom) - 0.2))}
-            title="Zoom out"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-sm font-bold text-foreground transition-colors hover:bg-accent"
-          >−</button>
-          <button
-            type="button"
-            onClick={() => setUserZoom(null)}
-            title="Fit to screen"
-            className="inline-flex h-7 items-center justify-center rounded-md border border-border bg-background px-2.5 text-xs font-bold text-foreground transition-colors hover:bg-accent"
-          >FIT</button>
-          <button
-            type="button"
-            onClick={() => setUserZoom(clampZoom((userZoom ?? fitZoom) + 0.2))}
-            title="Zoom in"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-sm font-bold text-foreground transition-colors hover:bg-accent"
-          >+</button>
-        </div>
+            dark mode, and the reverse in light mode). Only meaningful for the
+            pixel floor, so it's hidden in the catalog view. */}
+        {view === "office" && (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setUserZoom(clampZoom((userZoom ?? fitZoom) - 0.2))}
+              title="Zoom out"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-sm font-bold text-foreground transition-colors hover:bg-accent"
+            >−</button>
+            <button
+              type="button"
+              onClick={() => setUserZoom(null)}
+              title="Fit to screen"
+              className="inline-flex h-7 items-center justify-center rounded-md border border-border bg-background px-2.5 text-xs font-bold text-foreground transition-colors hover:bg-accent"
+            >FIT</button>
+            <button
+              type="button"
+              onClick={() => setUserZoom(clampZoom((userZoom ?? fitZoom) + 0.2))}
+              title="Zoom in"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-sm font-bold text-foreground transition-colors hover:bg-accent"
+            >+</button>
+          </div>
+        )}
+        {/* Toggle between the pixel floor and the player-card catalog. The label
+            names the view you'll switch TO, mirroring the ViewSwitchButton style. */}
+        <button
+          type="button"
+          onClick={() => setView((v) => (v === "office" ? "catalog" : "office"))}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          {view === "office" ? <LayoutGrid className="h-3.5 w-3.5" /> : <Building2 className="h-3.5 w-3.5" />}
+          {view === "office"
+            ? t("office.agentCatalog", { defaultValue: "Agent catalog" })
+            : t("office.title", { defaultValue: "Virtual Office" })}
+        </button>
         <ViewSwitchButton to="/agents" label={t("office.browseAgents", { defaultValue: "Browse agents" })} icon={Users} />
       </div>
 
-      {/* Break out of the page's padding so the floor uses the full width/height —
-          less wasted black space around the rooms. */}
-      <div className="-mx-4 -mb-4 md:-mx-6 md:-mb-6">
-        <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} userZoom={userZoom} onFitZoomChange={setFitZoom} />
-      </div>
+      {view === "office" ? (
+        /* Break out of the page's padding so the floor uses the full width/height —
+           less wasted black space around the rooms. */
+        <div className="-mx-4 -mb-4 md:-mx-6 md:-mb-6">
+          <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} userZoom={userZoom} onFitZoomChange={setFitZoom} />
+        </div>
+      ) : (
+        <AgentCatalog
+          agents={visibleAgents}
+          workingIds={workingAgentIds}
+          skillCounts={skillCounts}
+          leaderboardByUser={leaderboardByUser}
+          canView={canViewAgent}
+        />
+      )}
 
       <AgentModal
         agent={activeAgent}
@@ -287,6 +330,95 @@ function ModalStat({ icon: Icon, value, label }: { icon: typeof Wrench; value: n
       <Icon className="mx-auto h-4 w-4 text-muted-foreground" />
       <div className="mt-1 text-base font-semibold tabular-nums">{typeof value === "number" ? value.toLocaleString() : value}</div>
       <div className="text-[11px] text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+// Catalog view: the same player-card content as the modal, laid out as a
+// responsive grid of cards. Uses the already-team-filtered `agents`, so the
+// team chips filter this view exactly like they filter the floor.
+function AgentCatalog({ agents, workingIds, skillCounts, leaderboardByUser, canView }: {
+  agents: Agent[];
+  workingIds: Set<string>;
+  skillCounts: Record<string, number> | undefined;
+  leaderboardByUser: Map<string, LeaderboardEntry>;
+  canView: (agentId: string) => boolean;
+}) {
+  const { t } = useTranslation();
+  if (agents.length === 0) {
+    return (
+      <div className="py-20 text-center text-sm text-muted-foreground">
+        {t("office.noAgents", { defaultValue: "No agents match this filter." })}
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      {agents.map((agent) => (
+        <AgentCatalogCard
+          key={agent.id}
+          agent={agent}
+          working={workingIds.has(agent.id)}
+          skillCount={skillCounts?.[agent.id] ?? 0}
+          leaderboard={findLeaderboardForAgent(leaderboardByUser, agent)}
+          canView={canView(agent.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AgentCatalogCard({ agent, working, skillCount, leaderboard, canView }: {
+  agent: Agent;
+  working: boolean;
+  skillCount: number;
+  leaderboard: LeaderboardEntry | null;
+  canView: boolean;
+}) {
+  const { t } = useTranslation();
+  const status = statusInfo(agent, working, t);
+  const lastSeen = agent.lastHeartbeatAt ? new Date(agent.lastHeartbeatAt).toLocaleString() : null;
+  return (
+    <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 text-center transition-colors hover:border-foreground/25">
+      <div className={cn(
+        "relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-2 bg-background",
+        working ? "border-emerald-400/70" : "border-border",
+      )}>
+        <OfficeAvatar agent={agent} size={88} animated={false} clip={false} />
+      </div>
+      <div className="mt-3 w-full min-w-0">
+        <div className="truncate text-sm font-bold">{displayAgentName(agent.name)}</div>
+        <div className="truncate text-xs text-muted-foreground">{agent.title ?? agent.role}</div>
+        <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px]">
+          <span className={cn("h-2 w-2 rounded-full", status.dot)} />
+          {status.label}
+        </div>
+      </div>
+      <div className="mt-3 grid w-full grid-cols-3 gap-2">
+        <ModalStat icon={Wrench} value={skillCount} label={t("office.skills", { defaultValue: "skills" })} />
+        <ModalStat icon={Trophy} value={leaderboard?.score ?? 0} label={t("office.minutes", { defaultValue: "minutes" })} />
+        <ModalStat icon={Zap} value={working ? t("office.busy", { defaultValue: "Working" }) : t("office.idle", { defaultValue: "Idle" })} label={t("office.status", { defaultValue: "status" })} />
+      </div>
+      {lastSeen && (
+        <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+          <Clock className="h-3 w-3" />
+          <span className="truncate">{t("office.lastActive", { defaultValue: "Last active" })}: {lastSeen}</span>
+        </div>
+      )}
+      {canView ? (
+        <Link
+          to={agentUrl(agent)}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          {t("office.viewAgent", { defaultValue: "View agent" })}
+        </Link>
+      ) : (
+        <div className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+          <Lock className="h-3 w-3" />
+          {t("office.noAccess", { defaultValue: "You don't manage this agent" })}
+        </div>
+      )}
     </div>
   );
 }

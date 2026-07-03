@@ -5666,7 +5666,9 @@
     "noAccess": "You don't manage this agent",
     "uploadAvatar": "Change avatar",
     "open": "前往办公室",
-    "browseAgents": "浏览代理"
+    "browseAgents": "浏览代理",
+    "agentCatalog": "代理人目录",
+    "noAgents": "没有符合此筛选的代理人。"
   },
   "asana": {
     "myTasks": "我的任务 (Asana)",

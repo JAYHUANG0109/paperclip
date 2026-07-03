@@ -5666,7 +5666,9 @@
     "noAccess": "You don't manage this agent",
     "uploadAvatar": "Change avatar",
     "open": "Open office",
-    "browseAgents": "Browse agents"
+    "browseAgents": "Browse agents",
+    "agentCatalog": "Agent catalog",
+    "noAgents": "No agents match this filter."
   },
   "asana": {
     "myTasks": "My tasks (Asana)",
