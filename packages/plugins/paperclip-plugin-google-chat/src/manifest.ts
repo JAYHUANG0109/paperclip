@@ -8,6 +8,10 @@ export const WEBHOOK_KEY = "google-chat-events" as const;
  *  Namespaced by the plugin id at runtime. */
 export const SEND_DM_TOOL = "send_chat_message" as const;
 
+/** Agent tool name for posting to a group space (ROOM) by its display name.
+ *  The bot must already be a member of the room. */
+export const SEND_SPACE_TOOL = "send_chat_space_message" as const;
+
 /** Default config values, mirrored by the worker's `getConfig` fallback. */
 export const DEFAULT_CONFIG = {
   /** Secret reference (a Paperclip secret UUID, resolved via ctx.secrets)
@@ -107,6 +111,28 @@ const manifest: PaperclipPluginManifestV1 = {
           text: { type: "string", description: "The message text to send." }
         },
         required: ["email", "text"]
+      }
+    },
+    {
+      name: SEND_SPACE_TOOL,
+      displayName: "Send Google Chat group message",
+      description:
+        "Post a message to a Google Chat group space (room) by its name, e.g. \"領導團隊\". " +
+        "The message is prefixed with your agent name so the room knows who it's from. " +
+        "Only works for rooms the SeasonartsAI bot has been added to; if the room name isn't " +
+        "found, the tool returns the list of rooms it can reach so you can pick the right one.",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          space: {
+            type: "string",
+            description:
+              "The group space's name as shown in Google Chat (e.g. \"領導團隊\"). A unique " +
+              "partial name also works. A raw \"spaces/…\" resource name is accepted too."
+          },
+          text: { type: "string", description: "The message text to send." }
+        },
+        required: ["space", "text"]
       }
     }
   ],

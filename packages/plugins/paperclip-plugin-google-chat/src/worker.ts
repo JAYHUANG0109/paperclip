@@ -5,14 +5,15 @@ import type {
   PluginWebhookResponse,
   ToolResult
 } from "@paperclipai/plugin-sdk";
-import { DEFAULT_CONFIG, SEND_DM_TOOL, WEBHOOK_KEY } from "./manifest.js";
+import { DEFAULT_CONFIG, SEND_DM_TOOL, SEND_SPACE_TOOL, WEBHOOK_KEY } from "./manifest.js";
 import {
   type AccessToken,
   mintAccessToken,
   parseServiceAccountKey
 } from "./google-auth.js";
-import { extractInboundMessage, type InboundMessage, sendMessage, splitFirstImage } from "./chat.js";
+import { extractInboundMessage, extractSpaceRef, type InboundMessage, sendMessage, splitFirstImage } from "./chat.js";
 import { rememberDmTarget, resolveDmSpace } from "./dm.js";
+import { learnSpaceFromApi, listKnownSpaces, rememberSpace, resolveSpaceName } from "./spaces.js";
 import {
   type AgentAssignment,
   getAssignment,
@@ -400,6 +401,68 @@ const plugin = definePlugin({
       }
     );
 
+    // Agent-callable tool: post to a GROUP space (room) by its name. The bot is
+    // one identity for every agent, so we can't make the room message appear to
+    // come from a per-user sender — instead we prefix it with the calling agent's
+    // name (from runCtx) for attribution. The bot must already be a member of the
+    // room; we learn a room's name from inbound activity there. On an unknown name
+    // we return the rooms we CAN reach so the agent can pick correctly.
+    ctx.tools.register(
+      SEND_SPACE_TOOL,
+      {
+        displayName: "Send Google Chat group message",
+        description:
+          "Post a message to a Google Chat group space (room) by its name (e.g. \"領導團隊\"). " +
+          "Prefixed with your agent name so the room knows who sent it. Only reaches rooms the " +
+          "SeasonartsAI bot has been added to.",
+        parametersSchema: {
+          type: "object",
+          properties: {
+            space: { type: "string", description: "The room's name in Google Chat (a unique partial name works)." },
+            text: { type: "string", description: "The message text to send." }
+          },
+          required: ["space", "text"]
+        }
+      },
+      async (params, runCtx): Promise<ToolResult> => {
+        const { space, text } = (params ?? {}) as { space?: string; text?: string };
+        if (!space || !text) {
+          return { error: "Both 'space' and 'text' are required." };
+        }
+        const config = await getConfig(ctx);
+        const spaceName = await resolveSpaceName(ctx, space);
+        if (!spaceName) {
+          const known = await listKnownSpaces(ctx);
+          const names = known.filter((s) => s.displayName).map((s) => `「${s.displayName}」`);
+          return {
+            error: names.length
+              ? `找不到符合「${space}」的群組空間。我目前可張貼的群組：${names.join("、")}。請改用其中一個名稱（可用不重複的部分名稱）。`
+              : `找不到符合「${space}」的群組空間，而且我還沒被加入任何群組。請先把 SeasonartsAI 機器人加入該群組，再試一次。`
+          };
+        }
+        // Attribution: name the sending agent, since all agents share the one bot.
+        let label = "Paperclip 助理";
+        try {
+          const a = await ctx.agents.get(runCtx.agentId, runCtx.companyId);
+          const base = a?.name?.trim() || label;
+          const role = (a?.title || a?.role || "").trim();
+          label = role && !base.includes(role) ? `${base}_${role}` : base;
+        } catch {
+          /* fall back to the generic label */
+        }
+        try {
+          await postFormatted(ctx, config, { spaceName }, `${label}：\n${text}`);
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+        ctx.logger.info("Sent Chat group message via tool", {
+          agentId: runCtx.agentId,
+          space: spaceName
+        });
+        return { content: `已張貼到群組空間。`, data: { spaceName, as: label } };
+      }
+    );
+
     // Liveness check backing the dashboard widget's "Ping Worker" button.
     ctx.actions.register("ping", async () => ({ ok: true, at: new Date().toISOString() }));
 
@@ -692,6 +755,27 @@ const plugin = definePlugin({
         });
         throw err;
       }
+    }
+
+    // Learn any GROUP room the bot is in — from a message there OR from being
+    // added to it — so an agent can later post to it by name. DMs are learned
+    // separately (by sender email) below and are skipped here. Best-effort: a
+    // failure to learn a room must never block handling the event.
+    try {
+      const ref = extractSpaceRef(input.parsedBody);
+      if (ref && ref.spaceType && ref.spaceType !== "DM") {
+        if (ref.displayName) {
+          await rememberSpace(ctx, { spaceName: ref.spaceName, displayName: ref.displayName });
+        } else {
+          const token = await getAccessToken(ctx, config);
+          const fetchImpl = (url: string, init?: RequestInit) => ctx.http.fetch(url, init);
+          await learnSpaceFromApi(ctx, fetchImpl, token, ref.spaceName);
+        }
+      }
+    } catch (err) {
+      ctx.logger.warn("Failed to learn Chat space", {
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
 
     // ADDED_TO_SPACE / REMOVED_FROM_SPACE / CARD_CLICKED are acknowledged

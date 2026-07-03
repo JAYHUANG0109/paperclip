@@ -6,6 +6,9 @@ export interface InboundMessage {
   /** Space type from the event ("DM", "ROOM", …) when present. Used to learn
    *  email→DM-space mappings only from genuine direct messages. */
   spaceType?: string;
+  /** Room display name when the event carries it — lets us index a group space
+   *  by the name people see, without an extra spaces.get call. */
+  spaceDisplayName?: string;
   threadName?: string;
   text: string;
   senderDisplayName?: string;
@@ -81,6 +84,7 @@ export function extractInboundMessage(body: unknown): InboundMessage | null {
       return {
         spaceName: mp.space.name,
         spaceType: mp.space.type,
+        spaceDisplayName: mp.space.displayName,
         threadName: message.thread?.name,
         text: message.text ?? "",
         senderDisplayName: message.sender?.displayName ?? root.chat?.user?.displayName,
@@ -100,6 +104,7 @@ export function extractInboundMessage(body: unknown): InboundMessage | null {
       return {
         spaceName: root.space.name,
         spaceType: root.space.type,
+        spaceDisplayName: root.space.displayName,
         threadName: message.thread?.name,
         text: message.text ?? "",
         senderDisplayName: message.sender?.displayName ?? root.user?.displayName,
@@ -112,6 +117,27 @@ export function extractInboundMessage(body: unknown): InboundMessage | null {
   }
 
   return null;
+}
+
+/**
+ * Extract just the space reference from ANY Chat event (MESSAGE,
+ * ADDED_TO_SPACE, …), across both the add-on and classic shapes. Lets the
+ * worker learn a room the bot belongs to even from a non-message event like
+ * being added to it. Returns null when no space is present.
+ */
+export function extractSpaceRef(
+  body: unknown
+): { spaceName: string; spaceType?: string; displayName?: string; eventType?: string } | null {
+  if (!body || typeof body !== "object") return null;
+  const root = body as Record<string, any>;
+  const space = root.chat?.messagePayload?.space ?? root.space ?? root.chat?.addedToSpacePayload?.space;
+  if (!space?.name) return null;
+  return {
+    spaceName: space.name,
+    spaceType: space.type ?? space.spaceType,
+    displayName: space.displayName,
+    eventType: root.type ?? (root.chat?.messagePayload ? "MESSAGE" : undefined)
+  };
 }
 
 /**
@@ -254,4 +280,35 @@ export async function findDirectMessageSpace(
   }
   const body = (await res.json()) as { name?: string };
   return body.name ?? null;
+}
+
+/** Minimal view of a Google Chat space from `spaces.get`. */
+export interface SpaceInfo {
+  name: string;
+  displayName?: string;
+  spaceType?: string;
+}
+
+/**
+ * Fetch a space's metadata (display name, type) via `spaces.get`. Used to learn
+ * a room's human name when the inbound event didn't include it. Returns null on
+ * 404 (space gone / bot removed); throws on other errors.
+ */
+export async function getSpace(
+  fetchImpl: FetchLike,
+  accessToken: string,
+  spaceName: string
+): Promise<SpaceInfo | null> {
+  const url = `https://chat.googleapis.com/v1/${spaceName}`;
+  const res = await fetchImpl(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Chat spaces.get failed (${res.status}): ${detail}`);
+  }
+  const body = (await res.json()) as { name?: string; displayName?: string; spaceType?: string; type?: string };
+  return { name: body.name ?? spaceName, displayName: body.displayName, spaceType: body.spaceType ?? body.type };
 }
