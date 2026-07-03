@@ -117,6 +117,57 @@ export async function resolveFounderPostTargetGid(
     : { targetGid: null, hasPrivateLink: true, blocked: true };
 }
 
+/** Stable marker so we post the AI 每日彙整 comment at most ONCE per task —
+ *  repeated 12:00 runs / manual refreshes detect it and skip (no duplicates). */
+export const AI_DIGEST_COMMENT_MARKER = "【🤖 AI 每日彙整】";
+
+/**
+ * Auto-post the agent's AI 摘要 + 批閱草稿 as an Asana comment for each 待批閱 item,
+ * with the SAME hard privacy guarantee as the manual paths and built-in idempotency:
+ *
+ *  - Private-linked item → comment goes on the inner private task, NEVER the public
+ *    shell. If the inner task can't be resolved, the item is SKIPPED (fail closed) —
+ *    there is no code path that posts to the shell when a private link exists.
+ *  - Public item (no private link) → comment goes on the task itself.
+ *  - Idempotent: the check for an existing AI comment runs on the SAME task we would
+ *    post to (inner when private, public otherwise), so we never duplicate and never
+ *    peek at / write to the wrong task.
+ *
+ * Server-side by design: the agent writes only to the Paperclip digest; the server
+ * is the sole writer of these Asana comments, so leaking to a public shell is
+ * structurally impossible. Best-effort per item — one failure never blocks others.
+ */
+export async function autoPostFounderAiComments(
+  db: Db,
+  companyId: string,
+  agentId: string,
+  items: Array<{ gid: string; summary?: string | null; review?: string | null; commentTargetGid?: string | null }>,
+): Promise<{ posted: number; skipped: number; blocked: number }> {
+  let posted = 0, skipped = 0, blocked = 0;
+  for (const item of items) {
+    const summary = item.summary?.trim();
+    const review = item.review?.trim();
+    if (!summary && !review) { skipped += 1; continue; } // nothing to post
+    try {
+      const target = await resolveFounderPostTargetGid(db, companyId, agentId, item.gid, item.commentTargetGid ?? null);
+      // HARD stop: a private link that can't be resolved → never touch the shell.
+      if ((target.hasPrivateLink && target.blocked) || !target.targetGid) { blocked += 1; continue; }
+      const targetGid = target.targetGid;
+      // Idempotency check on the SAME task we'll post to (inner when private).
+      const existing = await getAsanaTaskComments(db, companyId, agentId, targetGid);
+      if (existing && existing.some((c) => c.text.includes(AI_DIGEST_COMMENT_MARKER))) { skipped += 1; continue; }
+      const text =
+        `${AI_DIGEST_COMMENT_MARKER}\n【摘要】${summary ?? "（無）"}` +
+        (review ? `\n\n【批閱草稿・僅供參考，未經核准；核准／要求變更／拒絕仍需在儀表板手動裁示】\n${review}` : "");
+      const ok = await postAsanaComment(db, companyId, agentId, targetGid, text);
+      if (ok) posted += 1; else blocked += 1; // failure → not posted anywhere (no fallback)
+    } catch {
+      blocked += 1; // never let one item's error post elsewhere or break the loop
+    }
+  }
+  return { posted, skipped, blocked };
+}
+
 /** Post a comment (story) to an Asana task as the agent. Returns true on success. */
 export async function postAsanaComment(
   db: Db,

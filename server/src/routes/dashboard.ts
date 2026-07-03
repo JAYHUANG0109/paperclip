@@ -23,7 +23,7 @@ import {
   type FounderDecision,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
-import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, resolveFounderPostTargetGid } from "../services/agent-asana.js";
+import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, resolveFounderPostTargetGid, autoPostFounderAiComments } from "../services/agent-asana.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
@@ -380,6 +380,23 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       /* console notification is best-effort */
     }
     res.json(digest);
+    // Auto-post the AI 摘要 + 批閱草稿 to Asana for the 創辦人 console ONLY (rolled out
+    // to 唐姐 first). Runs on every digest write — i.e. the daily 12:00 routine AND
+    // any manual 更新 — but is idempotent (skips tasks that already carry the AI
+    // comment) so refreshes don't stack duplicates. Private-linked items post ONLY
+    // to the inner private task, never the company-visible shell (fail-closed);
+    // the server is the sole writer, so a leak is structurally impossible. Runs
+    // AFTER the response, fully guarded — it must never affect the digest write.
+    try {
+      const consoleKey = toConsoleKey((req.body as { console?: unknown })?.console);
+      const agentId = req.actor.agentId;
+      if (consoleKey === "founder" && agentId) {
+        const items = [...digest.categories.urgent, ...digest.categories.nonUrgent];
+        void autoPostFounderAiComments(db, companyId, agentId, items).catch(() => {});
+      }
+    } catch {
+      /* auto-post is best-effort */
+    }
   });
 
   // Manual refresh: the 創辦人/園長 presses "更新" on their console. Wakes their OWN
