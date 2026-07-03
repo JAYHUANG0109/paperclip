@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw, Send } from "lucide-react";
 import { useTranslation } from "@/i18n";
@@ -101,20 +101,45 @@ export function FounderDigestSection({ companyId }: { companyId: string }) {
   const commentingGid = comment.isPending ? comment.variables?.gid : undefined;
 
   // Manual "更新": wake the caller's own agent to re-sync from Asana. The agent
-  // regenerates asynchronously, so we pull the fresh digest a couple of times
-  // after firing, and keep the button in its spinning state until then.
+  // regenerates ASYNCHRONOUSLY and a full run can take several minutes, so we
+  // poll the digest until its `generatedAt` actually advances past the value at
+  // click time (that's when the fresh dashboard has landed), keeping the button
+  // spinning until then. Caps at ~8 min so a stuck/failed run doesn't spin
+  // forever. (A fixed 22s window used to stop early and show the OLD timestamp,
+  // making a slow-but-working refresh look like it did nothing.)
   const [refreshing, setRefreshing] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+  useEffect(() => stopPolling, []);
   const refresh = useMutation({
     mutationFn: (consoleKey?: ConsoleKey) => dashboardApi.refreshFounderDigest(companyId, consoleKey),
-    onMutate: () => setRefreshing(true),
-    onSuccess: () => {
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: KEY(companyId) }), 8000);
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: KEY(companyId) });
-        setRefreshing(false);
-      }, 22000);
+    onMutate: (consoleKey?: ConsoleKey) => {
+      setRefreshing(true);
+      const pick = (r: FounderConsolesResponse | undefined) =>
+        r?.consoles.find((c) => !consoleKey || c.key === consoleKey)?.digest.generatedAt ?? null;
+      const baseline = pick(queryClient.getQueryData<FounderConsolesResponse>(KEY(companyId)));
+      const baseMs = baseline ? new Date(baseline).getTime() : 0;
+      const startedAt = Date.now();
+      stopPolling();
+      pollRef.current = setInterval(async () => {
+        await queryClient.invalidateQueries({ queryKey: KEY(companyId) });
+        const gen = pick(queryClient.getQueryData<FounderConsolesResponse>(KEY(companyId)));
+        const advanced = gen ? new Date(gen).getTime() > baseMs : false;
+        if (advanced || Date.now() - startedAt > 8 * 60 * 1000) {
+          stopPolling();
+          setRefreshing(false);
+        }
+      }, 15000);
     },
-    onError: () => setRefreshing(false),
+    onError: () => {
+      stopPolling();
+      setRefreshing(false);
+    },
   });
 
   const consoles = data?.consoles ?? [];

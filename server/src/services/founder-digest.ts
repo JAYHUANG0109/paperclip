@@ -243,7 +243,12 @@ export async function writeFounderDigestForAgent(
   const consoleKey = asConsoleKey(b.console);
   const cats = (b.categories && typeof b.categories === "object" ? b.categories : {}) as Record<string, unknown>;
   const digest: FounderDigest = {
-    generatedAt: typeof b.generatedAt === "string" ? b.generatedAt : new Date().toISOString(),
+    // Always stamp the actual server write time so the dashboard's "更新於 …"
+    // reflects when the console was really refreshed — never a stale/agent-
+    // supplied value (agents were sending back the previous run's timestamp,
+    // so a manual 更新 looked like it never updated). lastRunLabel still carries
+    // the human label of the run cadence ("預計12:00 中午彙整").
+    generatedAt: new Date().toISOString(),
     lastRunLabel: typeof b.lastRunLabel === "string" ? b.lastRunLabel : null,
     categories: {
       urgent: sanitizeList(cats.urgent),

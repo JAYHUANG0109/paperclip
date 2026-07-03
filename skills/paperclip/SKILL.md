@@ -55,7 +55,9 @@ Overrides and special cases:
 - `PAPERCLIP_WAKE_REASON=issue_comment_mentioned` → read the comment thread first even if you're not the assignee. Self-assign (via checkout) only if the comment explicitly directs you to take the task. Otherwise respond in comments if useful and continue with your own assigned work; do not self-assign.
 - Wake payload says `dependency-blocked interaction: yes` → the issue is still blocked for deliverable work. Do not try to unblock it. Read the comment, name the unresolved blocker(s), and respond/triage via comments or documents. Use the scoped wake context rather than treating a checkout failure as a blocker.
 - **Blocked-task dedup:** before touching a `blocked` task, check the thread. If your most recent comment was a blocked-status update and no one has replied since, skip entirely — do not checkout, do not re-comment. Only re-engage on new context (comment, status change, event wake).
-- Nothing assigned and no valid mention handoff → exit the heartbeat.
+- **Directive wakes (no assigned issue).** Some wakes carry a `PAPERCLIP_WAKE_REASON` that is a *directive to run a specific pipeline*, not an issue assignment. These do NOT appear in your inbox, so the "nothing assigned → exit" rule below does not apply — you MUST perform the directive's work before exiting. Handle these BEFORE the exit check:
+  - `PAPERCLIP_WAKE_REASON=founder-digest-refresh` → the 創辦人/園長 pressed **更新** on their daily-console (每日行事曆／待決議) card. Immediately run the daily-console pipeline described in your `AGENTS.md` (re-read the console's Asana project, regenerate `summary`/drafts, then `POST /founder-digest` with the current full snapshot). Do NOT post Asana comments or apply any decision. This is the only thing this wake asks for — do it, then exit. If your `AGENTS.md` has no daily-console pipeline, exit without side effects.
+- Nothing assigned, no valid mention handoff, and no directive wake above → exit the heartbeat.
 
 **Step 5 — Checkout.** You MUST checkout before doing any work. Include the run ID header:
 
