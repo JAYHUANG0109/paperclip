@@ -325,6 +325,14 @@ export interface CompanySkillCreateRequest {
   sharingTeams?: string[];
   minutesPerUse?: number;
   forkedFromSkillId?: string | null;
+  /**
+   * When true, after the skill is created it is auto-equipped (added to
+   * paperclipSkillSync.desiredSkills) to the agents in its sharing scope:
+   * company → all agents, team → agents on the selected sharingTeams,
+   * private → the creator's own agents. Best-effort; visibility (sharingScope)
+   * is unaffected.
+   */
+  equipOnCreate?: boolean;
 }
 
 export interface CompanySkillFileDetail {

@@ -262,6 +262,7 @@ export const companySkillCreateSchema = z.object({
   sharingTeams: z.array(z.string().min(1)).optional(),
   minutesPerUse: z.number().int().min(0).optional(),
   forkedFromSkillId: z.string().uuid().nullable().optional(),
+  equipOnCreate: z.boolean().optional(),
 });
 
 export const companySkillFileDetailSchema = z.object({

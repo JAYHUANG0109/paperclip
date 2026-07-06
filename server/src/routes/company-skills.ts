@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
-import { authUsers, companySkills } from "@paperclipai/db";
-import { eq, inArray } from "drizzle-orm";
+import { agents as agentsTable, agentMemberships, authUsers, companySkills } from "@paperclipai/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { leaderboardService } from "../services/leaderboard.js";
 import { progressionFor } from "../services/office-progression.js";
 import { agentProgressionService } from "../services/agent-progression.js";
@@ -55,6 +55,78 @@ export function companySkillRoutes(db: Db) {
   function canCreateSkills(agent: { permissions: Record<string, unknown> | null | undefined }) {
     if (!agent.permissions || typeof agent.permissions !== "object") return true;
     return (agent.permissions as Record<string, unknown>).canCreateSkills !== false;
+  }
+
+  // Add a skill to each agent's own desired-skills set (equip). Best-effort per
+  // agent — one failure never blocks the others or the skill creation. Equipped
+  // agents pick the skill up on their next heartbeat.
+  async function equipSkillToAgents(
+    companyId: string,
+    skillKey: string,
+    agentIds: string[],
+    byAgentId: string | null,
+  ) {
+    for (const agentId of Array.from(new Set(agentIds))) {
+      try {
+        const ag = await agents.getById(agentId);
+        if (!ag || ag.companyId !== companyId) continue;
+        const config = (ag.adapterConfig ?? {}) as Record<string, unknown>;
+        const pref = readPaperclipSkillSyncPreference(config);
+        if (pref.desiredSkillEntries.some((entry) => entry.key === skillKey)) continue;
+        const nextConfig = writePaperclipSkillSyncPreference(config, [
+          ...pref.desiredSkillEntries,
+          { key: skillKey, versionId: null },
+        ]);
+        await agents.update(agentId, { adapterConfig: nextConfig }, {
+          recordRevision: { createdByAgentId: byAgentId, createdByUserId: null, source: "skill-auto-equip" },
+        });
+      } catch (err) {
+        console.warn(`[skills] equip failed for agent ${agentId} / skill ${skillKey}:`, err);
+      }
+    }
+  }
+
+  function agentTeamNames(metadata: unknown): string[] {
+    const md = metadata as Record<string, unknown> | null;
+    if (!md) return [];
+    const raw = md.teams;
+    if (Array.isArray(raw)) return raw.filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+    if (typeof md.team === "string" && md.team.trim().length > 0) return [md.team.trim()];
+    return [];
+  }
+
+  // The agent ids to equip for a skill, given its sharing scope:
+  //   company/public_link → every agent in the company
+  //   team                → agents whose team matches the skill's sharingTeams
+  //   private             → the creator's own agents (or the authoring agent)
+  async function resolveEquipTargets(
+    companyId: string,
+    scope: string,
+    teams: string[],
+    creatorUserId: string | null,
+    creatorAgentId: string | null,
+  ): Promise<string[]> {
+    if (scope === "private") {
+      if (creatorAgentId) return [creatorAgentId];
+      if (!creatorUserId) return [];
+      const rows = await db
+        .select({ agentId: agentMemberships.agentId })
+        .from(agentMemberships)
+        .where(and(
+          eq(agentMemberships.companyId, companyId),
+          eq(agentMemberships.userId, creatorUserId),
+          eq(agentMemberships.state, "joined"),
+        ));
+      return rows.map((r) => r.agentId);
+    }
+    const all = await agents.list(companyId);
+    if (scope === "team") {
+      const wanted = new Set(teams);
+      if (wanted.size === 0) return [];
+      return all.filter((a) => agentTeamNames(a.metadata).some((t) => wanted.has(t))).map((a) => a.id);
+    }
+    // company / public_link → everyone
+    return all.map((a) => a.id);
   }
 
   function asString(value: unknown): string | null {
@@ -511,40 +583,23 @@ export function companySkillRoutes(db: Db) {
         },
       });
 
-      // Auto-equip: when an AGENT authors a skill, add it to that agent's own
-      // desired skills so it's picked up on the agent's next heartbeat — this
-      // closes the "propose → solve → skillify → equipped" loop without a manual
-      // install step. Best-effort: an equip failure must never fail the create.
+      // Equip logic (best-effort; never fails the create). Two triggers:
+      //  1. An AGENT authoring a skill always auto-equips ITSELF, closing the
+      //     "propose → solve → skillify → equipped" loop.
+      //  2. equipOnCreate (from the UI checkbox) equips every agent in the
+      //     skill's sharing scope (company / team / private).
       if (actor.actorType === "agent" && actor.agentId) {
-        try {
-          const creator = await agents.getById(actor.agentId);
-          if (creator && creator.companyId === companyId) {
-            const config = (creator.adapterConfig ?? {}) as Record<string, unknown>;
-            const pref = readPaperclipSkillSyncPreference(config);
-            if (!pref.desiredSkillEntries.some((entry) => entry.key === result.key)) {
-              const nextConfig = writePaperclipSkillSyncPreference(config, [
-                ...pref.desiredSkillEntries,
-                { key: result.key, versionId: null },
-              ]);
-              await agents.update(
-                creator.id,
-                { adapterConfig: nextConfig },
-                {
-                  recordRevision: {
-                    createdByAgentId: actor.agentId,
-                    createdByUserId: null,
-                    source: "skill-auto-equip",
-                  },
-                },
-              );
-            }
-          }
-        } catch (err) {
-          console.warn(
-            `[skills] auto-equip failed for agent ${actor.agentId} / skill ${result.key}:`,
-            err,
-          );
-        }
+        await equipSkillToAgents(companyId, result.key, [actor.agentId], actor.agentId);
+      }
+      if (req.body.equipOnCreate) {
+        const targets = await resolveEquipTargets(
+          companyId,
+          result.sharingScope ?? "company",
+          result.sharingTeams ?? [],
+          actor.actorType === "user" ? actor.actorId : null,
+          actor.agentId ?? null,
+        );
+        await equipSkillToAgents(companyId, result.key, targets, actor.agentId ?? null);
       }
 
       res.status(201).json(result);

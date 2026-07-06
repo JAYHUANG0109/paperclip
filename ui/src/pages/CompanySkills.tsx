@@ -1269,6 +1269,7 @@ type SkillCreateDraft = {
   markdown: string;
   sharingScope: Exclude<CompanySkillSharingScope, "public_link">;
   sharingTeams: string[];
+  equipOnCreate: boolean;
   minutesPerUse: number;
   forkedFromSkillId: string | null;
   forkedFromName: string | null;
@@ -1286,6 +1287,7 @@ function buildBlankSkillDraft(): SkillCreateDraft {
     sharingScope: "company",
     minutesPerUse: 0,
     sharingTeams: [],
+    equipOnCreate: true,
     forkedFromSkillId: null,
     forkedFromName: null,
   };
@@ -1305,6 +1307,7 @@ function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft {
     sharingScope: "company",
     minutesPerUse: 0,
     sharingTeams: [],
+    equipOnCreate: true,
     forkedFromSkillId: skill.id,
     forkedFromName: skill.name,
   };
@@ -1359,6 +1362,7 @@ function NewSkillWizard({
       categories: draft.categories,
       sharingScope: draft.sharingScope,
       sharingTeams: draft.sharingScope === "team" ? draft.sharingTeams : [],
+      equipOnCreate: draft.equipOnCreate,
       minutesPerUse: draft.minutesPerUse,
       forkedFromSkillId: draft.forkedFromSkillId,
     });
@@ -1589,6 +1593,26 @@ function NewSkillWizard({
                 )}
               </div>
             )}
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-3">
+              <input
+                type="checkbox"
+                checked={draft.equipOnCreate}
+                onChange={(e) => patchDraft({ equipOnCreate: e.target.checked })}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span className="text-xs">
+                <span className="block font-medium text-foreground">
+                  {t("companySkills.equipOnCreate", { defaultValue: "Equip agents with this skill" })}
+                </span>
+                <span className="block text-muted-foreground">
+                  {draft.sharingScope === "company"
+                    ? t("companySkills.equipCompanyDesc", { defaultValue: "Every agent in the company gets it on their next run (not just visible)." })
+                    : draft.sharingScope === "team"
+                      ? t("companySkills.equipTeamDesc", { defaultValue: "Agents on the selected team(s) get it on their next run (not just visible)." })
+                      : t("companySkills.equipPrivateDesc", { defaultValue: "Your own agents get it on their next run (not just visible)." })}
+                </span>
+              </span>
+            </label>
           </div>
         </div>
       )}
@@ -3812,6 +3836,7 @@ export function CompanySkills() {
   const [uploading, setUploading] = useState(false);
   const [uploadScope, setUploadScope] = useState<"company" | "team" | "private">("company");
   const [uploadTeams, setUploadTeams] = useState<string[]>([]);
+  const [uploadEquip, setUploadEquip] = useState(true);
   const uploadFilesRef = useRef<HTMLInputElement | null>(null);
   const uploadFolderRef = useRef<HTMLInputElement | null>(null);
   const parsedRoute = useMemo(() => parseSkillRoute(routePath), [routePath]);
@@ -4142,7 +4167,7 @@ export function CompanySkills() {
       const name = readField("name") ?? fallbackName;
       const description = readField("description");
 
-      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [] });
+      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [], equipOnCreate: uploadEquip });
 
       // Write every other file (skip SKILL.md itself; skip obviously-binary by extension).
       const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|woff2?|ttf|otf|mp4|mov|mp3|wav)$/i;
@@ -4889,6 +4914,26 @@ export function CompanySkills() {
                   )}
                 </div>
               )}
+              <label className="mb-2.5 flex cursor-pointer items-start gap-2 rounded-md border border-border p-2.5">
+                <input
+                  type="checkbox"
+                  checked={uploadEquip}
+                  onChange={(e) => setUploadEquip(e.target.checked)}
+                  className="mt-0.5 h-4 w-4"
+                />
+                <span className="text-[11px]">
+                  <span className="block font-medium text-foreground">
+                    {t("companySkills.equipOnCreate", { defaultValue: "Equip agents with this skill" })}
+                  </span>
+                  <span className="block text-muted-foreground">
+                    {uploadScope === "company"
+                      ? t("companySkills.equipCompanyDesc", { defaultValue: "Every agent in the company gets it on their next run (not just visible)." })
+                      : uploadScope === "team"
+                        ? t("companySkills.equipTeamDesc", { defaultValue: "Agents on the selected team(s) get it on their next run (not just visible)." })
+                        : t("companySkills.equipPrivateDesc", { defaultValue: "Your own agents get it on their next run (not just visible)." })}
+                  </span>
+                </span>
+              </label>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
