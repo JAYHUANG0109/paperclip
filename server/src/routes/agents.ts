@@ -1869,6 +1869,235 @@ export function agentRoutes(
     },
   );
 
+  // Distribute a skill to a CHOSEN SET of agents in one call — the manager-to-team
+  // primitive. Unlike /skills/sync (which REPLACES one agent's whole skill set),
+  // this ADDS the skill(s) to each target's existing skills (mode "add", the
+  // default) so a manager can hand a skill to exactly the people they name —
+  // "give this to A and B, not C" — by passing that explicit targetAgentIds list.
+  // The caller resolves who to include (e.g. from GET /companies/:id/agents,
+  // filtering by reportsTo / the reporting subtree / a team) and trims it per the
+  // manager's intent; this endpoint just applies it.
+  //
+  // Security: every target passes the SAME per-agent gate as a single sync
+  // (assertCanUpdateAgent), so a caller can only equip agents it may already
+  // configure — no broader authority is granted here. Idempotent per target
+  // (a target that already has the skill is a no-op) and best-effort: one
+  // target's failure never blocks the others; each target's outcome is reported.
+  router.post("/agents/:id/skills/distribute", async (req, res) => {
+    const managerId = req.params.id as string;
+    const manager = await svc.getById(managerId);
+    if (!manager) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, manager.companyId);
+
+    const body = (req.body ?? {}) as {
+      skill?: unknown;
+      skills?: unknown;
+      targetAgentIds?: unknown;
+      excludeAgentIds?: unknown;
+      scope?: unknown;
+      mode?: unknown;
+    };
+    const rawSkills = Array.isArray(body.skills)
+      ? body.skills
+      : body.skill != null
+        ? [body.skill]
+        : [];
+    const skillKeys = rawSkills
+      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      .map((s) => s.trim());
+    const mode = body.mode === "replace" ? "replace" : "add";
+    if (skillKeys.length === 0) throw unprocessable("At least one skill (skill or skills[]) is required.");
+
+    const asIdSet = (v: unknown): Set<string> =>
+      new Set(
+        (Array.isArray(v) ? v : [])
+          .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+          .map((x) => x.trim()),
+      );
+
+    // Resolve WHO to distribute to. Either an explicit list (for "A and B, not
+    // C" / "just A"), or a server-resolved scope so a manager/founder can say
+    // "everyone I manage" / "the 教學組 team" / "the whole company" without
+    // enumerating agents client-side. `excludeAgentIds` trims a scope (e.g.
+    // "everyone in the team except C").
+    const explicitIds = asIdSet(body.targetAgentIds);
+    const excludeIds = asIdSet(body.excludeAgentIds);
+    let targetIds: string[];
+    let scopeLabel = "explicit";
+    if (explicitIds.size > 0) {
+      targetIds = [...explicitIds].filter((id) => !excludeIds.has(id));
+    } else if (body.scope != null) {
+      const roster = await svc.list(manager.companyId);
+      const teamsOf = (a: (typeof roster)[number]): string[] => {
+        const md = (a.metadata ?? null) as Record<string, unknown> | null;
+        if (!md) return [];
+        if (Array.isArray(md.teams)) return md.teams.filter((t): t is string => typeof t === "string");
+        if (typeof md.team === "string") return [md.team];
+        return [];
+      };
+      const scope = body.scope;
+      const norm = (s: string) => s.trim().toLowerCase();
+      let selected: typeof roster;
+      if (scope === "company") {
+        scopeLabel = "company";
+        selected = roster;
+      } else if (scope === "managed" || scope === "subtree") {
+        // Everyone transitively below the manager in the reporting chain.
+        scopeLabel = "managed";
+        const childrenByManager = new Map<string, string[]>();
+        for (const a of roster) {
+          if (!a.reportsTo) continue;
+          (childrenByManager.get(a.reportsTo) ?? childrenByManager.set(a.reportsTo, []).get(a.reportsTo)!).push(a.id);
+        }
+        const under = new Set<string>();
+        const queue = [manager.id];
+        while (queue.length) {
+          const cur = queue.shift()!;
+          for (const child of childrenByManager.get(cur) ?? []) {
+            if (!under.has(child)) {
+              under.add(child);
+              queue.push(child);
+            }
+          }
+        }
+        selected = roster.filter((a) => under.has(a.id));
+      } else if (scope === "direct-reports") {
+        scopeLabel = "direct-reports";
+        selected = roster.filter((a) => a.reportsTo === manager.id);
+      } else if (typeof scope === "object" && scope !== null && typeof (scope as { team?: unknown }).team === "string") {
+        const team = norm((scope as { team: string }).team);
+        scopeLabel = `team:${(scope as { team: string }).team}`;
+        selected = roster.filter((a) => teamsOf(a).some((t) => norm(t) === team));
+      } else {
+        throw unprocessable(
+          'scope must be "company", "managed", "direct-reports", or { "team": "<name>" }.',
+        );
+      }
+      targetIds = selected.map((a) => a.id).filter((id) => !excludeIds.has(id));
+    } else {
+      throw unprocessable("Provide targetAgentIds or a scope to distribute to.");
+    }
+
+    targetIds = Array.from(new Set(targetIds));
+    if (targetIds.length === 0) throw unprocessable(`No agents resolved for distribution (scope: ${scopeLabel}).`);
+    if (targetIds.length > 500) throw unprocessable("Too many targets (max 500 agents per call).");
+
+    const requestedEntries = normalizeDesiredSkillSelections(skillKeys) ?? [];
+    const actor = getActorInfo(req);
+    const results: Array<{ agentId: string; name: string | null; status: string; detail?: string }> = [];
+
+    for (const targetId of targetIds) {
+      try {
+        const target = await svc.getById(targetId);
+        if (!target || target.companyId !== manager.companyId) {
+          results.push({ agentId: targetId, name: null, status: "not_found" });
+          continue;
+        }
+        try {
+          await assertCanUpdateAgent(req, target);
+        } catch {
+          results.push({ agentId: targetId, name: target.name, status: "forbidden" });
+          continue;
+        }
+        // Union with the target's current skills unless explicitly replacing.
+        const existing =
+          readPaperclipSkillSyncPreference(target.adapterConfig as Record<string, unknown>)
+            .desiredSkillEntries ?? [];
+        if (mode === "add" && requestedEntries.every((e) => existing.some((x) => x.key === e.key))) {
+          results.push({ agentId: targetId, name: target.name, status: "already_equipped" });
+          continue;
+        }
+        const merged = new Map<string, AgentDesiredSkillEntry>();
+        if (mode === "add") for (const e of existing) merged.set(e.key, e);
+        for (const e of requestedEntries) merged.set(e.key, e);
+        const nextEntries = Array.from(merged.values());
+
+        const {
+          adapterConfig: nextAdapterConfig,
+          desiredSkills,
+          desiredSkillEntries,
+          runtimeSkillEntries,
+        } = await resolveDesiredSkillAssignment(
+          target.companyId,
+          target.adapterType,
+          target.adapterConfig as Record<string, unknown>,
+          nextEntries,
+        );
+        if (!desiredSkills || !desiredSkillEntries || !runtimeSkillEntries) {
+          results.push({ agentId: targetId, name: target.name, status: "error", detail: "skill resolution failed" });
+          continue;
+        }
+        const updated = await svc.update(
+          target.id,
+          { adapterConfig: nextAdapterConfig },
+          {
+            recordRevision: {
+              createdByAgentId: actor.agentId,
+              createdByUserId: actor.actorType === "user" ? actor.actorId : null,
+              source: "skill-distribute",
+            },
+          },
+        );
+        if (!updated) {
+          results.push({ agentId: targetId, name: target.name, status: "not_found" });
+          continue;
+        }
+        const adapter = findActiveServerAdapter(updated.adapterType);
+        const { config: runtimeConfig } = await secretsSvc.resolveAdapterConfigForRuntime(
+          updated.companyId,
+          updated.adapterConfig,
+        );
+        if (adapter?.syncSkills) {
+          await adapter.syncSkills(
+            {
+              agentId: updated.id,
+              companyId: updated.companyId,
+              adapterType: updated.adapterType,
+              config: { ...runtimeConfig, paperclipRuntimeSkills: runtimeSkillEntries },
+            },
+            desiredSkills,
+          );
+        }
+        await logActivity(db, {
+          companyId: updated.companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          action: "agent.skills_synced",
+          entityType: "agent",
+          entityId: updated.id,
+          agentId: actor.agentId,
+          runId: actor.runId,
+          details: { via: "distribute", distributedBy: manager.id, skills: desiredSkills, mode },
+        });
+        results.push({ agentId: targetId, name: target.name, status: "equipped" });
+      } catch (err) {
+        results.push({
+          agentId: targetId,
+          name: null,
+          status: "error",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const summary = results.reduce<Record<string, number>>((acc, r) => {
+      acc[r.status] = (acc[r.status] ?? 0) + 1;
+      return acc;
+    }, {});
+    res.json({
+      skills: requestedEntries.map((e) => e.key),
+      mode,
+      scope: scopeLabel,
+      targetCount: targetIds.length,
+      distributedBy: manager.id,
+      summary,
+      results,
+    });
+  });
+
   // The agents the current viewer may open the detail page for (virtual office
   // "查看代理人" gate). Privileged viewers (owner/admin/instance) → all; others
   // → the agents they manage/oversee (joined + reports-to subtree).

@@ -206,6 +206,67 @@ curl -sS "$PAPERCLIP_API_URL/api/agents/<agent-id>/skills" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
+## Distribute A Skill To People You Manage (bulk)
+
+`POST /api/agents/:managerAgentId/skills/sync` changes ONE agent and REPLACES its
+skill set. To hand a skill to several agents at once — e.g. a manager telling you
+"give this skill to my team" — use distribute, which ADDS the skill to each
+chosen agent (their existing skills are kept):
+
+`POST /api/agents/:managerAgentId/skills/distribute`
+
+Two ways to say who gets the skill — a **scope** (server resolves the agents) or
+an **explicit list**. Pick whichever matches the request.
+
+**By scope** (turnkey — "give this to my team / the whole company"):
+
+```jsonc
+{
+  "skill": "<company skill key | id | unique slug>",   // or "skills": ["a","b"]
+  "scope": "managed",           // see options below
+  "excludeAgentIds": ["<id>"],  // optional: trim a few out of the scope
+  "mode": "add"                 // "add" (default, keeps their other skills) | "replace"
+}
+```
+
+`scope` options:
+- `"company"` — every agent in the company (founder: "the whole company uses this").
+- `"managed"` — every agent transitively below you in the reporting chain
+  ("everyone I manage"). Same as `"subtree"`.
+- `"direct-reports"` — only agents whose `reportsTo` is you.
+- `{ "team": "教學組" }` — every agent whose `metadata.teams` includes that team
+  ("the entire 教學組 uses this").
+
+**By explicit list** (for "A and B, not C" / "just A"):
+
+```jsonc
+{ "skill": "<...>", "targetAgentIds": ["<agent-id>", "<agent-id>"], "mode": "add" }
+```
+
+If you need to build or preview the list yourself, `GET /api/companies/:companyId/agents`
+returns every agent with its `reportsTo` and `metadata.teams`, so you can resolve
+names → ids, confirm the set with the manager, then send `targetAgentIds`
+(optionally with `excludeAgentIds`). Explicit `targetAgentIds` takes precedence
+over `scope` when both are sent.
+
+The response reports each target's outcome so you can tell the manager what
+happened:
+
+```jsonc
+{
+  "skills": ["..."], "mode": "add", "scope": "team:教學組", "targetCount": 3,
+  "distributedBy": "<managerAgentId>",
+  "summary": { "equipped": 2, "already_equipped": 1, "forbidden": 0, "not_found": 0 },
+  "results": [ { "agentId": "...", "name": "...", "status": "equipped" } ]
+}
+```
+
+Per-target statuses: `equipped` (added), `already_equipped` (had it — no-op, so
+re-running is safe), `forbidden` (you may not configure that agent), `not_found`,
+`error`. Each target is authorized the same way as a single skill sync, so you
+can only distribute to agents you may already configure. Each agent equips the
+skill on its next heartbeat.
+
 ## Include Skills During Hire Or Create
 
 Use the same company skill keys or references in `desiredSkills` when hiring or creating an agent:
