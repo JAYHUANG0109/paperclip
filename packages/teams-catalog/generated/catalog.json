@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageName": "@paperclipai/teams-catalog",
   "packageVersion": "0.1.0",
-  "generatedAt": "2026-06-04T18:03:41.262Z",
+  "generatedAt": "2026-07-06T07:11:13.106Z",
   "teams": [
     {
       "id": "paperclipai:bundled:company-defaults:core-exec-team",
@@ -462,6 +462,127 @@
       "trustLevel": "markdown_only",
       "compatibility": "compatible",
       "contentHash": "sha256:06822cec5f2b6910cb37ba0ebd5e04ed5c7e34f77225564ddddc2470779cdaa6"
+    },
+    {
+      "id": "paperclipai:optional:education:seasonarts-campus",
+      "key": "paperclipai/optional/education/seasonarts-campus",
+      "kind": "optional",
+      "category": "education",
+      "slug": "seasonarts-campus",
+      "name": "四季校端團隊",
+      "description": "四季藝術單一校區的完整教職團隊原型：園長／副園長帶領，含幼教／ESL 教學主管、活動主管、跨校巡輔組長、幼教／ESL 行政、註冊組、總務會計、校護。依職務別提供一致的 scope 與執掌，讓依角色建立 agent 更快、更一致（同職務／同職級共用同一份 scope 與 instructions）。",
+      "path": "catalog/optional/education/seasonarts-campus",
+      "entrypoint": "TEAM.md",
+      "schema": "agentcompanies/v1",
+      "defaultInstall": false,
+      "recommendedForCompanyTypes": [
+        "education"
+      ],
+      "tags": [
+        "seasonarts",
+        "education",
+        "campus",
+        "幼教"
+      ],
+      "counts": {
+        "agents": 10,
+        "projects": 0,
+        "tasks": 0,
+        "routines": 0,
+        "localSkills": 0,
+        "catalogSkills": 0,
+        "externalSkillSources": 0
+      },
+      "rootAgentSlugs": [
+        "principal"
+      ],
+      "agentSlugs": [
+        "activity-lead",
+        "esl-admin",
+        "esl-teaching-lead",
+        "floating-group-lead",
+        "general-affairs-accounting",
+        "preschool-admin",
+        "preschool-teaching-lead",
+        "principal",
+        "registrar",
+        "school-nurse"
+      ],
+      "projectSlugs": [],
+      "requiredSkills": [],
+      "envInputs": [],
+      "sourceRefs": [],
+      "files": [
+        {
+          "path": "TEAM.md",
+          "kind": "team",
+          "sizeBytes": 2914,
+          "sha256": "b403f41321f090ee1ea57b1c533875da23bd55d8aef7c1639f7f2fe1b3bb9ca7"
+        },
+        {
+          "path": "agents/activity-lead/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 986,
+          "sha256": "41aacb0d4bbf8faa0b9e536ba43d79a3e3d5b6283f1955a3efc77ebf66af7879"
+        },
+        {
+          "path": "agents/esl-admin/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 913,
+          "sha256": "60e0dcf7b38709f445e628a5aba1febb1ee0884202ab675d0e322cdd0e1283a0"
+        },
+        {
+          "path": "agents/esl-teaching-lead/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1034,
+          "sha256": "7593a13187eb6c082369eeb4a6e4134de62f6e6e8d7682ea8dba833b516bbb68"
+        },
+        {
+          "path": "agents/floating-group-lead/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 986,
+          "sha256": "83d10eb40dee433df85d9d460132d24de755710d03796d8d81627a6a0fb9e127"
+        },
+        {
+          "path": "agents/general-affairs-accounting/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1093,
+          "sha256": "c7b0660e17f1f11c470a770b42a78c01e3d3f4ecfc14bc1b0f63c7f8549d9586"
+        },
+        {
+          "path": "agents/preschool-admin/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1045,
+          "sha256": "9c7e0db2a100142e7e5f8556b22a04cd77ce2538e68b65fa058effc9de21ba0c"
+        },
+        {
+          "path": "agents/preschool-teaching-lead/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1168,
+          "sha256": "e028a9f1e2e8bf0005545b9e410c681a610a0b6c50e657b3baf2351e25e5e394"
+        },
+        {
+          "path": "agents/principal/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1065,
+          "sha256": "73c63f15759df862472557e213c72b4a1efb8baee5225837cea31a9fa1662787"
+        },
+        {
+          "path": "agents/registrar/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1291,
+          "sha256": "fc985d71c9ca649ff75df0e5a283f52431acb3233297f1c4ee76ef7d0fb36638"
+        },
+        {
+          "path": "agents/school-nurse/AGENTS.md",
+          "kind": "agent",
+          "sizeBytes": 1140,
+          "sha256": "3d194b8bea22de698e225474f6b8b66ecccabd89acea8fed65d9a28c645a9fb7"
+        }
+      ],
+      "trustLevel": "markdown_only",
+      "compatibility": "compatible",
+      "contentHash": "sha256:13a1627552e953aeb1af52a661729cd570beb8fea32b66277da47d9c985dd7b2"
     }
   ]
 }

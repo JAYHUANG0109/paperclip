@@ -1925,12 +1925,37 @@ export function agentRoutes(
     // "everyone in the team except C").
     const explicitIds = asIdSet(body.targetAgentIds);
     const excludeIds = asIdSet(body.excludeAgentIds);
+
+    // Fetch the company roster once — used for scope resolution AND for the
+    // manager-chain permission fallback below.
+    const roster = await svc.list(manager.companyId);
+    const childrenByManager = new Map<string, string[]>();
+    for (const a of roster) {
+      if (!a.reportsTo) continue;
+      const list = childrenByManager.get(a.reportsTo);
+      if (list) list.push(a.id);
+      else childrenByManager.set(a.reportsTo, [a.id]);
+    }
+    const subtreeIdsUnder = (rootId: string): Set<string> => {
+      const under = new Set<string>();
+      const queue = [rootId];
+      while (queue.length) {
+        const cur = queue.shift()!;
+        for (const child of childrenByManager.get(cur) ?? []) {
+          if (!under.has(child)) {
+            under.add(child);
+            queue.push(child);
+          }
+        }
+      }
+      return under;
+    };
+
     let targetIds: string[];
     let scopeLabel = "explicit";
     if (explicitIds.size > 0) {
       targetIds = [...explicitIds].filter((id) => !excludeIds.has(id));
     } else if (body.scope != null) {
-      const roster = await svc.list(manager.companyId);
       const teamsOf = (a: (typeof roster)[number]): string[] => {
         const md = (a.metadata ?? null) as Record<string, unknown> | null;
         if (!md) return [];
@@ -1945,24 +1970,8 @@ export function agentRoutes(
         scopeLabel = "company";
         selected = roster;
       } else if (scope === "managed" || scope === "subtree") {
-        // Everyone transitively below the manager in the reporting chain.
         scopeLabel = "managed";
-        const childrenByManager = new Map<string, string[]>();
-        for (const a of roster) {
-          if (!a.reportsTo) continue;
-          (childrenByManager.get(a.reportsTo) ?? childrenByManager.set(a.reportsTo, []).get(a.reportsTo)!).push(a.id);
-        }
-        const under = new Set<string>();
-        const queue = [manager.id];
-        while (queue.length) {
-          const cur = queue.shift()!;
-          for (const child of childrenByManager.get(cur) ?? []) {
-            if (!under.has(child)) {
-              under.add(child);
-              queue.push(child);
-            }
-          }
-        }
+        const under = subtreeIdsUnder(manager.id);
         selected = roster.filter((a) => under.has(a.id));
       } else if (scope === "direct-reports") {
         scopeLabel = "direct-reports";
@@ -1985,6 +1994,18 @@ export function agentRoutes(
     if (targetIds.length === 0) throw unprocessable(`No agents resolved for distribution (scope: ${scopeLabel}).`);
     if (targetIds.length > 500) throw unprocessable("Too many targets (max 500 agents per call).");
 
+    // Manager-chain authorization: an agent distributing to its OWN reporting
+    // subtree may equip approved company skills there even WITHOUT company-wide
+    // agents:create. This is the narrow power this endpoint grants (add a skill
+    // only — never arbitrary config), so a mid-level manager can hand a skill to
+    // their team without being able to edit unrelated agents. Only applies when
+    // the acting agent IS this manager; privileged/board actors go through
+    // assertCanUpdateAgent as before.
+    const managerSubtreeIds =
+      req.actor.type === "agent" && req.actor.agentId === manager.id
+        ? subtreeIdsUnder(manager.id)
+        : new Set<string>();
+
     const requestedEntries = normalizeDesiredSkillSelections(skillKeys) ?? [];
     const actor = getActorInfo(req);
     const results: Array<{ agentId: string; name: string | null; status: string; detail?: string }> = [];
@@ -1996,9 +2017,15 @@ export function agentRoutes(
           results.push({ agentId: targetId, name: null, status: "not_found" });
           continue;
         }
+        let permitted = false;
         try {
           await assertCanUpdateAgent(req, target);
+          permitted = true;
         } catch {
+          // Fall through to the manager-chain check.
+        }
+        if (!permitted && managerSubtreeIds.has(target.id)) permitted = true;
+        if (!permitted) {
           results.push({ agentId: targetId, name: target.name, status: "forbidden" });
           continue;
         }

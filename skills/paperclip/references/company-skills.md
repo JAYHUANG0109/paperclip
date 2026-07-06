@@ -263,9 +263,14 @@ happened:
 
 Per-target statuses: `equipped` (added), `already_equipped` (had it — no-op, so
 re-running is safe), `forbidden` (you may not configure that agent), `not_found`,
-`error`. Each target is authorized the same way as a single skill sync, so you
-can only distribute to agents you may already configure. Each agent equips the
-skill on its next heartbeat.
+`error`. Each agent equips the skill on its next heartbeat.
+
+Authorization per target: allowed if you could configure that agent directly
+(e.g. you hold `agents:create`), OR — for an agent calling with its own id as
+`:managerAgentId` — if the target is anywhere in your reporting subtree. So a
+manager can distribute an approved skill to their own team even without
+company-wide `agents:create` (this endpoint only ADDS a skill, never edits other
+config). Targets outside that come back `forbidden`.
 
 ## Include Skills During Hire Or Create
 
