@@ -274,9 +274,11 @@ Authorized managers can install company skills independently of hiring, then ass
 
 - Install and inspect company skills with the company skills API.
 - Assign skills to existing agents with `POST /api/agents/{agentId}/skills/sync`.
+- **Distribute** a skill to a whole team/subtree/company at once with `POST /api/agents/{managerAgentId}/skills/distribute`.
 - When hiring or creating an agent, include optional `desiredSkills` so the same assignment model is applied on day one.
+- **Making a NEW skill?** Create it as a MANAGED company skill via `POST /api/companies/{companyId}/skills` (with the full `markdown` + `equipOnCreate: true`) — do NOT write a loose `SKILL.md` into `~/.claude/skills`. Unmanaged local files can't be viewed in the dashboard or distributed to a team.
 
-If you are asked to install a skill for the company or an agent you MUST read:
+If you are asked to install, create, or distribute a skill for the company or an agent you MUST read:
 `skills/paperclip/references/company-skills.md`
 
 ## Routines

@@ -19,6 +19,39 @@ Catalog install ≠ agent attach. Installing a catalog skill only adds the row t
 `company_skills`. The agent will not use it until you sync the agent's desired
 set.
 
+## Authoring a brand-new skill — create it MANAGED, not a loose file
+
+When someone asks you to "make this into a skill" / 「把它做成一個技能」, register it
+as a **managed company skill** via the API. Do **NOT** just write a `SKILL.md`
+into the local Claude skills home (`~/.claude/skills/<slug>/`). A loose local file
+becomes an **unmanaged** skill: it has no `company_skills` row, so it can't be
+viewed in the dashboard (no 檢視), isn't versioned, and — critically — **can't be
+distributed to a team** (the distribute endpoint resolves company skills only).
+
+Create it managed instead:
+
+```sh
+curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills" \
+  -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "photo-rename",
+    "description": "整理雜亂照片檔名成 YYYYMMDD_班級_活動_序號 …（此描述即自動觸發條件）",
+    "markdown": "---\nname: photo-rename\ndescription: …\n---\n\n# …完整 SKILL.md 內文…",
+    "equipOnCreate": true
+  }'
+```
+
+- `markdown` is the **entire** SKILL.md — YAML frontmatter (`name` + a sharp
+  `description`, which is what auto-triggers the skill later) followed by the body.
+- `equipOnCreate: true` auto-equips it to you (the author) so you can use it right
+  away.
+- The result is a `company_skills` row: it shows 檢視 in the dashboard, carries
+  versions, and can be handed to a team with `/skills/distribute` (below).
+
+If a skill already exists only as an unmanaged local file, re-create it managed
+with the same steps (its `markdown` is the local `SKILL.md`'s content).
+
 ## Permission Model
 
 - Company skill reads: any same-company actor
