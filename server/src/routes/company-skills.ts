@@ -30,6 +30,10 @@ import {
   listCatalogSkillsOrEmpty,
   readCatalogSkillFile,
 } from "../services/skills-catalog.js";
+import {
+  readPaperclipSkillSyncPreference,
+  writePaperclipSkillSyncPreference,
+} from "@paperclipai/adapter-utils/server-utils";
 import { forbidden } from "../errors.js";
 import { assertAuthenticated, assertCompanyAccess, getActorInfo, isPrivilegedMemberViewer } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
@@ -506,6 +510,42 @@ export function companySkillRoutes(db: Db) {
           name: result.name,
         },
       });
+
+      // Auto-equip: when an AGENT authors a skill, add it to that agent's own
+      // desired skills so it's picked up on the agent's next heartbeat — this
+      // closes the "propose → solve → skillify → equipped" loop without a manual
+      // install step. Best-effort: an equip failure must never fail the create.
+      if (actor.actorType === "agent" && actor.agentId) {
+        try {
+          const creator = await agents.getById(actor.agentId);
+          if (creator && creator.companyId === companyId) {
+            const config = (creator.adapterConfig ?? {}) as Record<string, unknown>;
+            const pref = readPaperclipSkillSyncPreference(config);
+            if (!pref.desiredSkillEntries.some((entry) => entry.key === result.key)) {
+              const nextConfig = writePaperclipSkillSyncPreference(config, [
+                ...pref.desiredSkillEntries,
+                { key: result.key, versionId: null },
+              ]);
+              await agents.update(
+                creator.id,
+                { adapterConfig: nextConfig },
+                {
+                  recordRevision: {
+                    createdByAgentId: actor.agentId,
+                    createdByUserId: null,
+                    source: "skill-auto-equip",
+                  },
+                },
+              );
+            }
+          }
+        } catch (err) {
+          console.warn(
+            `[skills] auto-equip failed for agent ${actor.agentId} / skill ${result.key}:`,
+            err,
+          );
+        }
+      }
 
       res.status(201).json(result);
     },

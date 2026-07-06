@@ -322,6 +322,25 @@ function buildAttachmentContentPath(attachmentId: string): string {
   return `/api/attachments/${attachmentId}/content`;
 }
 
+/**
+ * Repair a multipart upload filename. multer/busboy decode the Content-
+ * Disposition filename as latin1 by default, so a UTF-8 name (e.g. Chinese)
+ * arrives as mojibake. Re-reading the same bytes as UTF-8 restores it. Safe for
+ * ASCII (byte-identical in latin1 and UTF-8) and for already-valid UTF-8 that
+ * survives the round trip; on any decode failure we keep the original.
+ */
+function decodeMultipartFilename(name: string | null | undefined): string | null {
+  if (!name) return null;
+  try {
+    const repaired = Buffer.from(name, "latin1").toString("utf8");
+    // Guard: only accept the re-decode if it didn't introduce U+FFFD (replacement
+    // char), which would mean the bytes weren't actually UTF-8.
+    return repaired.includes("�") ? name : repaired;
+  } catch {
+    return name;
+  }
+}
+
 const GENERIC_ATTACHMENT_CONTENT_TYPES = new Set([
   "application/octet-stream",
   "binary/octet-stream",
@@ -8510,10 +8529,15 @@ export function issueRoutes(
     }
 
     const actor = getActorInfo(req);
+    // multer/busboy decode multipart filenames as latin1 by default, so a UTF-8
+    // filename (e.g. Chinese "照片整理技能.md") arrives mojibake'd. Re-interpret
+    // the raw bytes as UTF-8. This is a no-op for pure-ASCII names (identical in
+    // latin1 and UTF-8), so it only ever repairs the broken case.
+    const originalFilename = decodeMultipartFilename(file.originalname);
     const stored = await storage.putFile({
       companyId,
       namespace: `issues/${issueId}`,
-      originalFilename: file.originalname || null,
+      originalFilename,
       contentType,
       body: file.buffer,
     });
