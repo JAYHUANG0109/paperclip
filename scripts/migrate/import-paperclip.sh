@@ -55,6 +55,18 @@ if [ "$OLD_HOME" != "$HOME" ]; then
     | xargs -0 -I{} sed -i '' "s#$OLD_HOME#$HOME#g" {} 2>/dev/null || true
 fi
 
+# Restore ~/.config/paperclip (funnel watchdog script + Chat sa.json) — the
+# launchd plists point at these paths, so they must land before the services run.
+if [ -d "$STAGE/dot-config-paperclip" ]; then
+  echo "▶ Restoring ~/.config/paperclip…"
+  mkdir -p "$HOME/.config/paperclip"
+  rsync -a "$STAGE/dot-config-paperclip/" "$HOME/.config/paperclip/"
+  if [ "$OLD_HOME" != "$HOME" ]; then
+    grep -rIl --null "$OLD_HOME" "$HOME/.config/paperclip" 2>/dev/null \
+      | xargs -0 -I{} sed -i '' "s#$OLD_HOME#$HOME#g" {} 2>/dev/null || true
+  fi
+fi
+
 echo "▶ Installing launchd services (path fixup: $OLD_HOME → $HOME)…"
 for p in "$STAGE"/LaunchAgents/*.plist; do
   [ -f "$p" ] || continue
@@ -63,28 +75,36 @@ for p in "$STAGE"/LaunchAgents/*.plist; do
   echo "    installed $b"
 done
 
+# Leave a breadcrumb so setup-new-mac.sh knows whether a DB path-rewrite is needed
+# (only when the macOS username differs).
+echo "$OLD_HOME" > "$HOME/.paperclip/.migration-old-home" 2>/dev/null || true
+
 rm -rf "$STAGE"
 cat <<EOF
 
-✓ Local state restored to ~/.paperclip and services installed (not started).
+✓ Local state restored (~/.paperclip + ~/.config/paperclip) and launchd services
+  installed (not started).
 
-REMAINING STEPS on this Mac:
-  1) Make sure the repo is cloned to match the service WorkingDirectory:
-       git clone <repo> $HOME/paperclip-live && (cd $HOME/paperclip-live && git checkout <branch>)
-  2) Install deps + build the UI once:
-       cd $HOME/paperclip-live && pnpm install --frozen-lockfile && pnpm --filter @paperclipai/ui build
-  2b) Start the service so the DB comes up, then rewrite the DB's stored paths
-      ($OLD_HOME → $HOME) — needed because the username differs:
-       launchctl bootstrap gui/$UID_NUM $LA/com.seasonarts.paperclip.plist
-       OLD_HOME=$OLD_HOME server/node_modules/.bin/tsx server/scripts/rewrite-db-paths.ts
+TIP: instead of the manual steps below, just run the one-shot wrapper — it does
+all of this (build first release, cut over launchd, rewrite DB paths if needed,
+health-check):
+       scripts/migrate/setup-new-mac.sh <bundle>
+
+REMAINING STEPS (if doing it by hand):
+  1) Build the first release + cut launchd over to it (health-checked, auto-reverts):
+       ops/deploy.sh setup
+  2) If the macOS username DIFFERS from the old Mac, rewrite the DB's stored paths:
+       OLD_HOME=$OLD_HOME \\
+         \$HOME/paperclip/current/server/node_modules/.bin/tsx \\
+         \$HOME/paperclip/current/server/scripts/rewrite-db-paths.ts
        launchctl kickstart -k gui/$UID_NUM/com.seasonarts.paperclip
-  3) Update DEVICE-SPECIFIC config (does not transfer):
-       • Tailscale: this Mac has a different tailnet hostname — set up Tailscale + funnel.
-       • scripts/deploy-live.sh: update PUBLIC_URL and LIVE=$HOME/paperclip-live.
-       • Google OAuth redirect URIs, if the public hostname changed.
-  4) Start the service:
-       launchctl bootstrap gui/$UID_NUM $LA/com.seasonarts.paperclip.plist
-       launchctl kickstart -k gui/$UID_NUM/com.seasonarts.paperclip
-  5) Verify: open the dashboard, confirm agents + Asana tokens + digests work,
-     then DELETE the bundle from both machines.
+     (Same username → skip this entirely.)
+  3) Device-specific (does not transfer):
+       • Tailscale: \`tailscale up\` to sign in. The funnel watchdog then
+         auto-establishes the public funnel within ~60s (new tailnet hostname).
+       • Google OAuth: add the new public hostname's redirect URI in Google Cloud,
+         if the hostname changed.
+  4) Verify: curl -s http://127.0.0.1:3100/api/health ; open the dashboard and
+     confirm agents + Asana tokens + digests work. Then DELETE the bundle from
+     both Macs.
 EOF

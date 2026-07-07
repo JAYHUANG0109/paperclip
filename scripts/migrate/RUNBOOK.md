@@ -1,66 +1,79 @@
-# New-Mac setup runbook (for Claude Code on the target Mac)
+# New-Mac migration — the simple version
 
-You are Claude Code on a **fresh Mac** that will run the Paperclip platform. A
-migration bundle from the old Mac has been transferred here. Follow these steps
-in order. This Mac is a shared/office Mac, so its **username differs** from the
-old one — the steps below handle that (paths get rewritten automatically).
+Moving the Paperclip live instance to another Mac is now **2 commands on the old
+Mac + 3 on the new one.** A one-shot script does the heavy lifting.
 
-Ask the user for: (a) the path to the bundle file (e.g. `~/Downloads/paperclip-migrate-*.tar.gz.enc`),
-(b) the git remote URL + branch, (c) the decryption passphrase if the bundle is `.enc`.
+## 🔑 The single biggest time-saver: use the SAME macOS username
 
-## 0. Prereqs (install if missing)
+Absolute paths (Asana token paths, log paths) are baked into the DB, files, and
+launchd plist. If the new Mac's **username matches the old one, ZERO path
+rewriting is needed** and everything just works. Create a matching account on the
+new Mac (e.g. same short name) before you start. If it differs, the scripts still
+handle it automatically — it's just one extra rewrite step.
+
+---
+
+## On the OLD Mac (2 commands)
 ```bash
-# Homebrew, then:
+cd ~/dev/paperclip/paperclip           # your dev checkout
+scripts/migrate/export-paperclip.sh --encrypt
+```
+This stops the service briefly for a consistent snapshot, bundles **everything
+local + secret** (embedded Postgres DB, master.key, per-agent Asana tokens, the
+`.env`, agent `AGENTS.md`, skills, assets, `~/.config/paperclip` funnel watchdog +
+Chat key, and the launchd plists), then restarts the service. You'll get:
+
+    ~/Desktop/paperclip-migrate-<stamp>.tar.gz.enc
+
+**AirDrop / USB / scp** it to the new Mac (never email/cloud — it holds secrets).
+
+## On the NEW Mac (3 commands)
+```bash
+# 1. Prereqs (skip any you already have)
 brew install node pnpm git
-```
 
-## 1. Clone the repo (two checkouts — dev + live)
+# 2. Clone the repo (dev checkout — where you run scripts / edit code)
+git clone https://github.com/JAYHUANG0109/paperclip.git ~/dev/paperclip/paperclip
+cd ~/dev/paperclip/paperclip && git checkout main
+
+# 3. One-shot setup (restore + build first release + start + verify)
+scripts/migrate/setup-new-mac.sh ~/Downloads/paperclip-migrate-<stamp>.tar.gz.enc
+```
+`setup-new-mac.sh` does all of this for you:
+1. checks prerequisites
+2. restores `~/.paperclip` + `~/.config/paperclip` and installs the launchd services
+3. `ops/deploy.sh setup` — builds the first release, cuts launchd over to
+   `~/paperclip/current`, starts it (health-checked, **auto-reverts** if unhealthy)
+4. rewrites DB-stored paths **only if** the username differs
+5. health-checks and prints the one remaining manual step
+
+## The one manual step left
 ```bash
-git clone <REMOTE> ~/paperclip-live && (cd ~/paperclip-live && git checkout <BRANCH>)
-git clone <REMOTE> ~/dev/paperclip/paperclip   # optional dev checkout
+tailscale up          # sign this Mac into the tailnet
 ```
+The **funnel watchdog auto-establishes the public funnel within ~60s** (this Mac
+gets a new tailnet hostname). If the public hostname changed, add its redirect URI
+to Google OAuth in the Google Cloud console.
 
-## 2. Restore the local state from the bundle
+## Verify, then clean up
 ```bash
-cd ~/paperclip-live
-scripts/migrate/import-paperclip.sh <BUNDLE_PATH>
+curl -s http://127.0.0.1:3100/api/health          # expect {"status":"ok",...}
 ```
-This restores `~/.paperclip`, rewrites the old home path in all text files to
-this Mac's `$HOME`, and installs the launchd services. Note the `OLD_HOME` it
-prints — you need it in step 4.
+Open the dashboard → confirm agents list, Asana tokens (run a console 更新), and
+digests render. Then **delete the bundle from both Macs.**
 
-## 3. Install deps + build
-```bash
-cd ~/paperclip-live && pnpm install --frozen-lockfile && pnpm --filter @paperclipai/ui build
-```
+---
 
-## 4. Start the DB, then rewrite the DB's stored paths (different username)
-```bash
-UID_NUM=$(id -u)
-launchctl bootstrap gui/$UID_NUM ~/Library/LaunchAgents/com.seasonarts.paperclip.plist
-# wait ~10s for embedded Postgres to come up, then:
-OLD_HOME=<OLD_HOME_FROM_STEP_2> server/node_modules/.bin/tsx server/scripts/rewrite-db-paths.ts
-launchctl kickstart -k gui/$UID_NUM/com.seasonarts.paperclip
-```
+## Deploys after migration
+Live is served from `~/paperclip/current` (a symlink to the active release).
+Ship code with **`ops/deploy.sh deploy`** — never `pnpm deploy:live` (retired; it
+updates an unused checkout). `ops/deploy.sh status` shows current/previous/health;
+`ops/deploy.sh rollback` is an instant one-symlink revert.
 
-## 5. Device-specific config (does NOT transfer)
-- **Tailscale**: install + sign in; set up the funnel. This Mac gets a new
-  tailnet hostname.
-- **`scripts/deploy-live.sh`**: update `PUBLIC_URL` to the new hostname and
-  confirm `LIVE=$HOME/paperclip-live`.
-- **Google OAuth**: if the public hostname changed, add the new redirect URI in
-  the Google Cloud console.
-
-## 6. Verify
-```bash
-curl -s -m5 http://127.0.0.1:3100/api/health
-```
-Open the dashboard, confirm: agents list, Asana tokens work (a 更新 on a console
-pulls fresh data), digests render. Then **delete the bundle** from this Mac and
-the old one.
-
-## Sanity checks
-- No leftover old-home paths in the DB:
-  `OLD_HOME=<OLD_HOME> server/node_modules/.bin/tsx server/scripts/rewrite-db-paths.ts` should report `0 row(s)` on a second run.
-- Agents can read tokens: trigger a console 更新 and confirm it doesn't error with
-  "can't find token".
+## If something's off
+- **Not healthy:** `tail -50 ~/.paperclip/instances/default/logs/launchd-paperclip.err.log`
+- **Agents can't find tokens (username differed):** the DB path rewrite didn't run —
+  `OLD_HOME=<old> ~/paperclip/current/server/node_modules/.bin/tsx ~/paperclip/current/server/scripts/rewrite-db-paths.ts`
+  then `launchctl kickstart -k gui/$(id -u)/com.seasonarts.paperclip`. Re-running it
+  reports `0 row(s)` once clean.
+- **"pg_trgm / $libdir" DB errors:** restart the service (embedded Postgres stale-lib quirk).

@@ -69,6 +69,17 @@ rsync -a \
 echo "▶ Staging launchd service definitions…"
 for p in "${PLISTS[@]}"; do [ -f "$LA/$p.plist" ] && cp "$LA/$p.plist" "$STAGE/LaunchAgents/"; done
 
+# ~/.config/paperclip holds device-side helpers the launchd plists point at — the
+# Tailscale-funnel watchdog script and the Google Chat service-account key
+# (sa.json). These live OUTSIDE ~/.paperclip, so without this the funnel watchdog
+# + Chat integration silently break on the new Mac. Contains a secret → stays in
+# the encrypted bundle.
+if [ -d "$HOME/.config/paperclip" ]; then
+  echo "▶ Staging ~/.config/paperclip (funnel watchdog + Chat key)…"
+  mkdir -p "$STAGE/dot-config-paperclip"
+  rsync -a "$HOME/.config/paperclip/" "$STAGE/dot-config-paperclip/"
+fi
+
 {
   echo "created: $STAMP"
   echo "source_home: $HOME"
