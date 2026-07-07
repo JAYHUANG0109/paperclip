@@ -54,6 +54,25 @@ else
   "$REPO_ROOT/ops/deploy.sh" setup
 fi
 
+# Point the funnel watchdog at the VERSIONED copy in the release (ops/…), not a
+# loose ~/.config file, then reload it. Keeps the watchdog travelling with the
+# code — one fewer moving part to bundle/rewrite on future migrations.
+WD_PLIST="$HOME/Library/LaunchAgents/com.seasonarts.tailscale-funnel-watchdog.plist"
+WD_SCRIPT="$CURRENT/ops/tailscale-funnel-watchdog.sh"
+if [ -f "$WD_PLIST" ] && [ -f "$WD_SCRIPT" ]; then
+  step "Pointing funnel watchdog at the versioned repo copy…"
+  /usr/bin/python3 - "$WD_PLIST" "$WD_SCRIPT" <<'PY'
+import plistlib, sys
+plist_path, script = sys.argv[1], sys.argv[2]
+with open(plist_path, "rb") as f: d = plistlib.load(f)
+d["ProgramArguments"] = ["/bin/bash", script]
+with open(plist_path, "wb") as f: plistlib.dump(d, f)
+print(f"  ✓ watchdog → {script}")
+PY
+  launchctl bootout "gui/$UID_NUM/com.seasonarts.tailscale-funnel-watchdog" 2>/dev/null || true
+  launchctl bootstrap "gui/$UID_NUM" "$WD_PLIST" 2>/dev/null || true
+fi
+
 # 4. DB path rewrite — only when the username (home dir) differs.
 if [ "$OLD_HOME" != "$HOME" ]; then
   step "[4/5] Username differs ($OLD_HOME → $HOME) — rewriting DB-stored paths…"
