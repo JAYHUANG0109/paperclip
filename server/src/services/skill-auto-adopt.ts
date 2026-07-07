@@ -17,10 +17,18 @@ import { logger } from "../middleware/logger.js";
  * `origin: "user_installed"` (managed:false). This pass reads each such skill and
  * registers it as a managed company skill via `createLocalSkill`.
  *
+ * Adopted as `sharingScope: "private"` (NOT company-wide): a skill an agent makes
+ * is the maker's own until they explicitly distribute it. Owner/admin viewers see
+ * all private skills; distribution (`/skills/distribute`) is the deliberate share.
+ *
+ * This is a FALLBACK. The reliable path is the agent creating the skill via
+ * `POST /companies/:id/skills` (sharingScope "private"), which auto-equips the
+ * creating agent. The shared local skills home means this reconciler can't tell
+ * which agent authored a loose file, so it does NOT equip anyone — it only keeps
+ * the skill from languishing as unmanaged.
+ *
  * Idempotent: `createLocalSkill` throws a conflict when the slug already exists,
- * which we treat as "already adopted" and skip. Adopt-only — it never deletes or
- * re-equips; the agent keeps using its local copy, and the managed copy is what
- * the dashboard shows and `/skills/distribute` can hand to a team.
+ * which we treat as "already adopted" and skip.
  */
 export async function reconcileUserInstalledSkills(
   db: Db,
@@ -86,7 +94,7 @@ export async function reconcileUserInstalledSkills(
         try {
           const created = await companySkills.createLocalSkill(
             agent.companyId,
-            { name, slug, description, markdown },
+            { name, slug, description, markdown, sharingScope: "private" },
             { type: "agent", agentId: agent.id },
             { isPrivileged: true },
           );

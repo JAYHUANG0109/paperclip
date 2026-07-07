@@ -28,7 +28,7 @@ becomes an **unmanaged** skill: it has no `company_skills` row, so it can't be
 viewed in the dashboard (no 檢視), isn't versioned, and — critically — **can't be
 distributed to a team** (the distribute endpoint resolves company skills only).
 
-Create it managed instead:
+Create it managed AND private:
 
 ```sh
 curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills" \
@@ -38,16 +38,20 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills"
     "name": "photo-rename",
     "description": "整理雜亂照片檔名成 YYYYMMDD_班級_活動_序號 …（此描述即自動觸發條件）",
     "markdown": "---\nname: photo-rename\ndescription: …\n---\n\n# …完整 SKILL.md 內文…",
-    "equipOnCreate": true
+    "sharingScope": "private"
   }'
 ```
 
 - `markdown` is the **entire** SKILL.md — YAML frontmatter (`name` + a sharp
   `description`, which is what auto-triggers the skill later) followed by the body.
-- `equipOnCreate: true` auto-equips it to you (the author) so you can use it right
-  away.
+- **`sharingScope: "private"`** keeps it yours — not shared with others' agents.
+- **You are auto-equipped.** An agent that creates a skill is automatically
+  equipped with it (no `equipOnCreate` needed for yourself), so you can use it
+  immediately.
 - The result is a `company_skills` row: it shows 檢視 in the dashboard, carries
-  versions, and can be handed to a team with `/skills/distribute` (below).
+  versions, and stays private until you (or a manager) explicitly hand it out
+  with `/skills/distribute` (below) — which is what changes its scope and equips
+  other agents.
 
 If a skill already exists only as an unmanaged local file, re-create it managed
 with the same steps (its `markdown` is the local `SKILL.md`'s content).
