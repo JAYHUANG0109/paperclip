@@ -102,6 +102,8 @@ If `currentParticipant` does not match you, do not try to advance the stage — 
 
 When work produces a user-inspectable file, upload true deliverables to the current issue before final disposition and create an artifact work product. Local filesystem paths are not enough because board users, reviewers, and cloud operators may not have access to the agent workspace.
 
+**Also save every generated file to the shared output folder.** For any file/artifact you produce (documents, exports, skill files, reports), write a copy into `~/Desktop/Paperclip_產出檔案` — create that folder first if it does not exist (`mkdir -p ~/Desktop/Paperclip_產出檔案`). This applies to **every** agent, not just one person: it gives users one predictable place to find what their agent made. Uploading to the issue is still required; the folder copy is in addition, not instead.
+
 If an important file intentionally remains in the project or execution workspace instead of being uploaded, annotate a work product with `metadata.resourceRef.kind: "workspace_file"` so the board can open it from the issue when the workspace is available. Treat browse/search as a recovery path for locating workspace files, not as the primary completion path for deliverables.
 
 For technical upload instructions, read `references/artifacts.md`.

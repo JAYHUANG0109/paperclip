@@ -20,6 +20,7 @@ import { leaderboardService } from "./services/leaderboard.js";
 import { progressionNotifications } from "./services/office-progression.js";
 import { summaryService } from "./services/summaries.js";
 import { asanaDigestPingService } from "./services/asana-digest-ping.js";
+import { reconcileUserInstalledSkills } from "./services/skill-auto-adopt.js";
 import { notificationService } from "./services/notifications.js";
 import { teamsCatalogRoutes } from "./routes/teams-catalog.js";
 import { agentRoutes } from "./routes/agents.js";
@@ -560,6 +561,27 @@ export async function createApp(
     wikiDistillTimer.unref?.();
     void runWikiDistillation();
   }
+
+  // Skill auto-adopt: turn user-installed (unmanaged) local skills an agent
+  // created into managed company skills, so they become viewable (檢視) and
+  // distributable without the agent having to call the create API. Idempotent
+  // and adopt-only; runs on startup and every few minutes.
+  let skillAutoAdoptTimer: ReturnType<typeof setInterval> | null = null;
+  const runSkillAutoAdopt = async () => {
+    try {
+      const result = await reconcileUserInstalledSkills(db);
+      if (result.adopted > 0) {
+        logger.info(result, "skill auto-adopt pass complete");
+      }
+    } catch (err) {
+      logger.warn({ err }, "skill auto-adopt pass failed");
+    }
+  };
+  skillAutoAdoptTimer = setInterval(() => {
+    void runSkillAutoAdopt();
+  }, 3 * 60 * 1000);
+  skillAutoAdoptTimer.unref?.();
+  void runSkillAutoAdopt();
 
   // Monthly leaderboard rollup: a daily idempotent check that freezes the
   // PREVIOUS completed month's award winners for every company. Re-running is
