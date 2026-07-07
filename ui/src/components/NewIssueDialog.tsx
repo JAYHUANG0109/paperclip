@@ -420,6 +420,10 @@ export function NewIssueDialog() {
   const titleRef = useRef("");
   const descriptionRef = useRef("");
   const [titleHasText, setTitleHasText] = useState(false);
+  // True once the user has pressed Create — turns on inline highlighting for any
+  // still-missing required field (title + an AGENT assignee). Errors are derived
+  // live below, so they clear themselves the moment the field is filled.
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [draftHasText, setDraftHasText] = useState(false);
   const [status, setStatus] = useState("todo");
   const [priority, setPriority] = useState("");
@@ -528,6 +532,14 @@ export function NewIssueDialog() {
   const selectedAssignee = useMemo(() => parseAssigneeValue(assigneeValue), [assigneeValue]);
   const selectedAssigneeAgentId = selectedAssignee.assigneeAgentId;
   const selectedAssigneeUserId = selectedAssignee.assigneeUserId;
+
+  // Required to create: a title AND an AGENT assignee. A task assigned to a
+  // person (or no one) is never picked up by a heartbeat, so it silently idles —
+  // which is exactly the "goes nowhere" confusion. Block on it and say why.
+  const titleMissing = !titleHasText;
+  const assigneeNotAgent = !selectedAssigneeAgentId;
+  const showTitleError = attemptedSubmit && titleMissing;
+  const showAssigneeError = attemptedSubmit && assigneeNotAgent;
 
   const assigneeAdapterType = (agents ?? []).find((agent) => agent.id === selectedAssigneeAgentId)?.adapterType ?? null;
   const supportsAssigneeOverrides = Boolean(
@@ -1019,7 +1031,18 @@ export function NewIssueDialog() {
   function handleSubmit() {
     const currentTitle = titleRef.current.trim();
     const currentDescription = descriptionRef.current.trim();
-    if (!effectiveCompanyId || !currentTitle || createIssue.isPending) return;
+    if (createIssue.isPending) return;
+    // Enforce required fields with visible feedback rather than a silently
+    // disabled button: flag what's missing and focus the assignee picker.
+    if (!currentTitle || !selectedAssigneeAgentId) {
+      setAttemptedSubmit(true);
+      if (currentTitle && !selectedAssigneeAgentId) {
+        assigneeSelectorRef.current?.focus();
+      }
+      return;
+    }
+    if (!effectiveCompanyId) return;
+    setAttemptedSubmit(false);
     const effectiveLane = assigneeSupportsCheapLane
       ? assigneeModelLane
       : assigneeModelLane === "cheap"
@@ -1425,12 +1448,18 @@ export function NewIssueDialog() {
               projectSelectorRef={projectSelectorRef}
               onChange={handleTitleChange}
             />
+            {showTitleError ? (
+              <p className="mt-1 text-xs text-destructive">
+                {t("newIssue.titleRequired", { defaultValue: "請輸入任務標題 / Task title is required" })}
+              </p>
+            ) : null}
           </div>
 
           <div className="px-4 pb-2">
             <div className="overflow-x-auto overscroll-x-contain">
               <div className="inline-flex items-center gap-2 text-sm text-muted-foreground flex-wrap sm:flex-nowrap sm:min-w-max">
               <span className="w-6 shrink-0 text-center">{t("newIssue.for", { defaultValue: "For" })}</span>
+              <span className={showAssigneeError ? "inline-flex rounded-md ring-1 ring-destructive ring-offset-1 ring-offset-background" : "inline-flex"}>
               <InlineEntitySelector
                 ref={assigneeSelectorRef}
                 value={assigneeValue}
@@ -1489,6 +1518,15 @@ export function NewIssueDialog() {
                   );
                 }}
               />
+              </span>
+              {showAssigneeError ? (
+                <span className="basis-full text-xs text-destructive">
+                  {t("newIssue.agentAssigneeRequired", {
+                    defaultValue:
+                      "請指派給一位代理人 — AI 才會自動執行；指派給真人或留空，任務不會被處理。",
+                  })}
+                </span>
+              ) : null}
               <span>{t("newIssue.in", { defaultValue: "in" })}</span>
               <InlineEntitySelector
                 ref={projectSelectorRef}
@@ -2276,7 +2314,7 @@ export function NewIssueDialog() {
             <Button
               size="sm"
               className="min-w-0 sm:min-w-[8.5rem] disabled:opacity-100"
-              disabled={!titleHasText || createIssue.isPending}
+              disabled={createIssue.isPending}
               onClick={handleSubmit}
               aria-busy={createIssue.isPending}
             >
