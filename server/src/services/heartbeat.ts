@@ -8068,11 +8068,17 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       intervalSec: Math.max(0, asNumber(heartbeat.intervalSec, 0)),
       wakeOnDemand: asBoolean(heartbeat.wakeOnDemand ?? heartbeat.wakeOnAssignment ?? heartbeat.wakeOnOnDemand ?? heartbeat.wakeOnAutomation, true),
       maxConcurrentRuns: normalizeMaxConcurrentRuns(heartbeat.maxConcurrentRuns),
+      // Default ON: a generic idle timer wake (no issue/comment/task context)
+      // is skipped when the agent has no assigned todo/in_progress issue —
+      // avoids booting the model just to conclude "nothing to do." Routine
+      // executions (which create an assigned issue) and all event/directed
+      // wakes are unaffected. An agent that must run on a bare timer regardless
+      // can opt out with runtimeConfig.heartbeat.skipTimerWhenNoActionableWork=false.
       skipTimerWhenNoActionableWork: asBoolean(
         heartbeat.skipTimerWhenNoActionableWork ??
           heartbeat.requireActionableTimerWork ??
           heartbeat.issueOnlyTimer,
-        false,
+        true,
       ),
       maxDailyRuns: normalizeOptionalNonNegativeInteger(
         heartbeat.maxDailyRuns ?? heartbeat.dailyRunLimit ?? heartbeat.dailyRunCap ?? heartbeat.maxRunsPerDay,
