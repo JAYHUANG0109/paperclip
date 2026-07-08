@@ -885,8 +885,8 @@ export function Secrets() {
           items={[
             { value: "secrets", label: t("settings.nav.secrets") },
             { value: "vaults", label: t("secrets.providerVaults") },
-            { value: "my-secrets", label: "My secrets" },
-            { value: "user-definitions", label: "Required per-user secrets" },
+            { value: "my-secrets", label: t("secrets.userSecrets.myTabLabel") },
+            { value: "user-definitions", label: t("secrets.userSecrets.definitionsTabLabel") },
           ]}
           align="start"
           value={activeTab}
