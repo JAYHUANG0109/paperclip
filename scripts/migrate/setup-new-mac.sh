@@ -39,6 +39,10 @@ if [ "${#missing[@]}" -gt 0 ]; then
   die "Missing ${missing[*]} — run: brew install ${missing[*]}"
 fi
 echo "  ✓ node $(node -v), pnpm $(pnpm -v), git $(git --version | awk '{print $3}')"
+# Soft checks — needed for the platform to be fully functional, but installed/
+# signed-in separately (interactive), so warn rather than block.
+command -v tailscale >/dev/null 2>&1 || echo "  ⚠ tailscale not found — needed for the public link. Install the Tailscale app + 'tailscale up' after setup."
+command -v claude    >/dev/null 2>&1 || echo "  ⚠ claude CLI not found — the AI AGENTS run through it. Install it and 'claude login' as the agent account, or agents won't execute."
 
 # 2. Restore local state + install services (reuses the tested import script).
 step "[2/5] Restoring local state from bundle…"

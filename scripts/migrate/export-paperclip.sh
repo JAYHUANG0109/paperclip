@@ -41,21 +41,34 @@ STAGE="$(mktemp -d)/paperclip-bundle"
 mkdir -p "$STAGE/dot-paperclip" "$STAGE/LaunchAgents"
 ARCHIVE="$OUT_DIR/paperclip-migrate-$STAMP.tar.gz"
 
-echo "▶ Stopping $SERVICE for a consistent DB snapshot…"
-launchctl bootout "gui/$UID_NUM/$SERVICE" 2>/dev/null || true
-sleep 5
-
+# restart_service runs from the EXIT trap on ANY exit — its one job is to never
+# leave the live service stopped. Disable -e/-u inside so nothing here can abort
+# the restart itself (a stopped-and-not-restarted service is the worst outcome).
+# Armed BEFORE we stop the service, so even a failure mid-stop still restarts.
 restart_service() {
+  set +eu
   echo "▶ Restarting $SERVICE…"
   launchctl bootstrap "gui/$UID_NUM" "$LA/$SERVICE.plist" 2>/dev/null || true
   launchctl kickstart -k "gui/$UID_NUM/$SERVICE" 2>/dev/null || true
 }
 trap restart_service EXIT
 
+echo "▶ Stopping $SERVICE for a consistent DB snapshot…"
+launchctl bootout "gui/$UID_NUM/$SERVICE" 2>/dev/null || true
+
+# Wait for embedded Postgres to FULLY stop before copying its data dir. A fixed
+# short sleep raced the shutdown: Postgres kept removing its own files
+# (postmaster.pid, pg_wal segments) mid-rsync. Poll for the pidfile to vanish.
+PG_PID_FILE="$PAPERCLIP_HOME/instances/default/db/postmaster.pid"
+for _ in $(seq 1 45); do [ -e "$PG_PID_FILE" ] || break; sleep 1; done
+[ -e "$PG_PID_FILE" ] && echo "⚠  Postgres pidfile still present after 45s; proceeding anyway."
+sleep 1
+
 echo "▶ Staging ~/.paperclip (excluding regenerable logs + caches)…"
 # Everything excluded below is regenerable AND tends to hold stale absolute paths,
 # so dropping it both shrinks the bundle and avoids carrying dead paths to the new
 # machine. The DB, secrets, tokens, AGENTS.md, workspaces, skills and assets stay.
+rsync_rc=0
 rsync -a \
   --exclude 'instances/default/data/backups' \
   --exclude 'instances/default/data/run-logs' \
@@ -64,7 +77,15 @@ rsync -a \
   --exclude 'instances/default/runtime-services' \
   --exclude 'instances/*/companies/*/claude-prompt-cache' \
   --exclude '*.bak-*' \
-  "$PAPERCLIP_HOME/" "$STAGE/dot-paperclip/"
+  "$PAPERCLIP_HOME/" "$STAGE/dot-paperclip/" || rsync_rc=$?
+# rsync 24 = "some files vanished before transfer", 23 = partial transfer. With
+# Postgres fully stopped these shouldn't happen, but they're benign housekeeping
+# races either way — tolerate them; anything else is a real failure (→ trap
+# restarts the service on exit).
+if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 23 ] && [ "$rsync_rc" -ne 24 ]; then
+  echo "✗ rsync failed (exit $rsync_rc) — aborting; service will be restarted." >&2
+  exit 1
+fi
 
 echo "▶ Staging launchd service definitions…"
 for p in "${PLISTS[@]}"; do [ -f "$LA/$p.plist" ] && cp "$LA/$p.plist" "$STAGE/LaunchAgents/"; done

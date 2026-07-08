@@ -31,6 +31,11 @@ Chat key, and the launchd plists), then restarts the service. You'll get:
 ```bash
 # 1. Prereqs (skip any you already have)
 brew install node pnpm git
+#   Also needed (installed/signed-in separately):
+#   • Tailscale  — the public link/funnel:  brew install --cask tailscale  (then sign in)
+#   • claude CLI — the AI AGENTS run through it. Install it and `claude login` as
+#     the SAME agent account as the old Mac, or agents won't execute.
+#   VS Code is optional (only if you'll edit code / run Claude Code in the IDE).
 
 # 2. Clone the repo (dev checkout — where you run scripts / edit code)
 git clone https://github.com/JAYHUANG0109/paperclip.git ~/dev/paperclip/paperclip
