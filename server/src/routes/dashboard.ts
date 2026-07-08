@@ -25,7 +25,8 @@ import {
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
 import { logger } from "../middleware/logger.js";
-import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, resolveFounderPostTargetGid, autoPostFounderAiComments } from "../services/agent-asana.js";
+import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
+import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
@@ -339,6 +340,35 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     const email = await emailForUserId(db, userId);
     const consoles = await getConsolesForUser(db, companyId, email);
     res.json({ consoles });
+  });
+
+  // Server-side digest prep (token-lightening #2). The agent calls this to get a
+  // pre-built, deterministic payload — Asana sections fetched + categorized,
+  // private-links resolved, comments/subtasks collected, idempotency checked —
+  // so it no longer does any of that plumbing in its model context. It then only
+  // writes summary/批閱草稿 and POSTs /founder-digest as today. Agent-only,
+  // self-scoped, read-only (no writes to Asana or the digest). If the console has
+  // no server-side layout yet, returns { supported: false } and the agent keeps
+  // its own fetch (safe fallback).
+  router.get("/companies/:companyId/founder-digest/prep", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type !== "agent" || !req.actor.agentId || req.actor.companyId !== companyId) {
+      res.status(403).json({ error: "Only the owning agent may build its founder-digest prep." });
+      return;
+    }
+    const consoleKey = asConsoleKey((req.query as { console?: unknown })?.console);
+    const layout = CONSOLE_ASANA_LAYOUT[consoleKey];
+    if (!layout) {
+      res.json({ supported: false, console: consoleKey });
+      return;
+    }
+    const prep = await buildFounderDigestPrep(db, companyId, req.actor.agentId, layout);
+    if (!prep) {
+      res.json({ supported: false, console: consoleKey, reason: "no_token" });
+      return;
+    }
+    res.json({ supported: true, console: consoleKey, ...prep });
   });
 
   // The agent writes its OWN founder digest (agent-only, self-scoped).
