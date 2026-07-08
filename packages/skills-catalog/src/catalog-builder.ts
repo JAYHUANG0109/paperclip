@@ -410,6 +410,17 @@ async function buildReferencedCatalogSkill(
     return null;
   }
 
+  // The skill built (SKILL.md + frontmatter are intact), but some *other* pinned
+  // files failed to fetch. If those are all transient fetch errors (e.g. a burst
+  // of unauthenticated raw.githubusercontent 429s) and we hold a committed copy at
+  // the identical commit, prefer it — reusing the pinned copy is exact, and lets a
+  // rate-limited network blip fall back instead of failing the whole build.
+  const nextErrors = errors.slice(errorStart);
+  if (fallbackSkill && canFallbackToExistingReferencedSkill(nextErrors)) {
+    errors.splice(errorStart, nextErrors.length);
+    return fallbackSkill;
+  }
+
   return {
     id,
     key,
