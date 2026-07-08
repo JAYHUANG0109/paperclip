@@ -1,7 +1,8 @@
-import { agents, type Db } from "@paperclipai/db";
-import { eq } from "drizzle-orm";
+import { agents, heartbeatRuns, type Db } from "@paperclipai/db";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { secretService } from "./secrets.js";
 
 /**
  * Server-side Asana writes using an agent's OWN stored token. This lets
@@ -13,7 +14,7 @@ import { homedir } from "node:os";
  */
 const ASANA_API = "https://app.asana.com/api/1.0";
 
-function readToken(
+export function readToken(
   row: { adapterConfig?: unknown } | undefined,
   companyId: string,
   agentId: string,
@@ -36,9 +37,69 @@ function readToken(
   }
 }
 
+/**
+ * The per-user secret key each user stores their personal Asana token under.
+ * One token per human; every agent that user is responsible for reuses it, so
+ * tokens are managed/rotated from the "My secrets" UI instead of loose files.
+ */
+export const ASANA_USER_SECRET_KEY = "ASANA_TOKEN";
+
+/**
+ * The user an agent acts on behalf of — the responsible user of its most recent
+ * run. Heartbeat runs always resolve a responsibleUserId (falling back to the
+ * company default), so this is a stable per-agent → user pairing. Returns null
+ * only for an agent that has never run.
+ */
+export async function resolveAgentResponsibleUserId(
+  db: Db,
+  companyId: string,
+  agentId: string,
+): Promise<string | null> {
+  const row = (
+    await db
+      .select({ uid: heartbeatRuns.responsibleUserId })
+      .from(heartbeatRuns)
+      .where(
+        and(
+          eq(heartbeatRuns.companyId, companyId),
+          eq(heartbeatRuns.agentId, agentId),
+          isNotNull(heartbeatRuns.responsibleUserId),
+        ),
+      )
+      .orderBy(desc(heartbeatRuns.createdAt))
+      .limit(1)
+  )[0];
+  return row?.uid ?? null;
+}
+
+/** A specific user's Asana token from their per-user secret (decrypted), or null. */
+async function userAsanaToken(db: Db, companyId: string, userId: string): Promise<string | null> {
+  try {
+    const svc = secretService(db);
+    const entries = await svc.listCurrentUserSecretValues(companyId, userId);
+    const entry = entries.find((e) => e.definition.key === ASANA_USER_SECRET_KEY && e.secret);
+    if (!entry?.secret) return null;
+    const token = (await svc.resolveSecretValue(companyId, entry.secret.id, "latest")).trim();
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
 async function tokenFor(db: Db, companyId: string, agentId: string) {
   const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
-  return readToken(row, companyId, agentId);
+  // Legacy per-agent connection file — still the source of readOnly + defaultWorkspace,
+  // and the fallback until each user has set their own token under "My secrets".
+  const fileCfg = readToken(row, companyId, agentId);
+  // Preferred: the responsible user's own Asana token (per-user secret).
+  const userId = await resolveAgentResponsibleUserId(db, companyId, agentId);
+  if (userId) {
+    const token = await userAsanaToken(db, companyId, userId);
+    if (token) {
+      return { token, readOnly: false, defaultWorkspace: fileCfg?.defaultWorkspace ?? null };
+    }
+  }
+  return fileCfg;
 }
 
 async function asanaGetJson(token: string, pathAndQuery: string): Promise<{ data?: unknown } | null> {
