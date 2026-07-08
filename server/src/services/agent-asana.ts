@@ -1,5 +1,5 @@
-import { agents, heartbeatRuns, type Db } from "@paperclipai/db";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { agents, agentMemberships, heartbeatRuns, type Db } from "@paperclipai/db";
+import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { secretService } from "./secrets.js";
@@ -45,16 +45,34 @@ export function readToken(
 export const ASANA_USER_SECRET_KEY = "ASANA_TOKEN";
 
 /**
- * The user an agent acts on behalf of — the responsible user of its most recent
- * run. Heartbeat runs always resolve a responsibleUserId (falling back to the
- * company default), so this is a stable per-agent → user pairing. Returns null
- * only for an agent that has never run.
+ * The human who owns an agent — whose Asana token it should use. Resolved
+ * OWNER-FIRST so each person's agents use THAT person's token, independent of
+ * which run happens to be executing:
+ *   1. the user who joined the agent (agent_memberships, state "joined") — the
+ *      stable per-agent → human pairing;
+ *   2. fallback: the responsible user of the agent's most recent run;
+ *   3. null when neither exists (→ caller falls back to the connection file).
  */
 export async function resolveAgentResponsibleUserId(
   db: Db,
   companyId: string,
   agentId: string,
 ): Promise<string | null> {
+  const owner = (
+    await db
+      .select({ uid: agentMemberships.userId })
+      .from(agentMemberships)
+      .where(
+        and(
+          eq(agentMemberships.companyId, companyId),
+          eq(agentMemberships.agentId, agentId),
+          eq(agentMemberships.state, "joined"),
+        ),
+      )
+      .orderBy(asc(agentMemberships.createdAt))
+      .limit(1)
+  )[0];
+  if (owner?.uid) return owner.uid;
   const row = (
     await db
       .select({ uid: heartbeatRuns.responsibleUserId })
