@@ -261,6 +261,12 @@ export interface FounderPrepItem {
   hasExistingAiComment: boolean;
   comments: AsanaTaskComment[];
   subtasks: { name: string; completed: boolean }[];
+  /** #3 change-detection: set by the /prep endpoint when this item is unchanged
+   *  since the last run (same gid + modifiedAt) and prior text exists. The agent
+   *  copies reuseSummary/reuseReview verbatim instead of regenerating. */
+  unchanged?: boolean;
+  reuseSummary?: string | null;
+  reuseReview?: string | null;
 }
 export interface FounderDigestPrep {
   generatedAt: string;

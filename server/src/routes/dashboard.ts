@@ -21,7 +21,9 @@ import {
   CONSOLE_TITLE,
   toConsoleKey,
   asConsoleKey,
+  readStoredDigestForAgent,
   type FounderDecision,
+  type FounderItem,
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
 import { logger } from "../middleware/logger.js";
@@ -367,6 +369,30 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     if (!prep) {
       res.json({ supported: false, console: consoleKey, reason: "no_token" });
       return;
+    }
+    // #3 change-detection: for items unchanged since the last run (same gid +
+    // modifiedAt) that already have a summary/review, hand the prior text back so
+    // the agent copies it instead of re-generating (fewer tokens).
+    try {
+      const prior = await readStoredDigestForAgent(db, req.actor.agentId, consoleKey);
+      if (prior) {
+        const priorByGid = new Map<string, FounderItem>();
+        for (const cat of ["urgent", "meetings", "nonUrgent", "reminders"] as const) {
+          for (const it of prior.categories[cat] ?? []) priorByGid.set(it.gid, it);
+        }
+        for (const cat of ["urgent", "nonUrgent"] as const) {
+          for (const item of prep.categories[cat]) {
+            const p = priorByGid.get(item.gid);
+            if (p && p.modifiedAt && item.modifiedAt && p.modifiedAt === item.modifiedAt && (p.summary || p.review)) {
+              item.unchanged = true;
+              item.reuseSummary = p.summary ?? null;
+              item.reuseReview = p.review ?? null;
+            }
+          }
+        }
+      }
+    } catch {
+      /* reuse hints are best-effort; a miss just means the agent regenerates */
     }
     res.json({ supported: true, console: consoleKey, ...prep });
   });

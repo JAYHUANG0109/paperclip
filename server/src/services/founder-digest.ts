@@ -59,6 +59,13 @@ export interface FounderItem {
    * comments go to the outer task (existing behaviour).
    */
   commentTargetGid?: string | null;
+  /**
+   * Asana `modified_at` captured when this item was built (#3 change-detection).
+   * A later run compares it: if unchanged and a summary/review already exists,
+   * the server hands the prior text back via /prep so the agent skips
+   * regenerating it. Passed through unchanged by the agent.
+   */
+  modifiedAt?: string | null;
 }
 
 export interface FounderDigest {
@@ -191,7 +198,28 @@ function sanitizeItem(raw: unknown): FounderItem | null {
     ...(sanitizeSubtasks(t.subtasks).length ? { subtasks: sanitizeSubtasks(t.subtasks) } : {}),
     closed: t.closed === true,
     ...(commentTargetGid ? { commentTargetGid } : {}),
+    ...(typeof t.modifiedAt === "string" && t.modifiedAt.trim() ? { modifiedAt: t.modifiedAt.trim().slice(0, 40) } : {}),
   };
+}
+
+/**
+ * Read the currently-stored digest for a specific agent's console slot (#3
+ * change-detection). Used by /founder-digest/prep to reuse prior summaries for
+ * unchanged items. Returns null when the agent has no digest for that console.
+ */
+export async function readStoredDigestForAgent(
+  db: Db,
+  agentId: string,
+  consoleKey: ConsoleKey,
+): Promise<FounderDigest | null> {
+  const [row] = await db
+    .select({ metadata: agents.metadata })
+    .from(agents)
+    .where(eq(agents.id, agentId))
+    .limit(1);
+  const md = row?.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : null;
+  const digest = md?.[CONSOLE_META_KEY[consoleKey]] as FounderDigest | undefined;
+  return digest ?? null;
 }
 
 /** Parse an item's subtasks. Keeps name + completed only; caps the list. */
