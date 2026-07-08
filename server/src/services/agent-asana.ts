@@ -238,6 +238,124 @@ export async function getAsanaTaskComments(
   }
 }
 
+/**
+ * SERVER-SIDE founder-digest prep (token-lightening #2). Does the deterministic
+ * plumbing the digest agent currently does inside its model context: fetch each
+ * section's incomplete tasks, categorize by section, resolve the private-link
+ * inner task, merge+dedupe comments (outer+inner), collect subtasks, and check
+ * the AI-comment idempotency marker. The agent then only needs to write the
+ * summary/批閱草稿 for each item — no Asana fetching in-prompt.
+ *
+ * Uses the agent's OWN Asana token (same as the agent). Returns null on missing
+ * token. Best-effort per task: one task's fetch failure never aborts the run.
+ * Includes `modifiedAt` per item so the caller can skip re-summarizing unchanged
+ * items (#3). NOT wired into the live path yet — built for parity verification.
+ */
+export interface FounderPrepItem {
+  gid: string;
+  name: string;
+  permalinkUrl: string | null;
+  notes: string | null;
+  modifiedAt: string | null;
+  commentTargetGid: string | null;
+  hasExistingAiComment: boolean;
+  comments: AsanaTaskComment[];
+  subtasks: { name: string; completed: boolean }[];
+}
+export interface FounderDigestPrep {
+  generatedAt: string;
+  categories: {
+    urgent: FounderPrepItem[];
+    meetings: FounderPrepItem[];
+    nonUrgent: FounderPrepItem[];
+    reminders: FounderPrepItem[];
+  };
+}
+
+async function fetchSectionIncompleteTasks(token: string, sectionGid: string): Promise<Record<string, unknown>[]> {
+  const body = await asanaGetJson(
+    token,
+    `/tasks?section=${encodeURIComponent(sectionGid)}&completed_since=now` +
+      `&opt_fields=name,notes,permalink_url,modified_at,completed&limit=100`,
+  );
+  return Array.isArray(body?.data) ? (body.data as Record<string, unknown>[]) : [];
+}
+
+async function fetchSubtasks(token: string, taskGid: string): Promise<{ name: string; completed: boolean }[]> {
+  const body = await asanaGetJson(
+    token,
+    `/tasks/${encodeURIComponent(taskGid)}/subtasks?opt_fields=name,completed&limit=20`,
+  );
+  const rows = Array.isArray(body?.data) ? (body.data as Record<string, unknown>[]) : [];
+  return rows
+    .map((s) => ({ name: String(s.name ?? "").trim(), completed: s.completed === true }))
+    .filter((s) => s.name);
+}
+
+export async function buildFounderDigestPrep(
+  db: Db,
+  companyId: string,
+  agentId: string,
+  layout: { sections: { category: "urgent" | "meetings" | "nonUrgent" | "reminders"; sectionGid: string }[] },
+): Promise<FounderDigestPrep | null> {
+  const t = await tokenFor(db, companyId, agentId);
+  if (!t) return null;
+  const categories: FounderDigestPrep["categories"] = { urgent: [], meetings: [], nonUrgent: [], reminders: [] };
+
+  for (const ref of layout.sections) {
+    let tasks: Record<string, unknown>[];
+    try {
+      tasks = await fetchSectionIncompleteTasks(t.token, ref.sectionGid);
+    } catch {
+      continue; // section fetch failed — skip; caller keeps prior digest
+    }
+    for (const task of tasks) {
+      if (task.completed === true) continue;
+      const gid = String(task.gid ?? "");
+      if (!gid) continue;
+      const notes = typeof task.notes === "string" ? task.notes : null;
+      const item: FounderPrepItem = {
+        gid,
+        name: String(task.name ?? ""),
+        permalinkUrl: typeof task.permalink_url === "string" ? task.permalink_url : null,
+        notes,
+        modifiedAt: typeof task.modified_at === "string" ? task.modified_at : null,
+        commentTargetGid: null,
+        hasExistingAiComment: false,
+        comments: [],
+        subtasks: [],
+      };
+      // Decision items get the full deterministic prep. Meetings/reminders keep
+      // only the light fields (name/notes/link) the agent needs for prep text.
+      if (ref.category === "urgent" || ref.category === "nonUrgent") {
+        try {
+          const target = await resolveFounderPostTargetGid(db, companyId, agentId, gid, null);
+          if (target.hasPrivateLink && target.targetGid && target.targetGid !== gid) {
+            item.commentTargetGid = target.targetGid;
+          }
+          const outer = (await getAsanaTaskComments(db, companyId, agentId, gid)) ?? [];
+          let merged = outer;
+          if (item.commentTargetGid) {
+            const inner = (await getAsanaTaskComments(db, companyId, agentId, item.commentTargetGid)) ?? [];
+            const byId = new Map<string, AsanaTaskComment>();
+            for (const c of [...outer, ...inner]) if (c.id) byId.set(c.id, c);
+            merged = [...byId.values()].sort((a, b) =>
+              String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")),
+            );
+          }
+          item.comments = merged.slice(-50);
+          item.hasExistingAiComment = merged.some((c) => c.text.includes(AI_DIGEST_COMMENT_MARKER));
+          item.subtasks = await fetchSubtasks(t.token, gid);
+        } catch {
+          /* leave the item with its light fields; the agent can still summarize */
+        }
+      }
+      categories[ref.category].push(item);
+    }
+  }
+  return { generatedAt: new Date().toISOString(), categories };
+}
+
 // Asia/Taipei is UTC+8, no DST — fixed 8h offset. Digest "today" is Taipei-local.
 const TPE_OFFSET_MS = 8 * 60 * 60 * 1000;
 function taipeiToday(): string {
