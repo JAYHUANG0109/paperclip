@@ -85,6 +85,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
+import { OfficeAvatar } from "../components/OfficeAvatar";
 import { RunTranscriptView, type TranscriptMode } from "../components/transcript/RunTranscriptView";
 import {
   isUuidLike,
@@ -1076,8 +1077,11 @@ export function AgentDetail() {
             value={agent.icon}
             onChange={(icon) => updateIcon.mutate(icon)}
           >
-            <button className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg bg-accent hover:bg-accent/80 transition-colors">
-              <AgentIcon icon={agent.icon} className="h-6 w-6" />
+            <button
+              className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg overflow-hidden hover:ring-2 hover:ring-accent transition-all"
+              title="Change role icon"
+            >
+              <OfficeAvatar agent={agent} size={48} />
             </button>
           </AgentIconPicker>
           <div className="min-w-0">

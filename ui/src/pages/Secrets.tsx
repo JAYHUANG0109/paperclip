@@ -76,10 +76,12 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "../lib/utils";
 import { PageTabBar } from "../components/PageTabBar";
 import { ImportFromVaultDialog } from "./secrets/ImportFromVaultDialog";
+import { MyUserSecretsTab } from "./secrets/MyUserSecretsTab";
+import { UserSecretDefinitionsTab } from "./secrets/UserSecretDefinitionsTab";
 import { t, useTranslation } from "@/i18n";
 
 type CreateMode = "managed" | "external";
-type SecretsTab = "secrets" | "vaults";
+type SecretsTab = "secrets" | "vaults" | "my-secrets" | "user-definitions";
 
 type ProviderVaultForm = {
   provider: SecretProvider;
@@ -883,11 +885,21 @@ export function Secrets() {
           items={[
             { value: "secrets", label: t("settings.nav.secrets") },
             { value: "vaults", label: t("secrets.providerVaults") },
+            { value: "my-secrets", label: "My secrets" },
+            { value: "user-definitions", label: "Required per-user secrets" },
           ]}
           align="start"
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as SecretsTab)}
         />
+
+        <TabsContent value="my-secrets" className="min-h-0 flex-1 overflow-y-auto">
+          {selectedCompanyId ? <MyUserSecretsTab companyId={selectedCompanyId} /> : null}
+        </TabsContent>
+
+        <TabsContent value="user-definitions" className="min-h-0 flex-1 overflow-y-auto">
+          {selectedCompanyId ? <UserSecretDefinitionsTab companyId={selectedCompanyId} /> : null}
+        </TabsContent>
 
         <TabsContent value="secrets" className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
           <SecretsHowToUse />

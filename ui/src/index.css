@@ -1662,4 +1662,17 @@ span.paperclip-mention-chip[data-mention-kind="external-object"] {
   --code-highlight-border-resolved: var(--paperclip-code-highlight-border); /* Extracted from ui/src/components/FileViewerSheet.tsx; fallback dropped in A5 now that --paperclip-code-highlight-border is a real token (was var(--paperclip-code-highlight-border, rgb(234,179,8))). */
   --gradient-extract-25: linear-gradient(135deg,hsl(var(--primary)) 0%,hsl(var(--accent)) 55%,hsl(var(--muted)) 100%); /* Extracted from ui/src/components/SidebarAccountMenu.tsx (bg-[linear-gradient(135deg,hsl(var(--primary))_0%,hsl(var(--accent))_55%,hsl(var(--muted))_100%)]). */
   --gradient-extract-26: linear-gradient(135deg,hsl(var(--primary)) 0%,hsl(var(--accent)) 58%,color-mix(in oklab,hsl(var(--background)) 76%,white 24%) 100%); /* Extracted from ui/src/pages/ProfileSettings.tsx (bg-[linear-gradient(135deg,hsl(var(--primary))_0%,hsl(var(--accent))_58%,color-mix(in_oklab,hsl(var(--background))_76%,white_24%)_100%)]). */
+  /* Upstream #9134 static tokens the earlier port missed (no "Extracted from" marker). Typography scale + tracking drive the tiny uppercase sidebar section/team-folder labels (text-(length:--text-nano)); without them the labels fall back to inherited size and render oversized. Values verbatim from upstream/master index.css. */
+  --text-nano: 10px;
+  --text-micro: 11px;
+  --text-compact: 13px;
+  --tracking-label: 0.08em;
+  --tracking-eyebrow: 0.14em;
+  --tracking-caps: 0.2em;
+  --hex-959596: #959596; /* Muted feed actor/verb/title text (ActivityFeed.tsx, FeedCard.tsx). */
+  --project-none: #64748b; /* 'No project assigned' muted-slate fallback (Routines/IssueColumns/ActivityCharts backlog). */
+  --project-seed: #6366f1; /* Project-color-fallback indigo seed (ProjectDetail/PipelineSettings/IssueProperties/NewIssueDialog). */
+  --shadow-extract-11: 0 18px 50px rgba(37,99,235,0.08); /* LiveRunWidget.tsx liveness glow. */
+  --paperclip-code-highlight-bg: rgba(250,204,21,0.12); /* FileViewerSheet.tsx code highlight (referenced by --code-highlight-bg-resolved above). */
+  --paperclip-code-highlight-border: rgb(234,179,8); /* FileViewerSheet.tsx code highlight border. */
 }
