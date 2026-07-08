@@ -362,6 +362,21 @@ function taipeiToday(): string {
   return new Date(Date.now() + TPE_OFFSET_MS).toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
+// Current Taipei week, Monday–Sunday, as YYYY-MM-DD bounds. Week starts Monday to
+// match the company weekly-report logic (SPEC-撈取機制與時間範圍: weekMon =
+// today − weekday). Asana `due_on` is a bare date (no timezone), so it compares
+// directly against these Taipei-local dates.
+function taipeiWeekBounds(): { weekMon: string; weekSun: string } {
+  const now = new Date(Date.now() + TPE_OFFSET_MS);
+  const dow = now.getUTCDay(); // 0=Sun … 6=Sat (Taipei wall clock, since shifted)
+  const back = dow === 0 ? 6 : dow - 1;
+  const monMs = now.getTime() - back * 86_400_000;
+  return {
+    weekMon: new Date(monMs).toISOString().slice(0, 10),
+    weekSun: new Date(monMs + 6 * 86_400_000).toISOString().slice(0, 10),
+  };
+}
+
 export interface AsanaDigestBody {
   generatedAt: string;
   daily: Record<string, unknown>[];
@@ -373,9 +388,11 @@ export interface AsanaDigestBody {
  * token — deterministic and always complete (permalinkUrl, notes, dueOn,
  * projectName), and zero LLM tokens. Mirrors `asana_client.py my-tasks`: resolve
  * the caller's user-task-list for their default workspace, then read incomplete
- * assigned tasks. Buckets: `weekly` = all incomplete assigned tasks (dated
- * first, then undated); `daily` = those due today or overdue. Returns null on
- * missing token / workspace / API failure (caller keeps the previous digest).
+ * assigned tasks. Buckets are scoped by due date (Taipei): `daily` = due exactly
+ * today; `weekly` = due within the current Mon–Sun week. Overdue (before this
+ * week) and undated tasks are intentionally dropped — this is a "what's due
+ * today / this week" view. Returns null on missing token / workspace / API
+ * failure (caller keeps the previous digest).
  */
 export async function buildAsanaDigestBody(
   db: Db,
@@ -433,9 +450,15 @@ export async function buildAsanaDigestBody(
     if (b.dueOn) return 1;
     return 0;
   };
+  // Scope to real, current due dates only (per SPEC-撈取機制與時間範圍):
+  //   daily  = due exactly today (Taipei)
+  //   weekly = due within this Taipei week (Mon–Sun)
+  // Tasks that are overdue (before this week) or have no due date are dropped —
+  // this widget answers "what's due today / this week", not "everything open".
   const today = taipeiToday();
-  const weekly = tasks.slice().sort(byDue);
-  const daily = tasks.filter((t) => t.dueOn && t.dueOn <= today).sort(byDue);
+  const { weekMon, weekSun } = taipeiWeekBounds();
+  const weekly = tasks.filter((t) => t.dueOn && t.dueOn >= weekMon && t.dueOn <= weekSun).sort(byDue);
+  const daily = tasks.filter((t) => t.dueOn === today).sort(byDue);
   return { generatedAt: new Date().toISOString(), daily, weekly };
 }
 
