@@ -130,6 +130,8 @@ export const queryKeys = {
       ["execution-workspaces", companyId, filters ?? {}] as const,
     summaryList: (companyId: string, filters?: Record<string, string | boolean | undefined>) =>
       ["execution-workspaces", companyId, "summary", filters ?? {}] as const,
+    overview: (companyId: string, filters?: Record<string, string | number | boolean | undefined>) =>
+      ["execution-workspaces", companyId, "overview", filters ?? {}] as const,
     detail: (id: string) => ["execution-workspaces", "detail", id] as const,
     closeReadiness: (id: string) => ["execution-workspaces", "close-readiness", id] as const,
     workspaceOperations: (id: string) => ["execution-workspaces", "workspace-operations", id] as const,
@@ -216,6 +218,10 @@ export const queryKeys = {
     providerConfigs: (companyId: string) => ["secret-provider-configs", companyId] as const,
     usage: (secretId: string) => ["secrets", "usage", secretId] as const,
     accessEvents: (secretId: string) => ["secrets", "access-events", secretId] as const,
+    userDefinitions: (companyId: string) => ["user-secret-definitions", companyId] as const,
+    userDefinitionCoverage: (companyId: string, definitionId: string) =>
+      ["user-secret-definitions", companyId, definitionId, "coverage"] as const,
+    myUserSecrets: (companyId: string) => ["my-user-secrets", companyId] as const,
   },
   companySearch: {
     search: (companyId: string, q: string, scope: string, limit: number, offset: number) =>
@@ -272,4 +278,5 @@ export const queryKeys = {
   adapters: {
     all: ["adapters"] as const,
   },
+  workTimeline: (companyId: string, lens?: string) => ["work-timeline", companyId, lens ?? "all"] as const,
 };

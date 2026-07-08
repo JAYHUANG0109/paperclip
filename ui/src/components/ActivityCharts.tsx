@@ -66,7 +66,7 @@ type RunChartProps =
 function aggregateRuns(runs: readonly HeartbeatRun[] = []): DashboardRunActivityDay[] {
   const days = getLast14Days();
   const grouped = new Map<string, DashboardRunActivityDay>();
-  for (const day of days) grouped.set(day, { date: day, succeeded: 0, failed: 0, other: 0, total: 0 });
+  for (const day of days) grouped.set(day, { date: day, succeeded: 0, failed: 0, recovered: 0, other: 0, total: 0, failedByErrorCode: {} });
   for (const run of runs) {
     const day = new Date(run.createdAt).toISOString().slice(0, 10);
     const entry = grouped.get(day);
@@ -100,7 +100,7 @@ export function RunActivityChart(props: RunChartProps) {
     <div>
       <div className="flex items-end gap-[3px] h-20">
         {days.map(day => {
-          const entry = grouped.get(day) ?? { date: day, succeeded: 0, failed: 0, other: 0, total: 0 };
+          const entry = grouped.get(day) ?? { date: day, succeeded: 0, failed: 0, recovered: 0, other: 0, total: 0, failedByErrorCode: {} };
           const total = entry.total;
           const heightPct = (total / maxValue) * 100;
           return (
@@ -261,7 +261,7 @@ export function SuccessRateChart(props: RunChartProps) {
     <div>
       <div className="flex items-end gap-[3px] h-20">
         {days.map(day => {
-          const entry = grouped.get(day) ?? { date: day, succeeded: 0, failed: 0, other: 0, total: 0 };
+          const entry = grouped.get(day) ?? { date: day, succeeded: 0, failed: 0, recovered: 0, other: 0, total: 0, failedByErrorCode: {} };
           const rate = entry.total > 0 ? entry.succeeded / entry.total : 0;
           const color = entry.total === 0 ? undefined : rate >= 0.8 ? "#10b981" : rate >= 0.5 ? "#eab308" : "#ef4444";
           return (

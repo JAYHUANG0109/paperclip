@@ -2315,6 +2315,7 @@ export function Inbox() {
         <BlockedInboxView
           companyId={selectedCompanyId!}
           searchQuery={searchQuery}
+          subtreeLiveCounts={new Map<string, number>()}
           agentNameById={agentById}
           userLabelById={companyUserLabelMap}
           issueLinkState={issueLinkState}
