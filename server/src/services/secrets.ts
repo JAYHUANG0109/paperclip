@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, like, ne, notInArray, or, sql } from "drizzle-o
 import type { Db } from "@paperclipai/db";
 import {
   agents,
+  authUsers,
   companySecretBindings,
   companySecretProviderConfigs,
   companySecrets,
@@ -2323,8 +2324,13 @@ export function secretService(db: Db) {
       await resolveUserSecretDefinition(companyId, { definitionId });
       const [members, values] = await Promise.all([
         db
-          .select({ principalId: companyMemberships.principalId })
+          .select({
+            principalId: companyMemberships.principalId,
+            name: authUsers.name,
+            email: authUsers.email,
+          })
           .from(companyMemberships)
+          .innerJoin(authUsers, eq(authUsers.id, companyMemberships.principalId))
           .where(and(
             eq(companyMemberships.companyId, companyId),
             eq(companyMemberships.principalType, "user"),
@@ -2341,17 +2347,38 @@ export function secretService(db: Db) {
           )),
       ]);
       const memberIds = new Set(members.map((member) => member.principalId));
-      const configuredCount = values.filter((value) =>
-        value.status === "active" && value.ownerUserId && memberIds.has(value.ownerUserId)
-      ).length;
-      const inactiveCount = values.filter((value) =>
-        value.status !== "active" && value.ownerUserId && memberIds.has(value.ownerUserId)
-      ).length;
+      // Per-member value status: "set" (active value), "inactive" (non-active
+      // value), "not_set" (no value). Never expose the value/version itself.
+      const valueStatusByOwner = new Map<string, "set" | "inactive">();
+      for (const value of values) {
+        if (!value.ownerUserId || !memberIds.has(value.ownerUserId)) continue;
+        const state = value.status === "active" ? "set" : "inactive";
+        // A "set" value wins over an "inactive" one for the same owner.
+        if (state === "set" || !valueStatusByOwner.has(value.ownerUserId)) {
+          valueStatusByOwner.set(value.ownerUserId, state);
+        }
+      }
+      const memberEntries = members
+        .map((member) => ({
+          userId: member.principalId,
+          name: member.name,
+          email: member.email,
+          status: valueStatusByOwner.get(member.principalId) ?? ("not_set" as const),
+        }))
+        .sort((a, b) => {
+          const rank = (s: string) => (s === "not_set" ? 0 : s === "set" ? 1 : 2);
+          const byRank = rank(a.status) - rank(b.status);
+          if (byRank !== 0) return byRank;
+          return a.name.localeCompare(b.name);
+        });
+      const configuredCount = memberEntries.filter((m) => m.status === "set").length;
+      const inactiveCount = memberEntries.filter((m) => m.status === "inactive").length;
       return {
         definitionId,
         configuredCount,
         inactiveCount,
         missingCount: Math.max(0, memberIds.size - configuredCount - inactiveCount),
+        members: memberEntries,
       };
     },
 

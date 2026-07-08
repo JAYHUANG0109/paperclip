@@ -471,6 +471,7 @@ type RuntimeConfigSecretResolver = Pick<
   | "resolveEnvBindings"
   | "collectMissingRuntimeBindings"
   | "collectMissingAdapterConfigRuntimeBindings"
+  | "resolveUserSecretValue"
 >;
 
 function formatMissingBindingForOperator(missing: MissingRuntimeBinding): string {
@@ -831,6 +832,28 @@ export async function resolveExecutionRunAdapterConfig(input: {
     };
     for (const key of routineEnvResolution.secretKeys) {
       secretKeys.add(key);
+    }
+  }
+  // Unified Asana token: inject the responsible user's per-user ASANA_TOKEN
+  // ("My secrets" DB value) as ASANA_ACCESS_TOKEN so the agent's Asana MCP /
+  // client read it from the run env — one UI-managed source of truth instead of
+  // the loose per-agent connection file. Best-effort: when the user hasn't set a
+  // token the file (ASANA_TOKEN_PATH) still serves as the fallback. Registered
+  // in secretKeys so it is redacted from manifests/logs. Key literal mirrors
+  // ASANA_USER_SECRET_KEY in agent-asana.ts (kept inline to avoid a hot-path import cycle).
+  if (input.responsibleUserId) {
+    try {
+      const asana = await input.secretsSvc.resolveUserSecretValue(input.companyId, {
+        definitionKey: "ASANA_TOKEN",
+        responsibleUserId: input.responsibleUserId,
+        required: false,
+      });
+      if (asana?.value) {
+        resolvedConfig.env = { ...parseObject(resolvedConfig.env), ASANA_ACCESS_TOKEN: asana.value };
+        secretKeys.add("ASANA_ACCESS_TOKEN");
+      }
+    } catch {
+      /* best-effort; the ASANA_TOKEN_PATH file remains the fallback */
     }
   }
   // Pre-dispatch credential gate for codex_local: a managed Codex home with no

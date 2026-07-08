@@ -111,11 +111,21 @@ export interface UserSecretDeclaration {
   updatedAt: Date;
 }
 
+export type UserSecretCoverageMemberStatus = "set" | "inactive" | "not_set";
+
+export interface UserSecretCoverageMember {
+  userId: string;
+  name: string;
+  email: string;
+  status: UserSecretCoverageMemberStatus;
+}
+
 export interface UserSecretCoverageSummary {
   definitionId: string;
   configuredCount: number;
   missingCount: number;
   inactiveCount: number;
+  members: UserSecretCoverageMember[];
 }
 
 export interface SecretProviderDescriptor {

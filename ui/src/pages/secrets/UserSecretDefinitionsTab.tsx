@@ -30,9 +30,11 @@ import { useToastActions } from "../../context/ToastContext";
 import { t } from "@/i18n";
 import {
   coverageSummaryLabel,
+  myValueTone,
   secretStatusTone,
   UserSecretChip,
 } from "./user-secret-presentation";
+import type { UserSecretCoverageMemberStatus } from "@paperclipai/shared";
 
 function keyFromName(name: string): string {
   return name
@@ -384,13 +386,50 @@ function CoverageBadge({
   });
   const summary = coverageQuery.data;
   const missing = summary ? summary.missingCount : 0;
+  const members = summary?.members ?? [];
   return (
-    <p className="mt-1 inline-flex items-center gap-1 text-(length:--text-micro) text-muted-foreground">
-      <Users className="h-3 w-3" />
-      {t("secrets.userSecrets.coverage")} {coverageSummaryLabel(summary)}
-      {summary && missing > 0 ? (
-        <span className="text-amber-600 dark:text-amber-400">· {t("secrets.userSecrets.notSet", { count: missing })}</span>
+    <div className="mt-1">
+      <p className="inline-flex items-center gap-1 text-(length:--text-micro) text-muted-foreground">
+        <Users className="h-3 w-3" />
+        {t("secrets.userSecrets.coverage")} {coverageSummaryLabel(summary)}
+        {summary && missing > 0 ? (
+          <span className="text-amber-600 dark:text-amber-400">· {t("secrets.userSecrets.notSet", { count: missing })}</span>
+        ) : null}
+      </p>
+      {members.length > 0 ? (
+        <div className="mt-2 rounded-md border border-border/60 bg-muted/30 p-2">
+          <p className="mb-1.5 text-(length:--text-micro) font-medium text-muted-foreground">
+            {t("secrets.userSecrets.coverageMembersTitle")}
+          </p>
+          <ul className="space-y-1">
+            {members.map((member) => (
+              <li key={member.userId} className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-(length:--text-micro) text-foreground">
+                  {member.name}
+                  <span className="ml-1 text-muted-foreground">{member.email}</span>
+                </span>
+                <Badge
+                  variant="outline"
+                  className={cn("shrink-0 text-(length:--text-micro)", myValueTone(member.status))}
+                >
+                  {coverageMemberStatusLabel(member.status)}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
-    </p>
+    </div>
   );
+}
+
+function coverageMemberStatusLabel(status: UserSecretCoverageMemberStatus): string {
+  switch (status) {
+    case "set":
+      return t("secrets.userSecrets.coverageMemberSet");
+    case "inactive":
+      return t("secrets.userSecrets.coverageMemberInactive");
+    case "not_set":
+      return t("secrets.userSecrets.coverageMemberNotSet");
+  }
 }

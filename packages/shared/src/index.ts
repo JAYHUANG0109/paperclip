@@ -862,6 +862,8 @@ export type {
   UserSecretDefinition,
   UserSecretDeclaration,
   UserSecretCoverageSummary,
+  UserSecretCoverageMember,
+  UserSecretCoverageMemberStatus,
   CompanySecretProviderConfig,
   SecretProviderConfigPayload,
   SecretProviderConfigHealthDetails,
