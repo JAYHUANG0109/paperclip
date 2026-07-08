@@ -72,14 +72,20 @@ export async function resolveAgentResponsibleUserId(
   return row?.uid ?? null;
 }
 
-/** A specific user's Asana token from their per-user secret (decrypted), or null. */
+/** A specific user's Asana token from their per-user secret (decrypted), or null.
+ *  Uses resolveUserSecretValue — the same resolver the run-env injection path
+ *  uses — which permits user-scoped secrets (plain resolveSecretValue rejects
+ *  them). No context → skips declaration/binding checks; required:false → null
+ *  (not throw) when the user hasn't set a token, so we fall back to the file. */
 async function userAsanaToken(db: Db, companyId: string, userId: string): Promise<string | null> {
   try {
     const svc = secretService(db);
-    const entries = await svc.listCurrentUserSecretValues(companyId, userId);
-    const entry = entries.find((e) => e.definition.key === ASANA_USER_SECRET_KEY && e.secret);
-    if (!entry?.secret) return null;
-    const token = (await svc.resolveSecretValue(companyId, entry.secret.id, "latest")).trim();
+    const resolution = await svc.resolveUserSecretValue(companyId, {
+      definitionKey: ASANA_USER_SECRET_KEY,
+      responsibleUserId: userId,
+      required: false,
+    });
+    const token = resolution?.value?.trim();
     return token || null;
   } catch {
     return null;
