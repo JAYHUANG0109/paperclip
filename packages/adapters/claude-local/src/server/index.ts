@@ -10,7 +10,7 @@ export {
   parseClaudeStreamJson,
   describeClaudeFailure,
   isClaudeMaxTurnsResult,
-  isClaudeUsageLimitError,
+  isClaudeProviderQuotaError,
   isClaudeRefusalResult,
   isClaudeUnknownSessionError,
 } from "./parse.js";
@@ -25,7 +25,6 @@ export {
   toPercent,
   fetchWithTimeout,
   claudeConfigDir,
-  getQuotaWindowsForEnv,
 } from "./quota.js";
 import type { AdapterSessionCodec } from "@paperclipai/adapter-utils";
 

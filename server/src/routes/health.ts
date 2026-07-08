@@ -7,6 +7,12 @@ import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import { readPersistedDevServerStatus, toDevServerHealthStatus, writeDevServerRestartRequest } from "../dev-server-status.js";
 import { logger } from "../middleware/logger.js";
 import { getServerInfoSnapshot, type ServerInfoSnapshot } from "../server-info.js";
+import {
+  inspectDatabaseBackupHealth,
+  type DatabaseBackupHealthStatus,
+  type DatabaseBackupHealthWarning,
+  type InspectDatabaseBackupHealthOptions,
+} from "../services/database-backup-health.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { serverVersion } from "../version.js";
 
@@ -29,6 +35,27 @@ function hasDevServerStatusToken(providedToken: string | undefined) {
   return timingSafeEqual(expected, provided);
 }
 
+function redactedDatabaseBackupWarning(warning: DatabaseBackupHealthWarning): DatabaseBackupHealthWarning {
+  const messages: Record<DatabaseBackupHealthWarning["code"], string> = {
+    database_backup_check_failed: "Database backup health check failed.",
+    database_backup_last_failure: "Database backup failure marker is present.",
+    database_backup_missing: "No recent database backup was found.",
+    database_backup_stale: "Latest database backup is stale.",
+  };
+  return {
+    code: warning.code,
+    message: messages[warning.code],
+  };
+}
+
+function redactedDatabaseBackupHealth(databaseBackup: DatabaseBackupHealthStatus) {
+  return {
+    enabled: databaseBackup.enabled,
+    status: databaseBackup.status,
+    warnings: databaseBackup.warnings.map(redactedDatabaseBackupWarning),
+  };
+}
+
 export function healthRoutes(
   db?: Db,
   opts: {
@@ -38,6 +65,7 @@ export function healthRoutes(
     companyDeletionEnabled: boolean;
     googleAuthEnabled?: boolean;
     serverInfo?: ServerInfoSnapshot;
+    databaseBackupHealth?: InspectDatabaseBackupHealthOptions;
   } = {
     deploymentMode: "local_trusted",
     deploymentExposure: "private",
@@ -163,7 +191,14 @@ export function healthRoutes(
       });
     }
 
+    const databaseBackup = opts.databaseBackupHealth
+      ? inspectDatabaseBackupHealth(opts.databaseBackupHealth)
+      : undefined;
+    const warnings = databaseBackup?.warnings.length ? databaseBackup.warnings : undefined;
+
     if (!exposeFullDetails) {
+      const redactedDatabaseBackup = databaseBackup ? redactedDatabaseBackupHealth(databaseBackup) : undefined;
+      const redactedWarnings = redactedDatabaseBackup?.warnings.length ? redactedDatabaseBackup.warnings : undefined;
       res.json({
         status: "ok",
         deploymentMode: opts.deploymentMode,
@@ -171,6 +206,8 @@ export function healthRoutes(
         bootstrapStatus,
         bootstrapInviteActive,
         googleAuthEnabled: Boolean(opts.googleAuthEnabled),
+        ...(redactedDatabaseBackup ? { databaseBackup: redactedDatabaseBackup } : {}),
+        ...(redactedWarnings ? { warnings: redactedWarnings } : {}),
         ...(devServer ? { devServer } : {}),
       });
       return;
@@ -189,6 +226,8 @@ export function healthRoutes(
         companyDeletionEnabled: opts.companyDeletionEnabled,
       },
       serverInfo,
+      ...(databaseBackup ? { databaseBackup } : {}),
+      ...(warnings ? { warnings } : {}),
       ...(devServer ? { devServer } : {}),
     });
   });

@@ -289,6 +289,19 @@ export type {
   Issue,
   IssueWorkMode,
   IssueAssigneeAdapterOverrides,
+  IssueBlockerDiagnosticFlag,
+  IssueBlockerDiagnosticIssueSummary,
+  IssueBlockerDiagnosticNode,
+  IssueBlockerDiagnosticsReadiness,
+  IssueBlockerDiagnosticsResponse,
+  IssueWakeDiagnosticActivityRecord,
+  IssueWakeDiagnosticEvent,
+  IssueWakeDiagnosticWakeFailureClass,
+  IssueWakeDiagnosticWakeRequest,
+  IssueWakeDiagnosticsResponse,
+  IssueSubtreeDiagnosticNode,
+  IssueSubtreeDiagnosticEdge,
+  IssueSubtreeDiagnosticsResponse,
   IssueBlockerAttention,
   IssueBlockerAttentionReason,
   IssueBlockerAttentionState,
@@ -408,9 +421,13 @@ export type {
   SecretVersionSelector,
   EnvPlainBinding,
   EnvSecretRefBinding,
+  EnvUserSecretRefBinding,
   EnvBinding,
   AgentEnvConfig,
   CompanySecret,
+  UserSecretDefinition,
+  UserSecretDeclaration,
+  UserSecretCoverageSummary,
   CompanySecretProviderConfig,
   SecretProviderConfigPayload,
   SecretProviderConfigHealthDetails,
@@ -434,6 +451,7 @@ export type {
   SecretAccessOutcome,
   SecretBindingTargetType,
   SecretManagedMode,
+  SecretScope,
   SecretProviderDescriptor,
   SecretStatus,
   SecretVersionStatus,
@@ -463,6 +481,8 @@ export type { FinanceEvent, FinanceSummary, FinanceByBiller, FinanceByKind } fro
 export type {
   AgentWakeupResponse,
   AgentWakeupSkipped,
+  GitWorktreeBranchAncestryVerdict,
+  GitWorktreeBranchIncoherenceEvidence,
   HeartbeatRun,
   HeartbeatRunEvent,
   HeartbeatRunStatusPhase,
@@ -473,6 +493,16 @@ export type {
 } from "./heartbeat.js";
 export type { LiveEvent } from "./live.js";
 export type { DashboardRunActivityDay, DashboardSummary } from "./dashboard.js";
+export type {
+  TimelineActorType,
+  TimelineEventKind,
+  TimelineEdgeKind,
+  WorkTimelineActor,
+  WorkTimelineSpan,
+  WorkTimelineEvent,
+  WorkTimelineEdge,
+  WorkTimelineResult,
+} from "./work-timeline.js";
 export type { ActivityEvent } from "./activity.js";
 export type {
   UserProfileActivitySummary,

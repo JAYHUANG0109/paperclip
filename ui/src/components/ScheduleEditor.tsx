@@ -305,7 +305,7 @@ export function ScheduleEditor({
                   emitChange(preset, h, minute, dayOfWeek, dayOfMonth, customCron);
                 }}
               >
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-(--sz-120px)">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -324,7 +324,7 @@ export function ScheduleEditor({
                   emitChange(preset, hour, m, dayOfWeek, dayOfMonth, customCron);
                 }}
               >
-                <SelectTrigger className="w-[80px]">
+                <SelectTrigger className="w-(--sz-80px)">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -348,7 +348,7 @@ export function ScheduleEditor({
                   emitChange(preset, hour, m, dayOfWeek, dayOfMonth, customCron);
                 }}
               >
-                <SelectTrigger className="w-[80px]">
+                <SelectTrigger className="w-(--sz-80px)">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -396,7 +396,7 @@ export function ScheduleEditor({
                   emitChange(preset, hour, minute, dayOfWeek, dom, customCron);
                 }}
               >
-                <SelectTrigger className="w-[80px]">
+                <SelectTrigger className="w-(--sz-80px)">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

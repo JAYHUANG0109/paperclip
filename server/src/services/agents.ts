@@ -811,7 +811,12 @@ export function agentService(db: Db) {
       });
     },
 
-    createApiKey: async (id: string, name: string, scope: AgentApiKeyScope = { kind: "standard" }) => {
+    createApiKey: async (
+      id: string,
+      name: string,
+      scope: AgentApiKeyScope = { kind: "standard" },
+      options?: { responsibleUserId?: string | null },
+    ) => {
       const existing = await getById(id);
       if (!existing) throw notFound("Agent not found");
       if (existing.status === "pending_approval") {
@@ -830,6 +835,7 @@ export function agentService(db: Db) {
           companyId: existing.companyId,
           name,
           keyHash,
+          responsibleUserId: options?.responsibleUserId?.trim() || null,
           scopeConfig: scope.kind === "standard" ? null : scope,
         })
         .returning()
@@ -839,6 +845,7 @@ export function agentService(db: Db) {
         id: created.id,
         name: created.name,
         scope: normalizeAgentApiKeyScope(created.scopeConfig),
+        responsibleUserId: created.responsibleUserId,
         token,
         createdAt: created.createdAt,
       };
@@ -849,6 +856,7 @@ export function agentService(db: Db) {
         .select({
           id: agentApiKeys.id,
           name: agentApiKeys.name,
+          responsibleUserId: agentApiKeys.responsibleUserId,
           scopeConfig: agentApiKeys.scopeConfig,
           createdAt: agentApiKeys.createdAt,
           revokedAt: agentApiKeys.revokedAt,
@@ -859,6 +867,7 @@ export function agentService(db: Db) {
           id: row.id,
           name: row.name,
           scope: normalizeAgentApiKeyScope(row.scopeConfig),
+          responsibleUserId: row.responsibleUserId,
           createdAt: row.createdAt,
           revokedAt: row.revokedAt,
         }))),
@@ -870,6 +879,7 @@ export function agentService(db: Db) {
           agentId: agentApiKeys.agentId,
           companyId: agentApiKeys.companyId,
           name: agentApiKeys.name,
+          responsibleUserId: agentApiKeys.responsibleUserId,
           scopeConfig: agentApiKeys.scopeConfig,
           createdAt: agentApiKeys.createdAt,
           revokedAt: agentApiKeys.revokedAt,

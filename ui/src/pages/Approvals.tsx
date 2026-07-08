@@ -91,7 +91,7 @@ export function Approvals() {
           <PageTabBar items={[
             { value: "pending", label: <>{t("interaction.status.pending")}{pendingCount > 0 && (
               <span className={cn(
-                "ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                "ml-1.5 rounded-full px-1.5 py-0.5 text-(length:--text-nano) font-medium",
                 "bg-yellow-500/20 text-yellow-500"
               )}>
                 {pendingCount}

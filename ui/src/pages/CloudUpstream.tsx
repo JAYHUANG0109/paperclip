@@ -270,7 +270,7 @@ export function CloudUpstream() {
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("cloudUpstream.connection")}</div>
         <div className="rounded-md border border-border px-4 py-4">
           {connection ? (
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
+            <div className="grid gap-3 lg:grid-cols-(--gtc-17) lg:items-start">
               <div>
                 <div className="text-sm font-medium">
                   {connection.target.stackDisplayName ?? connection.target.stackSlug ?? connection.target.stackId}
@@ -296,7 +296,7 @@ export function CloudUpstream() {
               </div>
             </div>
           ) : (
-            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <div className="grid gap-3 md:grid-cols-(--gtc-17)">
               <Input
                 value={remoteUrl}
                 onChange={(event) => setRemoteUrl(event.target.value)}
@@ -381,7 +381,7 @@ export function CloudUpstream() {
             </div>
             <div className="mt-4 divide-y divide-border">
               {latestRun.events.map((event) => (
-                <div key={event.id} className="grid gap-2 py-2 text-sm sm:grid-cols-[7rem_8rem_1fr]">
+                <div key={event.id} className="grid gap-2 py-2 text-sm sm:grid-cols-(--gtc-20)">
                   <span className="text-xs text-muted-foreground">{formatDate(event.at)}</span>
                   <span className="text-xs capitalize text-muted-foreground">{event.phase}</span>
                   <span>{event.message}</span>
@@ -412,7 +412,7 @@ export function CloudUpstream() {
               <button
                 key={run.id}
                 type="button"
-                className="grid w-full gap-1 px-4 py-3 text-left text-sm hover:bg-accent/40 sm:grid-cols-[1fr_auto]"
+                className="grid w-full gap-1 px-4 py-3 text-left text-sm hover:bg-accent/40 sm:grid-cols-(--gtc-17)"
                 onClick={() => setActiveRun(run)}
               >
                 <span>{t("cloudUpstream.runShort", { id: run.id.slice(0, 8) })} · {run.status}</span>
@@ -488,7 +488,7 @@ function WarningsPanel({ warnings }: { warnings: CloudUpstreamPreview["warnings"
       </div>
       <div className="divide-y divide-border">
         {warnings.map((warning) => (
-          <div key={warning.code} className="grid gap-2 py-2 sm:grid-cols-[1.25rem_12rem_1fr]">
+          <div key={warning.code} className="grid gap-2 py-2 sm:grid-cols-(--gtc-21)">
             <AlertTriangle className={warning.severity === "blocker" ? "h-4 w-4 text-destructive" : "h-4 w-4 text-amber-600"} />
             <div className="text-sm font-medium">{warning.title}</div>
             <div className="text-sm text-muted-foreground">{warning.detail}</div>
@@ -509,7 +509,7 @@ function ConflictTable({ conflicts }: { conflicts: CloudUpstreamPreview["conflic
       ) : (
         <div className="divide-y divide-border">
           {conflicts.map((conflict) => (
-            <div key={conflict.id} className="grid gap-2 py-2 text-sm sm:grid-cols-[8rem_1fr_1fr_8rem]">
+            <div key={conflict.id} className="grid gap-2 py-2 text-sm sm:grid-cols-(--gtc-22)">
               <span className="text-muted-foreground">{conflict.entityType}</span>
               <span>{conflict.sourceLabel}</span>
               <span>{conflict.targetLabel}</span>
@@ -543,7 +543,7 @@ function ActivationChecklist({
           const pending = isPending && pendingEntityType === row.key;
           const activated = row.status === "activated";
           return (
-            <div key={row.key} className="grid gap-2 py-2 text-sm sm:grid-cols-[8rem_1fr_auto] sm:items-center">
+            <div key={row.key} className="grid gap-2 py-2 text-sm sm:grid-cols-(--gtc-23) sm:items-center">
               <div>
                 <div className="font-medium">{row.label}</div>
                 <div className="text-xs text-muted-foreground">{row.statusLabel}</div>

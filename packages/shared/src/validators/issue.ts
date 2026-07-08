@@ -389,6 +389,8 @@ const createIssueBaseSchema = z.object({
   assigneeAgentId: z.string().uuid().optional().nullable(),
   assigneeUserId: z.string().optional().nullable(),
   requestDepth: issueRequestDepthInputSchema.optional().default(0),
+  createdByUserId: z.string().optional().nullable(),
+  responsibleUserId: z.string().optional().nullable(),
   billingCode: z.string().optional().nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").optional().nullable(),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").optional().nullable(),
@@ -493,7 +495,11 @@ export const setCustomFieldValueSchema = z.object({
   value: z.record(z.string(), z.unknown()).nullable(),
 });
 
-export const updateIssueSchema = createIssueBaseSchema.omit({ watchdog: true }).partial().extend({
+export const updateIssueSchema = createIssueBaseSchema.omit({
+  createdByUserId: true,
+  responsibleUserId: true,
+  watchdog: true,
+}).partial().extend({
   requestDepth: issueRequestDepthInputSchema.optional(),
   assigneeAgentId: z.string().trim().min(1).optional().nullable(),
   comment: multilineTextSchema.pipe(z.string().min(1)).optional(),
