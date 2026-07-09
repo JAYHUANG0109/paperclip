@@ -146,7 +146,7 @@ async function postFormatted(
 
 /** The DM "new conversation" reset button + the CARD_CLICKED function it fires. */
 const NEW_CONVERSATION_FN = "paperclip_new_conversation";
-const NEW_CONVERSATION_BUTTON = { text: "＋ 開新對話 / New chat", fn: NEW_CONVERSATION_FN };
+const NEW_CONVERSATION_BUTTON = { text: "＋ 開新任務 / New task", fn: NEW_CONVERSATION_FN };
 
 /** CARD_CLICKED function for accept/reject buttons on an interaction card. */
 const INTERACTION_RESPOND_FN = "paperclip_interaction_respond";
@@ -401,7 +401,7 @@ async function routeToAgent(
     /^\s*(\/new|＋?\s*開?新(對話|任務)|new(\s+(chat|task|conversation))?)\s*$/i.test(inbound.text ?? "")
   ) {
     await clearConversationIssue(ctx, conversationKey({ spaceType: "DM", spaceName: inbound.spaceName }));
-    return "✅ 已開新對話，下一則訊息會開一個新任務。/ New conversation — your next message starts a fresh task.";
+    return "✅ 好的，下一則訊息會開一個新任務。/ New task — your next message starts a fresh one.";
   }
 
   // Access control: a sender's assignment decides which agent answers them.
@@ -1027,13 +1027,31 @@ const plugin = definePlugin({
     // Button clicks (CARD_CLICKED), parsed defensively across the classic +
     // Workspace-add-on shapes.
     const click = extractCardClick(input.parsedBody);
+    // Diagnostic: dump the event skeleton so we can see the exact envelope Google
+    // sends for button clicks in THIS add-on app (temporary, remove once cards work).
+    try {
+      const root = (input.parsedBody ?? {}) as Record<string, any>;
+      ctx.logger.info("Chat webhook event skeleton", {
+        requestId: input.requestId,
+        topKeys: Object.keys(root),
+        eventType: root.type ?? root.commonEventObject?.eventType,
+        chatKeys: root.chat ? Object.keys(root.chat) : undefined,
+        invokedFunction: root.commonEventObject?.invokedFunction,
+        hasButtonClicked: Boolean(root.chat?.buttonClickedPayload),
+        parsedClickFn: click?.fn ?? null,
+        parsedClickEmail: click?.email ?? null,
+        parsedClickSpace: click?.spaceName ?? null
+      });
+    } catch {
+      /* diagnostics must never break handling */
+    }
     if (click?.fn === NEW_CONVERSATION_FN) {
       // "＋開新對話": end the DM session so the next message opens a fresh task.
       if (click.spaceName) {
         await clearConversationIssue(ctx, conversationKey({ spaceType: "DM", spaceName: click.spaceName }));
       }
       ctx.logger.info("Reset DM conversation via button", { space: click.spaceName });
-      return chatTextResponse("✅ 已開新對話，下一則訊息會開一個新任務。/ New conversation started.");
+      return chatTextResponse("✅ 好的，下一則訊息會開一個新任務。/ New task — your next message starts a fresh one.");
     }
     if (click?.fn === INTERACTION_RESPOND_FN) {
       // Accept / Request-changes on an interaction card → resolve it in Paperclip
