@@ -3537,6 +3537,8 @@
     "failedRunNamed": "Failed run — {{name}}",
     "retrying": "Retrying…",
     "requestedBy": "requested by {{name}}",
+    "needsYourDecision": "Needs your decision",
+    "opensToRespond": "Open to respond",
     "updatedAgo": "updated {{time}}",
     "joinRequestedFromIp": "requested {{time}} from IP {{ip}}",
     "adapterLabel": "adapter: {{type}}",

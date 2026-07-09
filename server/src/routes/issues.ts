@@ -14,6 +14,7 @@ import {
   issueDocuments,
   issueExecutionDecisions,
   issueRelations,
+  issueThreadInteractions,
   issues as issueRows,
   issueWorkProducts,
   pipelineCaseIssueLinks,
@@ -8464,6 +8465,42 @@ export function issueRoutes(
       limit,
     });
     res.json(comments);
+  });
+
+  // Pending interactions awaiting the current board user's decision — powers the
+  // inbox's inline approve/reject buttons. Scoped to issues the user is
+  // responsible for; board actors only.
+  router.get("/companies/:companyId/interactions/pending", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    const rows = await db
+      .select({
+        interactionId: issueThreadInteractions.id,
+        kind: issueThreadInteractions.kind,
+        title: issueThreadInteractions.title,
+        summary: issueThreadInteractions.summary,
+        createdAt: issueThreadInteractions.createdAt,
+        issueId: issueRows.id,
+        identifier: issueRows.identifier,
+        issueTitle: issueRows.title,
+      })
+      .from(issueThreadInteractions)
+      .innerJoin(issueRows, eq(issueThreadInteractions.issueId, issueRows.id))
+      .where(
+        and(
+          eq(issueThreadInteractions.companyId, companyId),
+          eq(issueThreadInteractions.status, "pending"),
+          eq(issueRows.responsibleUserId, userId),
+        ),
+      )
+      .orderBy(desc(issueThreadInteractions.createdAt))
+      .limit(100);
+    res.json(rows);
   });
 
   router.get("/issues/:id/interactions", async (req, res) => {

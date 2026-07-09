@@ -36,6 +36,19 @@ export type ResolveRecoveryActionResponse = {
   recoveryAction: IssueRecoveryAction;
 };
 
+/** A pending thread interaction awaiting the current user's decision, for the
+ *  inbox's inline approve/reject. */
+export type PendingInteractionInboxItem = {
+  interactionId: string;
+  kind: string;
+  title: string | null;
+  summary: string | null;
+  createdAt: string;
+  issueId: string;
+  identifier: string | null;
+  issueTitle: string;
+};
+
 export const issuesApi = {
   list: (
     companyId: string,
@@ -214,6 +227,8 @@ export const issuesApi = {
   },
   listInteractions: (id: string) =>
     api.get<IssueThreadInteraction[]>(`/issues/${id}/interactions`),
+  pendingInteractions: (companyId: string) =>
+    api.get<PendingInteractionInboxItem[]>(`/companies/${companyId}/interactions/pending`),
   listAcceptedPlanDecompositions: (id: string) =>
     api.get<AcceptedPlanDecompositionSummary[]>(`/issues/${id}/accepted-plan-decompositions`),
   createInteraction: (id: string, data: Record<string, unknown>) =>

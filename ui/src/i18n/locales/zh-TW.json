@@ -3537,6 +3537,8 @@
     "failedRunNamed": "失敗的執行 — {{name}}",
     "retrying": "重試中…",
     "requestedBy": "由 {{name}} 提出",
+    "needsYourDecision": "待你決定",
+    "opensToRespond": "點擊前往回覆",
     "updatedAgo": "更新於 {{time}}",
     "joinRequestedFromIp": "於 {{time}} 從 IP {{ip}} 提出",
     "adapterLabel": "轉接器：{{type}}",
