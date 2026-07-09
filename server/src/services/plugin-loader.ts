@@ -2339,8 +2339,14 @@ function resolveWorkerEntrypoint(
   // (for direct local-path installs or symlinked packages)
   const directDir = path.join(localPluginDir, packageName);
 
-  // Try in order: node_modules path, direct path
-  for (const dir of [packageDir, directDir]) {
+  // Repo-bundled fallback: BUNDLED_LOCAL_PLUGIN_ROOT is derived from the running
+  // server's own location, so it points at the LIVE release. Lets a bundled
+  // plugin resolve its entrypoint even when the stored packagePath is stale
+  // (previous release dir cleaned up, or a different machine after migration).
+  const bundledDir = path.join(BUNDLED_LOCAL_PLUGIN_ROOT, packageName);
+
+  // Try in order: node_modules path, direct path, repo-bundled path
+  for (const dir of [packageDir, directDir, bundledDir]) {
     const entrypoint = path.resolve(dir, workerRelPath);
 
     // Security: ensure entrypoint is actually inside the directory (prevent path traversal)
@@ -2382,6 +2388,15 @@ function resolvePluginPackageRoot(
 
   const directDir = path.join(localPluginDir, packageName);
   if (existsSync(directDir)) return directDir;
+
+  // Final fallback: a workspace/bundled plugin that ships inside the repo.
+  // BUNDLED_LOCAL_PLUGIN_ROOT is derived from the running server's OWN location
+  // (REPO_ROOT), so this always resolves to the LIVE release's copy. This makes
+  // repo-bundled plugins self-heal when the stored packagePath is stale — e.g.
+  // it points at a previous blue-green release dir that was cleaned up, or at a
+  // different machine's checkout after a cross-Mac migration.
+  const bundledDir = path.join(BUNDLED_LOCAL_PLUGIN_ROOT, packageName);
+  if (existsSync(bundledDir)) return bundledDir;
 
   throw new Error(`Package root not found for plugin "${plugin.pluginKey}"`);
 }
