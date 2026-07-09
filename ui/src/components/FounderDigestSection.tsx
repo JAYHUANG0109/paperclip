@@ -650,11 +650,44 @@ function CommentThread({
   );
 }
 
+// Render free text with any http(s) URLs turned into clickable links. Used for
+// the founder blocks (meeting prep / reminders / From-Asana notes), whose text
+// often carries Asana task links that should be one click away.
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+function linkify(text: string): Array<string | JSX.Element> {
+  const out: Array<string | JSX.Element> = [];
+  let last = 0;
+  let key = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    const raw = m[0];
+    const start = m.index ?? 0;
+    // Don't swallow trailing punctuation that isn't part of the URL.
+    const trail = raw.match(/[)\]}.,;:!?。，、；：！？）】]+$/)?.[0] ?? "";
+    const href = trail ? raw.slice(0, -trail.length) : raw;
+    if (start > last) out.push(text.slice(last, start));
+    out.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="break-all text-primary underline underline-offset-2 hover:opacity-80"
+      >
+        {href}
+      </a>,
+    );
+    if (trail) out.push(trail);
+    last = start + raw.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 function Block({ label, text, accent, muted }: { label: string; text: string; accent?: boolean; muted?: boolean }) {
   return (
     <div className={cn("rounded-md border p-2", accent ? "border-primary/30 bg-primary/5" : "border-border", muted && "opacity-80")}>
       <div className="mb-0.5 font-medium text-muted-foreground">{label}</div>
-      <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">{text}</p>
+      <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">{linkify(text)}</p>
     </div>
   );
 }

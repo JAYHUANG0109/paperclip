@@ -43,11 +43,15 @@ export interface ConsoleAsanaLayout {
  */
 export const CONSOLE_ASANA_LAYOUT: Partial<Record<ConsoleKey, ConsoleAsanaLayout>> = {
   founder: {
+    // Approvals (急件/非急件) come from the private board 🔒 創辦人私密批閱板 (唐姐)
+    // (project 1216210456305653) — only 唐姐 can see it; her token reads it.
+    // Meetings/reminders stay on 創辦人每日行事曆 (唐姐) (project 1211712817475632);
+    // that project's old 待批閱 sections are now marked (停用).
     sections: [
-      { category: "urgent", sectionGid: "1215693863228588" }, // 🔴 待批閱・急件
-      { category: "meetings", sectionGid: "1215720657642984" }, // 📅 今日會議與行程
-      { category: "nonUrgent", sectionGid: "1215693863228589" }, // 🟡 待批閱・非急件
-      { category: "reminders", sectionGid: "1215693863228590" }, // 🔔 提醒事項
+      { category: "urgent", sectionGid: "1216210456305654" }, // 🔴 待批閱・急件 (私密批閱板)
+      { category: "nonUrgent", sectionGid: "1216211675474057" }, // 🟡 待批閱・非急件 (私密批閱板)
+      { category: "meetings", sectionGid: "1215720657642984" }, // 📅 今日會議與行程 (每日行事曆)
+      { category: "reminders", sectionGid: "1215693863228590" }, // 🔔 提醒事項 (每日行事曆)
     ],
   },
 };
