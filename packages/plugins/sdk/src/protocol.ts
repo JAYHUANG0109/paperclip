@@ -1414,6 +1414,8 @@ export interface WorkerToHostMethods {
       reason?: string | null;
       /** Optional selected option ids (for checkbox-style confirmations). */
       selectedOptionIds?: string[];
+      /** Selected task clientKeys (for accepting a subset of suggest_tasks). */
+      selectedClientKeys?: string[];
       /** ask_user_questions answers, required when decision === "answer". */
       answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
     },

@@ -910,4 +910,57 @@ describe("conversation continuity", () => {
       })
     );
   });
+
+  it("checkbox form submit → accepts with selectedOptionIds from formInputs", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: {
+        serviceAccountSecretRef: "sa-ref",
+        verifyInbound: false,
+        echoMode: false,
+        routingEnabled: true,
+        gateUnassigned: false,
+        companyId: "co1",
+        defaultAgentUrlKey: "finance"
+      }
+    });
+    const respond = vi.fn(async () => ({ ok: true, status: "accepted" }));
+    harness.ctx.issues = {
+      ...harness.ctx.issues,
+      respondInteraction: respond
+    } as unknown as typeof harness.ctx.issues;
+
+    await plugin.definition.setup(harness.ctx);
+    await plugin.definition.onWebhook!({
+      endpointKey: WEBHOOK_KEY,
+      headers: {},
+      rawBody: "{}",
+      parsedBody: {
+        type: "CARD_CLICKED",
+        space: { name: "spaces/AAAA", type: "DM" },
+        user: { email: "tang@seasonart.org" },
+        common: {
+          invokedFunction: "https://host/api/plugins/paperclip-plugin-google-chat/webhooks/google-chat-events",
+          parameters: {
+            fn: "paperclip_form_checkbox",
+            interactionId: "int-c",
+            issueId: "iss-c",
+            decision: "accept"
+          },
+          formInputs: { sel: { stringInputs: { value: ["item-1", "item-3"] } } }
+        }
+      },
+      requestId: "click-checkbox"
+    });
+
+    expect(respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: "iss-c",
+        interactionId: "int-c",
+        decision: "accept",
+        responderEmail: "tang@seasonart.org",
+        selectedOptionIds: ["item-1", "item-3"]
+      })
+    );
+  });
 });

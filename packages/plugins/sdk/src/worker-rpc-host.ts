@@ -891,6 +891,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           responderEmail: string;
           reason?: string | null;
           selectedOptionIds?: string[];
+          selectedClientKeys?: string[];
           answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
         }) {
           return callHost("issues.respondInteraction", params);

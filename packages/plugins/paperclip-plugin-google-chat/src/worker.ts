@@ -323,6 +323,179 @@ async function postQuestionCard(
   }
 }
 
+/** CARD_CLICKED functions for multi-widget FORM submits (checkbox / questions /
+ *  suggest_tasks). The click carries the widget values in commonEventObject
+ *  .formInputs, which we map back to respondInteraction. */
+const FORM_CHECKBOX_FN = "paperclip_form_checkbox";
+const FORM_QUESTIONS_FN = "paperclip_form_questions";
+const FORM_TASKS_FN = "paperclip_form_tasks";
+
+/** Field-name helpers so the submit handler can reconstruct which question each
+ *  selection belongs to (the questionId is encoded in the widget name). */
+const QUESTION_FIELD_PREFIX = "q_";
+const CHECKBOX_FIELD = "sel";
+const TASKS_FIELD = "tasks";
+
+async function postCardJson(ctx: PluginContext, config: GoogleChatConfig, spaceName: string, card: unknown, label: string): Promise<void> {
+  const token = await getAccessToken(ctx, config);
+  const res = await ctx.http.fetch(`https://chat.googleapis.com/v1/${spaceName}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ cardsV2: [card] })
+  });
+  if (!res.ok) throw new Error(`${label} card post failed (${res.status}): ${await res.text()}`);
+}
+
+/** request_checkbox_confirmation → a CHECK_BOX form + Confirm / Request-changes. */
+async function postCheckboxCard(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  spaceName: string,
+  actionUrl: string,
+  info: {
+    title: string;
+    prompt: string;
+    interactionId: string;
+    issueId: string;
+    options: Array<{ id: string; label: string; description?: string | null }>;
+    defaultSelectedOptionIds?: string[];
+    acceptLabel?: string | null;
+    rejectLabel?: string | null;
+  }
+): Promise<void> {
+  const defaults = new Set(info.defaultSelectedOptionIds ?? []);
+  const base = (decision: string) => [
+    { key: "fn", value: FORM_CHECKBOX_FN },
+    { key: "interactionId", value: info.interactionId },
+    { key: "issueId", value: info.issueId },
+    { key: "decision", value: decision }
+  ];
+  await postCardJson(ctx, config, spaceName, {
+    cardId: `checkbox-${info.interactionId}`,
+    card: {
+      header: { title: info.title || "請勾選 / Please select" },
+      sections: [{
+        widgets: [
+          { textParagraph: { text: info.prompt } },
+          {
+            selectionInput: {
+              name: CHECKBOX_FIELD,
+              type: "CHECK_BOX",
+              items: info.options.slice(0, 100).map((o) => ({
+                text: o.label.slice(0, 140),
+                value: o.id,
+                selected: defaults.has(o.id)
+              }))
+            }
+          },
+          {
+            buttonList: {
+              buttons: [
+                { text: info.acceptLabel || "✅ 確認 / Confirm", onClick: { action: { function: actionUrl, parameters: base("accept") } } },
+                { text: info.rejectLabel || "✳️ 需修改 / Request changes", onClick: { action: { function: actionUrl, parameters: base("reject") } } }
+              ]
+            }
+          }
+        ]
+      }]
+    }
+  }, "checkbox");
+}
+
+/** ask_user_questions (any shape) → one selectionInput per question + Submit. */
+async function postQuestionsFormCard(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  spaceName: string,
+  actionUrl: string,
+  info: {
+    title: string;
+    interactionId: string;
+    issueId: string;
+    submitLabel?: string | null;
+    questions: Array<{ id: string; prompt: string; selectionMode?: string; options?: Array<{ id: string; label: string }> }>;
+  }
+): Promise<void> {
+  const widgets: unknown[] = [];
+  for (const q of info.questions) {
+    widgets.push({
+      selectionInput: {
+        name: `${QUESTION_FIELD_PREFIX}${q.id}`,
+        label: q.prompt.slice(0, 140),
+        type: q.selectionMode === "multi" ? "CHECK_BOX" : "RADIO_BUTTON",
+        items: (q.options ?? []).slice(0, 100).map((o) => ({ text: o.label.slice(0, 140), value: o.id, selected: false }))
+      }
+    });
+  }
+  widgets.push({
+    buttonList: {
+      buttons: [{
+        text: info.submitLabel || "送出 / Submit",
+        onClick: {
+          action: {
+            function: actionUrl,
+            parameters: [
+              { key: "fn", value: FORM_QUESTIONS_FN },
+              { key: "interactionId", value: info.interactionId },
+              { key: "issueId", value: info.issueId }
+            ]
+          }
+        }
+      }]
+    }
+  });
+  await postCardJson(ctx, config, spaceName, {
+    cardId: `questions-${info.interactionId}`,
+    card: { header: { title: info.title || "需要你回覆 / A few questions" }, sections: [{ widgets }] }
+  }, "questions");
+}
+
+/** suggest_tasks → a CHECK_BOX of proposed tasks + Accept / Reject. */
+async function postSuggestTasksCard(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  spaceName: string,
+  actionUrl: string,
+  info: {
+    title: string;
+    interactionId: string;
+    issueId: string;
+    tasks: Array<{ clientKey: string; title: string; description?: string | null }>;
+  }
+): Promise<void> {
+  const base = (decision: string) => [
+    { key: "fn", value: FORM_TASKS_FN },
+    { key: "interactionId", value: info.interactionId },
+    { key: "issueId", value: info.issueId },
+    { key: "decision", value: decision }
+  ];
+  await postCardJson(ctx, config, spaceName, {
+    cardId: `tasks-${info.interactionId}`,
+    card: {
+      header: { title: info.title || "建議任務 / Suggested tasks" },
+      sections: [{
+        widgets: [
+          {
+            selectionInput: {
+              name: TASKS_FIELD,
+              type: "CHECK_BOX",
+              items: info.tasks.slice(0, 100).map((t) => ({ text: t.title.slice(0, 140), value: t.clientKey, selected: true }))
+            }
+          },
+          {
+            buttonList: {
+              buttons: [
+                { text: "✅ 建立所選 / Create selected", onClick: { action: { function: actionUrl, parameters: base("accept") } } },
+                { text: "✳️ 不用了 / Decline", onClick: { action: { function: actionUrl, parameters: base("reject") } } }
+              ]
+            }
+          }
+        ]
+      }]
+    }
+  }, "suggest-tasks");
+}
+
 /**
  * DM target for an agent's OWNER — the person paired to it in the Assignments
  * map. Lets us mirror an agent's reply to Chat even when the conversation
@@ -936,6 +1109,10 @@ const plugin = definePlugin({
           body?: string | null;
           link?: string | null;
         };
+        // Interaction pings are rendered as rich CARDS by the
+        // issue.thread_interaction_created handler — skip forwarding the plain
+        // notification here to avoid a duplicate message in Chat.
+        if (p.kind === "thread_interaction") return;
         const email = p.email?.trim().toLowerCase();
         if (!email) return; // recipient has no resolvable email
         const allow = config.forwardNotificationEmails ?? [];
@@ -996,72 +1173,83 @@ const plugin = definePlugin({
           issueUrl?: string | null;
           interactionPayload?: {
             title?: string | null;
+            prompt?: string | null;
+            submitLabel?: string | null;
+            acceptLabel?: string | null;
+            rejectLabel?: string | null;
+            defaultSelectedOptionIds?: string[];
+            options?: Array<{ id: string; label: string; description?: string | null }>;
             questions?: Array<{
               id: string;
               prompt: string;
               selectionMode?: string;
               options?: Array<{ id: string; label: string }>;
             }>;
+            tasks?: Array<{ clientKey: string; title: string; description?: string | null }>;
           } | null;
         };
         const issueId = event.entityId;
         const agentId = event.actorId;
         if (!issueId || !p.interactionId || event.actorType !== "agent" || !agentId) return;
         const kind = p.interactionKind;
+        const pl = p.interactionPayload ?? {};
+        const common = { interactionId: p.interactionId, issueId };
 
         const config = await getConfig(ctx);
         const target = await resolveOwnerDmTarget(ctx, config, agentId, event.companyId);
         if (!target) return; // owner unpaired or has never DM'd the bot
+        const space = target.spaceName;
 
         const actionUrl = await getCardActionUrl(ctx, config);
-        const questions = p.interactionPayload?.questions ?? [];
-        const singleSelectQ =
-          kind === "ask_user_questions" &&
-          questions.length === 1 &&
-          questions[0].selectionMode === "single" &&
-          (questions[0].options?.length ?? 0) > 0;
+        let mode = "link";
 
-        // Native buttons only when we have an endpoint URL to POST clicks to.
         if (actionUrl && kind === "request_confirmation") {
-          await postInteractionCard(ctx, config, target.spaceName, {
+          mode = "confirm";
+          await postInteractionCard(ctx, config, space, {
             title: p.interactionTitle ?? "需要你確認 / Needs your confirmation",
             summary: p.interactionSummary ?? "",
-            interactionId: p.interactionId,
-            issueId
+            ...common
           });
-        } else if (actionUrl && singleSelectQ) {
-          const q = questions[0];
-          await postQuestionCard(ctx, config, target.spaceName, {
-            title: p.interactionTitle ?? p.interactionPayload?.title ?? "",
-            prompt: q.prompt,
-            interactionId: p.interactionId,
-            issueId,
-            questionId: q.id,
-            options: q.options ?? []
+        } else if (actionUrl && kind === "ask_user_questions" && (pl.questions?.length ?? 0) > 0) {
+          mode = "questions";
+          await postQuestionsFormCard(ctx, config, space, actionUrl, {
+            title: p.interactionTitle ?? pl.title ?? "",
+            submitLabel: pl.submitLabel ?? null,
+            questions: pl.questions ?? [],
+            ...common
+          });
+        } else if (actionUrl && kind === "request_checkbox_confirmation" && (pl.options?.length ?? 0) > 0) {
+          mode = "checkbox";
+          await postCheckboxCard(ctx, config, space, actionUrl, {
+            title: p.interactionTitle ?? "請勾選 / Please select",
+            prompt: pl.prompt ?? p.interactionSummary ?? "",
+            options: pl.options ?? [],
+            defaultSelectedOptionIds: pl.defaultSelectedOptionIds ?? [],
+            acceptLabel: pl.acceptLabel ?? null,
+            rejectLabel: pl.rejectLabel ?? null,
+            ...common
+          });
+        } else if (actionUrl && kind === "suggest_tasks" && (pl.tasks?.length ?? 0) > 0) {
+          mode = "tasks";
+          await postSuggestTasksCard(ctx, config, space, actionUrl, {
+            title: p.interactionTitle ?? "建議任務 / Suggested tasks",
+            tasks: pl.tasks ?? [],
+            ...common
           });
         } else {
-          // Fallback: a card with an "open in Paperclip" LINK button (works even
-          // with no action URL, and for multi-question / free-text forms).
+          // Fallback: a card with an "open in Paperclip" LINK button (no action
+          // URL yet, or an unrecognized/empty payload).
           const token = await getAccessToken(ctx, config);
           const lines = [p.interactionTitle ?? "需要你回覆 / Needs your input"];
           if (p.interactionSummary) lines.push(p.interactionSummary);
           const link = p.issueUrl && /^https?:\/\//i.test(p.issueUrl) ? p.issueUrl : null;
-          await sendMessage(
-            (u, init) => ctx.http.fetch(u, init),
-            token,
-            {
-              spaceName: target.spaceName,
-              text: lines.join("\n\n"),
-              ...(link ? { linkButton: { text: "✅ 前往回覆 / Open in Paperclip", url: link } } : {})
-            }
-          );
+          await sendMessage((u, init) => ctx.http.fetch(u, init), token, {
+            spaceName: space,
+            text: lines.join("\n\n"),
+            ...(link ? { linkButton: { text: "✅ 前往回覆 / Open in Paperclip", url: link } } : {})
+          });
         }
-        ctx.logger.info("Posted interaction card to Chat", {
-          issueId,
-          interactionId: p.interactionId,
-          kind,
-          mode: actionUrl && (kind === "request_confirmation" || singleSelectQ) ? "buttons" : "link"
-        });
+        ctx.logger.info("Posted interaction card to Chat", { issueId, interactionId: p.interactionId, kind, mode });
       } catch (err) {
         ctx.logger.error("Failed to post interaction card to Chat", {
           error: err instanceof Error ? err.message : String(err)
@@ -1187,6 +1375,50 @@ const plugin = definePlugin({
         return chatTextResponse("✅ 已送出你的選擇，謝謝！");
       } catch (err) {
         ctx.logger.error("answer via Chat failed", {
+          error: err instanceof Error ? err.message : String(err)
+        });
+        return chatTextResponse("抱歉，處理你的回覆時發生問題，請到 Paperclip 完成。");
+      }
+    }
+    // FORM submits (multi-widget cards). The selected values arrive in
+    // click.formInputs, keyed by the widget names we set when rendering.
+    if (click?.fn === FORM_CHECKBOX_FN || click?.fn === FORM_QUESTIONS_FN || click?.fn === FORM_TASKS_FN) {
+      const { interactionId, issueId, decision } = click.params;
+      const email = click.email?.trim().toLowerCase();
+      if (!interactionId || !issueId || !email) {
+        return chatTextResponse("抱歉，無法辨識這則回覆，請到 Paperclip 完成。");
+      }
+      try {
+        const assignment = await getAssignment(ctx, email);
+        const companyId = assignment?.companyId ?? (await resolveCompanyId(ctx, config.companyId));
+        if (decision === "reject") {
+          await ctx.issues.respondInteraction({ issueId, companyId, interactionId, decision: "reject", responderEmail: email });
+          return chatTextResponse("✳️ 已送出「需修改」，謝謝！");
+        }
+        if (click.fn === FORM_CHECKBOX_FN) {
+          await ctx.issues.respondInteraction({
+            issueId, companyId, interactionId, decision: "accept", responderEmail: email,
+            selectedOptionIds: click.formInputs[CHECKBOX_FIELD] ?? []
+          });
+          return chatTextResponse("✅ 已送出你的選擇，謝謝！");
+        }
+        if (click.fn === FORM_TASKS_FN) {
+          await ctx.issues.respondInteraction({
+            issueId, companyId, interactionId, decision: "accept", responderEmail: email,
+            selectedClientKeys: click.formInputs[TASKS_FIELD] ?? []
+          });
+          return chatTextResponse("✅ 已建立所選任務，謝謝！");
+        }
+        // FORM_QUESTIONS_FN: every q_<questionId> field → one answer.
+        const answers = Object.entries(click.formInputs)
+          .filter(([name]) => name.startsWith(QUESTION_FIELD_PREFIX))
+          .map(([name, optionIds]) => ({ questionId: name.slice(QUESTION_FIELD_PREFIX.length), optionIds }));
+        await ctx.issues.respondInteraction({ issueId, companyId, interactionId, decision: "answer", responderEmail: email, answers });
+        ctx.logger.info("Submitted form via Chat card", { issueId, interactionId, fn: click.fn });
+        return chatTextResponse("✅ 已送出你的回覆，謝謝！");
+      } catch (err) {
+        ctx.logger.error("form submit via Chat failed", {
+          fn: click.fn,
           error: err instanceof Error ? err.message : String(err)
         });
         return chatTextResponse("抱歉，處理你的回覆時發生問題，請到 Paperclip 完成。");

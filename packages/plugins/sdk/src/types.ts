@@ -1482,6 +1482,7 @@ export interface PluginIssuesClient {
     responderEmail: string;
     reason?: string | null;
     selectedOptionIds?: string[];
+    selectedClientKeys?: string[];
     answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
   }): Promise<{ ok: boolean; status: string }>;
   suggestTasks(

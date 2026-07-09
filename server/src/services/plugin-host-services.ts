@@ -2130,7 +2130,7 @@ export function buildHostServices(
         const r = await svc.acceptInteraction(
           { id: issue.id, companyId, projectId: issue.projectId ?? null, goalId: issue.goalId ?? null },
           params.interactionId,
-          { selectedOptionIds: params.selectedOptionIds },
+          { selectedOptionIds: params.selectedOptionIds, selectedClientKeys: params.selectedClientKeys },
           actor,
         );
         return { ok: true, status: (r as any)?.interaction?.status ?? "accepted" };

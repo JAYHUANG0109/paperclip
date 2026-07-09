@@ -148,6 +148,9 @@ export function extractSpaceRef(
 export function extractCardClick(body: unknown): {
   fn: string | null;
   params: Record<string, string>;
+  /** Form widget values (selectionInput / textInput), keyed by widget name.
+   *  Each value is the array of entered/selected strings. */
+  formInputs: Record<string, string[]>;
   email?: string;
   spaceName?: string;
 } | null {
@@ -174,10 +177,22 @@ export function extractCardClick(body: unknown): {
     root.chat?.buttonClickedPayload?.space ??
     root.commonEventObject?.space;
   const email = root.user?.email ?? root.chat?.user?.email ?? root.message?.sender?.email;
+  // Form widget values submitted with the click (selectionInput/textInput).
+  const formInputs: Record<string, string[]> = {};
+  const rawInputs =
+    root.commonEventObject?.formInputs ??
+    root.common?.formInputs ??
+    root.chat?.buttonClickedPayload?.formInputs;
+  if (rawInputs && typeof rawInputs === "object") {
+    for (const [name, entry] of Object.entries(rawInputs as Record<string, any>)) {
+      const values = entry?.stringInputs?.value ?? entry?.value;
+      if (Array.isArray(values)) formInputs[name] = values.map((v) => String(v));
+    }
+  }
   // In the Workspace add-on model the button's action.function is the full HTTPS
   // endpoint URL (not an action name), so the real discriminator travels as a
   // "fn" parameter. Prefer it; fall back to invokedFunction for classic apps.
-  return { fn: params.fn ?? fn, params, email, spaceName: space?.name };
+  return { fn: params.fn ?? fn, params, formInputs, email, spaceName: space?.name };
 }
 
 /**
