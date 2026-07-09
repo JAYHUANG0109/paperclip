@@ -173,7 +173,10 @@ export function IssueCalendar({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border">
+      {/* Phones can't fit 7 legible columns; scroll horizontally at a readable
+          width rather than clipping every day's events. */}
+      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <div className="grid min-w-[640px] grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border sm:min-w-0">
         {weekdayKeys.map((key, i) => (
           <div
             key={key}
@@ -292,6 +295,7 @@ export function IssueCalendar({
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

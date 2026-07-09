@@ -51,7 +51,9 @@ type CalIssue = Pick<Issue, "id" | "title" | "status" | "priority" | "dueDate"> 
 function IssueChip({ issue }: { issue: CalIssue }) {
   const done = issue.status === "done" || issue.status === "cancelled";
   const className = cn(
-    "flex items-center gap-1.5 rounded px-1.5 py-1 text-xs no-underline transition-colors hover:bg-accent",
+    // min-w-0 + flex-1 lets the title truncate instead of overflowing its row
+    // (the list view's long meeting titles were spilling past the container).
+    "flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-1 text-xs no-underline transition-colors hover:bg-accent",
     done ? "text-muted-foreground line-through" : "text-foreground",
   );
   const dot = (
@@ -144,7 +146,10 @@ function WeekView({ issues }: { issues: CalIssue[] }) {
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border">
+      {/* On phones 7 columns squeeze to ~50px each; scroll horizontally at a
+          readable width instead of clipping every event. */}
+      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <div className="grid min-w-[640px] grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border sm:min-w-0">
         {days.map((day, idx) => {
           const key = ymd(day);
           const isToday = key === todayKey;
@@ -165,6 +170,7 @@ function WeekView({ issues }: { issues: CalIssue[] }) {
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );
@@ -200,7 +206,7 @@ function AgendaList({ issues }: { issues: CalIssue[] }) {
           </div>
           <div className="rounded-lg border border-red-500/30">
             {overdue.map((issue) => (
-              <div key={issue.id} className="flex items-center justify-between border-b border-border/50 px-2 py-1.5 last:border-0">
+              <div key={issue.id} className="flex min-w-0 items-center justify-between gap-2 border-b border-border/50 px-2 py-1.5 last:border-0">
                 <IssueChip issue={issue} />
                 <span className="shrink-0 text-[11px] tabular-nums text-red-600 dark:text-red-400">{issue.dueDate}</span>
               </div>
@@ -216,7 +222,7 @@ function AgendaList({ issues }: { issues: CalIssue[] }) {
           </div>
           <div className="rounded-lg border border-border">
             {dayIssues.map((issue) => (
-              <div key={issue.id} className="flex items-center justify-between border-b border-border/50 px-2 py-1.5 last:border-0">
+              <div key={issue.id} className="flex min-w-0 items-center justify-between gap-2 border-b border-border/50 px-2 py-1.5 last:border-0">
                 <IssueChip issue={issue} />
                 <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{issue.status}</span>
               </div>
@@ -237,7 +243,11 @@ export function MyCalendar() {
   const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const [tab, setTab] = useState("month");
+  // Phones land on List — the only view that's genuinely legible on a narrow
+  // screen; Month/Week stay one tap away (and now scroll horizontally).
+  const [tab, setTab] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches ? "list" : "month",
+  );
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -380,7 +390,7 @@ export function MyCalendar() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4 p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-muted-foreground" />
@@ -390,11 +400,13 @@ export function MyCalendar() {
             {t("calendar.myCalendarHint", { defaultValue: "Deadlines of issues assigned to you and your agents." })}
           </p>
         </div>
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="month">{t("calendar.tab.month", { defaultValue: "Month" })}</TabsTrigger>
-            <TabsTrigger value="week">{t("calendar.tab.week", { defaultValue: "Week" })}</TabsTrigger>
-            <TabsTrigger value="list">{t("calendar.tab.list", { defaultValue: "List" })}</TabsTrigger>
+        {/* Full-width segmented control on phones so the three views are easy tap
+            targets; compact on desktop. */}
+        <Tabs value={tab} onValueChange={setTab} className="w-full sm:w-auto">
+          <TabsList className="w-full sm:w-fit">
+            <TabsTrigger value="month" className="flex-1 sm:flex-none">{t("calendar.tab.month", { defaultValue: "Month" })}</TabsTrigger>
+            <TabsTrigger value="week" className="flex-1 sm:flex-none">{t("calendar.tab.week", { defaultValue: "Week" })}</TabsTrigger>
+            <TabsTrigger value="list" className="flex-1 sm:flex-none">{t("calendar.tab.list", { defaultValue: "List" })}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
