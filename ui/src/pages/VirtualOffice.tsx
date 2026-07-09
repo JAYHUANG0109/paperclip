@@ -12,6 +12,8 @@ import { heartbeatsApi } from "../api/heartbeats";
 import { leaderboardApi, type LeaderboardEntry } from "../api/leaderboard";
 import { OfficeAvatar } from "../components/OfficeAvatar";
 import { LivingOfficeFloor } from "../components/LivingOfficeFloor";
+import { MobileOfficeRooms } from "../components/MobileOfficeRooms";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { OfficeCharacterPicker } from "../components/OfficeCharacterPicker";
 import { displayAgentName } from "../lib/agent-name";
 import { TeamFilterBar } from "../components/TeamFilterBar";
@@ -31,6 +33,7 @@ export function VirtualOffice() {
   const { t, i18n } = useTranslation();
   const { pushToast } = useToastActions();
   const { selectedCompanyId } = useCompany();
+  const isMobile = useIsMobile();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -174,7 +177,7 @@ export function VirtualOffice() {
             theme tokens so it flips with dark/light mode (dark bg + light text in
             dark mode, and the reverse in light mode). Only meaningful for the
             pixel floor, so it's hidden in the catalog view. */}
-        {view === "office" && (
+        {view === "office" && !isMobile && (
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
@@ -222,11 +225,18 @@ export function VirtualOffice() {
       </div>
 
       {view === "office" ? (
-        /* Break out of the page's padding so the floor uses the full width/height —
-           less wasted black space around the rooms. */
-        <div className="-mx-4 -mb-4 md:-mx-6 md:-mb-6">
-          <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} userZoom={userZoom} onFitZoomChange={setFitZoom} />
-        </div>
+        isMobile ? (
+          /* Phones: the desktop floor is a single wide pixel-art image that scales
+             down to unreadable, so swap in a stacked list of room cards (founder
+             first, then by agent count). */
+          <MobileOfficeRooms agents={visibleAgents} workingIds={workingAgentIds} onOpen={setActiveAgent} />
+        ) : (
+          /* Break out of the page's padding so the floor uses the full width/height —
+             less wasted black space around the rooms. */
+          <div className="-mx-4 -mb-4 md:-mx-6 md:-mb-6">
+            <LivingOfficeFloor agents={visibleAgents} workingIds={workingAgentIds} skillCounts={skillCounts} liveRuns={liveRuns ?? []} onOpen={setActiveAgent} userZoom={userZoom} onFitZoomChange={setFitZoom} />
+          </div>
+        )
       ) : (
         <AgentCatalog
           agents={visibleAgents}
