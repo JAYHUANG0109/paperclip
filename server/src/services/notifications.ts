@@ -38,7 +38,7 @@ function withCompanyPrefix(link: string, issuePrefix: string | null | undefined)
   if (firstSeg === prefix) return link; // already prefixed
   return `/${prefix}${link}`;
 }
-function toAbsoluteLink(link: string | null | undefined, issuePrefix?: string | null): string | null {
+export function toAbsoluteLink(link: string | null | undefined, issuePrefix?: string | null): string | null {
   const l = link?.trim();
   if (!l) return null;
   if (/^https?:\/\//i.test(l)) return l; // already absolute

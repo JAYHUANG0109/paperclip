@@ -36,6 +36,7 @@ import { projectService } from "./projects.js";
 import { executionWorkspaceService } from "./execution-workspaces.js";
 import { issueService } from "./issues.js";
 import { issueThreadInteractionService } from "./issue-thread-interactions.js";
+import { toAbsoluteLink } from "./notifications.js";
 import { goalService } from "./goals.js";
 import { documentService } from "./documents.js";
 import { heartbeatService } from "./heartbeat.js";
@@ -2086,6 +2087,7 @@ export function buildHostServices(
             interactionTitle: interaction.title ?? null,
             interactionSummary: interaction.summary ?? null,
             interactionPayload: interaction.payload ?? null,
+            issueUrl: toAbsoluteLink(`/issues/${issue.identifier}`, issue.identifier),
             continuationPolicy: interaction.continuationPolicy,
           },
         });

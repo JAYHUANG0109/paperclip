@@ -45,6 +45,12 @@ export const DEFAULT_CONFIG = {
   /** Optional: if set, the inbound JWT `aud` must equal this (the app's public
    *  HTTPS endpoint URL). Left empty by default since the Funnel host can change. */
   expectedAudience: "",
+  /** The app's public HTTPS webhook URL — the SAME "App URL / HTTP endpoint"
+   *  configured in the Google Chat API console. Required for interactive card
+   *  BUTTONS: in the Workspace add-on model a button's action.function must be a
+   *  full URL, and Google POSTs the click there. Falls back to expectedAudience.
+   *  When neither is set, interaction prompts degrade to a link the user opens. */
+  cardActionUrl: "",
   /** Forward Paperclip notifications (Asana digests, mentions, blockers, …) to
    *  the recipient's Google Chat DM. Master switch for the outbound relay. */
   forwardNotifications: true,
@@ -211,6 +217,16 @@ const manifest: PaperclipPluginManifestV1 = {
         description:
           "If set, the inbound JWT audience must equal this exact HTTPS endpoint URL.",
         default: DEFAULT_CONFIG.expectedAudience
+      },
+      cardActionUrl: {
+        type: "string",
+        title: "Card Action / Webhook URL",
+        description:
+          "The app's public HTTPS webhook URL — the same App URL configured in the Google " +
+          "Chat API console. Required for interactive card buttons (Accept/Reject, question " +
+          "options): Google POSTs the click to this URL. Falls back to the Expected Audience " +
+          "URL; if neither is set, interaction prompts show an 'open in Paperclip' link instead.",
+        default: DEFAULT_CONFIG.cardActionUrl
       },
       forwardNotifications: {
         type: "boolean",

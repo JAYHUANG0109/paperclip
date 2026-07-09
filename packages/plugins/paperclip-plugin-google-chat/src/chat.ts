@@ -174,7 +174,10 @@ export function extractCardClick(body: unknown): {
     root.chat?.buttonClickedPayload?.space ??
     root.commonEventObject?.space;
   const email = root.user?.email ?? root.chat?.user?.email ?? root.message?.sender?.email;
-  return { fn, params, email, spaceName: space?.name };
+  // In the Workspace add-on model the button's action.function is the full HTTPS
+  // endpoint URL (not an action name), so the real discriminator travels as a
+  // "fn" parameter. Prefer it; fall back to invokedFunction for classic apps.
+  return { fn: params.fn ?? fn, params, email, spaceName: space?.name };
 }
 
 /**
@@ -237,8 +240,18 @@ export async function sendMessage(
     imageUrl?: string;
     imageAltText?: string;
     /** Optional action button rendered below the message (accessoryWidgets).
-     *  Clicking it posts a CARD_CLICKED event whose invoked function === `fn`. */
-    actionButton?: { text: string; fn: string };
+     *  In the Workspace add-on model the click POSTs to `actionUrl` (the full
+     *  HTTPS endpoint URL) with `parameters` echoed back in
+     *  commonEventObject.parameters — that's how we route the click. */
+    actionButton?: {
+      text: string;
+      actionUrl: string;
+      parameters?: Array<{ key: string; value: string }>;
+    };
+    /** Optional link button rendered below the message. Uses onClick.openLink,
+     *  which is handled entirely client-side, so it works in every Chat app
+     *  configuration (unlike action callbacks). */
+    linkButton?: { text: string; url: string };
   }
 ): Promise<void> {
   const url = `https://chat.googleapis.com/v1/${params.spaceName}/messages`;
@@ -246,20 +259,20 @@ export async function sendMessage(
   if (params.text && params.text.length > 0) {
     body.text = params.text;
   }
-  if (params.actionButton) {
+  if (params.actionButton || params.linkButton) {
     // A lightweight button attached under the text (no full card needed).
-    body.accessoryWidgets = [
-      {
-        buttonList: {
-          buttons: [
-            {
-              text: params.actionButton.text,
-              onClick: { action: { function: params.actionButton.fn } }
+    const button = params.linkButton
+      ? { text: params.linkButton.text, onClick: { openLink: { url: params.linkButton.url } } }
+      : {
+          text: params.actionButton!.text,
+          onClick: {
+            action: {
+              function: params.actionButton!.actionUrl,
+              parameters: params.actionButton!.parameters ?? []
             }
-          ]
-        }
-      }
-    ];
+          }
+        };
+    body.accessoryWidgets = [{ buttonList: { buttons: [button] } }];
   }
   if (params.imageUrl) {
     body.cardsV2 = [

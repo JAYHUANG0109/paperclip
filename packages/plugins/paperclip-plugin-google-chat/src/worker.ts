@@ -48,6 +48,7 @@ interface GoogleChatConfig {
   verifyInbound: boolean;
   senderServiceAccountEmail: string;
   expectedAudience: string;
+  cardActionUrl: string;
   routingEnabled: boolean;
   companyId: string;
   defaultAgentUrlKey: string;
@@ -114,7 +115,8 @@ async function postFormatted(
   config: GoogleChatConfig,
   target: { spaceName: string; threadName?: string },
   markdown: string,
-  actionButton?: { text: string; fn: string }
+  actionButton?: { text: string; fn: string },
+  linkButton?: { text: string; url: string }
 ): Promise<void> {
   const token = await getAccessToken(ctx, config);
   const fetchImpl = (url: string, init?: RequestInit) => ctx.http.fetch(url, init);
@@ -123,14 +125,15 @@ async function postFormatted(
   const { text: body, imageUrl, imageAltText } = splitFirstImage(markdown);
   const chunks = formatForChat(body).filter((c) => c.trim().length > 0);
   for (let i = 0; i < chunks.length; i++) {
-    // Attach the action button to the FINAL sent message only (last text chunk,
+    // Attach the button to the FINAL sent message only (last text chunk,
     // unless an image follows — then it rides with the image).
     const isFinalText = i === chunks.length - 1 && !imageUrl;
     await sendMessage(fetchImpl, token, {
       spaceName: target.spaceName,
       threadName: target.threadName,
       text: chunks[i],
-      ...(isFinalText && actionButton ? { actionButton } : {})
+      ...(isFinalText && actionButton ? { actionButton } : {}),
+      ...(isFinalText && linkButton ? { linkButton } : {})
     });
   }
   if (imageUrl) {
@@ -139,17 +142,36 @@ async function postFormatted(
       threadName: target.threadName,
       imageUrl,
       imageAltText,
-      ...(actionButton ? { actionButton } : {})
+      ...(actionButton ? { actionButton } : {}),
+      ...(linkButton ? { linkButton } : {})
     });
   }
 }
 
 /** The DM "new conversation" reset button + the CARD_CLICKED function it fires. */
 const NEW_CONVERSATION_FN = "paperclip_new_conversation";
-const NEW_CONVERSATION_BUTTON = { text: "＋ 開新任務 / New task", fn: NEW_CONVERSATION_FN };
 
 /** CARD_CLICKED function for accept/reject buttons on an interaction card. */
 const INTERACTION_RESPOND_FN = "paperclip_interaction_respond";
+
+/**
+ * The app's public HTTPS webhook URL that interactive button clicks POST to. In
+ * the Workspace add-on model a button's action.function MUST be a full URL (not
+ * an action name), so we set it to this endpoint and carry the real handler name
+ * in a "fn" parameter. Empty when unconfigured → callers fall back to a link.
+ */
+function resolveCardActionUrl(config: GoogleChatConfig): string {
+  return (config.cardActionUrl || config.expectedAudience || "").trim();
+}
+
+/** Build the DM "new task" reset action button for a given endpoint URL. */
+function newConversationButton(actionUrl: string) {
+  return {
+    text: "＋ 開新任務 / New task",
+    actionUrl,
+    parameters: [{ key: "fn", value: NEW_CONVERSATION_FN }]
+  };
+}
 
 /**
  * Render a request_confirmation as an interactive Chat card — Accept /
@@ -164,7 +186,10 @@ async function postInteractionCard(
   info: { title: string; summary: string; interactionId: string; issueId: string }
 ): Promise<void> {
   const token = await getAccessToken(ctx, config);
+  const actionUrl = resolveCardActionUrl(config);
+  // action.function is the full endpoint URL; the handler name rides in "fn".
   const params = (decision: string) => [
+    { key: "fn", value: INTERACTION_RESPOND_FN },
     { key: "interactionId", value: info.interactionId },
     { key: "issueId", value: info.issueId },
     { key: "decision", value: decision }
@@ -184,11 +209,11 @@ async function postInteractionCard(
                     buttons: [
                       {
                         text: "✅ 確認 / Accept",
-                        onClick: { action: { function: INTERACTION_RESPOND_FN, parameters: params("accept") } }
+                        onClick: { action: { function: actionUrl, parameters: params("accept") } }
                       },
                       {
                         text: "✳️ 需修改 / Request changes",
-                        onClick: { action: { function: INTERACTION_RESPOND_FN, parameters: params("reject") } }
+                        onClick: { action: { function: actionUrl, parameters: params("reject") } }
                       }
                     ]
                   }
@@ -234,12 +259,14 @@ async function postQuestionCard(
   }
 ): Promise<void> {
   const token = await getAccessToken(ctx, config);
+  const actionUrl = resolveCardActionUrl(config);
   const buttons = info.options.slice(0, 6).map((opt) => ({
     text: opt.label.slice(0, 60),
     onClick: {
       action: {
-        function: INTERACTION_ANSWER_FN,
+        function: actionUrl,
         parameters: [
+          { key: "fn", value: INTERACTION_ANSWER_FN },
           { key: "interactionId", value: info.interactionId },
           { key: "issueId", value: info.issueId },
           { key: "questionId", value: info.questionId },
@@ -842,15 +869,13 @@ const plugin = definePlugin({
             body = `↪︎ 回覆：「${labelizeQuestion(lastUserMsg)}」\n\n${body}`;
             labeledThisRound = true;
           }
-          // On DMs, offer a one-tap "new conversation" reset so the session
-          // doesn't accrue forever into one task.
-          await postFormatted(
-            ctx,
-            config,
-            target,
-            body,
-            target.spaceType === "DM" ? NEW_CONVERSATION_BUTTON : undefined,
-          );
+          // On DMs, offer a one-tap "new task" reset. The button POSTs to our
+          // webhook URL (add-on model); if no action URL is configured it's
+          // omitted and users type "/new task" instead (MESSAGE path).
+          const actionUrl = resolveCardActionUrl(config);
+          const resetButton =
+            target.spaceType === "DM" && actionUrl ? newConversationButton(actionUrl) : undefined;
+          await postFormatted(ctx, config, target, body, resetButton);
           if (id) delivered.ids.push(id);
           delivered.sigs.push(sig);
           ctx.logger.info("Mirrored agent comment to Chat", { issueId, commentId: id });
@@ -895,11 +920,22 @@ const plugin = definePlugin({
 
         const lines = [`🔔 ${p.title ?? "Paperclip 通知 / Notification"}`];
         if (p.body) lines.push(p.body);
-        // The server resolves the link to an absolute URL (from authPublicBaseUrl)
-        // so it's directly clickable in Chat. It may still be relative if the
-        // origin isn't configured — in that case it's just a hint, not a link.
-        if (p.link) lines.push(`↗ Paperclip：${p.link}`);
-        await postFormatted(ctx, config, { spaceName }, lines.join("\n\n"));
+        // The server resolves the link to an absolute URL (from authPublicBaseUrl).
+        // When present, render it as a tappable LINK button (openLink works in
+        // every Chat config, unlike action callbacks). This is how interaction
+        // prompts — confirmations, questions, checkboxes — reach the user: a card
+        // with an "open in Paperclip" button where they complete the typed form.
+        // Fall back to an inline link hint when the origin isn't configured.
+        const absoluteLink = p.link && /^https?:\/\//i.test(p.link) ? p.link : null;
+        const isInteraction = p.kind === "thread_interaction";
+        const linkButton = absoluteLink
+          ? {
+              text: isInteraction ? "✅ 前往回覆 / Open in Paperclip" : "↗ 開啟 / Open in Paperclip",
+              url: absoluteLink
+            }
+          : undefined;
+        if (p.link && !absoluteLink) lines.push(`↗ Paperclip：${p.link}`);
+        await postFormatted(ctx, config, { spaceName }, lines.join("\n\n"), undefined, linkButton);
         ctx.logger.info("Forwarded notification to Chat", { email, kind: p.kind, space: spaceName });
       } catch (err) {
         ctx.logger.error("Failed to forward notification to Chat", {
@@ -908,11 +944,15 @@ const plugin = definePlugin({
       }
     });
 
-    // Render a request_confirmation ("待裁示" approval) as an interactive Chat
-    // CARD in the owner's DM — Accept / Request-changes buttons they can tap
-    // without leaving Chat. Other interaction kinds are handled by the server's
-    // link notification (they need richer forms). The button click resolves the
-    // interaction via issues.respondInteraction (see onWebhook CARD_CLICKED).
+    // Render an agent-created interaction as an interactive Chat CARD in the
+    // owner's DM. In the Workspace add-on model a button's action.function is the
+    // full webhook URL (see resolveCardActionUrl / postInteractionCard) and the
+    // click POSTs back to onWebhook. request_confirmation → Accept/Reject;
+    // single-select ask_user_questions → one button per option. Anything we
+    // can't button-render (multi-question, or no action URL configured) falls
+    // back to an "open in Paperclip" LINK button using the server-provided
+    // absolute issueUrl. Kinds handled here are NOT also link-notified by the
+    // server (it skips request_confirmation + ask_user_questions) to avoid dupes.
     ctx.events.on("issue.thread_interaction_created", async (event) => {
       try {
         const p = (event.payload ?? {}) as {
@@ -920,6 +960,7 @@ const plugin = definePlugin({
           interactionKind?: string;
           interactionTitle?: string | null;
           interactionSummary?: string | null;
+          issueUrl?: string | null;
           interactionPayload?: {
             title?: string | null;
             questions?: Array<{
@@ -934,29 +975,28 @@ const plugin = definePlugin({
         const agentId = event.actorId;
         if (!issueId || !p.interactionId || event.actorType !== "agent" || !agentId) return;
         const kind = p.interactionKind;
-        // Only kinds we can render as tappable cards. request_confirmation →
-        // Accept/Reject; a single-question single-select ask_user_questions →
-        // one button per option. Everything else keeps the server link nudge.
-        const questions = p.interactionPayload?.questions ?? [];
-        const simpleQuestion =
-          kind === "ask_user_questions" &&
-          questions.length === 1 &&
-          questions[0].selectionMode === "single" &&
-          (questions[0].options?.length ?? 0) > 0;
-        if (kind !== "request_confirmation" && !simpleQuestion) return;
 
         const config = await getConfig(ctx);
         const target = await resolveOwnerDmTarget(ctx, config, agentId, event.companyId);
         if (!target) return; // owner unpaired or has never DM'd the bot
 
-        if (kind === "request_confirmation") {
+        const actionUrl = resolveCardActionUrl(config);
+        const questions = p.interactionPayload?.questions ?? [];
+        const singleSelectQ =
+          kind === "ask_user_questions" &&
+          questions.length === 1 &&
+          questions[0].selectionMode === "single" &&
+          (questions[0].options?.length ?? 0) > 0;
+
+        // Native buttons only when we have an endpoint URL to POST clicks to.
+        if (actionUrl && kind === "request_confirmation") {
           await postInteractionCard(ctx, config, target.spaceName, {
             title: p.interactionTitle ?? "需要你確認 / Needs your confirmation",
             summary: p.interactionSummary ?? "",
             interactionId: p.interactionId,
             issueId
           });
-        } else {
+        } else if (actionUrl && singleSelectQ) {
           const q = questions[0];
           await postQuestionCard(ctx, config, target.spaceName, {
             title: p.interactionTitle ?? p.interactionPayload?.title ?? "",
@@ -966,8 +1006,29 @@ const plugin = definePlugin({
             questionId: q.id,
             options: q.options ?? []
           });
+        } else {
+          // Fallback: a card with an "open in Paperclip" LINK button (works even
+          // with no action URL, and for multi-question / free-text forms).
+          const token = await getAccessToken(ctx, config);
+          const lines = [p.interactionTitle ?? "需要你回覆 / Needs your input"];
+          if (p.interactionSummary) lines.push(p.interactionSummary);
+          const link = p.issueUrl && /^https?:\/\//i.test(p.issueUrl) ? p.issueUrl : null;
+          await sendMessage(
+            (u, init) => ctx.http.fetch(u, init),
+            token,
+            {
+              spaceName: target.spaceName,
+              text: lines.join("\n\n"),
+              ...(link ? { linkButton: { text: "✅ 前往回覆 / Open in Paperclip", url: link } } : {})
+            }
+          );
         }
-        ctx.logger.info("Posted interaction card to Chat", { issueId, interactionId: p.interactionId, kind });
+        ctx.logger.info("Posted interaction card to Chat", {
+          issueId,
+          interactionId: p.interactionId,
+          kind,
+          mode: actionUrl && (kind === "request_confirmation" || singleSelectQ) ? "buttons" : "link"
+        });
       } catch (err) {
         ctx.logger.error("Failed to post interaction card to Chat", {
           error: err instanceof Error ? err.message : String(err)
@@ -981,24 +1042,6 @@ const plugin = definePlugin({
     if (!ctx) throw new Error("Plugin context not initialized");
     if (input.endpointKey !== WEBHOOK_KEY) {
       throw new Error(`Unsupported webhook endpoint "${input.endpointKey}"`);
-    }
-
-    // Diagnostic (runs BEFORE verifyInbound): prove whether a button click even
-    // reaches this endpoint, and with what envelope. Temporary — remove once the
-    // CARD_CLICKED round-trip works.
-    try {
-      const root = (input.parsedBody ?? {}) as Record<string, any>;
-      ctx.logger.info("Chat webhook RAW inbound", {
-        requestId: input.requestId,
-        topKeys: Object.keys(root),
-        chatKeys: root.chat ? Object.keys(root.chat) : undefined,
-        commonKeys: root.commonEventObject ? Object.keys(root.commonEventObject) : undefined,
-        invokedFunction: root.commonEventObject?.invokedFunction,
-        hasButtonClicked: Boolean(root.chat?.buttonClickedPayload),
-        eventType: root.type ?? root.chat?.eventType ?? root.commonEventObject?.eventType
-      });
-    } catch {
-      /* diagnostics must never break handling */
     }
 
     const config = await getConfig(ctx);
@@ -1044,26 +1087,10 @@ const plugin = definePlugin({
     }
 
     // Button clicks (CARD_CLICKED), parsed defensively across the classic +
-    // Workspace-add-on shapes.
+    // Workspace-add-on shapes. NOTE: action-callback clicks are not delivered to
+    // this app in the add-on event model, so these handlers are effectively
+    // dormant here — kept for classic-Chat-app compatibility.
     const click = extractCardClick(input.parsedBody);
-    // Diagnostic: dump the event skeleton so we can see the exact envelope Google
-    // sends for button clicks in THIS add-on app (temporary, remove once cards work).
-    try {
-      const root = (input.parsedBody ?? {}) as Record<string, any>;
-      ctx.logger.info("Chat webhook event skeleton", {
-        requestId: input.requestId,
-        topKeys: Object.keys(root),
-        eventType: root.type ?? root.commonEventObject?.eventType,
-        chatKeys: root.chat ? Object.keys(root.chat) : undefined,
-        invokedFunction: root.commonEventObject?.invokedFunction,
-        hasButtonClicked: Boolean(root.chat?.buttonClickedPayload),
-        parsedClickFn: click?.fn ?? null,
-        parsedClickEmail: click?.email ?? null,
-        parsedClickSpace: click?.spaceName ?? null
-      });
-    } catch {
-      /* diagnostics must never break handling */
-    }
     if (click?.fn === NEW_CONVERSATION_FN) {
       // "＋開新對話": end the DM session so the next message opens a fresh task.
       if (click.spaceName) {

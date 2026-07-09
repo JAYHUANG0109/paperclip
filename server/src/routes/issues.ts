@@ -193,6 +193,7 @@ import {
   type TrustPresetResolution,
 } from "../services/trust-preset-resolver.js";
 import { externalObjectService } from "../services/external-objects.js";
+import { toAbsoluteLink } from "../services/notifications.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
 const updateIssueRouteSchema = updateIssueSchema.extend({
@@ -8569,6 +8570,9 @@ export function issueRoutes(
         interactionTitle: interaction.title ?? null,
         interactionSummary: interaction.summary ?? null,
         interactionPayload: interaction.payload ?? null,
+        // Absolute deep link so the Chat plugin can render an "open in Paperclip"
+        // link button for interaction kinds it can't render as native buttons.
+        issueUrl: toAbsoluteLink(`/issues/${issue.identifier}`, issue.identifier),
         continuationPolicy: interaction.continuationPolicy,
       },
     });

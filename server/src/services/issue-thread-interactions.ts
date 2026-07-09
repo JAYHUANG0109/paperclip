@@ -1055,11 +1055,16 @@ export function issueThreadInteractionService(db: Db) {
       // outside Paperclip, so emit a notification (Google Chat forwards it as a
       // DM with a deep link — "go to Paperclip to respond"). Best-effort;
       // notifying must never fail interaction creation.
-      // request_confirmation is rendered as an interactive Chat CARD (Accept /
-      // Request-changes buttons) by the Google Chat plugin, so skip the plain
-      // link notification for it to avoid a duplicate ping; other kinds still
-      // get the link nudge.
-      if (actor.agentId && created.kind !== "request_confirmation") {
+      // request_confirmation and ask_user_questions are rendered by the Google
+      // Chat plugin as interaction CARDS (Accept/Reject or option buttons, with
+      // a link-button fallback), so skip the plain link notification for them to
+      // avoid a duplicate ping. Other kinds (checkbox, suggest_tasks) still get
+      // the link nudge via the notification bridge.
+      if (
+        actor.agentId &&
+        created.kind !== "request_confirmation" &&
+        created.kind !== "ask_user_questions"
+      ) {
         try {
           const [iss] = await db
             .select({ responsibleUserId: issues.responsibleUserId, identifier: issues.identifier })
