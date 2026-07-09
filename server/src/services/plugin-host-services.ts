@@ -2030,17 +2030,33 @@ export function buildHostServices(
         const companyId = ensureCompanyId(params.companyId);
         await ensurePluginAvailableForCompany(companyId);
         const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        // Attribute to a human user when an email is supplied and resolves to a
+        // Paperclip account (e.g. a relayed Google Chat DM). Fall back to the
+        // plugin system actor if the email is unknown, so relaying never fails
+        // just because the sender has no account.
+        let actor: { agentId?: string; userId?: string } = { agentId: params.authorAgentId };
+        let resolvedUserId: string | null = null;
+        const authorEmail = (params.authorUserEmail ?? "").trim().toLowerCase();
+        if (!params.authorAgentId && authorEmail) {
+          const user = (
+            await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.email, authorEmail))
+          )[0];
+          if (user?.id) {
+            resolvedUserId = user.id;
+            actor = { userId: user.id };
+          }
+        }
         const comment = (await issues.addComment(
           params.issueId,
           params.body,
-          { agentId: params.authorAgentId },
+          actor,
         )) as IssueComment;
         await logPluginActivity({
           companyId,
           action: "issue.comment.created",
           entityType: "issue",
           entityId: issue.id,
-          actor: { actorAgentId: params.authorAgentId ?? null },
+          actor: { actorAgentId: params.authorAgentId ?? null, actorUserId: resolvedUserId },
           details: {
             identifier: issue.identifier,
             commentId: comment.id,

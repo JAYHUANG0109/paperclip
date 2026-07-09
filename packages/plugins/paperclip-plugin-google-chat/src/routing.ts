@@ -235,9 +235,11 @@ export async function getLastUserMessage(
  */
 export async function appendToConversation(
   ctx: PluginContext,
-  params: { issueId: string; companyId: string; text: string }
+  params: { issueId: string; companyId: string; text: string; senderEmail?: string }
 ): Promise<string> {
-  const comment = await ctx.issues.createComment(params.issueId, params.text, params.companyId);
+  const comment = await ctx.issues.createComment(params.issueId, params.text, params.companyId, {
+    authorUserEmail: params.senderEmail,
+  });
   await ctx.issues.update(params.issueId, { status: "todo" }, params.companyId);
   try {
     await ctx.issues.requestWakeup(params.issueId, params.companyId);

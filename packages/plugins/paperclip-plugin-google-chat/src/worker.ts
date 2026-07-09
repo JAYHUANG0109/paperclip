@@ -458,7 +458,8 @@ async function routeToAgent(
       const commentId = await appendToConversation(ctx, {
         issueId: existingIssueId,
         companyId,
-        text: commentBody
+        text: commentBody,
+        senderEmail: inbound.senderEmail
       });
       if (commentId) {
         const delivered = await getDelivered(ctx, existingIssueId);

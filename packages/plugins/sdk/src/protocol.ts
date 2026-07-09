@@ -1377,7 +1377,16 @@ export interface WorkerToHostMethods {
     result: IssueComment[],
   ];
   "issues.createComment": [
-    params: { issueId: string; body: string; companyId: string; authorAgentId?: string },
+    params: {
+      issueId: string;
+      body: string;
+      companyId: string;
+      authorAgentId?: string;
+      /** Attribute the comment to a human user (by email) instead of the plugin
+       *  system actor — e.g. a Google Chat DM relayed as the sender's own
+       *  comment. The host resolves the email to a Paperclip account. */
+      authorUserEmail?: string;
+    },
     result: IssueComment,
   ];
   "issues.createInteraction": [
