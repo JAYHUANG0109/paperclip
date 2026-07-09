@@ -74,6 +74,9 @@ export function Sidebar() {
     refetchInterval: 10_000,
   });
   const liveRunCount = liveRuns?.length ?? 0;
+  // Live indicator on "My Agent": lit only when THIS user's own agent has a live
+  // run (mirrors the per-company "N live" on Dashboard, scoped to one agent).
+  const myAgentLive = !!myAgent && (liveRuns ?? []).some((r) => r.agentId === myAgent.id);
   const showWorkspacesLink = experimentalSettings?.enableIsolatedWorkspaces === true;
   // IA flag: branch the sidebar nav presentation. Default ON =
   // streamlined (top-level Projects link). Users can opt out in experiments to
@@ -177,7 +180,7 @@ export function Sidebar() {
           })()}
           <SidebarNavItem to="/dashboard" label={t("nav.dashboard", { defaultValue: "Dashboard" })} icon={LayoutDashboard} liveCount={liveRunCount} />
           {myAgent ? (
-            <SidebarNavItem to={agentUrl(myAgent)} label={t("nav.myAgent", { defaultValue: "My Agent" })} icon={Bot} />
+            <SidebarNavItem to={agentUrl(myAgent)} label={t("nav.myAgent", { defaultValue: "My Agent" })} icon={Bot} liveCount={myAgentLive ? 1 : 0} />
           ) : null}
           <SidebarNavItem
             to="/inbox"
