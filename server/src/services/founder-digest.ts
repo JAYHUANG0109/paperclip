@@ -120,6 +120,9 @@ export interface DailyConsole {
   key: ConsoleKey;
   title: string;
   digest: FounderDigest;
+  /** True when the caller is viewing someone else's console (shared founder
+   *  console viewed by a non-owner) — the UI shows it read-only. */
+  readOnly: boolean;
 }
 
 /** Resolve an arbitrary console value to a ConsoleKey, defaulting to "founder"
@@ -163,6 +166,46 @@ function founderEmails(): Set<string> {
 export function isFounderEmail(email: string | null | undefined): boolean {
   if (!email) return false;
   return founderEmails().has(email.toLowerCase());
+}
+
+// The FOUNDER console (創辦人每日行事曆 + 私密批閱板) is a SHARED, owner-owned
+// console — unlike the 園長 consoles, which stay per-caller. Its single source of
+// truth is 唐姐's founder agent: allowlisted VIEWERS read that same digest (so
+// they see exactly what she sees) and may trigger 更新, but ONLY the owner may
+// 裁示／留言／結案. Viewers are a tight set (owner + testers), NOT the whole
+// founder-email allowlist, so the 園長 never see 唐姐's private board.
+// Read at call time (not module load) so env overrides + tests take effect.
+function founderOwnerEmail(): string {
+  return (process.env.PAPERCLIP_FOUNDER_OWNER_EMAIL?.trim() || "tang@seasonart.org").toLowerCase();
+}
+function founderConsoleViewers(): Set<string> {
+  const raw = process.env.PAPERCLIP_FOUNDER_VIEWER_EMAILS?.trim();
+  const list = raw
+    ? raw.split(",").map((e) => e.trim()).filter(Boolean)
+    : [founderOwnerEmail(), "jay20020109@seasonart.org"];
+  return new Set(list.map((e) => e.toLowerCase()));
+}
+export function canViewFounderConsole(email: string | null | undefined): boolean {
+  return !!email && founderConsoleViewers().has(email.toLowerCase());
+}
+export function isFounderConsoleOwner(email: string | null | undefined): boolean {
+  return !!email && email.toLowerCase() === founderOwnerEmail();
+}
+/** The agent that OWNS the founder console (唐姐's) — the single source of truth
+ *  read + refreshed by every viewer. */
+export async function founderConsoleOwnerAgentId(db: Db, companyId: string): Promise<string | null> {
+  return resolveOwnAgentId(db, companyId, founderOwnerEmail());
+}
+/** True if a task gid currently lives in the founder console (owner's digest) —
+ *  used to gate writes so only the owner can act on it. */
+export async function gidInFounderConsole(db: Db, companyId: string, gid: string): Promise<boolean> {
+  const owner = await founderConsoleOwnerAgentId(db, companyId);
+  if (!owner) return false;
+  const d = await readStoredDigestForAgent(db, owner, "founder");
+  if (!d) return false;
+  return (["urgent", "meetings", "nonUrgent", "reminders"] as const).some((c) =>
+    (d.categories[c] ?? []).some((it) => it.gid === gid),
+  );
 }
 
 function sanitizeItem(raw: unknown): FounderItem | null {
@@ -313,15 +356,33 @@ export async function getFounderDigestForUser(db: Db, companyId: string, email: 
  */
 export async function getConsolesForUser(db: Db, companyId: string, email: string | null): Promise<DailyConsole[]> {
   if (!isFounderEmail(email)) return []; // not an allowlisted console user
-  const agentId = await resolveOwnAgentId(db, companyId, email);
-  if (!agentId) return [];
-  const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
-  const md = row?.metadata as Record<string, unknown> | null;
-  if (!md || typeof md !== "object") return [];
+  const callerAgentId = await resolveOwnAgentId(db, companyId, email);
   const out: DailyConsole[] = [];
-  for (const key of CONSOLE_KEYS) {
-    const digest = md[CONSOLE_META_KEY[key]] as FounderDigest | undefined;
-    if (digest && digest.categories) out.push({ key, title: CONSOLE_TITLE[key], digest });
+
+  // Founder console — SHARED: read from the OWNER agent so every viewer sees the
+  // exact same digest (and a viewer's 更新 refreshes hers, not their own). Gated
+  // to the founder-console viewer set so the 園長 never see her private board.
+  if (canViewFounderConsole(email)) {
+    const ownerAgentId = await founderConsoleOwnerAgentId(db, companyId);
+    if (ownerAgentId) {
+      const digest = await readStoredDigestForAgent(db, ownerAgentId, "founder");
+      if (digest && digest.categories) {
+        out.push({ key: "founder", title: CONSOLE_TITLE.founder, digest, readOnly: ownerAgentId !== callerAgentId });
+      }
+    }
+  }
+
+  // 園長 consoles — per-caller: each園長 reads their OWN agent's console.
+  if (callerAgentId) {
+    const row = (await db.select().from(agents).where(eq(agents.id, callerAgentId)))[0];
+    const md = row?.metadata as Record<string, unknown> | null;
+    if (md && typeof md === "object") {
+      for (const key of CONSOLE_KEYS) {
+        if (key === "founder") continue; // handled above (owner-based)
+        const digest = md[CONSOLE_META_KEY[key]] as FounderDigest | undefined;
+        if (digest && digest.categories) out.push({ key, title: CONSOLE_TITLE[key], digest, readOnly: false });
+      }
+    }
   }
   return out;
 }

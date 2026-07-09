@@ -71,8 +71,12 @@ describe("founder-digest decisions", () => {
   });
 
   it("hosts two consoles on one agent and routes writes by console key", async () => {
-    // An allowlisted preview user whose agent carries BOTH consoles.
+    // An allowlisted preview user whose agent carries BOTH consoles. It's also the
+    // founder-console OWNER + VIEWER here, so the owner-based founder console reads
+    // from this same agent (caller == owner → not read-only).
     process.env.PAPERCLIP_FOUNDER_EMAILS = "preview-console@test.org";
+    process.env.PAPERCLIP_FOUNDER_OWNER_EMAIL = "preview-console@test.org";
+    process.env.PAPERCLIP_FOUNDER_VIEWER_EMAILS = "preview-console@test.org";
     const email = "preview-console@test.org";
     const [ag] = await db
       .insert(agents)

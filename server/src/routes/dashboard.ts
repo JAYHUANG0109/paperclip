@@ -22,6 +22,9 @@ import {
   toConsoleKey,
   asConsoleKey,
   readStoredDigestForAgent,
+  founderConsoleOwnerAgentId,
+  isFounderConsoleOwner,
+  gidInFounderConsole,
   type FounderDecision,
   type FounderItem,
 } from "../services/founder-digest.js";
@@ -480,9 +483,16 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     assertCompanyAccess(req, companyId);
     const userId = req.actor.type === "board" ? req.actor.userId : null;
     const email = await emailForUserId(db, userId);
-    const agentId = await resolveOwnAgentId(db, companyId, email);
+    // The founder console is shared: 更新 must wake ITS OWNER's agent (唐姐's,
+    // whose token reads her private board), regardless of who clicks it — never
+    // the caller's own agent (which would run the caller's own routine). 園長
+    // consoles stay per-caller.
+    const refreshConsole = toConsoleKey((req.body as { console?: unknown })?.console);
+    const agentId = refreshConsole === "founder"
+      ? await founderConsoleOwnerAgentId(db, companyId)
+      : await resolveOwnAgentId(db, companyId, email);
     if (!agentId) {
-      res.status(404).json({ error: "No agent is linked to your account to refresh from Asana." });
+      res.status(404).json({ error: "No agent is linked to refresh this console from Asana." });
       return;
     }
     // Immediately forward the CURRENT console(s) to the caller's Google Chat —
@@ -571,6 +581,12 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     assertCompanyAccess(req, companyId);
     const userId = req.actor.type === "board" ? req.actor.userId : null;
     const email = await emailForUserId(db, userId);
+    // Read-only guard: the founder console is 唐姐's — a non-owner viewer may look
+    // and 更新, but never 裁示/留言/結案 on her behalf.
+    if ((await gidInFounderConsole(db, companyId, gid)) && !isFounderConsoleOwner(email)) {
+      res.status(403).json({ error: "唯讀檢視：僅本人（唐姐）可對創辦人批閱板裁示。" });
+      return;
+    }
     const agentId = await resolveOwnAgentId(db, companyId, email);
     if (!agentId) {
       res.status(404).json({ error: "No agent is linked to your account to act on Asana." });
@@ -620,6 +636,10 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     assertCompanyAccess(req, companyId);
     const userId = req.actor.type === "board" ? req.actor.userId : null;
     const email = await emailForUserId(db, userId);
+    if ((await gidInFounderConsole(db, companyId, gid)) && !isFounderConsoleOwner(email)) {
+      res.status(403).json({ error: "唯讀檢視：僅本人（唐姐）可對創辦人批閱板結案。" });
+      return;
+    }
     const agentId = await resolveOwnAgentId(db, companyId, email);
     if (!agentId) {
       res.status(404).json({ error: "No agent is linked to your account to act on Asana." });
@@ -661,6 +681,10 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     assertCompanyAccess(req, companyId);
     const userId = req.actor.type === "board" ? req.actor.userId : null;
     const email = await emailForUserId(db, userId);
+    if ((await gidInFounderConsole(db, companyId, gid)) && !isFounderConsoleOwner(email)) {
+      res.status(403).json({ error: "唯讀檢視：僅本人（唐姐）可對創辦人批閱板留言。" });
+      return;
+    }
     const agentId = await resolveOwnAgentId(db, companyId, email);
     if (!agentId) {
       res.status(404).json({ error: "No agent is linked to your account to act on Asana." });

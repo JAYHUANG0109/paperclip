@@ -72,6 +72,8 @@ export interface DailyConsole {
   key: ConsoleKey;
   title: string;
   digest: FounderDigest;
+  /** True when viewing someone else's (shared) console read-only — hide actions. */
+  readOnly: boolean;
 }
 export interface FounderConsolesResponse {
   consoles: DailyConsole[];

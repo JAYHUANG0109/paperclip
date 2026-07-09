@@ -234,6 +234,11 @@ function ConsoleView({
           {con.digest.lastRunLabel ? ` · ${con.digest.lastRunLabel}` : ""}
         </p>
       )}
+      {con.readOnly && (
+        <p className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+          👁️ {t("founder.readOnly", { defaultValue: "唯讀檢視（本人的實際內容）— 更新可用，裁示／留言僅本人可操作" })}
+        </p>
+      )}
       {isStale && (
         <p className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
           ⚠️ {t("founder.stale", { when: generated ? generated.toLocaleString() : "", defaultValue: "May be out of date — last refreshed {{when}}" })}
@@ -285,6 +290,7 @@ function ConsoleView({
                         kind={c.kind}
                         pending={pendingGid === it.gid}
                         commenting={commentingGid === it.gid}
+                        readOnly={con.readOnly}
                         onDecide={(decision, note) => onDecide(it.gid, decision, note)}
                         onClose={(closed) => onClose(it.gid, closed)}
                         onComment={(text) => onComment(it.gid, text)}
@@ -355,6 +361,7 @@ function FounderRow({
   kind,
   pending,
   commenting,
+  readOnly,
   onDecide,
   onClose,
   onComment,
@@ -363,6 +370,7 @@ function FounderRow({
   kind: "review" | "meeting" | "reminder";
   pending: boolean;
   commenting: boolean;
+  readOnly: boolean;
   onDecide: (decision: FounderDecision | null, note?: string) => void;
   onClose: (closed: boolean) => void;
   onComment: (text: string) => void;
@@ -439,17 +447,19 @@ function FounderRow({
               {(() => { const Icon = DECISION_META[item.decision].icon; return <Icon className="h-3 w-3" />; })()}
               {t(DECISION_META[item.decision].labelKey, { defaultValue: DECISION_META[item.decision].fallback })}
             </span>
-            <button
-              type="button"
-              onClick={() => onDecide(null)}
-              disabled={pending}
-              aria-label={t("founder.reset", { defaultValue: "Reset decision" })}
-              className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
-            >
-              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => onDecide(null)}
+                disabled={pending}
+                aria-label={t("founder.reset", { defaultValue: "Reset decision" })}
+                className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              </button>
+            )}
           </div>
-        ) : (
+        ) : readOnly ? null : (
           // Undecided → three verdict buttons (open an optional-note composer).
           <div className="flex shrink-0 flex-wrap items-center gap-1">
             {DECISION_ACTIONS.map((a) => (
@@ -471,17 +481,19 @@ function FounderRow({
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
               <Check className="h-3 w-3" />{t("founder.closed", { defaultValue: "已結案" })}
             </span>
-            <button
-              type="button"
-              onClick={() => onClose(false)}
-              disabled={pending}
-              aria-label={t("founder.reopen", { defaultValue: "Reopen" })}
-              className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
-            >
-              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => onClose(false)}
+                disabled={pending}
+                aria-label={t("founder.reopen", { defaultValue: "Reopen" })}
+                className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              </button>
+            )}
           </div>
-        ) : (
+        ) : readOnly ? null : (
           <button
             type="button"
             onClick={() => onClose(true)}
@@ -562,7 +574,7 @@ function FounderRow({
               </ul>
             </div>
           )}
-          {isReview && <CommentThread comments={threadComments} commenting={commenting} onComment={onComment} />}
+          {isReview && <CommentThread comments={threadComments} commenting={commenting} onComment={onComment} readOnly={readOnly} />}
         </div>
       )}
 
@@ -586,10 +598,12 @@ function CommentThread({
   comments,
   commenting,
   onComment,
+  readOnly,
 }: {
   comments: FounderComment[];
   commenting: boolean;
   onComment: (text: string) => void;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [reply, setReply] = useState("");
@@ -625,27 +639,31 @@ function CommentThread({
           ))}
         </ul>
       )}
-      <textarea
-        value={reply}
-        onChange={(e) => setReply(e.target.value)}
-        rows={2}
-        placeholder={t("founder.commentPlaceholder", { defaultValue: "留言 / 提問（不做決定）— 將張貼為 Asana 評論" })}
-        className="w-full rounded-md border border-border bg-background p-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send();
-        }}
-      />
-      <div className="mt-1 flex justify-end">
-        <button
-          type="button"
-          onClick={send}
-          disabled={commenting || !reply.trim()}
-          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
-        >
-          {commenting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-          {t("founder.postComment", { defaultValue: "送出留言" })}
-        </button>
-      </div>
+      {!readOnly && (
+        <>
+          <textarea
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            rows={2}
+            placeholder={t("founder.commentPlaceholder", { defaultValue: "留言 / 提問（不做決定）— 將張貼為 Asana 評論" })}
+            className="w-full rounded-md border border-border bg-background p-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send();
+            }}
+          />
+          <div className="mt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={send}
+              disabled={commenting || !reply.trim()}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
+            >
+              {commenting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              {t("founder.postComment", { defaultValue: "送出留言" })}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
