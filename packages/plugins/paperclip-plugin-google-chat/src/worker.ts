@@ -983,6 +983,24 @@ const plugin = definePlugin({
       throw new Error(`Unsupported webhook endpoint "${input.endpointKey}"`);
     }
 
+    // Diagnostic (runs BEFORE verifyInbound): prove whether a button click even
+    // reaches this endpoint, and with what envelope. Temporary — remove once the
+    // CARD_CLICKED round-trip works.
+    try {
+      const root = (input.parsedBody ?? {}) as Record<string, any>;
+      ctx.logger.info("Chat webhook RAW inbound", {
+        requestId: input.requestId,
+        topKeys: Object.keys(root),
+        chatKeys: root.chat ? Object.keys(root.chat) : undefined,
+        commonKeys: root.commonEventObject ? Object.keys(root.commonEventObject) : undefined,
+        invokedFunction: root.commonEventObject?.invokedFunction,
+        hasButtonClicked: Boolean(root.chat?.buttonClickedPayload),
+        eventType: root.type ?? root.chat?.eventType ?? root.commonEventObject?.eventType
+      });
+    } catch {
+      /* diagnostics must never break handling */
+    }
+
     const config = await getConfig(ctx);
 
     // Authenticate the request as genuinely from Google Chat before acting on it.
