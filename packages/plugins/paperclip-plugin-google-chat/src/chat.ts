@@ -267,6 +267,9 @@ export async function sendMessage(
      *  which is handled entirely client-side, so it works in every Chat app
      *  configuration (unlike action callbacks). */
     linkButton?: { text: string; url: string };
+    /** Optional extra action buttons rendered alongside actionButton (same
+     *  add-on model: click POSTs to actionUrl with parameters). */
+    actionButtons?: Array<{ text: string; actionUrl: string; parameters?: Array<{ key: string; value: string }> }>;
   }
 ): Promise<void> {
   const url = `https://chat.googleapis.com/v1/${params.spaceName}/messages`;
@@ -274,20 +277,19 @@ export async function sendMessage(
   if (params.text && params.text.length > 0) {
     body.text = params.text;
   }
-  if (params.actionButton || params.linkButton) {
-    // A lightweight button attached under the text (no full card needed).
-    const button = params.linkButton
-      ? { text: params.linkButton.text, onClick: { openLink: { url: params.linkButton.url } } }
-      : {
-          text: params.actionButton!.text,
-          onClick: {
-            action: {
-              function: params.actionButton!.actionUrl,
-              parameters: params.actionButton!.parameters ?? []
-            }
-          }
-        };
-    body.accessoryWidgets = [{ buttonList: { buttons: [button] } }];
+  const buttons: unknown[] = [];
+  for (const b of [...(params.actionButton ? [params.actionButton] : []), ...(params.actionButtons ?? [])]) {
+    buttons.push({
+      text: b.text,
+      onClick: { action: { function: b.actionUrl, parameters: b.parameters ?? [] } }
+    });
+  }
+  if (params.linkButton) {
+    buttons.push({ text: params.linkButton.text, onClick: { openLink: { url: params.linkButton.url } } });
+  }
+  if (buttons.length > 0) {
+    // A lightweight button row attached under the text (no full card needed).
+    body.accessoryWidgets = [{ buttonList: { buttons } }];
   }
   if (params.imageUrl) {
     body.cardsV2 = [

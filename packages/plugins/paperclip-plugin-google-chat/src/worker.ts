@@ -112,12 +112,14 @@ function labelizeQuestion(text: string): string {
  * (tables→monospace, headers/bold/links) and split into <4096-char messages,
  * posted in order on the same thread. One token mint for the whole reply.
  */
+type ActionButton = { text: string; actionUrl: string; parameters?: Array<{ key: string; value: string }> };
+
 async function postFormatted(
   ctx: PluginContext,
   config: GoogleChatConfig,
   target: { spaceName: string; threadName?: string },
   markdown: string,
-  actionButton?: { text: string; fn: string },
+  actionButtons?: ActionButton[],
   linkButton?: { text: string; url: string }
 ): Promise<void> {
   const token = await getAccessToken(ctx, config);
@@ -126,15 +128,16 @@ async function postFormatted(
   // goes out as a cardsV2 image widget after the formatted text chunks.
   const { text: body, imageUrl, imageAltText } = splitFirstImage(markdown);
   const chunks = formatForChat(body).filter((c) => c.trim().length > 0);
+  const buttons = actionButtons && actionButtons.length > 0 ? actionButtons : undefined;
   for (let i = 0; i < chunks.length; i++) {
-    // Attach the button to the FINAL sent message only (last text chunk,
-    // unless an image follows — then it rides with the image).
+    // Attach the buttons to the FINAL sent message only (last text chunk,
+    // unless an image follows — then they ride with the image).
     const isFinalText = i === chunks.length - 1 && !imageUrl;
     await sendMessage(fetchImpl, token, {
       spaceName: target.spaceName,
       threadName: target.threadName,
       text: chunks[i],
-      ...(isFinalText && actionButton ? { actionButton } : {}),
+      ...(isFinalText && buttons ? { actionButtons: buttons } : {}),
       ...(isFinalText && linkButton ? { linkButton } : {})
     });
   }
@@ -144,7 +147,7 @@ async function postFormatted(
       threadName: target.threadName,
       imageUrl,
       imageAltText,
-      ...(actionButton ? { actionButton } : {}),
+      ...(buttons ? { actionButtons: buttons } : {}),
       ...(linkButton ? { linkButton } : {})
     });
   }
@@ -155,6 +158,9 @@ const NEW_CONVERSATION_FN = "paperclip_new_conversation";
 
 /** CARD_CLICKED function for the "Resume" button on the /tasks picker card. */
 const RESUME_TASK_FN = "paperclip_resume_task";
+
+/** CARD_CLICKED function for the "My tasks" button — opens the /tasks picker. */
+const SHOW_TASKS_FN = "paperclip_show_tasks";
 
 /** CARD_CLICKED function for accept/reject buttons on an interaction card. */
 const INTERACTION_RESPOND_FN = "paperclip_interaction_respond";
@@ -202,6 +208,15 @@ function newConversationButton(actionUrl: string) {
     text: "＋ 開新任務 / New task",
     actionUrl,
     parameters: [{ key: "fn", value: NEW_CONVERSATION_FN }]
+  };
+}
+
+/** Build the DM "my tasks" button — opens the recent-tasks picker on click. */
+function showTasksButton(actionUrl: string) {
+  return {
+    text: "📋 我的任務 / My tasks",
+    actionUrl,
+    parameters: [{ key: "fn", value: SHOW_TASKS_FN }]
   };
 }
 
@@ -1166,13 +1181,15 @@ const plugin = definePlugin({
             body = `↪︎ 回覆：「${labelizeQuestion(lastUserMsg)}」\n\n${body}`;
             labeledThisRound = true;
           }
-          // On DMs, offer a one-tap "new task" reset. The button POSTs to our
-          // webhook URL (add-on model); if no action URL is configured it's
-          // omitted and users type "/new task" instead (MESSAGE path).
+          // On DMs, offer one-tap "new task" + "my tasks" buttons. They POST to
+          // our webhook URL (add-on model); with no action URL configured they're
+          // omitted and users type "/new task" or "/tasks" instead (MESSAGE path).
           const actionUrl = await getCardActionUrl(ctx, config);
-          const resetButton =
-            target.spaceType === "DM" && actionUrl ? newConversationButton(actionUrl) : undefined;
-          await postFormatted(ctx, config, target, body, resetButton);
+          const dmButtons =
+            target.spaceType === "DM" && actionUrl
+              ? [newConversationButton(actionUrl), showTasksButton(actionUrl)]
+              : undefined;
+          await postFormatted(ctx, config, target, body, dmButtons);
           if (id) delivered.ids.push(id);
           delivered.sigs.push(sig);
           ctx.logger.info("Mirrored agent comment to Chat", { issueId, commentId: id });
@@ -1432,7 +1449,7 @@ const plugin = definePlugin({
           await rememberChatTarget(ctx, issueId, {
             spaceName: click.spaceName,
             companyId,
-            senderEmail: email,
+            senderEmail: email ?? "",
             spaceType: "DM"
           });
           await rememberRecentTask(ctx, click.spaceName, issueId);
@@ -1443,6 +1460,27 @@ const plugin = definePlugin({
       } catch (err) {
         ctx.logger.error("resume task via Chat failed", { error: err instanceof Error ? err.message : String(err) });
         return chatTextResponse("抱歉，切換任務時發生問題，請稍後再試。");
+      }
+    }
+    if (click?.fn === SHOW_TASKS_FN) {
+      // "📋 My tasks" button → post the recent-tasks picker card.
+      const email = click.email?.trim().toLowerCase();
+      if (!click.spaceName) return chatTextResponse("抱歉，無法辨識這個空間。");
+      try {
+        const assignment = email ? await getAssignment(ctx, email) : null;
+        const companyId = assignment?.companyId ?? (await resolveCompanyId(ctx, config.companyId));
+        const actionUrl = await getCardActionUrl(ctx, config);
+        const recentIds = await getRecentTasks(ctx, click.spaceName);
+        const tasks: Array<{ issueId: string; identifier: string; title: string; status: string }> = [];
+        for (const tid of recentIds) {
+          const iss = await ctx.issues.get(tid, companyId).catch(() => null);
+          if (iss) tasks.push({ issueId: tid, identifier: iss.identifier ?? tid.slice(0, 8), title: iss.title ?? "", status: iss.status ?? "" });
+        }
+        await postRecentTasksCard(ctx, config, click.spaceName, companyId, actionUrl, tasks);
+        return chatTextResponse("📋 最近的任務 / Your recent tasks:");
+      } catch (err) {
+        ctx.logger.error("show tasks via Chat failed", { error: err instanceof Error ? err.message : String(err) });
+        return chatTextResponse("抱歉，列出任務時發生問題，請稍後再試。");
       }
     }
     if (click?.fn === INTERACTION_RESPOND_FN) {
