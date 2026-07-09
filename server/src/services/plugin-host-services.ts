@@ -2109,31 +2109,72 @@ export function buildHostServices(
         if (!user?.id) throw new Error(`No Paperclip account for ${email}`);
         const actor = { agentId: null, userId: user.id };
         const svc = issueThreadInteractionService(db);
+        let r: any;
+        let fallbackStatus: string;
         if (params.decision === "answer") {
-          const r = await svc.answerQuestions(
+          r = await svc.answerQuestions(
             { id: issue.id, companyId },
             params.interactionId,
             { version: 1, answers: params.answers ?? [] } as any,
             actor,
           );
-          return { ok: true, status: (r as any)?.interaction?.status ?? "answered" };
-        }
-        if (params.decision === "reject") {
-          const r = await svc.rejectInteraction(
+          fallbackStatus = "answered";
+        } else if (params.decision === "reject") {
+          r = await svc.rejectInteraction(
             { id: issue.id, companyId },
             params.interactionId,
             { reason: params.reason ?? undefined },
             actor,
           );
-          return { ok: true, status: (r as any)?.interaction?.status ?? "rejected" };
+          fallbackStatus = "rejected";
+        } else {
+          r = await svc.acceptInteraction(
+            { id: issue.id, companyId, projectId: issue.projectId ?? null, goalId: issue.goalId ?? null },
+            params.interactionId,
+            { selectedOptionIds: params.selectedOptionIds, selectedClientKeys: params.selectedClientKeys },
+            actor,
+          );
+          fallbackStatus = "accepted";
         }
-        const r = await svc.acceptInteraction(
-          { id: issue.id, companyId, projectId: issue.projectId ?? null, goalId: issue.goalId ?? null },
-          params.interactionId,
-          { selectedOptionIds: params.selectedOptionIds, selectedClientKeys: params.selectedClientKeys },
-          actor,
-        );
-        return { ok: true, status: (r as any)?.interaction?.status ?? "accepted" };
+
+        // Continuation wake: resolving an interaction via an external channel must
+        // re-wake the assignee just like the board route does, or the issue sits
+        // in in_review forever. Mirror the board's wake_assignee policy check.
+        const resolved = r?.interaction;
+        const cont = r?.continuationIssue ?? {
+          id: issue.id,
+          assigneeAgentId: issue.assigneeAgentId ?? null,
+          status: issue.status,
+        };
+        const policy = resolved?.continuationPolicy;
+        const wakeOk =
+          (policy === "wake_assignee" ||
+            (policy === "wake_assignee_on_accept" && resolved?.status === "accepted")) &&
+          resolved?.status !== "expired" &&
+          Boolean(cont.assigneeAgentId) &&
+          !["done", "cancelled"].includes(cont.status);
+        if (wakeOk) {
+          try {
+            await heartbeat.wakeup(cont.assigneeAgentId, {
+              source: "automation",
+              triggerDetail: "system",
+              reason: "issue_commented",
+              payload: {
+                issueId: cont.id,
+                interactionId: resolved?.id ?? params.interactionId,
+                interactionKind: resolved?.kind,
+                interactionStatus: resolved?.status,
+                mutation: "interaction",
+              },
+              requestedByActorType: "user",
+              requestedByActorId: user.id,
+              contextSnapshot: { issueId: cont.id, taskId: cont.id, wakeReason: "interaction_resolved" },
+            });
+          } catch (err) {
+            logger.warn({ err, issueId: cont.id }, "interaction continuation wake failed");
+          }
+        }
+        return { ok: true, status: resolved?.status ?? fallbackStatus };
       },
     },
 
