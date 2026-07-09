@@ -17,6 +17,7 @@
 import { eq, and } from "drizzle-orm";
 import { createDb, routines } from "@paperclipai/db";
 import { routineService } from "../src/services/routines.js";
+import { CONSOLE_ROUTINE_TITLE, DAILY_CONSOLE_ORIGIN_KIND } from "../src/services/founder-digest.js";
 
 const AGENT = process.argv[2] || "7e1a0853-38f2-4a2f-ac5b-69247c1a350c";
 const COMPANY = process.argv[3] || "0980d089-ebdf-4f54-9576-1a9150c5d6f9";
@@ -37,7 +38,7 @@ const DIRECTIVE_TAIL = [
 
 const CONFIGS: Record<"founder" | "principal" | "principalZhengXitun", { title: string; description: string }> = {
   founder: {
-    title: "創辦人每日行事曆 — 每日彙整與批閱草擬",
+    title: CONSOLE_ROUTINE_TITLE.founder,
     description: [
       "依 AGENTS.md「創辦人每日行事曆 — 每日彙整與批閱草擬」章節執行。",
       "讀取專案 1211712817475632 的四個區段（🔴急件 / 📅今日會議 / 🟡非急件 / 🔔提醒），",
@@ -47,7 +48,7 @@ const CONFIGS: Record<"founder" | "principal" | "principalZhengXitun", { title: 
     ].join("\n"),
   },
   principal: {
-    title: "仁美園長每日待決議與提醒 — 每日彙整與裁示草擬",
+    title: CONSOLE_ROUTINE_TITLE.principal,
     description: [
       "依 AGENTS.md「仁美園長每日待決議與提醒 — 每日彙整與裁示草擬」章節執行。",
       "用園長本人的 token 解析 Asana 專案「仁美｜園長待決議與提醒（Renmei Pending Decisions",
@@ -58,7 +59,7 @@ const CONFIGS: Record<"founder" | "principal" | "principalZhengXitun", { title: 
     ].join("\n"),
   },
   principalZhengXitun: {
-    title: "市政・西屯園長待決議與提醒 — 每日彙整與裁示草擬",
+    title: CONSOLE_ROUTINE_TITLE.principalZhengXitun,
     description: [
       "依 AGENTS.md「市政・西屯園長待決議與提醒 — 每日彙整與裁示草擬」章節執行。",
       "用本人 token 解析兩個 Asana 專案「市政｜園長待決議與提醒（ShiZheng Pending Decisions",
@@ -103,6 +104,11 @@ async function main() {
     actor,
   );
   console.log("Created routine:", routine.id);
+  // Stamp the console-routine marker so 更新 can target THIS routine precisely,
+  // even once the agent owns other routines.
+  await db.update(routines)
+    .set({ originKind: DAILY_CONSOLE_ORIGIN_KIND, originId: VARIANT, updatedAt: new Date() })
+    .where(eq(routines.id, routine.id));
 
   for (const t of TRIGGERS) {
     const { trigger } = await svc.createTrigger(

@@ -109,6 +109,21 @@ export const CONSOLE_TITLE: Record<ConsoleKey, string> = {
   principalZhengXitun: "市政・西屯園長待決議與提醒",
 };
 
+/**
+ * Stable identity of each console's daily ROUTINE, so 更新 fires exactly the
+ * right routine even when an agent owns several. Preferred match is the origin
+ * marker `originKind = DAILY_CONSOLE_ORIGIN_KIND, originId = <consoleKey>`; the
+ * exact seeded title is the fallback (and self-heals the marker on first use, so
+ * no manual backfill of existing routines is needed). The titles here MUST equal
+ * what scripts/seed-founder-routines.ts creates.
+ */
+export const DAILY_CONSOLE_ORIGIN_KIND = "daily_console";
+export const CONSOLE_ROUTINE_TITLE: Record<ConsoleKey, string> = {
+  founder: "創辦人每日行事曆 — 每日彙整與批閱草擬",
+  principal: "仁美園長每日待決議與提醒 — 每日彙整與裁示草擬",
+  principalZhengXitun: "市政・西屯園長待決議與提醒 — 每日彙整與裁示草擬",
+};
+
 /** Normalize an arbitrary console value to a ConsoleKey, or null. Exported so
  *  routes can label a per-console notification without re-deriving the mapping. */
 export function toConsoleKey(v: unknown): ConsoleKey | null {

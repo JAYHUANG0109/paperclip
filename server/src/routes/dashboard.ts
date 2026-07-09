@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentMemberships, routines as routinesTable, routineTriggers } from "@paperclipai/db";
+import { agentMemberships, routines as routinesTable } from "@paperclipai/db";
 import { dashboardService } from "../services/dashboard.js";
 import { notificationService } from "../services/notifications.js";
 import {
@@ -25,6 +25,8 @@ import {
   founderConsoleOwnerAgentId,
   isFounderConsoleOwner,
   gidInFounderConsole,
+  DAILY_CONSOLE_ORIGIN_KIND,
+  CONSOLE_ROUTINE_TITLE,
   type FounderDecision,
   type FounderItem,
 } from "../services/founder-digest.js";
@@ -487,8 +489,8 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     // whose token reads her private board), regardless of who clicks it — never
     // the caller's own agent (which would run the caller's own routine). 園長
     // consoles stay per-caller.
-    const refreshConsole = toConsoleKey((req.body as { console?: unknown })?.console);
-    const agentId = refreshConsole === "founder"
+    const consoleKey = asConsoleKey((req.body as { console?: unknown })?.console);
+    const agentId = consoleKey === "founder"
       ? await founderConsoleOwnerAgentId(db, companyId)
       : await resolveOwnAgentId(db, companyId, email);
     if (!agentId) {
@@ -524,38 +526,50 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     } catch {
       /* forward is best-effort — never let it affect the refresh/wake */
     }
-    // Regenerate by firing the agent's OWN daily-console routine on demand —
-    // exactly what the 12:00 schedule does. This creates a routine-execution task
-    // in the agent's inbox, which its normal heartbeat reliably picks up and runs
-    // (re-read Asana → regenerate → POST /founder-digest → mark done). A bare
-    // `wakeup` did NOT work: with an empty inbox the agent just exits without
-    // running the pipeline. Each console agent owns exactly one active scheduled
-    // routine, so this is unambiguous. Stranded executions auto-cancel (recovery)
-    // rather than escalating to the founder.
-    const [consoleRoutine] = await db
+    // Regenerate by firing THIS console's OWN daily routine on demand — exactly
+    // what the 12:00 schedule does (re-read Asana → regenerate → POST → mark done).
+    // We target the SPECIFIC console routine, never "any active scheduled routine":
+    // prefer the origin marker, else the exact seeded title (self-healing the
+    // marker). This stays correct no matter how many routines the agent owns, so a
+    // stray/test routine can never be fired by 更新.
+    let consoleRoutineId: string | null = null;
+    const [marked] = await db
       .select({ id: routinesTable.id })
       .from(routinesTable)
-      .innerJoin(
-        routineTriggers,
-        and(
-          eq(routineTriggers.routineId, routinesTable.id),
-          eq(routineTriggers.kind, "schedule"),
-          eq(routineTriggers.enabled, true),
-        ),
-      )
-      .where(
-        and(
+      .where(and(
+        eq(routinesTable.companyId, companyId),
+        eq(routinesTable.assigneeAgentId, agentId),
+        eq(routinesTable.status, "active"),
+        eq(routinesTable.originKind, DAILY_CONSOLE_ORIGIN_KIND),
+        eq(routinesTable.originId, consoleKey),
+      ))
+      .limit(1);
+    if (marked) {
+      consoleRoutineId = marked.id;
+    } else {
+      const [byTitle] = await db
+        .select({ id: routinesTable.id })
+        .from(routinesTable)
+        .where(and(
           eq(routinesTable.companyId, companyId),
           eq(routinesTable.assigneeAgentId, agentId),
           eq(routinesTable.status, "active"),
-        ),
-      )
-      .limit(1);
-    if (consoleRoutine) {
+          eq(routinesTable.title, CONSOLE_ROUTINE_TITLE[consoleKey]),
+        ))
+        .limit(1);
+      if (byTitle) {
+        consoleRoutineId = byTitle.id;
+        // Self-heal: stamp the marker so future refreshes match it directly.
+        await db.update(routinesTable)
+          .set({ originKind: DAILY_CONSOLE_ORIGIN_KIND, originId: consoleKey, updatedAt: new Date() })
+          .where(eq(routinesTable.id, byTitle.id));
+      }
+    }
+    if (consoleRoutineId) {
       try {
         await routineSvc.runRoutine(
-          consoleRoutine.id,
-          { source: "manual", idempotencyKey: `founder-refresh:${consoleRoutine.id}:${Math.floor(Date.now() / 60000)}` },
+          consoleRoutineId,
+          { source: "manual", idempotencyKey: `founder-refresh:${consoleRoutineId}:${Math.floor(Date.now() / 60000)}` },
           { agentId: null, userId: userId ?? null },
         );
       } catch {
@@ -565,7 +579,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     // If no console routine is assigned to this agent (e.g. a test/preview account
     // viewing copied consoles), there is nothing to regenerate — the Chat forward
     // above already ran. The response is fine either way.
-    res.json({ ok: true, regenerating: Boolean(consoleRoutine) });
+    res.json({ ok: true, regenerating: Boolean(consoleRoutineId) });
   });
 
   // Record the founder's decision on a 待批閱 item's draft 批閱 — 核准 (approved) /
