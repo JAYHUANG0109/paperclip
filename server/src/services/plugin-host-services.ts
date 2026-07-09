@@ -2069,6 +2069,7 @@ export function buildHostServices(
             interactionStatus: interaction.status,
             interactionTitle: interaction.title ?? null,
             interactionSummary: interaction.summary ?? null,
+            interactionPayload: interaction.payload ?? null,
             continuationPolicy: interaction.continuationPolicy,
           },
         });
@@ -2090,6 +2091,15 @@ export function buildHostServices(
         if (!user?.id) throw new Error(`No Paperclip account for ${email}`);
         const actor = { agentId: null, userId: user.id };
         const svc = issueThreadInteractionService(db);
+        if (params.decision === "answer") {
+          const r = await svc.answerQuestions(
+            { id: issue.id, companyId },
+            params.interactionId,
+            { version: 1, answers: params.answers ?? [] } as any,
+            actor,
+          );
+          return { ok: true, status: (r as any)?.interaction?.status ?? "answered" };
+        }
         if (params.decision === "reject") {
           const r = await svc.rejectInteraction(
             { id: issue.id, companyId },

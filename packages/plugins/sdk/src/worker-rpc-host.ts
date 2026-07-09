@@ -876,10 +876,11 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           issueId: string;
           companyId: string;
           interactionId: string;
-          decision: "accept" | "reject";
+          decision: "accept" | "reject" | "answer";
           responderEmail: string;
           reason?: string | null;
           selectedOptionIds?: string[];
+          answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
         }) {
           return callHost("issues.respondInteraction", params);
         },

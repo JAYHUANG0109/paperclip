@@ -1752,7 +1752,8 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         const list = issueInteractions.get(params.issueId) ?? [];
         const found = list.find((entry) => entry.id === params.interactionId);
         if (!found) throw new Error(`Interaction not found: ${params.interactionId}`);
-        const status = params.decision === "reject" ? "rejected" : "accepted";
+        const status =
+          params.decision === "reject" ? "rejected" : params.decision === "answer" ? "answered" : "accepted";
         (found as { status?: string }).status = status;
         return { ok: true, status };
       },

@@ -1478,10 +1478,11 @@ export interface PluginIssuesClient {
     issueId: string;
     companyId: string;
     interactionId: string;
-    decision: "accept" | "reject";
+    decision: "accept" | "reject" | "answer";
     responderEmail: string;
     reason?: string | null;
     selectedOptionIds?: string[];
+    answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
   }): Promise<{ ok: boolean; status: string }>;
   suggestTasks(
     issueId: string,

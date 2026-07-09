@@ -1394,8 +1394,9 @@ export interface WorkerToHostMethods {
       issueId: string;
       companyId: string;
       interactionId: string;
-      /** accept = approve/confirm; reject = request changes/decline. */
-      decision: "accept" | "reject";
+      /** accept = approve/confirm; reject = request changes/decline; answer =
+       *  submit ask_user_questions answers. */
+      decision: "accept" | "reject" | "answer";
       /** The email of the human responding (e.g. from a Google Chat click). The
        *  host resolves it to a user account and records them as the responder;
        *  an unknown email is refused. */
@@ -1404,6 +1405,8 @@ export interface WorkerToHostMethods {
       reason?: string | null;
       /** Optional selected option ids (for checkbox-style confirmations). */
       selectedOptionIds?: string[];
+      /** ask_user_questions answers, required when decision === "answer". */
+      answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
     },
     result: { ok: boolean; status: string },
   ];

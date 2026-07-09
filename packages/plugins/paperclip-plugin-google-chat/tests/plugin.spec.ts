@@ -863,4 +863,51 @@ describe("conversation continuity", () => {
       })
     );
   });
+
+  it("question option click → submits the answer via respondInteraction", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: {
+        serviceAccountSecretRef: "sa-ref",
+        verifyInbound: false,
+        echoMode: false,
+        routingEnabled: true,
+        gateUnassigned: false,
+        companyId: "co1",
+        defaultAgentUrlKey: "finance"
+      }
+    });
+    const respond = vi.fn(async () => ({ ok: true, status: "answered" }));
+    harness.ctx.issues = {
+      ...harness.ctx.issues,
+      respondInteraction: respond
+    } as unknown as typeof harness.ctx.issues;
+
+    await plugin.definition.setup(harness.ctx);
+    await plugin.definition.onWebhook!({
+      endpointKey: WEBHOOK_KEY,
+      headers: {},
+      rawBody: "{}",
+      parsedBody: {
+        type: "CARD_CLICKED",
+        space: { name: "spaces/AAAA", type: "DM" },
+        user: { email: "tang@seasonart.org" },
+        common: {
+          invokedFunction: "paperclip_interaction_answer",
+          parameters: { interactionId: "int-9", issueId: "iss-9", questionId: "q1", optionId: "opt-a" }
+        }
+      },
+      requestId: "click-answer"
+    });
+
+    expect(respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: "iss-9",
+        interactionId: "int-9",
+        decision: "answer",
+        responderEmail: "tang@seasonart.org",
+        answers: [{ questionId: "q1", optionIds: ["opt-a"] }]
+      })
+    );
+  });
 });

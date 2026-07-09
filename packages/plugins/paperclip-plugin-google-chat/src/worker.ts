@@ -210,6 +210,65 @@ async function postInteractionCard(
   }
 }
 
+/** CARD_CLICKED function for an ask_user_questions option button. */
+const INTERACTION_ANSWER_FN = "paperclip_interaction_answer";
+
+/**
+ * Render a single-select ask_user_questions as a Chat card — one button per
+ * option — so the user answers in-place. Each button carries the interaction +
+ * issue + question + option ids; the click submits the answer via
+ * respondInteraction(decision:"answer"). Multi-select / multi-question / free-
+ * text forms aren't button-shaped, so those keep the "open in Paperclip" link.
+ */
+async function postQuestionCard(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  spaceName: string,
+  info: {
+    title: string;
+    prompt: string;
+    interactionId: string;
+    issueId: string;
+    questionId: string;
+    options: Array<{ id: string; label: string }>;
+  }
+): Promise<void> {
+  const token = await getAccessToken(ctx, config);
+  const buttons = info.options.slice(0, 6).map((opt) => ({
+    text: opt.label.slice(0, 60),
+    onClick: {
+      action: {
+        function: INTERACTION_ANSWER_FN,
+        parameters: [
+          { key: "interactionId", value: info.interactionId },
+          { key: "issueId", value: info.issueId },
+          { key: "questionId", value: info.questionId },
+          { key: "optionId", value: opt.id }
+        ]
+      }
+    }
+  }));
+  const body = {
+    cardsV2: [
+      {
+        cardId: `question-${info.interactionId}`,
+        card: {
+          header: { title: info.title || "需要你回覆 / A question for you" },
+          sections: [{ widgets: [{ textParagraph: { text: info.prompt } }, { buttonList: { buttons } }] }]
+        }
+      }
+    ]
+  };
+  const res = await ctx.http.fetch(`https://chat.googleapis.com/v1/${spaceName}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    throw new Error(`question card post failed (${res.status}): ${await res.text()}`);
+  }
+}
+
 /**
  * DM target for an agent's OWNER — the person paired to it in the Assignments
  * map. Lets us mirror an agent's reply to Chat even when the conversation
@@ -860,21 +919,54 @@ const plugin = definePlugin({
           interactionKind?: string;
           interactionTitle?: string | null;
           interactionSummary?: string | null;
+          interactionPayload?: {
+            title?: string | null;
+            questions?: Array<{
+              id: string;
+              prompt: string;
+              selectionMode?: string;
+              options?: Array<{ id: string; label: string }>;
+            }>;
+          } | null;
         };
-        if (p.interactionKind !== "request_confirmation") return;
         const issueId = event.entityId;
         const agentId = event.actorId;
         if (!issueId || !p.interactionId || event.actorType !== "agent" || !agentId) return;
+        const kind = p.interactionKind;
+        // Only kinds we can render as tappable cards. request_confirmation →
+        // Accept/Reject; a single-question single-select ask_user_questions →
+        // one button per option. Everything else keeps the server link nudge.
+        const questions = p.interactionPayload?.questions ?? [];
+        const simpleQuestion =
+          kind === "ask_user_questions" &&
+          questions.length === 1 &&
+          questions[0].selectionMode === "single" &&
+          (questions[0].options?.length ?? 0) > 0;
+        if (kind !== "request_confirmation" && !simpleQuestion) return;
+
         const config = await getConfig(ctx);
         const target = await resolveOwnerDmTarget(ctx, config, agentId, event.companyId);
         if (!target) return; // owner unpaired or has never DM'd the bot
-        await postInteractionCard(ctx, config, target.spaceName, {
-          title: p.interactionTitle ?? "需要你確認 / Needs your confirmation",
-          summary: p.interactionSummary ?? "",
-          interactionId: p.interactionId,
-          issueId
-        });
-        ctx.logger.info("Posted interaction card to Chat", { issueId, interactionId: p.interactionId });
+
+        if (kind === "request_confirmation") {
+          await postInteractionCard(ctx, config, target.spaceName, {
+            title: p.interactionTitle ?? "需要你確認 / Needs your confirmation",
+            summary: p.interactionSummary ?? "",
+            interactionId: p.interactionId,
+            issueId
+          });
+        } else {
+          const q = questions[0];
+          await postQuestionCard(ctx, config, target.spaceName, {
+            title: p.interactionTitle ?? p.interactionPayload?.title ?? "",
+            prompt: q.prompt,
+            interactionId: p.interactionId,
+            issueId,
+            questionId: q.id,
+            options: q.options ?? []
+          });
+        }
+        ctx.logger.info("Posted interaction card to Chat", { issueId, interactionId: p.interactionId, kind });
       } catch (err) {
         ctx.logger.error("Failed to post interaction card to Chat", {
           error: err instanceof Error ? err.message : String(err)
@@ -967,6 +1059,33 @@ const plugin = definePlugin({
         );
       } catch (err) {
         ctx.logger.error("respondInteraction from Chat failed", {
+          error: err instanceof Error ? err.message : String(err)
+        });
+        return chatTextResponse("抱歉，處理你的回覆時發生問題，請到 Paperclip 完成。");
+      }
+    }
+    if (click?.fn === INTERACTION_ANSWER_FN) {
+      // An ask_user_questions option button → submit that answer.
+      const { interactionId, issueId, questionId, optionId } = click.params;
+      const email = click.email?.trim().toLowerCase();
+      if (!interactionId || !issueId || !questionId || !optionId || !email) {
+        return chatTextResponse("抱歉，無法辨識這則回覆，請到 Paperclip 完成。");
+      }
+      try {
+        const assignment = await getAssignment(ctx, email);
+        const companyId = assignment?.companyId ?? (await resolveCompanyId(ctx, config.companyId));
+        await ctx.issues.respondInteraction({
+          issueId,
+          companyId,
+          interactionId,
+          decision: "answer",
+          responderEmail: email,
+          answers: [{ questionId, optionIds: [optionId] }]
+        });
+        ctx.logger.info("Answered question via Chat card", { issueId, interactionId, questionId, optionId });
+        return chatTextResponse("✅ 已送出你的選擇，謝謝！");
+      } catch (err) {
+        ctx.logger.error("answer via Chat failed", {
           error: err instanceof Error ? err.message : String(err)
         });
         return chatTextResponse("抱歉，處理你的回覆時發生問題，請到 Paperclip 完成。");
