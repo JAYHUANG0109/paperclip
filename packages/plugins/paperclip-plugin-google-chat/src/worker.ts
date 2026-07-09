@@ -866,34 +866,27 @@ const plugin = definePlugin({
         const issueId = event.entityId;
         if (!issueId) return;
         const config = await getConfig(ctx);
-        const remembered = await getChatTarget(ctx, issueId);
         let target: { spaceName: string; threadName?: string; companyId: string; senderEmail?: string; spaceType?: string } | null =
-          remembered;
-        let ownerFallback = false;
+          await getChatTarget(ctx, issueId);
         if (!target && event.actorType === "agent" && event.actorId) {
           // No remembered Chat space → this conversation started in the Paperclip
           // UI. Mirror the agent's reply to its OWNER's Chat DM instead, so a user
           // sees their agent's answer in Chat wherever they started the thread.
           target = await resolveOwnerDmTarget(ctx, config, event.actorId, event.companyId);
-          ownerFallback = Boolean(target);
         }
-        // Diagnostic: why does an agent reply sometimes only surface on the next
-        // user message? Log how the target resolved for each comment event.
-        ctx.logger.info("comment.created mirror check", {
-          issueId,
-          actorType: event.actorType,
-          actorId: event.actorId ?? null,
-          rememberedTarget: Boolean(remembered),
-          ownerFallback,
-          resolved: Boolean(target)
-        });
         if (!target) return; // not Chat-originated and no reachable owner DM
 
         const comments = await ctx.issues.listComments(issueId, target.companyId);
         const delivered = await getDelivered(ctx, issueId);
-        // Label the reply with the question it answers, so parallel
-        // conversations are easy to match. Applied once per delivery round.
-        const lastUserMsg = await getLastUserMessage(ctx, issueId);
+        // Label the reply with the question it answers, so parallel conversations
+        // are easy to match. Derive it from the ACTUAL thread — the latest
+        // user-authored comment — rather than per-issue stored state, which can go
+        // stale/cross-wired when messages span multiple tasks. Fall back to the
+        // stored last message only if the thread has no user comment yet.
+        const latestUserComment = [...comments]
+          .reverse()
+          .find((c) => c.authorType === "user" && (c.body ?? "").trim().length > 0);
+        const lastUserMsg = latestUserComment?.body ?? (await getLastUserMessage(ctx, issueId));
         let labeledThisRound = false;
 
         for (const comment of orderedForwardable(comments)) {
