@@ -22,6 +22,7 @@ import {
   Trophy,
   Lightbulb,
   Building2,
+  Bot,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "@/lib/router";
@@ -35,11 +36,12 @@ import { useCompany } from "../context/CompanyContext";
 import { useSidebar } from "../context/SidebarContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
+import { agentsApi } from "../api/agents";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn, SIDEBAR_RAIL_HIDDEN_LABEL } from "../lib/utils";
+import { cn, SIDEBAR_RAIL_HIDDEN_LABEL, agentUrl } from "../lib/utils";
 import { PluginSlotOutlet } from "@/plugins/slots";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
@@ -53,6 +55,14 @@ export function Sidebar() {
   const { isMobile, collapsed, collapseLocked, peeking, toggleCollapsed, setCollapsed } = useSidebar();
   const rail = collapsed && !peeking;
   const inboxBadge = useInboxBadge(selectedCompanyId);
+  // The agent this user is paired with (joined) — for the one-click "My Agent"
+  // shortcut. Empty for unpaired users (the nav item is then hidden).
+  const { data: myAgents } = useQuery({
+    queryKey: queryKeys.agents.mine(selectedCompanyId!),
+    queryFn: () => agentsApi.mine(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const myAgent = myAgents?.[0];
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
     queryFn: () => instanceSettingsApi.getExperimental(),
@@ -166,6 +176,9 @@ export function Sidebar() {
             );
           })()}
           <SidebarNavItem to="/dashboard" label={t("nav.dashboard", { defaultValue: "Dashboard" })} icon={LayoutDashboard} liveCount={liveRunCount} />
+          {myAgent ? (
+            <SidebarNavItem to={agentUrl(myAgent)} label={t("nav.myAgent", { defaultValue: "My Agent" })} icon={Bot} />
+          ) : null}
           <SidebarNavItem
             to="/inbox"
             label={t("nav.inbox", { defaultValue: "Inbox" })}

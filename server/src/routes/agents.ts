@@ -53,7 +53,7 @@ import {
   workspaceOperationService,
 } from "../services/index.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
-import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo, getVisibleAgentIds } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo, getVisibleAgentIds, getJoinedAgentIds } from "./authz.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
   collectAgentAdapterWorkspaceCommandPaths,
@@ -2160,6 +2160,37 @@ export function agentRoutes(
       return;
     }
     res.json(result.map((agent) => redactForRestrictedAgentView(agent)));
+  });
+
+  // The agent(s) the current board user is paired with (joined) — powers the
+  // "My Agent" sidebar shortcut so a user reaches their own agent in one click.
+  // Board actors only; agent-key or unpaired → []. Minimal shape (no config).
+  router.get("/companies/:companyId/agents/mine", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    if (!userId) {
+      res.json([]);
+      return;
+    }
+    const joined = new Set(await getJoinedAgentIds(db, companyId, userId));
+    if (joined.size === 0) {
+      res.json([]);
+      return;
+    }
+    const mine = (await svc.list(companyId)).filter(
+      (agent) => joined.has(agent.id) && agent.status !== "terminated",
+    );
+    res.json(
+      mine.map((agent) => ({
+        id: agent.id,
+        urlKey: agent.urlKey,
+        name: agent.name,
+        role: agent.role,
+        title: agent.title,
+        status: agent.status,
+      })),
+    );
   });
 
   router.get("/instance/scheduler-heartbeats", async (req, res) => {
