@@ -866,14 +866,27 @@ const plugin = definePlugin({
         const issueId = event.entityId;
         if (!issueId) return;
         const config = await getConfig(ctx);
+        const remembered = await getChatTarget(ctx, issueId);
         let target: { spaceName: string; threadName?: string; companyId: string; senderEmail?: string; spaceType?: string } | null =
-          await getChatTarget(ctx, issueId);
+          remembered;
+        let ownerFallback = false;
         if (!target && event.actorType === "agent" && event.actorId) {
           // No remembered Chat space → this conversation started in the Paperclip
           // UI. Mirror the agent's reply to its OWNER's Chat DM instead, so a user
           // sees their agent's answer in Chat wherever they started the thread.
           target = await resolveOwnerDmTarget(ctx, config, event.actorId, event.companyId);
+          ownerFallback = Boolean(target);
         }
+        // Diagnostic: why does an agent reply sometimes only surface on the next
+        // user message? Log how the target resolved for each comment event.
+        ctx.logger.info("comment.created mirror check", {
+          issueId,
+          actorType: event.actorType,
+          actorId: event.actorId ?? null,
+          rememberedTarget: Boolean(remembered),
+          ownerFallback,
+          resolved: Boolean(target)
+        });
         if (!target) return; // not Chat-originated and no reachable owner DM
 
         const comments = await ctx.issues.listComments(issueId, target.companyId);
