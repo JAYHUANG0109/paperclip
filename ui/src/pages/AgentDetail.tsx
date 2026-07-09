@@ -1459,23 +1459,7 @@ function AgentOverview({
       {/* Latest Run */}
       <LatestRunCard runs={runs} agentId={agentRouteId} />
 
-      {/* Charts */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ChartCard title={t("agentDetail.chart.runActivity")} subtitle={t("agentDetail.chart.last14Days")}>
-          <RunActivityChart runs={runs} />
-        </ChartCard>
-        <ChartCard title={t("agentDetail.chart.issuesByPriority")} subtitle={t("agentDetail.chart.last14Days")}>
-          <PriorityChart issues={assignedIssues} />
-        </ChartCard>
-        <ChartCard title={t("agentDetail.chart.issuesByStatus")} subtitle={t("agentDetail.chart.last14Days")}>
-          <IssueStatusChart issues={assignedIssues} />
-        </ChartCard>
-        <ChartCard title={t("agentDetail.chart.successRate")} subtitle={t("agentDetail.chart.last14Days")}>
-          <SuccessRateChart runs={runs} />
-        </ChartCard>
-      </div>
-
-      {/* Recent Issues */}
+      {/* Recent Tasks — placed above the activity charts. */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium">{t("agentDetail.recentIssues")}</h3>
@@ -1506,6 +1490,22 @@ function AgentOverview({
             )}
           </div>
         )}
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <ChartCard title={t("agentDetail.chart.runActivity")} subtitle={t("agentDetail.chart.last14Days")}>
+          <RunActivityChart runs={runs} />
+        </ChartCard>
+        <ChartCard title={t("agentDetail.chart.issuesByPriority")} subtitle={t("agentDetail.chart.last14Days")}>
+          <PriorityChart issues={assignedIssues} />
+        </ChartCard>
+        <ChartCard title={t("agentDetail.chart.issuesByStatus")} subtitle={t("agentDetail.chart.last14Days")}>
+          <IssueStatusChart issues={assignedIssues} />
+        </ChartCard>
+        <ChartCard title={t("agentDetail.chart.successRate")} subtitle={t("agentDetail.chart.last14Days")}>
+          <SuccessRateChart runs={runs} />
+        </ChartCard>
       </div>
 
       {/* Costs */}

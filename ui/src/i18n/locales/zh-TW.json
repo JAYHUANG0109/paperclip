@@ -1608,10 +1608,10 @@
       "successRate": "成功率",
       "last14Days": "最近 14 天"
     },
-    "recentIssues": "近期議題",
+    "recentIssues": "近期任務",
     "seeAll": "查看全部",
-    "noRecentIssues": "沒有近期議題。",
-    "moreIssues": "還有 {{count}} 個議題",
+    "noRecentIssues": "沒有近期任務。",
+    "moreIssues": "還有 {{count}} 個任務",
     "costs": "成本",
     "cost": {
       "inputTokens": "輸入權杖",

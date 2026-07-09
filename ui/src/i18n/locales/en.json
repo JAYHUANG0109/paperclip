@@ -1608,10 +1608,10 @@
       "successRate": "Success Rate",
       "last14Days": "Last 14 days"
     },
-    "recentIssues": "Recent Issues",
+    "recentIssues": "Recent Tasks",
     "seeAll": "See All",
-    "noRecentIssues": "No recent issues.",
-    "moreIssues": "+{{count}} more issues",
+    "noRecentIssues": "No recent tasks.",
+    "moreIssues": "{{count}} more tasks",
     "costs": "Costs",
     "cost": {
       "inputTokens": "Input tokens",
