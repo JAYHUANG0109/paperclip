@@ -11,6 +11,7 @@ import {
   issues,
 } from "@paperclipai/db";
 import { trackInteractionResolved } from "@paperclipai/shared/telemetry";
+import { notificationService } from "./notifications.js";
 import type {
   AcceptIssueThreadInteraction,
   AskUserQuestionsAnswer,
@@ -1049,6 +1050,32 @@ export function issueThreadInteractionService(db: Db) {
       }
 
       await touchIssue(db, issue.id);
+      // Bridge to the user's own channel: an agent-created interaction is a
+      // prompt awaiting the responsible human. The interactive card can't render
+      // outside Paperclip, so emit a notification (Google Chat forwards it as a
+      // DM with a deep link — "go to Paperclip to respond"). Best-effort;
+      // notifying must never fail interaction creation.
+      if (actor.agentId) {
+        try {
+          const [iss] = await db
+            .select({ responsibleUserId: issues.responsibleUserId, identifier: issues.identifier })
+            .from(issues)
+            .where(eq(issues.id, issue.id));
+          if (iss?.responsibleUserId) {
+            await notificationService(db).create({
+              companyId: issue.companyId,
+              userId: iss.responsibleUserId,
+              kind: "thread_interaction",
+              title: "你的助理需要你回覆 / Your agent needs your input",
+              body: `任務 ${iss.identifier ?? ""}：有一項待你回覆的互動，請到 Paperclip 完成。`,
+              link: `/issues/${iss.identifier ?? issue.id}`,
+              dedupeKey: `interaction:${created.id}`,
+            });
+          }
+        } catch (error) {
+          console.error("[paperclip] interaction chat-bridge notify failed", error);
+        }
+      }
       return hydrateInteraction(created);
     },
 

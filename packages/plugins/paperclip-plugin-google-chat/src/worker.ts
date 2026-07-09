@@ -17,6 +17,7 @@ import { learnSpaceFromApi, listKnownSpaces, rememberSpace, resolveSpaceName } f
 import {
   type AgentAssignment,
   getAssignment,
+  getAssignmentByAgentId,
   listAssignments,
   removeAssignment,
   setAssignment
@@ -134,6 +135,29 @@ async function postFormatted(
       imageAltText
     });
   }
+}
+
+/**
+ * DM target for an agent's OWNER — the person paired to it in the Assignments
+ * map. Lets us mirror an agent's reply to Chat even when the conversation
+ * started in the Paperclip UI (so there's no remembered Chat space). Returns
+ * null when the agent is unpaired or the owner has never DM'd the bot (Google
+ * won't let an app open a fresh DM), in which case we simply don't forward.
+ */
+async function resolveOwnerDmTarget(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  agentId: string,
+  companyId: string
+): Promise<{ spaceName: string; companyId: string; senderEmail: string } | null> {
+  const assignment = await getAssignmentByAgentId(ctx, agentId);
+  const email = assignment?.email?.trim().toLowerCase();
+  if (!email) return null;
+  const token = await getAccessToken(ctx, config);
+  const fetchImpl = (url: string, init?: RequestInit) => ctx.http.fetch(url, init);
+  const spaceName = await resolveDmSpace(ctx, fetchImpl, token, email);
+  if (!spaceName) return null;
+  return { spaceName, companyId, senderEmail: email };
 }
 
 /**
@@ -646,10 +670,17 @@ const plugin = definePlugin({
       try {
         const issueId = event.entityId;
         if (!issueId) return;
-        const target = await getChatTarget(ctx, issueId);
-        if (!target) return; // not a Chat-originated issue
-
         const config = await getConfig(ctx);
+        let target: { spaceName: string; threadName?: string; companyId: string; senderEmail?: string } | null =
+          await getChatTarget(ctx, issueId);
+        if (!target && event.actorType === "agent" && event.actorId) {
+          // No remembered Chat space → this conversation started in the Paperclip
+          // UI. Mirror the agent's reply to its OWNER's Chat DM instead, so a user
+          // sees their agent's answer in Chat wherever they started the thread.
+          target = await resolveOwnerDmTarget(ctx, config, event.actorId, event.companyId);
+        }
+        if (!target) return; // not Chat-originated and no reachable owner DM
+
         const comments = await ctx.issues.listComments(issueId, target.companyId);
         const delivered = await getDelivered(ctx, issueId);
         // Label the reply with the question it answers, so parallel

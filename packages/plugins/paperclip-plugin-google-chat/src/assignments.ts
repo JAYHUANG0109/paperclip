@@ -44,6 +44,18 @@ export async function getAssignment(
   return map[normalize(email)] ?? null;
 }
 
+/** Reverse of getAssignment: the person paired to a given agent. Used to DM an
+ *  agent's owner when their agent replies to them in the Paperclip UI (a
+ *  conversation that never touched Chat, so it has no remembered space). */
+export async function getAssignmentByAgentId(
+  ctx: PluginContext,
+  agentId: string
+): Promise<AgentAssignment | null> {
+  if (!agentId) return null;
+  const map = await loadMap(ctx);
+  return Object.values(map).find((a) => a.agentId === agentId) ?? null;
+}
+
 export async function setAssignment(
   ctx: PluginContext,
   assignment: AgentAssignment
