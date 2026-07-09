@@ -208,6 +208,29 @@ export async function clearConversationIssue(
   await ctx.state.delete(convStateKey(convKey));
 }
 
+function recentTasksKey(spaceName: string) {
+  return { scopeKind: "instance" as const, stateKey: `recent-tasks:${spaceName}` };
+}
+
+/** Track the most-recent tasks this DM space has worked on (issue ids, newest
+ *  first, capped), so a user can jump back to one via /tasks or /task <id>. */
+export async function rememberRecentTask(
+  ctx: PluginContext,
+  spaceName: string,
+  issueId: string
+): Promise<void> {
+  const cur = ((await ctx.state.get(recentTasksKey(spaceName))) as string[] | null) ?? [];
+  const next = [issueId, ...cur.filter((id) => id !== issueId)].slice(0, 8);
+  await ctx.state.set(recentTasksKey(spaceName), next);
+}
+
+export async function getRecentTasks(
+  ctx: PluginContext,
+  spaceName: string
+): Promise<string[]> {
+  return ((await ctx.state.get(recentTasksKey(spaceName))) as string[] | null) ?? [];
+}
+
 function lastMsgKey(issueId: string) {
   return { scopeKind: "instance" as const, stateKey: `lastmsg:${issueId}` };
 }

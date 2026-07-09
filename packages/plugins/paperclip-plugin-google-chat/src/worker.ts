@@ -36,6 +36,8 @@ import {
   getLastUserMessage,
   rememberChatTarget,
   rememberLastUserMessage,
+  rememberRecentTask,
+  getRecentTasks,
   resolveAgentId,
   resolveCompanyId,
   redactSecrets,
@@ -150,6 +152,9 @@ async function postFormatted(
 
 /** The DM "new conversation" reset button + the CARD_CLICKED function it fires. */
 const NEW_CONVERSATION_FN = "paperclip_new_conversation";
+
+/** CARD_CLICKED function for the "Resume" button on the /tasks picker card. */
+const RESUME_TASK_FN = "paperclip_resume_task";
 
 /** CARD_CLICKED function for accept/reject buttons on an interaction card. */
 const INTERACTION_RESPOND_FN = "paperclip_interaction_respond";
@@ -496,6 +501,45 @@ async function postSuggestTasksCard(
   }, "suggest-tasks");
 }
 
+/** /tasks → a card listing this DM's recent tasks, each with a Resume button
+ *  (RESUME_TASK_FN) that re-points the conversation to that task. */
+async function postRecentTasksCard(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  spaceName: string,
+  companyId: string,
+  actionUrl: string,
+  tasks: Array<{ issueId: string; identifier: string; title: string; status: string }>
+): Promise<void> {
+  const widgets = tasks.map((t) => ({
+    decoratedText: {
+      topLabel: `${t.identifier} · ${t.status}`,
+      text: t.title.slice(0, 120) || t.identifier,
+      wrapText: true,
+      button: {
+        text: "↩ 繼續 / Resume",
+        onClick: {
+          action: {
+            function: actionUrl,
+            parameters: [
+              { key: "fn", value: RESUME_TASK_FN },
+              { key: "issueId", value: t.issueId }
+            ]
+          }
+        }
+      }
+    }
+  }));
+  void companyId;
+  await postCardJson(ctx, config, spaceName, {
+    cardId: "recent-tasks",
+    card: {
+      header: { title: "最近的任務 / Recent tasks" },
+      sections: [{ widgets: widgets.length > 0 ? widgets : [{ textParagraph: { text: "（沒有最近的任務 / none yet）" } }] }]
+    }
+  }, "recent-tasks");
+}
+
 /**
  * DM target for an agent's OWNER — the person paired to it in the Assignments
  * map. Lets us mirror an agent's reply to Chat even when the conversation
@@ -654,6 +698,51 @@ async function routeToAgent(
     senderEmail: inbound.senderEmail,
     spaceType: inbound.spaceType
   };
+
+  // Resume-a-previous-task commands (DM only), on the reliable MESSAGE path.
+  const cmd = (inbound.text ?? "").trim();
+  if (inbound.spaceType === "DM" && /^(\/tasks?|任務清單|最近任務)$/i.test(cmd)) {
+    const actionUrl = await getCardActionUrl(ctx, config);
+    const recentIds = await getRecentTasks(ctx, inbound.spaceName);
+    const tasks: Array<{ issueId: string; identifier: string; title: string; status: string }> = [];
+    for (const id of recentIds) {
+      const iss = await ctx.issues.get(id, companyId).catch(() => null);
+      if (iss) tasks.push({ issueId: id, identifier: iss.identifier ?? id.slice(0, 8), title: iss.title ?? "", status: iss.status ?? "" });
+    }
+    if (actionUrl) {
+      await postRecentTasksCard(ctx, config, inbound.spaceName, companyId, actionUrl, tasks);
+      return "📋 最近的任務 / Your recent tasks:";
+    }
+    // No action URL yet → plain text list.
+    const lines = tasks.length
+      ? tasks.map((t) => `• ${t.identifier}（${t.status}）：${t.title}`)
+      : ["（沒有最近的任務 / none yet）"];
+    return `📋 最近的任務 / Recent tasks（輸入 /task <編號> 切回）:\n\n${lines.join("\n")}`;
+  }
+  const resumeMatch = /^(?:\/task|任務)\s+(\S+)$/i.exec(cmd);
+  if (inbound.spaceType === "DM" && resumeMatch) {
+    const wanted = resumeMatch[1].trim().toUpperCase();
+    const recentIds = await getRecentTasks(ctx, inbound.spaceName);
+    let match: { id: string; identifier: string } | null = null;
+    for (const id of recentIds) {
+      const iss = await ctx.issues.get(id, companyId).catch(() => null);
+      if (iss && (iss.identifier ?? "").toUpperCase() === wanted) {
+        match = { id, identifier: iss.identifier ?? id };
+        break;
+      }
+    }
+    if (!match) {
+      return `找不到最近任務「${resumeMatch[1]}」。輸入 /tasks 看看清單。/ Task not found — try /tasks.`;
+    }
+    const rk = conversationKey({ spaceType: "DM", spaceName: inbound.spaceName });
+    if (rk) {
+      await setConversationIssue(ctx, rk, match.id, companyId);
+      await rememberChatTarget(ctx, match.id, target);
+      await rememberRecentTask(ctx, inbound.spaceName, match.id);
+    }
+    return `✅ 已切回 ${match.identifier}，接下來的訊息會繼續這個任務。/ Switched back — your next messages continue it.`;
+  }
+
   // Conversation continuity: a DM is now ONE ongoing session (keyed by its DM
   // space) that accrues messages into a single task until the user starts a new
   // one via the ＋開新對話 button / command. Space threads continue per-thread as
@@ -665,6 +754,7 @@ async function routeToAgent(
   });
   const existingIssueId = convKey ? await getConversationIssue(ctx, convKey) : null;
   if (existingIssueId) {
+    if (inbound.spaceType === "DM") await rememberRecentTask(ctx, inbound.spaceName, existingIssueId);
     try {
       // Pre-register the user's message as "delivered" BEFORE creating the
       // comment. Creating the comment fires issue.comment.created synchronously,
@@ -728,6 +818,7 @@ async function routeToAgent(
     target
   });
   if (convKey) await setConversationIssue(ctx, convKey, issueId, companyId);
+  if (inbound.spaceType === "DM") await rememberRecentTask(ctx, inbound.spaceName, issueId);
   await rememberLastUserMessage(ctx, issueId, redactSecrets(inbound.text).text);
   await attachInboundFiles(ctx, config, issueId, companyId, inbound);
   ctx.logger.info("Dispatched Chat message to agent", { issueId, agentId, convKey });
@@ -1323,6 +1414,36 @@ const plugin = definePlugin({
       }
       ctx.logger.info("Reset DM conversation via button", { space: click.spaceName });
       return chatTextResponse("✅ 好的，下一則訊息會開一個新任務。/ New task — your next message starts a fresh one.");
+    }
+    if (click?.fn === RESUME_TASK_FN) {
+      // "↩ Resume" on the /tasks card → re-point the DM to that task.
+      const issueId = click.params.issueId;
+      const email = click.email?.trim().toLowerCase();
+      if (!issueId || !click.spaceName) {
+        return chatTextResponse("抱歉，無法辨識這個任務。");
+      }
+      try {
+        const assignment = email ? await getAssignment(ctx, email) : null;
+        const companyId = assignment?.companyId ?? (await resolveCompanyId(ctx, config.companyId));
+        const iss = await ctx.issues.get(issueId, companyId).catch(() => null);
+        const rk = conversationKey({ spaceType: "DM", spaceName: click.spaceName });
+        if (rk) {
+          await setConversationIssue(ctx, rk, issueId, companyId);
+          await rememberChatTarget(ctx, issueId, {
+            spaceName: click.spaceName,
+            companyId,
+            senderEmail: email,
+            spaceType: "DM"
+          });
+          await rememberRecentTask(ctx, click.spaceName, issueId);
+        }
+        const label = iss?.identifier ?? issueId.slice(0, 8);
+        ctx.logger.info("Resumed task via Chat card", { issueId, space: click.spaceName });
+        return chatTextResponse(`✅ 已切回 ${label}，接下來的訊息會繼續這個任務。/ Switched back — your next messages continue it.`);
+      } catch (err) {
+        ctx.logger.error("resume task via Chat failed", { error: err instanceof Error ? err.message : String(err) });
+        return chatTextResponse("抱歉，切換任務時發生問題，請稍後再試。");
+      }
     }
     if (click?.fn === INTERACTION_RESPOND_FN) {
       // Accept / Request-changes on an interaction card → resolve it in Paperclip
