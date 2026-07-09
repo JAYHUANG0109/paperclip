@@ -30,6 +30,7 @@ import {
   appendToConversation,
   conversationKey,
   dispatchToAgent,
+  clearConversationIssue,
   getChatTarget,
   getConversationIssue,
   getLastUserMessage,
@@ -112,19 +113,24 @@ async function postFormatted(
   ctx: PluginContext,
   config: GoogleChatConfig,
   target: { spaceName: string; threadName?: string },
-  markdown: string
+  markdown: string,
+  actionButton?: { text: string; fn: string }
 ): Promise<void> {
   const token = await getAccessToken(ctx, config);
   const fetchImpl = (url: string, init?: RequestInit) => ctx.http.fetch(url, init);
   // Pull any image markdown out first: Chat can't render it as text, so it
   // goes out as a cardsV2 image widget after the formatted text chunks.
   const { text: body, imageUrl, imageAltText } = splitFirstImage(markdown);
-  for (const chunk of formatForChat(body)) {
-    if (chunk.trim().length === 0) continue;
+  const chunks = formatForChat(body).filter((c) => c.trim().length > 0);
+  for (let i = 0; i < chunks.length; i++) {
+    // Attach the action button to the FINAL sent message only (last text chunk,
+    // unless an image follows — then it rides with the image).
+    const isFinalText = i === chunks.length - 1 && !imageUrl;
     await sendMessage(fetchImpl, token, {
       spaceName: target.spaceName,
       threadName: target.threadName,
-      text: chunk
+      text: chunks[i],
+      ...(isFinalText && actionButton ? { actionButton } : {})
     });
   }
   if (imageUrl) {
@@ -132,10 +138,15 @@ async function postFormatted(
       spaceName: target.spaceName,
       threadName: target.threadName,
       imageUrl,
-      imageAltText
+      imageAltText,
+      ...(actionButton ? { actionButton } : {})
     });
   }
 }
+
+/** The DM "new conversation" reset button + the CARD_CLICKED function it fires. */
+const NEW_CONVERSATION_FN = "paperclip_new_conversation";
+const NEW_CONVERSATION_BUTTON = { text: "＋ 開新對話 / New chat", fn: NEW_CONVERSATION_FN };
 
 /**
  * DM target for an agent's OWNER — the person paired to it in the Assignments
@@ -149,7 +160,7 @@ async function resolveOwnerDmTarget(
   config: GoogleChatConfig,
   agentId: string,
   companyId: string
-): Promise<{ spaceName: string; companyId: string; senderEmail: string } | null> {
+): Promise<{ spaceName: string; companyId: string; senderEmail: string; spaceType: string } | null> {
   const assignment = await getAssignmentByAgentId(ctx, agentId);
   const email = assignment?.email?.trim().toLowerCase();
   if (!email) return null;
@@ -157,7 +168,7 @@ async function resolveOwnerDmTarget(
   const fetchImpl = (url: string, init?: RequestInit) => ctx.http.fetch(url, init);
   const spaceName = await resolveDmSpace(ctx, fetchImpl, token, email);
   if (!spaceName) return null;
-  return { spaceName, companyId, senderEmail: email };
+  return { spaceName, companyId, senderEmail: email, spaceType: "DM" };
 }
 
 /**
@@ -261,6 +272,17 @@ async function routeToAgent(
     return "抱歉，我無法辨識您的身分，請稍後再試。";
   }
 
+  // "New conversation" reset for DMs — a typed command (the reliable twin of the
+  // ＋開新對話 button/CARD_CLICKED): end the current session so the NEXT message
+  // opens a fresh task. Everything else continues the same task.
+  if (
+    inbound.spaceType === "DM" &&
+    /^\s*(\/new|＋?\s*開?新(對話|任務)|new(\s+(chat|task|conversation))?)\s*$/i.test(inbound.text ?? "")
+  ) {
+    await clearConversationIssue(ctx, conversationKey({ spaceType: "DM", spaceName: inbound.spaceName }));
+    return "✅ 已開新對話，下一則訊息會開一個新任務。/ New conversation — your next message starts a fresh task.";
+  }
+
   // Access control: a sender's assignment decides which agent answers them.
   // When gating is on, anyone without an assignment is turned away politely and
   // no agent run is created.
@@ -281,21 +303,18 @@ async function routeToAgent(
     spaceName: inbound.spaceName,
     threadName: inbound.threadName,
     companyId,
-    senderEmail: inbound.senderEmail
+    senderEmail: inbound.senderEmail,
+    spaceType: inbound.spaceType
   };
-  // Each Chat message is its own task (issue) so questions run in PARALLEL and a
-  // long-lived issue never gets stuck "done" and then ignored on re-wake.
-  // Continuity applies only to space THREADS: a reply inside an existing thread
-  // continues that thread's issue. DMs are flat (no per-message threads), so
-  // every DM message starts a fresh task — a new question is simply a new message.
-  const convKey =
-    inbound.spaceType === "DM"
-      ? null
-      : conversationKey({
-          spaceType: inbound.spaceType,
-          spaceName: inbound.spaceName,
-          threadName: inbound.threadName
-        });
+  // Conversation continuity: a DM is now ONE ongoing session (keyed by its DM
+  // space) that accrues messages into a single task until the user starts a new
+  // one via the ＋開新對話 button / command. Space threads continue per-thread as
+  // before. (Previously every DM message opened a fresh task.)
+  const convKey = conversationKey({
+    spaceType: inbound.spaceType,
+    spaceName: inbound.spaceName,
+    threadName: inbound.threadName
+  });
   const existingIssueId = convKey ? await getConversationIssue(ctx, convKey) : null;
   if (existingIssueId) {
     try {
@@ -671,7 +690,7 @@ const plugin = definePlugin({
         const issueId = event.entityId;
         if (!issueId) return;
         const config = await getConfig(ctx);
-        let target: { spaceName: string; threadName?: string; companyId: string; senderEmail?: string } | null =
+        let target: { spaceName: string; threadName?: string; companyId: string; senderEmail?: string; spaceType?: string } | null =
           await getChatTarget(ctx, issueId);
         if (!target && event.actorType === "agent" && event.actorId) {
           // No remembered Chat space → this conversation started in the Paperclip
@@ -701,7 +720,15 @@ const plugin = definePlugin({
             body = `↪︎ 回覆：「${labelizeQuestion(lastUserMsg)}」\n\n${body}`;
             labeledThisRound = true;
           }
-          await postFormatted(ctx, config, target, body);
+          // On DMs, offer a one-tap "new conversation" reset so the session
+          // doesn't accrue forever into one task.
+          await postFormatted(
+            ctx,
+            config,
+            target,
+            body,
+            target.spaceType === "DM" ? NEW_CONVERSATION_BUTTON : undefined,
+          );
           if (id) delivered.ids.push(id);
           delivered.sigs.push(sig);
           ctx.logger.info("Mirrored agent comment to Chat", { issueId, commentId: id });
@@ -809,7 +836,26 @@ const plugin = definePlugin({
       });
     }
 
-    // ADDED_TO_SPACE / REMOVED_FROM_SPACE / CARD_CLICKED are acknowledged
+    // Button click: the DM "＋開新對話" button resets the session so the NEXT
+    // message opens a fresh task. Parse the invoked-function name defensively
+    // across the classic + Workspace-add-on event shapes; anything else falls
+    // through to the acknowledge path below.
+    const clickBody = input.parsedBody as Record<string, any> | undefined;
+    const invokedFn =
+      clickBody?.common?.invokedFunction ??
+      clickBody?.action?.actionMethodName ??
+      clickBody?.commonEventObject?.invokedFunction ??
+      clickBody?.chat?.buttonClickedPayload?.action?.function;
+    if (invokedFn === NEW_CONVERSATION_FN) {
+      const ref = extractSpaceRef(input.parsedBody);
+      if (ref?.spaceName) {
+        await clearConversationIssue(ctx, conversationKey({ spaceType: "DM", spaceName: ref.spaceName }));
+      }
+      ctx.logger.info("Reset DM conversation via button", { space: ref?.spaceName });
+      return chatTextResponse("✅ 已開新對話，下一則訊息會開一個新任務。/ New conversation started.");
+    }
+
+    // ADDED_TO_SPACE / REMOVED_FROM_SPACE / other card events are acknowledged
     // (HTTP 200) without a reply.
     const inbound = extractInboundMessage(input.parsedBody);
     if (!inbound) {

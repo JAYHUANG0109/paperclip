@@ -687,7 +687,7 @@ describe("chat logs (read-only monitor)", () => {
 });
 
 describe("conversation continuity", () => {
-  it("treats each DM message as its own parallel task (a new issue, not an append)", async () => {
+  it("continues a DM as one session: follow-ups append to the same task", async () => {
     const harness = createTestHarness({
       manifest,
       config: {
@@ -743,8 +743,76 @@ describe("conversation continuity", () => {
     await deliver("spaces/AAAA/messages/1", "list 員工");
     await deliver("spaces/AAAA/messages/2", "now only ESL");
 
-    // New protocol: in a DM (flat, no threads) every message is its own task, so
-    // both messages create separate issues and nothing is appended as a comment.
+    // Session continuity: a DM is one ongoing session. The first message opens
+    // the task; the follow-up appends to that SAME task (a comment) rather than
+    // spawning a second issue — until the user hits "＋開新對話" / sends /new.
+    expect(createIssue).toHaveBeenCalledTimes(1);
+    expect(createComment).toHaveBeenCalled();
+  });
+
+  it("＋開新對話: a CARD_CLICKED reset makes the next DM message open a fresh task", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: {
+        serviceAccountSecretRef: "sa-ref",
+        verifyInbound: false,
+        echoMode: false,
+        routingEnabled: true,
+        gateUnassigned: false,
+        companyId: "co1",
+        defaultAgentUrlKey: "finance"
+      }
+    });
+    harness.ctx.secrets.resolve = vi.fn(async () => makeServiceAccountJson());
+    harness.ctx.http.fetch = vi.fn(async (url: string) =>
+      url.includes("oauth2.googleapis.com")
+        ? jsonResponse({ access_token: "ya29.test", expires_in: 3600 })
+        : jsonResponse({ name: "spaces/AAAA/messages/x" })
+    ) as typeof harness.ctx.http.fetch;
+    harness.ctx.agents.list = vi.fn(async () => [
+      { id: "ag1", urlKey: "finance", name: "Finance" }
+    ]) as unknown as typeof harness.ctx.agents.list;
+    const createIssue = vi.fn(async () => ({ id: "iss1" }));
+    const createComment = vi.fn(async () => ({ id: "c-follow" }));
+    harness.ctx.issues = {
+      ...harness.ctx.issues,
+      create: createIssue,
+      createComment,
+      update: vi.fn(async () => ({})),
+      requestWakeup: vi.fn(async () => ({})),
+      listComments: vi.fn(async () => [])
+    } as unknown as typeof harness.ctx.issues;
+
+    const dmMessage = (name: string, text: string) => ({
+      commonEventObject: { hostApp: "CHAT" },
+      chat: {
+        user: { displayName: "唐老師", email: "tang@seasonart.org" },
+        messagePayload: {
+          space: { name: "spaces/AAAA", type: "DM" },
+          message: { name, text, sender: { displayName: "唐老師", email: "tang@seasonart.org" } }
+        }
+      }
+    });
+    const clickEvent = {
+      type: "CARD_CLICKED",
+      space: { name: "spaces/AAAA", type: "DM" },
+      common: { invokedFunction: "paperclip_new_conversation" }
+    };
+    const deliver = (body: unknown, requestId: string) =>
+      plugin.definition.onWebhook!({
+        endpointKey: WEBHOOK_KEY,
+        headers: {},
+        rawBody: "{}",
+        parsedBody: body,
+        requestId
+      });
+
+    await plugin.definition.setup(harness.ctx);
+    await deliver(dmMessage("spaces/AAAA/messages/1", "list 員工"), "m1");
+    await deliver(clickEvent, "click1"); // ＋開新對話
+    await deliver(dmMessage("spaces/AAAA/messages/2", "different topic"), "m2");
+
+    // Two separate tasks (the reset broke the session); nothing appended.
     expect(createIssue).toHaveBeenCalledTimes(2);
     expect(createComment).not.toHaveBeenCalled();
   });

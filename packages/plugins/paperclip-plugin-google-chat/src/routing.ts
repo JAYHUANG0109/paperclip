@@ -33,6 +33,9 @@ export interface ChatTarget {
   threadName?: string;
   companyId: string;
   senderEmail: string;
+  /** "DM" for a 1:1 direct message, "SPACE"/"ROOM" for a group space. Lets the
+   *  reply path attach a DM-only "new conversation" reset button. */
+  spaceType?: string;
 }
 
 /**
@@ -194,6 +197,15 @@ export async function setConversationIssue(
   companyId: string
 ): Promise<void> {
   await ctx.state.set(convStateKey(convKey), { issueId, companyId });
+}
+
+/** End the current session so the NEXT message starts a fresh task. Used by the
+ *  DM "new conversation" button/command. */
+export async function clearConversationIssue(
+  ctx: PluginContext,
+  convKey: string
+): Promise<void> {
+  await ctx.state.delete(convStateKey(convKey));
 }
 
 function lastMsgKey(issueId: string) {

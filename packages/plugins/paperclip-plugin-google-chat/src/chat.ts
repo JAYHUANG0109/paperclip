@@ -199,12 +199,30 @@ export async function sendMessage(
     threadName?: string;
     imageUrl?: string;
     imageAltText?: string;
+    /** Optional action button rendered below the message (accessoryWidgets).
+     *  Clicking it posts a CARD_CLICKED event whose invoked function === `fn`. */
+    actionButton?: { text: string; fn: string };
   }
 ): Promise<void> {
   const url = `https://chat.googleapis.com/v1/${params.spaceName}/messages`;
   const body: Record<string, unknown> = {};
   if (params.text && params.text.length > 0) {
     body.text = params.text;
+  }
+  if (params.actionButton) {
+    // A lightweight button attached under the text (no full card needed).
+    body.accessoryWidgets = [
+      {
+        buttonList: {
+          buttons: [
+            {
+              text: params.actionButton.text,
+              onClick: { action: { function: params.actionButton.fn } }
+            }
+          ]
+        }
+      }
+    ];
   }
   if (params.imageUrl) {
     body.cardsV2 = [
