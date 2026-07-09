@@ -167,12 +167,15 @@ export function VirtualOffice() {
 
   return (
     <div className="w-full space-y-2">
-      {/* Shared controls row: team chip filter (left) + view switch (right) —
-          identical layout/style to the Agents page so the switch never moves. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-0 flex-1">
+      {/* Shared controls row: team chip filter + view-switch buttons. On phones
+          this stacks (filters on their own row, buttons wrap below) so the chips
+          never collide with the buttons; on ≥sm it's one row with the filter
+          taking the free space and the buttons grouped on the right. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="min-w-0 sm:flex-1">
           <TeamFilterBar teams={allTeams} selected={teamFilter} onToggle={toggleTeam} onClear={clearTeams} />
         </div>
+        <div className="flex flex-wrap items-center gap-1.5">
         {/* Zoom control — same row as the filters, left of the view switch. Uses
             theme tokens so it flips with dark/light mode (dark bg + light text in
             dark mode, and the reverse in light mode). Only meaningful for the
@@ -222,6 +225,7 @@ export function VirtualOffice() {
             : t("office.title", { defaultValue: "Virtual Office" })}
         </button>
         <ViewSwitchButton to="/agents" label={t("office.browseAgents", { defaultValue: "Browse agents" })} icon={Users} />
+        </div>
       </div>
 
       {view === "office" ? (

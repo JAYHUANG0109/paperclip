@@ -9,7 +9,7 @@ import { displayAgentName } from "../lib/agent-name";
 import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, characterScale, resolveAgentCharacterId, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
 
 // ── Floor / zone definitions ───────────────────────────────────────────────
-interface Zone {
+export interface Zone {
   id: string;
   name: string;
   // The team whose agents sit here (must match agentTeams()). null = a decorative
@@ -44,7 +44,9 @@ interface FloorDef {
 // Square office generated from the Donarg tileset by scripts/office-map/generate-office.mjs.
 // Rooms are sized to team headcount (教學組 biggest, 系統自動化 smallest) + meeting/
 // lounge/茶水間. Each zone maps to one team; decorative rooms have team: null.
-const FLOORS: FloorDef[] = [
+// Exported so the mobile room view (MobileOfficeRooms) can crop the same floor
+// image + reuse the exact room rectangles and desk seats — one source of truth.
+export const FLOORS: FloorDef[] = [
   {
     id: "square",
     label: "Office",
@@ -73,7 +75,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 // reset, so SPRITE_SCALE was effectively ~1. Now that the clamp is removed
 // (maxWidth:none on the img), SPRITE_SCALE=1 keeps that same visible size while
 // per-character scale (male 1.3×) finally takes effect.
-const AGENT_SIZE = 84;
+export const AGENT_SIZE = 84;
 const SPRITE_SCALE = 1.1;    // scaled up ~1.1× to match the furniture
 
 // 8-way facing from a screen-space velocity (y points down → south).
