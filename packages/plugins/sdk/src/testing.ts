@@ -1747,6 +1747,15 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         issueInteractions.set(issueId, current);
         return created;
       },
+      async respondInteraction(params) {
+        requireCapability(manifest, capabilitySet, "issue.interactions.respond");
+        const list = issueInteractions.get(params.issueId) ?? [];
+        const found = list.find((entry) => entry.id === params.interactionId);
+        if (!found) throw new Error(`Interaction not found: ${params.interactionId}`);
+        const status = params.decision === "reject" ? "rejected" : "accepted";
+        (found as { status?: string }).status = status;
+        return { ok: true, status };
+      },
       async suggestTasks(issueId, interaction, companyId, options) {
         return this.createInteraction(issueId, { ...interaction, kind: "suggest_tasks" }, companyId, options) as Promise<any>;
       },

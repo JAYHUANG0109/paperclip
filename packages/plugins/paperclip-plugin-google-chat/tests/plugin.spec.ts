@@ -816,4 +816,51 @@ describe("conversation continuity", () => {
     expect(createIssue).toHaveBeenCalledTimes(2);
     expect(createComment).not.toHaveBeenCalled();
   });
+
+  it("interaction card Accept click → resolves the interaction via respondInteraction", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: {
+        serviceAccountSecretRef: "sa-ref",
+        verifyInbound: false,
+        echoMode: false,
+        routingEnabled: true,
+        gateUnassigned: false,
+        companyId: "co1",
+        defaultAgentUrlKey: "finance"
+      }
+    });
+    const respond = vi.fn(async () => ({ ok: true, status: "accepted" }));
+    harness.ctx.issues = {
+      ...harness.ctx.issues,
+      respondInteraction: respond
+    } as unknown as typeof harness.ctx.issues;
+
+    await plugin.definition.setup(harness.ctx);
+    const clickEvent = {
+      type: "CARD_CLICKED",
+      space: { name: "spaces/AAAA", type: "DM" },
+      user: { email: "tang@seasonart.org" },
+      common: {
+        invokedFunction: "paperclip_interaction_respond",
+        parameters: { interactionId: "int-1", issueId: "iss-1", decision: "accept" }
+      }
+    };
+    await plugin.definition.onWebhook!({
+      endpointKey: WEBHOOK_KEY,
+      headers: {},
+      rawBody: "{}",
+      parsedBody: clickEvent,
+      requestId: "click-accept"
+    });
+
+    expect(respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: "iss-1",
+        interactionId: "int-1",
+        decision: "accept",
+        responderEmail: "tang@seasonart.org"
+      })
+    );
+  });
 });

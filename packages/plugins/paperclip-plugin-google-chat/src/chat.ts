@@ -141,6 +141,43 @@ export function extractSpaceRef(
 }
 
 /**
+ * Parse a button-click (CARD_CLICKED) event across the classic + Workspace
+ * add-on shapes: the invoked function name, its parameters, the clicker's email
+ * and the space. Returns null for a non-click event.
+ */
+export function extractCardClick(body: unknown): {
+  fn: string | null;
+  params: Record<string, string>;
+  email?: string;
+  spaceName?: string;
+} | null {
+  if (!body || typeof body !== "object") return null;
+  const root = body as Record<string, any>;
+  const fn =
+    root.common?.invokedFunction ??
+    root.action?.actionMethodName ??
+    root.commonEventObject?.invokedFunction ??
+    root.chat?.buttonClickedPayload?.action?.function ??
+    null;
+  const params: Record<string, string> = {};
+  const arr = root.action?.parameters ?? root.chat?.buttonClickedPayload?.action?.parameters;
+  if (Array.isArray(arr)) {
+    for (const p of arr) if (p?.key) params[String(p.key)] = String(p.value ?? "");
+  }
+  const objParams = root.common?.parameters ?? root.commonEventObject?.parameters;
+  if (objParams && typeof objParams === "object") {
+    for (const [k, v] of Object.entries(objParams)) params[k] = String(v ?? "");
+  }
+  const space =
+    root.space ??
+    root.chat?.messagePayload?.space ??
+    root.chat?.buttonClickedPayload?.space ??
+    root.commonEventObject?.space;
+  const email = root.user?.email ?? root.chat?.user?.email ?? root.message?.sender?.email;
+  return { fn, params, email, spaceName: space?.name };
+}
+
+/**
  * Download an uploaded Chat attachment's bytes via the media endpoint.
  * `resourceName` comes from `attachment.attachmentDataRef.resourceName`.
  */

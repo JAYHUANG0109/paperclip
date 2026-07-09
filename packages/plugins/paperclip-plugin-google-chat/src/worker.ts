@@ -11,7 +11,7 @@ import {
   mintAccessToken,
   parseServiceAccountKey
 } from "./google-auth.js";
-import { extractInboundMessage, extractSpaceRef, type InboundMessage, sendMessage, splitFirstImage } from "./chat.js";
+import { extractCardClick, extractInboundMessage, extractSpaceRef, type InboundMessage, sendMessage, splitFirstImage } from "./chat.js";
 import { rememberDmTarget, resolveDmSpace } from "./dm.js";
 import { learnSpaceFromApi, listKnownSpaces, rememberSpace, resolveSpaceName } from "./spaces.js";
 import {
@@ -147,6 +147,68 @@ async function postFormatted(
 /** The DM "new conversation" reset button + the CARD_CLICKED function it fires. */
 const NEW_CONVERSATION_FN = "paperclip_new_conversation";
 const NEW_CONVERSATION_BUTTON = { text: "＋ 開新對話 / New chat", fn: NEW_CONVERSATION_FN };
+
+/** CARD_CLICKED function for accept/reject buttons on an interaction card. */
+const INTERACTION_RESPOND_FN = "paperclip_interaction_respond";
+
+/**
+ * Render a request_confirmation as an interactive Chat card — Accept /
+ * Request-changes buttons — so the user can decide without leaving Chat. Each
+ * button carries the interaction + issue ids so the CARD_CLICKED handler
+ * resolves the exact interaction via issues.respondInteraction.
+ */
+async function postInteractionCard(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  spaceName: string,
+  info: { title: string; summary: string; interactionId: string; issueId: string }
+): Promise<void> {
+  const token = await getAccessToken(ctx, config);
+  const params = (decision: string) => [
+    { key: "interactionId", value: info.interactionId },
+    { key: "issueId", value: info.issueId },
+    { key: "decision", value: decision }
+  ];
+  const body = {
+    cardsV2: [
+      {
+        cardId: `interaction-${info.interactionId}`,
+        card: {
+          header: { title: info.title || "需要你回覆 / Needs your input" },
+          sections: [
+            {
+              widgets: [
+                ...(info.summary ? [{ textParagraph: { text: info.summary } }] : []),
+                {
+                  buttonList: {
+                    buttons: [
+                      {
+                        text: "✅ 確認 / Accept",
+                        onClick: { action: { function: INTERACTION_RESPOND_FN, parameters: params("accept") } }
+                      },
+                      {
+                        text: "✳️ 需修改 / Request changes",
+                        onClick: { action: { function: INTERACTION_RESPOND_FN, parameters: params("reject") } }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  };
+  const res = await ctx.http.fetch(`https://chat.googleapis.com/v1/${spaceName}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    throw new Error(`interaction card post failed (${res.status}): ${await res.text()}`);
+  }
+}
 
 /**
  * DM target for an agent's OWNER — the person paired to it in the Assignments
@@ -785,6 +847,40 @@ const plugin = definePlugin({
         });
       }
     });
+
+    // Render a request_confirmation ("待裁示" approval) as an interactive Chat
+    // CARD in the owner's DM — Accept / Request-changes buttons they can tap
+    // without leaving Chat. Other interaction kinds are handled by the server's
+    // link notification (they need richer forms). The button click resolves the
+    // interaction via issues.respondInteraction (see onWebhook CARD_CLICKED).
+    ctx.events.on("issue.thread_interaction_created", async (event) => {
+      try {
+        const p = (event.payload ?? {}) as {
+          interactionId?: string;
+          interactionKind?: string;
+          interactionTitle?: string | null;
+          interactionSummary?: string | null;
+        };
+        if (p.interactionKind !== "request_confirmation") return;
+        const issueId = event.entityId;
+        const agentId = event.actorId;
+        if (!issueId || !p.interactionId || event.actorType !== "agent" || !agentId) return;
+        const config = await getConfig(ctx);
+        const target = await resolveOwnerDmTarget(ctx, config, agentId, event.companyId);
+        if (!target) return; // owner unpaired or has never DM'd the bot
+        await postInteractionCard(ctx, config, target.spaceName, {
+          title: p.interactionTitle ?? "需要你確認 / Needs your confirmation",
+          summary: p.interactionSummary ?? "",
+          interactionId: p.interactionId,
+          issueId
+        });
+        ctx.logger.info("Posted interaction card to Chat", { issueId, interactionId: p.interactionId });
+      } catch (err) {
+        ctx.logger.error("Failed to post interaction card to Chat", {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    });
   },
 
   async onWebhook(input: PluginWebhookInput): Promise<void | PluginWebhookResponse> {
@@ -836,23 +932,45 @@ const plugin = definePlugin({
       });
     }
 
-    // Button click: the DM "＋開新對話" button resets the session so the NEXT
-    // message opens a fresh task. Parse the invoked-function name defensively
-    // across the classic + Workspace-add-on event shapes; anything else falls
-    // through to the acknowledge path below.
-    const clickBody = input.parsedBody as Record<string, any> | undefined;
-    const invokedFn =
-      clickBody?.common?.invokedFunction ??
-      clickBody?.action?.actionMethodName ??
-      clickBody?.commonEventObject?.invokedFunction ??
-      clickBody?.chat?.buttonClickedPayload?.action?.function;
-    if (invokedFn === NEW_CONVERSATION_FN) {
-      const ref = extractSpaceRef(input.parsedBody);
-      if (ref?.spaceName) {
-        await clearConversationIssue(ctx, conversationKey({ spaceType: "DM", spaceName: ref.spaceName }));
+    // Button clicks (CARD_CLICKED), parsed defensively across the classic +
+    // Workspace-add-on shapes.
+    const click = extractCardClick(input.parsedBody);
+    if (click?.fn === NEW_CONVERSATION_FN) {
+      // "＋開新對話": end the DM session so the next message opens a fresh task.
+      if (click.spaceName) {
+        await clearConversationIssue(ctx, conversationKey({ spaceType: "DM", spaceName: click.spaceName }));
       }
-      ctx.logger.info("Reset DM conversation via button", { space: ref?.spaceName });
+      ctx.logger.info("Reset DM conversation via button", { space: click.spaceName });
       return chatTextResponse("✅ 已開新對話，下一則訊息會開一個新任務。/ New conversation started.");
+    }
+    if (click?.fn === INTERACTION_RESPOND_FN) {
+      // Accept / Request-changes on an interaction card → resolve it in Paperclip
+      // as the clicking user (attributed by their email).
+      const { interactionId, issueId, decision } = click.params;
+      const email = click.email?.trim().toLowerCase();
+      if (!interactionId || !issueId || !email) {
+        return chatTextResponse("抱歉，無法辨識這則互動，請到 Paperclip 完成。");
+      }
+      try {
+        const assignment = await getAssignment(ctx, email);
+        const companyId = assignment?.companyId ?? (await resolveCompanyId(ctx, config.companyId));
+        await ctx.issues.respondInteraction({
+          issueId,
+          companyId,
+          interactionId,
+          decision: decision === "reject" ? "reject" : "accept",
+          responderEmail: email
+        });
+        ctx.logger.info("Resolved interaction via Chat card", { issueId, interactionId, decision });
+        return chatTextResponse(
+          decision === "reject" ? "✳️ 已送出「需修改」，謝謝！" : "✅ 已確認，謝謝！"
+        );
+      } catch (err) {
+        ctx.logger.error("respondInteraction from Chat failed", {
+          error: err instanceof Error ? err.message : String(err)
+        });
+        return chatTextResponse("抱歉，處理你的回覆時發生問題，請到 Paperclip 完成。");
+      }
     }
 
     // ADDED_TO_SPACE / REMOVED_FROM_SPACE / other card events are acknowledged

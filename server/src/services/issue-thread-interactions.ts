@@ -1055,7 +1055,11 @@ export function issueThreadInteractionService(db: Db) {
       // outside Paperclip, so emit a notification (Google Chat forwards it as a
       // DM with a deep link — "go to Paperclip to respond"). Best-effort;
       // notifying must never fail interaction creation.
-      if (actor.agentId) {
+      // request_confirmation is rendered as an interactive Chat CARD (Accept /
+      // Request-changes buttons) by the Google Chat plugin, so skip the plain
+      // link notification for it to avoid a duplicate ping; other kinds still
+      // get the link nudge.
+      if (actor.agentId && created.kind !== "request_confirmation") {
         try {
           const [iss] = await db
             .select({ responsibleUserId: issues.responsibleUserId, identifier: issues.identifier })

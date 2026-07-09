@@ -872,6 +872,18 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           });
         },
 
+        async respondInteraction(params: {
+          issueId: string;
+          companyId: string;
+          interactionId: string;
+          decision: "accept" | "reject";
+          responderEmail: string;
+          reason?: string | null;
+          selectedOptionIds?: string[];
+        }) {
+          return callHost("issues.respondInteraction", params);
+        },
+
         async suggestTasks(
           issueId: string,
           interaction,

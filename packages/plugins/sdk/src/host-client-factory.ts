@@ -233,6 +233,7 @@ export interface HostServices {
     listComments(params: WorkerToHostMethods["issues.listComments"][0]): Promise<WorkerToHostMethods["issues.listComments"][1]>;
     createComment(params: WorkerToHostMethods["issues.createComment"][0]): Promise<WorkerToHostMethods["issues.createComment"][1]>;
     createInteraction(params: WorkerToHostMethods["issues.createInteraction"][0]): Promise<WorkerToHostMethods["issues.createInteraction"][1]>;
+    respondInteraction(params: WorkerToHostMethods["issues.respondInteraction"][0]): Promise<WorkerToHostMethods["issues.respondInteraction"][1]>;
   };
 
   /** Provides `issues.documents.list`, `issues.documents.get`, `issues.documents.upsert`, `issues.documents.delete`. */
@@ -444,6 +445,7 @@ const METHOD_CAPABILITY_MAP: Record<WorkerToHostMethodName, PluginCapability | n
   "issues.listComments": "issue.comments.read",
   "issues.createComment": "issue.comments.create",
   "issues.createInteraction": "issue.interactions.create",
+  "issues.respondInteraction": "issue.interactions.respond",
 
   // Issue Documents
   "issues.documents.list": "issue.documents.read",
@@ -846,6 +848,9 @@ export function createHostClientHandlers(
     }),
     "issues.createInteraction": gated("issues.createInteraction", async (params) => {
       return services.issues.createInteraction(params);
+    }),
+    "issues.respondInteraction": gated("issues.respondInteraction", async (params) => {
+      return services.issues.respondInteraction(params);
     }),
 
     // Issue Documents

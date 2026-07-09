@@ -78,6 +78,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "issues.wakeup",
     "issue.comments.read",
     "issue.comments.create",
+    "issue.interactions.respond",
     "issue.attachments.write",
     "agent.tools.register",
     "instance.settings.register",

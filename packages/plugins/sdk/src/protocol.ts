@@ -1389,6 +1389,24 @@ export interface WorkerToHostMethods {
     },
     result: IssueThreadInteraction,
   ];
+  "issues.respondInteraction": [
+    params: {
+      issueId: string;
+      companyId: string;
+      interactionId: string;
+      /** accept = approve/confirm; reject = request changes/decline. */
+      decision: "accept" | "reject";
+      /** The email of the human responding (e.g. from a Google Chat click). The
+       *  host resolves it to a user account and records them as the responder;
+       *  an unknown email is refused. */
+      responderEmail: string;
+      /** Optional reason, forwarded on reject. */
+      reason?: string | null;
+      /** Optional selected option ids (for checkbox-style confirmations). */
+      selectedOptionIds?: string[];
+    },
+    result: { ok: boolean; status: string },
+  ];
 
   // Issue Documents
   "issues.documents.list": [

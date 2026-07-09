@@ -3,6 +3,7 @@ import {
   activityLog,
   agentTaskSessions as agentTaskSessionsTable,
   agents as agentsTable,
+  authUsers,
   budgetIncidents,
   costEvents,
   heartbeatRuns,
@@ -2066,10 +2067,45 @@ export function buildHostServices(
             interactionId: interaction.id,
             interactionKind: interaction.kind,
             interactionStatus: interaction.status,
+            interactionTitle: interaction.title ?? null,
+            interactionSummary: interaction.summary ?? null,
             continuationPolicy: interaction.continuationPolicy,
           },
         });
         return interaction as any;
+      },
+      // Resolve a pending interaction on behalf of a human responding from an
+      // external channel (e.g. a Google Chat button). The responder is
+      // identified by email → user account; an unknown email is refused so a
+      // decision is always attributed to a real member.
+      async respondInteraction(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        const email = (params.responderEmail ?? "").trim().toLowerCase();
+        if (!email) throw new Error("responderEmail is required");
+        const user = (
+          await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.email, email))
+        )[0];
+        if (!user?.id) throw new Error(`No Paperclip account for ${email}`);
+        const actor = { agentId: null, userId: user.id };
+        const svc = issueThreadInteractionService(db);
+        if (params.decision === "reject") {
+          const r = await svc.rejectInteraction(
+            { id: issue.id, companyId },
+            params.interactionId,
+            { reason: params.reason ?? undefined },
+            actor,
+          );
+          return { ok: true, status: (r as any)?.interaction?.status ?? "rejected" };
+        }
+        const r = await svc.acceptInteraction(
+          { id: issue.id, companyId, projectId: issue.projectId ?? null, goalId: issue.goalId ?? null },
+          params.interactionId,
+          { selectedOptionIds: params.selectedOptionIds },
+          actor,
+        );
+        return { ok: true, status: (r as any)?.interaction?.status ?? "accepted" };
       },
     },
 

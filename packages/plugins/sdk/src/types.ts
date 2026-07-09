@@ -1468,6 +1468,21 @@ export interface PluginIssuesClient {
     companyId: string,
     options?: { authorAgentId?: string },
   ): Promise<IssueThreadInteraction>;
+  /**
+   * Resolve a pending interaction on behalf of a human responding from an
+   * external channel (e.g. a Google Chat button). The responder is identified
+   * by email; the host maps it to a user account. Requires the
+   * `issue.interactions.respond` capability.
+   */
+  respondInteraction(params: {
+    issueId: string;
+    companyId: string;
+    interactionId: string;
+    decision: "accept" | "reject";
+    responderEmail: string;
+    reason?: string | null;
+    selectedOptionIds?: string[];
+  }): Promise<{ ok: boolean; status: string }>;
   suggestTasks(
     issueId: string,
     interaction: Omit<Extract<CreateIssueThreadInteraction, { kind: "suggest_tasks" }>, "kind">,

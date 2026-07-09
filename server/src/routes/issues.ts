@@ -8529,6 +8529,8 @@ export function issueRoutes(
         interactionId: interaction.id,
         interactionKind: interaction.kind,
         interactionStatus: interaction.status,
+        interactionTitle: interaction.title ?? null,
+        interactionSummary: interaction.summary ?? null,
         continuationPolicy: interaction.continuationPolicy,
       },
     });
