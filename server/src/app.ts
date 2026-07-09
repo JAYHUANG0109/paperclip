@@ -259,10 +259,10 @@ export async function createApp(
   api.use(companySkillRoutes(db));
   api.use(bountyRoutes(db));
   api.use(teamsCatalogRoutes(db));
-  api.use(agentRoutes(db, { pluginWorkerManager: workerManager }));
+  const restrictVisibility = opts.restrictAgentVisibility;
+  api.use(agentRoutes(db, { pluginWorkerManager: workerManager, restrictAgentVisibility: restrictVisibility }));
   api.use(assetRoutes(db, opts.storageService));
   api.use(projectRoutes(db));
-  const restrictVisibility = opts.restrictAgentVisibility;
   api.use(issueRoutes(db, opts.storageService, {
     feedbackExportService: opts.feedbackExportService,
     pluginWorkerManager: workerManager,
