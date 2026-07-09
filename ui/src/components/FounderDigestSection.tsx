@@ -570,7 +570,7 @@ function FounderRow({
       {item.decision && item.decisionNote && (
         <div className="ml-6 mt-2 rounded-md border border-border bg-muted/20 p-2 text-xs">
           <div className="mb-0.5 font-medium text-muted-foreground">{t("founder.yourNote", { defaultValue: "Your note" })}</div>
-          <p className="whitespace-pre-wrap break-words text-foreground">{item.decisionNote}</p>
+          <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">{linkify(item.decisionNote)}</p>
         </div>
       )}
     </li>
@@ -620,7 +620,7 @@ function CommentThread({
                   </span>
                 )}
               </div>
-              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">{c.text}</p>
+              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">{linkify(c.text)}</p>
             </li>
           ))}
         </ul>
