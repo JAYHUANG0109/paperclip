@@ -25,7 +25,7 @@ import {
 import { formatForChat } from "./format.js";
 import { commentSignature, orderedForwardable } from "./mirror.js";
 import { listConversationEntries, listSenders, recordConversation } from "./conversations.js";
-import { verifyInboundRequest } from "./verify.js";
+import { verifyInboundRequest, extractBearerToken, decodeJwt } from "./verify.js";
 import {
   appendToConversation,
   conversationKey,
@@ -160,8 +160,35 @@ const INTERACTION_RESPOND_FN = "paperclip_interaction_respond";
  * an action name), so we set it to this endpoint and carry the real handler name
  * in a "fn" parameter. Empty when unconfigured → callers fall back to a link.
  */
-function resolveCardActionUrl(config: GoogleChatConfig): string {
-  return (config.cardActionUrl || config.expectedAudience || "").trim();
+/** State key for the endpoint URL auto-learned from inbound JWTs (see below). */
+const LEARNED_CARD_ACTION_URL_KEY = { scopeKind: "instance" as const, stateKey: "learned-card-action-url" };
+
+/**
+ * Resolve the webhook URL for interactive button callbacks. Prefers explicit
+ * config (cardActionUrl / expectedAudience), then the URL auto-learned from
+ * inbound Google JWTs — the `aud` claim of every request Google sends IS this
+ * app's endpoint URL, so buttons self-configure with zero manual setup once the
+ * bot has received at least one message.
+ */
+async function getCardActionUrl(ctx: PluginContext, config: GoogleChatConfig): Promise<string> {
+  const explicit = (config.cardActionUrl || config.expectedAudience || "").trim();
+  if (explicit) return explicit;
+  const learned = await ctx.state.get(LEARNED_CARD_ACTION_URL_KEY);
+  return typeof learned === "string" ? learned : "";
+}
+
+/** Cache the endpoint URL from an inbound request's signed JWT `aud` claim. */
+async function learnCardActionUrl(ctx: PluginContext, headers: Record<string, string | string[]>): Promise<void> {
+  try {
+    const aud = decodeJwt(extractBearerToken(headers)).payload.aud;
+    const url = Array.isArray(aud) ? aud[0] : aud;
+    if (typeof url === "string" && /^https:\/\//i.test(url)) {
+      const current = await ctx.state.get(LEARNED_CARD_ACTION_URL_KEY);
+      if (current !== url) await ctx.state.set(LEARNED_CARD_ACTION_URL_KEY, url);
+    }
+  } catch {
+    /* no/!valid token (e.g. verifyInbound off) — nothing to learn */
+  }
 }
 
 /** Build the DM "new task" reset action button for a given endpoint URL. */
@@ -186,7 +213,7 @@ async function postInteractionCard(
   info: { title: string; summary: string; interactionId: string; issueId: string }
 ): Promise<void> {
   const token = await getAccessToken(ctx, config);
-  const actionUrl = resolveCardActionUrl(config);
+  const actionUrl = await getCardActionUrl(ctx, config);
   // action.function is the full endpoint URL; the handler name rides in "fn".
   const params = (decision: string) => [
     { key: "fn", value: INTERACTION_RESPOND_FN },
@@ -259,7 +286,7 @@ async function postQuestionCard(
   }
 ): Promise<void> {
   const token = await getAccessToken(ctx, config);
-  const actionUrl = resolveCardActionUrl(config);
+  const actionUrl = await getCardActionUrl(ctx, config);
   const buttons = info.options.slice(0, 6).map((opt) => ({
     text: opt.label.slice(0, 60),
     onClick: {
@@ -872,7 +899,7 @@ const plugin = definePlugin({
           // On DMs, offer a one-tap "new task" reset. The button POSTs to our
           // webhook URL (add-on model); if no action URL is configured it's
           // omitted and users type "/new task" instead (MESSAGE path).
-          const actionUrl = resolveCardActionUrl(config);
+          const actionUrl = await getCardActionUrl(ctx, config);
           const resetButton =
             target.spaceType === "DM" && actionUrl ? newConversationButton(actionUrl) : undefined;
           await postFormatted(ctx, config, target, body, resetButton);
@@ -980,7 +1007,7 @@ const plugin = definePlugin({
         const target = await resolveOwnerDmTarget(ctx, config, agentId, event.companyId);
         if (!target) return; // owner unpaired or has never DM'd the bot
 
-        const actionUrl = resolveCardActionUrl(config);
+        const actionUrl = await getCardActionUrl(ctx, config);
         const questions = p.interactionPayload?.questions ?? [];
         const singleSelectQ =
           kind === "ask_user_questions" &&
@@ -1045,6 +1072,10 @@ const plugin = definePlugin({
     }
 
     const config = await getConfig(ctx);
+
+    // Auto-learn this app's public endpoint URL from the inbound JWT `aud` so
+    // interactive card buttons can POST back here without any manual config.
+    await learnCardActionUrl(ctx, input.headers);
 
     // Authenticate the request as genuinely from Google Chat before acting on it.
     if (config.verifyInbound) {
