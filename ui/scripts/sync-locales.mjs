@@ -2,16 +2,18 @@
 /**
  * sync-locales — keep every locale file in key-parity with en.json.
  *
- * en.json is the source of truth. For every other locale this script:
+ * The app ships exactly two locales: en (source of truth) and zh-TW (the only
+ * other selectable language — see src/i18n/resolveLocale.ts). This script is
+ * directory-driven: it reconciles whatever locale files exist against en.json.
+ * For every non-source locale it:
  *   - adds any key missing from that locale, using the English value as a
- *     fallback (matches the existing convention: only en + zh-TW are hand
- *     translated, the rest carry English until localized),
+ *     fallback,
  *   - drops any extra key not present in en.json,
  *   - reorders keys to match en.json (stable, review-friendly diffs).
  *
  * Existing translated values are never overwritten. So the workflow for adding
- * UI strings becomes a 2-file edit (en.json + zh-TW.json), then `npm run
- * sync-locales` to backfill the other 38 and guarantee parity.
+ * UI strings is a 2-file edit (en.json + zh-TW.json), then `npm run
+ * sync-locales` to guarantee key parity.
  *
  * Run:  node scripts/sync-locales.mjs          (writes changes)
  *       node scripts/sync-locales.mjs --check   (CI mode: fail if drifted)
