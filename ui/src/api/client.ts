@@ -1,5 +1,14 @@
 const BASE = "/api";
 
+// Hard ceiling on any single request. Without this, a fetch that the browser
+// froze while the tab was backgrounded (then never resumed after refocus) hangs
+// forever: react-query's on-focus refetch stays `isFetching`, pages stay stuck
+// on their loading skeleton, and only a manual page reload clears it. A timeout
+// makes the stalled request reject instead, so the query settles to an error
+// state and the page recovers on the next focus/refetch on its own. (PAP: white
+// screen after switching browser tabs and back.)
+const REQUEST_TIMEOUT_MS = 20_000;
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -10,6 +19,16 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+}
+
+/** Combine a caller-supplied signal (if any) with our per-request timeout. */
+function withTimeoutSignal(signal: AbortSignal | null | undefined): AbortSignal {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  if (!signal) return timeout;
+  // AbortSignal.any is widely available; fall back to the caller's signal alone
+  // (still timeout-guarded by the abort below) if the runtime lacks it.
+  const anyFn = (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any;
+  return anyFn ? anyFn([signal, timeout]) : timeout;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -23,6 +42,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers,
     credentials: "include",
     ...init,
+    signal: withTimeoutSignal(init?.signal),
   });
   if (!res.ok) {
     const errorBody = await res.json().catch(() => null);
