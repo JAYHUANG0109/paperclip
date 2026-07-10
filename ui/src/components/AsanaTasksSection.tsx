@@ -293,6 +293,16 @@ function AsanaTaskRow({
     enabled: everOpened,
     staleTime: 60_000,
   });
+  // On-demand full detail (untruncated description + subtasks) — same lazy,
+  // server-direct, zero-LLM pattern as comments.
+  const detail = useQuery({
+    queryKey: ["asana-task-detail", companyId, task.gid],
+    queryFn: () => dashboardApi.asanaTaskDetail(companyId, task.gid),
+    enabled: everOpened,
+    staleTime: 60_000,
+  });
+  const description = detail.data?.notes ?? task.notes;
+  const subtasks = detail.data?.subtasks ?? [];
   // Collapsed rows use the count baked into the digest (server-side, cached, no
   // per-row fetch); once the row is opened, the freshly-loaded exact count wins.
   const commentCount = comments.data?.count ?? task.commentCount;
@@ -447,8 +457,9 @@ function AsanaTaskRow({
 
       {open && (
         <div className="ml-[26px] mt-2 space-y-3">
-          {task.notes && (
-            <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{task.notes}</p>
+          {/* Full description (untruncated once detail loads; digest preview until then) */}
+          {description && (
+            <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{description}</p>
           )}
           <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-xs">
             <DetailRow label={t("asana.detailStatus", { defaultValue: "Status" })} value={task.completed ? t("asana.statusDone", { defaultValue: "Completed" }) : t("asana.statusOpen", { defaultValue: "Open" })} />
@@ -486,6 +497,53 @@ function AsanaTaskRow({
               />
             )}
           </dl>
+
+          {/* Subtasks (loaded on demand). Each links out to Asana like the parent. */}
+          {(subtasks.length > 0 || detail.isLoading) && (
+            <div className="space-y-1.5">
+              <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <ListTodo className="h-3 w-3" />
+                {t("asana.subtasks", { defaultValue: "Subtasks" })}
+                {subtasks.length > 0 && <span className="tabular-nums">· {subtasks.length}</span>}
+              </p>
+              {detail.isLoading ? (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t("asana.loadingDetail", { defaultValue: "Loading…" })}
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {subtasks.map((s) => (
+                    <li key={s.gid} className="flex items-center gap-1.5 text-xs">
+                      {s.completed ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      ) : (
+                        <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                      )}
+                      {s.permalinkUrl ? (
+                        <a
+                          href={s.permalinkUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={cn(
+                            "group min-w-0 flex-1 truncate hover:underline",
+                            s.completed ? "text-muted-foreground line-through" : "text-foreground",
+                          )}
+                        >
+                          {s.name}
+                          <ExternalLink className="ml-1 inline h-3 w-3 align-text-top text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
+                        </a>
+                      ) : (
+                        <span className={cn("min-w-0 flex-1 truncate", s.completed && "text-muted-foreground line-through")}>
+                          {s.name}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {/* Comments (loaded on demand, server-direct) */}
           <div className="space-y-1.5">

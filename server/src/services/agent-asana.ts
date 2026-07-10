@@ -323,6 +323,56 @@ export async function getAsanaTaskComments(
   }
 }
 
+export interface AsanaSubtaskRef {
+  gid: string;
+  name: string;
+  completed: boolean;
+  permalinkUrl: string | null;
+}
+export interface AsanaTaskDetail {
+  notes: string | null; // full description (untruncated), on-demand
+  permalinkUrl: string | null;
+  subtasks: AsanaSubtaskRef[];
+}
+
+/**
+ * On-demand full detail for one task, fetched server-direct with the agent's OWN
+ * token when the user expands a row: the complete (untruncated) description plus
+ * subtasks with their own Asana links. Deliberately NOT part of the bulk digest
+ * (which stores only a short notes preview), so the digest run stays cheap and
+ * this costs ZERO LLM tokens — just two lightweight REST reads for the one task
+ * actually opened. Returns null on token/API failure. Read-only tokens allowed.
+ */
+export async function getAsanaTaskDetail(
+  db: Db,
+  companyId: string,
+  agentId: string,
+  taskGid: string,
+): Promise<AsanaTaskDetail | null> {
+  const t = await tokenFor(db, companyId, agentId);
+  if (!t) return null;
+  const head = await asanaGetJson(t.token, `/tasks/${encodeURIComponent(taskGid)}?opt_fields=notes,permalink_url`);
+  if (!head?.data) return null;
+  const d = head.data as Record<string, unknown>;
+  const subRes = await asanaGetJson(
+    t.token,
+    `/tasks/${encodeURIComponent(taskGid)}/subtasks?opt_fields=name,completed,permalink_url&limit=100`,
+  );
+  const subRows = subRes && Array.isArray(subRes.data) ? (subRes.data as Record<string, unknown>[]) : [];
+  return {
+    notes: typeof d.notes === "string" && d.notes.trim() ? d.notes : null,
+    permalinkUrl: typeof d.permalink_url === "string" ? d.permalink_url : null,
+    subtasks: subRows
+      .filter((s) => typeof s.gid === "string")
+      .map((s) => ({
+        gid: String(s.gid),
+        name: typeof s.name === "string" ? s.name : "",
+        completed: s.completed === true,
+        permalinkUrl: typeof s.permalink_url === "string" ? s.permalink_url : null,
+      })),
+  };
+}
+
 /**
  * SERVER-SIDE founder-digest prep (token-lightening #2). Does the deterministic
  * plumbing the digest agent currently does inside its model context: fetch each
@@ -574,17 +624,26 @@ export async function setAsanaTaskCompleted(
 ): Promise<boolean> {
   const t = await tokenFor(db, companyId, agentId);
   if (!t || t.readOnly) return false;
+  let putOk = false;
   try {
     const res = await fetch(`${ASANA_API}/tasks/${encodeURIComponent(taskGid)}`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ data: { completed } }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(15_000),
     });
-    return res.ok;
+    putOk = res.ok;
   } catch {
-    return false;
+    putOk = false; // network/timeout — verify the real state below
   }
+  if (putOk) return true;
+  // Uncertain write (non-2xx or timeout): Asana may still have applied it — a
+  // milestone's completion cascades (project status, dependencies) and can
+  // outrun our request window, so the PUT lands but we never see the 200. Verify
+  // the actual state before reporting failure. Fixes "Asana completed it but the
+  // dashboard said Failed" for milestones.
+  const check = await asanaGetJson(t.token, `/tasks/${encodeURIComponent(taskGid)}?opt_fields=completed`);
+  return (check?.data as { completed?: boolean } | undefined)?.completed === completed;
 }
 
 export type AsanaApprovalStatus = "pending" | "approved" | "rejected" | "changes_requested";
@@ -605,15 +664,21 @@ export async function setAsanaApprovalStatus(
 ): Promise<boolean> {
   const t = await tokenFor(db, companyId, agentId);
   if (!t || t.readOnly) return false;
+  let putOk = false;
   try {
     const res = await fetch(`${ASANA_API}/tasks/${encodeURIComponent(taskGid)}`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ data: { approval_status: status } }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(15_000),
     });
-    return res.ok;
+    putOk = res.ok;
   } catch {
-    return false;
+    putOk = false;
   }
+  if (putOk) return true;
+  // Uncertain write — verify the actual approval_status before reporting failure
+  // (same self-healing rationale as setAsanaTaskCompleted).
+  const check = await asanaGetJson(t.token, `/tasks/${encodeURIComponent(taskGid)}?opt_fields=approval_status`);
+  return (check?.data as { approval_status?: string } | undefined)?.approval_status === status;
 }

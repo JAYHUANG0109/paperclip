@@ -5786,7 +5786,9 @@
       "rejected": "Rejected",
       "changes_requested": "Changes requested"
     },
-    "allCaughtUp": "All caught up for today & this week 🎉 — tap 更新 to check for new tasks."
+    "allCaughtUp": "All caught up for today & this week 🎉 — tap 更新 to check for new tasks.",
+    "subtasks": "Subtasks",
+    "loadingDetail": "Loading…"
   },
   "founder": {
     "close": "Close",

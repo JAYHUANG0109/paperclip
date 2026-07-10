@@ -5786,7 +5786,9 @@
       "rejected": "已拒絕",
       "changes_requested": "已要求變更"
     },
-    "allCaughtUp": "今日與本週的任務都完成了 🎉 — 按「更新」看看有沒有新任務。"
+    "allCaughtUp": "今日與本週的任務都完成了 🎉 — 按「更新」看看有沒有新任務。",
+    "subtasks": "子任務",
+    "loadingDetail": "載入中…"
   },
   "founder": {
     "close": "結案",

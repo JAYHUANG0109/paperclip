@@ -35,6 +35,18 @@ export interface AsanaTaskComment {
   createdAt: string | null;
 }
 
+export interface AsanaSubtaskRef {
+  gid: string;
+  name: string;
+  completed: boolean;
+  permalinkUrl: string | null;
+}
+export interface AsanaTaskDetail {
+  notes: string | null;
+  permalinkUrl: string | null;
+  subtasks: AsanaSubtaskRef[];
+}
+
 export type FounderDecision = "approved" | "changes_requested" | "rejected";
 
 export interface FounderComment {
@@ -140,6 +152,10 @@ export const dashboardApi = {
     api.post<{ ok: boolean; confirmed: boolean; digest: AsanaDigest | null }>(
       `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/approval`,
       { status },
+    ),
+  asanaTaskDetail: (companyId: string, gid: string) =>
+    api.get<AsanaTaskDetail>(
+      `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/detail`,
     ),
   asanaTaskComments: (companyId: string, gid: string) =>
     api.get<{ comments: AsanaTaskComment[]; count: number }>(

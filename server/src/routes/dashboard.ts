@@ -33,7 +33,7 @@ import {
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
 import { logger } from "../middleware/logger.js";
-import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, setAsanaApprovalStatus, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
+import { buildAsanaDigestBody, getAsanaTaskComments, getAsanaTaskDetail, postAsanaComment, setAsanaTaskCompleted, setAsanaApprovalStatus, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
 import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
@@ -313,6 +313,28 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       return;
     }
     res.json({ comments, count: comments.length });
+  });
+
+  // On-demand full detail for one task (description + subtasks) — server-direct
+  // with the caller's OWN token when they expand a row. Like /comments, this is
+  // NOT part of the bulk digest, so it stays cheap and costs zero LLM tokens.
+  router.get("/companies/:companyId/asana-digest/tasks/:gid/detail", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const gid = req.params.gid as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account to read Asana." });
+      return;
+    }
+    const detail = await getAsanaTaskDetail(db, companyId, agentId, gid);
+    if (detail === null) {
+      res.status(502).json({ error: "Could not load task detail from Asana." });
+      return;
+    }
+    res.json(detail);
   });
 
   // Manual refresh: the user presses "更新" on the Asana tasks card. Rebuilds the
