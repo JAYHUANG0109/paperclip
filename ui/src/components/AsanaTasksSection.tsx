@@ -58,6 +58,10 @@ export function AsanaTasksSection({ companyId }: { companyId: string }) {
     onMutate: () => setRefreshing(true),
     onSuccess: (res) => {
       if (res.digest) queryClient.setQueryData<AsanaDigest>(DIGEST_KEY(companyId), res.digest);
+      // Reset per-row lifecycle so a freshly-pulled digest shows in full (any
+      // rows checked off before the refresh shouldn't stay hidden).
+      setRemoved(new Set());
+      setPhase({});
       setRefreshing(false);
     },
     onError: () => setRefreshing(false),
@@ -115,10 +119,16 @@ export function AsanaTasksSection({ companyId }: { companyId: string }) {
 
   const visible = (list: AsanaDigestTask[]) => (list ?? []).filter((tk) => !removed.has(tk.gid));
 
-  const hasAnything =
-    !!data && !data.empty && (visible(data.daily).length > 0 || visible(data.weekly).length > 0);
-  if (!hasAnything) return null;
+  // Show the widget whenever the user has a real Asana digest — NOT only when
+  // tasks remain. Otherwise, once everything is checked off the whole section
+  // (and its 更新 button) would vanish, leaving no way to pull in new tasks.
+  // Hidden only when there's no digest at all (no Asana connected / never ran).
+  const hasDigest = !!data && !data.empty;
+  if (!hasDigest) return null;
 
+  const dailyVisible = visible(data!.daily);
+  const weeklyVisible = visible(data!.weekly);
+  const hasVisibleTasks = dailyVisible.length > 0 || weeklyVisible.length > 0;
   const generated = data?.generatedAt ? new Date(data.generatedAt) : null;
 
   return (
@@ -156,28 +166,41 @@ export function AsanaTasksSection({ companyId }: { companyId: string }) {
           </button>
         </div>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <TaskCard
-          companyId={companyId}
-          icon={ListTodo}
-          title={t("asana.today", { defaultValue: "Today" })}
-          tasks={visible(data!.daily)}
-          emptyText={t("asana.noToday", { defaultValue: "Nothing due today. 🎉" })}
-          onToggle={onToggle}
-          onDecide={onDecide}
-          phase={phase}
-        />
-        <TaskCard
-          companyId={companyId}
-          icon={CalendarRange}
-          title={t("asana.thisWeek", { defaultValue: "This week" })}
-          tasks={visible(data!.weekly)}
-          emptyText={t("asana.noWeek", { defaultValue: "No tasks this week." })}
-          onToggle={onToggle}
-          onDecide={onDecide}
-          phase={phase}
-        />
-      </div>
+      {hasVisibleTasks ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <TaskCard
+            companyId={companyId}
+            icon={ListTodo}
+            title={t("asana.today", { defaultValue: "Today" })}
+            tasks={dailyVisible}
+            emptyText={t("asana.noToday", { defaultValue: "Nothing due today. 🎉" })}
+            onToggle={onToggle}
+            onDecide={onDecide}
+            phase={phase}
+          />
+          <TaskCard
+            companyId={companyId}
+            icon={CalendarRange}
+            title={t("asana.thisWeek", { defaultValue: "This week" })}
+            tasks={weeklyVisible}
+            emptyText={t("asana.noWeek", { defaultValue: "No tasks this week." })}
+            onToggle={onToggle}
+            onDecide={onDecide}
+            phase={phase}
+          />
+        </div>
+      ) : (
+        // All caught up — keep the card (and the 更新 button above) so the user
+        // can still pull in newly-assigned tasks.
+        <Card>
+          <CardContent className="flex items-center gap-2 px-5 py-4 text-sm text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+            {t("asana.allCaughtUp", {
+              defaultValue: "今日與本週的任務都完成了 🎉 — 按「更新」看看有沒有新任務。",
+            })}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

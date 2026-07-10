@@ -5785,7 +5785,8 @@
       "approved": "Approved",
       "rejected": "Rejected",
       "changes_requested": "Changes requested"
-    }
+    },
+    "allCaughtUp": "All caught up for today & this week 🎉 — tap 更新 to check for new tasks."
   },
   "founder": {
     "close": "Close",
