@@ -19,6 +19,10 @@ export interface AsanaDigestTask {
   completed: boolean;
   /** Short description preview (truncated). Optional/additive; null when absent. */
   notes: string | null;
+  /** Asana item type: default_task | milestone | approval. Null = unknown/legacy. */
+  resourceSubtype: string | null;
+  /** Approval-only verdict: pending | approved | rejected | changes_requested. */
+  approvalStatus: string | null;
 }
 
 export interface AsanaDigest {
@@ -72,6 +76,8 @@ function sanitizeTask(raw: unknown): AsanaDigestTask | null {
     completed: t.completed === true,
     // Keep the stored digest small — a short preview is enough; full text lives in Asana.
     notes: notesRaw ? notesRaw.trim().slice(0, 280) : null,
+    resourceSubtype: str(t.resourceSubtype),
+    approvalStatus: str(t.approvalStatus),
   };
 }
 
@@ -131,6 +137,31 @@ export async function setDigestTaskCompleted(
   if (!digest) return null;
   const apply = (list: AsanaDigestTask[]) =>
     (Array.isArray(list) ? list : []).map((t) => (t.gid === gid ? { ...t, completed } : t));
+  const next: AsanaDigest = { ...digest, daily: apply(digest.daily), weekly: apply(digest.weekly) };
+  md.asanaDigest = next;
+  await db.update(agents).set({ metadata: md, updatedAt: new Date() }).where(eq(agents.id, agentId));
+  return next;
+}
+
+/**
+ * Optimistically record an approval verdict on one stored digest item. Any of
+ * approved/rejected/changes_requested also completes it in Asana, so we flip
+ * `completed` to match (pending → reopened). Mirrors setDigestTaskCompleted.
+ */
+export async function setDigestTaskApproval(
+  db: Db,
+  agentId: string,
+  gid: string,
+  status: "pending" | "approved" | "rejected" | "changes_requested",
+): Promise<AsanaDigest | null> {
+  const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
+  const md = row?.metadata && typeof row.metadata === "object" ? { ...(row.metadata as Record<string, unknown>) } : null;
+  if (!md) return null;
+  const digest = md.asanaDigest as AsanaDigest | undefined;
+  if (!digest) return null;
+  const completed = status !== "pending";
+  const apply = (list: AsanaDigestTask[]) =>
+    (Array.isArray(list) ? list : []).map((t) => (t.gid === gid ? { ...t, approvalStatus: status, completed } : t));
   const next: AsanaDigest = { ...digest, daily: apply(digest.daily), weekly: apply(digest.weekly) };
   md.asanaDigest = next;
   await db.update(agents).set({ metadata: md, updatedAt: new Date() }).where(eq(agents.id, agentId));

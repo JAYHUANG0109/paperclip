@@ -37,6 +37,7 @@ export interface AsanaCalendarEvent {
   date: string; // YYYY-MM-DD (Asana due date)
   permalinkUrl?: string | null;
   completed?: boolean;
+  resourceSubtype?: string | null; // default_task | milestone | approval
 }
 
 export interface GoogleCalendarEvent {

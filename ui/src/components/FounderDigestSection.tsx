@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw, Send } from "lucide-react";
+import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw, Send, Diamond, Stamp } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { dashboardApi, type ConsoleKey, type DailyConsole, type FounderComment, type FounderConsolesResponse, type FounderDecision, type FounderItem } from "../api/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -408,6 +408,28 @@ function FounderRow({
         >
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
+        {/* Asana item-type glyph: 里程碑 (Milestone) / 核准 (Approval, status-tinted).
+            Regular tasks stay unmarked to avoid clutter in the category list. */}
+        {item.resourceSubtype === "milestone" ? (
+          <span className="mt-0.5 shrink-0" title={t("asana.typeMilestone", { defaultValue: "Milestone" })}>
+            <Diamond className="h-3.5 w-3.5 text-muted-foreground" />
+          </span>
+        ) : item.resourceSubtype === "approval" ? (
+          <span className="mt-0.5 shrink-0" title={t("asana.typeApproval", { defaultValue: "Approval" })}>
+            <Stamp
+              className={cn(
+                "h-3.5 w-3.5",
+                item.approvalStatus === "approved"
+                  ? "text-emerald-500"
+                  : item.approvalStatus === "rejected"
+                    ? "text-red-500"
+                    : item.approvalStatus === "changes_requested"
+                      ? "text-amber-500"
+                      : "text-muted-foreground/70",
+              )}
+            />
+          </span>
+        ) : null}
         {item.permalinkUrl ? (
           <a href={item.permalinkUrl} target="_blank" rel="noreferrer" className={cn("group min-w-0 flex-1 break-words [overflow-wrap:anywhere] hover:underline", item.closed && "text-muted-foreground line-through")}>
             {item.name}

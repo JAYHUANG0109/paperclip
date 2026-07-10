@@ -5770,7 +5770,22 @@
     "loadingComments": "Loading comments…",
     "commentsError": "Couldn't load comments.",
     "noComments": "No comments.",
-    "commentAuthorUnknown": "Someone"
+    "commentAuthorUnknown": "Someone",
+    "typeTask": "Task",
+    "typeMilestone": "Milestone",
+    "typeApproval": "Approval",
+    "markReached": "Mark milestone reached",
+    "approve": "Approve",
+    "requestChanges": "Request changes",
+    "reject": "Reject",
+    "detailType": "Type",
+    "detailApproval": "Approval",
+    "approval": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "changes_requested": "Changes requested"
+    }
   },
   "founder": {
     "close": "Close",

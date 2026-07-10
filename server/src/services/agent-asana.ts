@@ -346,6 +346,10 @@ export interface FounderPrepItem {
   hasExistingAiComment: boolean;
   comments: AsanaTaskComment[];
   subtasks: { name: string; completed: boolean }[];
+  /** Asana item type + approval verdict, surfaced so the console can badge each
+   *  item (任務 / 里程碑 / 核准) and tint approvals by status. */
+  resourceSubtype: string | null;
+  approvalStatus: string | null;
   /** #3 change-detection: set by the /prep endpoint when this item is unchanged
    *  since the last run (same gid + modifiedAt) and prior text exists. The agent
    *  copies reuseSummary/reuseReview verbatim instead of regenerating. */
@@ -367,7 +371,7 @@ async function fetchSectionIncompleteTasks(token: string, sectionGid: string): P
   const body = await asanaGetJson(
     token,
     `/tasks?section=${encodeURIComponent(sectionGid)}&completed_since=now` +
-      `&opt_fields=name,notes,permalink_url,modified_at,completed&limit=100`,
+      `&opt_fields=name,notes,permalink_url,modified_at,completed,resource_subtype,approval_status&limit=100`,
   );
   return Array.isArray(body?.data) ? (body.data as Record<string, unknown>[]) : [];
 }
@@ -415,6 +419,8 @@ export async function buildFounderDigestPrep(
         hasExistingAiComment: false,
         comments: [],
         subtasks: [],
+        resourceSubtype: typeof task.resource_subtype === "string" ? task.resource_subtype : null,
+        approvalStatus: typeof task.approval_status === "string" ? task.approval_status : null,
       };
       // Decision items get the full deterministic prep. Meetings/reminders keep
       // only the light fields (name/notes/link) the agent needs for prep text.
@@ -495,7 +501,7 @@ export async function buildAsanaDigestBody(
   const utl = await asanaGetJson(t.token, `/users/me/user_task_list?workspace=${encodeURIComponent(t.defaultWorkspace)}&opt_fields=gid`);
   const listGid = (utl?.data as { gid?: string } | undefined)?.gid;
   if (!listGid) return null;
-  const q = "opt_fields=name,completed,due_on,permalink_url,projects.name,notes&limit=100&completed_since=now";
+  const q = "opt_fields=name,completed,due_on,permalink_url,projects.name,notes,resource_subtype,approval_status&limit=100&completed_since=now";
   const res = await asanaGetJson(t.token, `/user_task_lists/${encodeURIComponent(listGid)}/tasks?${q}`);
   if (!res) return null;
   const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
@@ -514,6 +520,11 @@ export async function buildAsanaDigestBody(
       priority: null,
       completed: false,
       commentCount: 0,
+      // Asana item type: default_task | milestone | approval. Drives the row's
+      // interaction affordances (complete vs. milestone vs. 3-way approval).
+      resourceSubtype: typeof r.resource_subtype === "string" ? r.resource_subtype : null,
+      // Approval-only: pending | approved | rejected | changes_requested.
+      approvalStatus: typeof r.approval_status === "string" ? r.approval_status : null,
     }));
 
   // Comment counts for the collapsed task rows: token-free (direct REST, no LLM)
@@ -568,6 +579,37 @@ export async function setAsanaTaskCompleted(
       method: "PUT",
       headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ data: { completed } }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export type AsanaApprovalStatus = "pending" | "approved" | "rejected" | "changes_requested";
+
+/**
+ * Set the approval verdict on an Asana APPROVAL-type task, using the agent's OWN
+ * token. In Asana, `approval_status` ∈ {approved, rejected, changes_requested}
+ * also marks the approval complete; `pending` reopens it. This is the person
+ * acting on their own approval from the dashboard — never an AI auto-decision.
+ * Returns false on read-only token / API failure.
+ */
+export async function setAsanaApprovalStatus(
+  db: Db,
+  companyId: string,
+  agentId: string,
+  taskGid: string,
+  status: AsanaApprovalStatus,
+): Promise<boolean> {
+  const t = await tokenFor(db, companyId, agentId);
+  if (!t || t.readOnly) return false;
+  try {
+    const res = await fetch(`${ASANA_API}/tasks/${encodeURIComponent(taskGid)}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: { approval_status: status } }),
       signal: AbortSignal.timeout(10_000),
     });
     return res.ok;

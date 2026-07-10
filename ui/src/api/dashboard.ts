@@ -12,7 +12,13 @@ export interface AsanaDigestTask {
   notes?: string | null;
   /** Comment count baked into the digest so collapsed rows show it without a per-task fetch. */
   commentCount?: number;
+  /** Asana item type: default_task | milestone | approval. */
+  resourceSubtype?: string | null;
+  /** Approval-only: pending | approved | rejected | changes_requested. */
+  approvalStatus?: string | null;
 }
+
+export type AsanaApprovalStatus = "pending" | "approved" | "rejected" | "changes_requested";
 
 export interface AsanaDigest {
   generatedAt: string | null;
@@ -54,6 +60,8 @@ export interface FounderItem {
   comments: FounderComment[];
   subtasks?: { name: string; completed: boolean }[];
   closed: boolean;
+  resourceSubtype?: string | null;
+  approvalStatus?: string | null;
 }
 export interface FounderDigest {
   generatedAt: string | null;
@@ -127,6 +135,11 @@ export const dashboardApi = {
     api.post<{ ok: boolean; confirmed: boolean; digest: AsanaDigest | null }>(
       `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/complete`,
       { completed },
+    ),
+  approveAsanaTask: (companyId: string, gid: string, status: AsanaApprovalStatus) =>
+    api.post<{ ok: boolean; confirmed: boolean; digest: AsanaDigest | null }>(
+      `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/approval`,
+      { status },
     ),
   asanaTaskComments: (companyId: string, gid: string) =>
     api.get<{ comments: AsanaTaskComment[]; count: number }>(

@@ -52,6 +52,8 @@ export interface FounderItem {
   comments: FounderComment[]; // discussion thread (Asana stories + founder replies)
   subtasks?: FounderSubtask[]; // Asana subtasks of the task, if any (議題/子項清單)
   closed: boolean; // 結案 — used by meetings/reminders (no draft to approve, just "done")
+  resourceSubtype?: string | null; // Asana item type: default_task | milestone | approval
+  approvalStatus?: string | null; // approval-only: pending | approved | rejected | changes_requested
   /**
    * When the outer public task links to a restricted private task (a "Private link"
    * in Asana), the agent sets this to the inner task's GID. All comment writes
@@ -255,6 +257,8 @@ function sanitizeItem(raw: unknown): FounderItem | null {
     comments: sanitizeComments(t.comments),
     ...(sanitizeSubtasks(t.subtasks).length ? { subtasks: sanitizeSubtasks(t.subtasks) } : {}),
     closed: t.closed === true,
+    ...(typeof t.resourceSubtype === "string" ? { resourceSubtype: t.resourceSubtype } : {}),
+    ...(typeof t.approvalStatus === "string" ? { approvalStatus: t.approvalStatus } : {}),
     ...(commentTargetGid ? { commentTargetGid } : {}),
     ...(typeof t.modifiedAt === "string" && t.modifiedAt.trim() ? { modifiedAt: t.modifiedAt.trim().slice(0, 40) } : {}),
   };

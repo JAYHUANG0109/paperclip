@@ -5770,7 +5770,22 @@
     "loadingComments": "載入留言中…",
     "commentsError": "無法載入留言。",
     "noComments": "沒有留言。",
-    "commentAuthorUnknown": "某人"
+    "commentAuthorUnknown": "某人",
+    "typeTask": "任務",
+    "typeMilestone": "里程碑",
+    "typeApproval": "核准",
+    "markReached": "標記里程碑已達成",
+    "approve": "核准",
+    "requestChanges": "要求變更",
+    "reject": "拒絕",
+    "detailType": "類型",
+    "detailApproval": "審批狀態",
+    "approval": {
+      "pending": "待批准",
+      "approved": "已核准",
+      "rejected": "已拒絕",
+      "changes_requested": "已要求變更"
+    }
   },
   "founder": {
     "close": "結案",

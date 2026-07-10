@@ -10,6 +10,7 @@ import {
   writeAsanaDigestForAgent,
   resolveOwnAgentId,
   setDigestTaskCompleted,
+  setDigestTaskApproval,
 } from "../services/asana-digest.js";
 import {
   writeFounderDigestForAgent,
@@ -32,7 +33,7 @@ import {
 } from "../services/founder-digest.js";
 import { randomUUID } from "node:crypto";
 import { logger } from "../middleware/logger.js";
-import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
+import { buildAsanaDigestBody, getAsanaTaskComments, postAsanaComment, setAsanaTaskCompleted, setAsanaApprovalStatus, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
 import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
@@ -259,6 +260,36 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       return;
     }
     const digest = await setDigestTaskCompleted(db, agentId, gid, completed);
+    res.json({ ok: true, confirmed: true, digest });
+  });
+
+  // Set the approval verdict on one of the caller's OWN Asana APPROVAL tasks.
+  // Same server-direct model as /complete: writes to Asana with the user's own
+  // token (this is the person deciding their own approval from the dashboard —
+  // never an AI auto-decision), then reflects it in the stored digest. Any of
+  // approved/rejected/changes_requested also completes the approval in Asana.
+  router.post("/companies/:companyId/asana-digest/tasks/:gid/approval", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const gid = req.params.gid as string;
+    assertCompanyAccess(req, companyId);
+    const status = (req.body as { status?: unknown })?.status;
+    if (status !== "approved" && status !== "rejected" && status !== "changes_requested" && status !== "pending") {
+      res.status(400).json({ ok: false, error: "Invalid approval status." });
+      return;
+    }
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account to act on Asana." });
+      return;
+    }
+    const ok = await setAsanaApprovalStatus(db, companyId, agentId, gid, status);
+    if (!ok) {
+      res.status(502).json({ ok: false, confirmed: false, error: "Could not update the approval in Asana." });
+      return;
+    }
+    const digest = await setDigestTaskApproval(db, agentId, gid, status);
     res.json({ ok: true, confirmed: true, digest });
   });
 

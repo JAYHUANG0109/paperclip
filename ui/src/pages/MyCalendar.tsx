@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { CalendarDays, ChevronLeft, ChevronRight, AlertTriangle, Search } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, AlertTriangle, Search, Diamond, Stamp } from "lucide-react";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { dashboardApi } from "../api/dashboard";
@@ -45,6 +45,8 @@ type CalIssue = Pick<Issue, "id" | "title" | "status" | "priority" | "dueDate"> 
   asanaUrl?: string | null;
   /** When set, this row is a Google Calendar event and links out to Google. */
   googleUrl?: string | null;
+  /** Asana item type (default_task | milestone | approval) → chip glyph. */
+  resourceSubtype?: string | null;
 };
 
 /* ---------- Issue chip (shared by week + list) ---------- */
@@ -56,18 +58,25 @@ function IssueChip({ issue }: { issue: CalIssue }) {
     "flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-1 text-xs no-underline transition-colors hover:bg-accent",
     done ? "text-muted-foreground line-through" : "text-foreground",
   );
-  const dot = (
-    <span
-      className={cn(
-        "h-1.5 w-1.5 shrink-0 rounded-full",
-        issue.googleUrl
-          ? "bg-emerald-500"
-          : issue.asanaUrl
-            ? "bg-sky-500"
-            : PRIORITY_DOT[issue.priority] ?? "bg-neutral-400",
-      )}
-    />
-  );
+  // Asana milestone/approval rows get a type glyph in place of the priority dot,
+  // so the item type reads at a glance on the calendar just like in the task list.
+  const dot =
+    issue.resourceSubtype === "milestone" ? (
+      <Diamond className="h-3 w-3 shrink-0 text-sky-500" />
+    ) : issue.resourceSubtype === "approval" ? (
+      <Stamp className="h-3 w-3 shrink-0 text-sky-500" />
+    ) : (
+      <span
+        className={cn(
+          "h-1.5 w-1.5 shrink-0 rounded-full",
+          issue.googleUrl
+            ? "bg-emerald-500"
+            : issue.asanaUrl
+              ? "bg-sky-500"
+              : PRIORITY_DOT[issue.priority] ?? "bg-neutral-400",
+        )}
+      />
+    );
   // Asana tasks + Google events deep-link out; native issues go to the detail page.
   if (issue.googleUrl || issue.asanaUrl) {
     return (
@@ -320,6 +329,7 @@ export function MyCalendar() {
           date: tk.dueOn as string,
           permalinkUrl: tk.permalinkUrl,
           completed: tk.completed,
+          resourceSubtype: tk.resourceSubtype,
         })),
     [digest],
   );
@@ -332,6 +342,7 @@ export function MyCalendar() {
         priority: "medium",
         dueDate: ev.date,
         asanaUrl: ev.permalinkUrl,
+        resourceSubtype: ev.resourceSubtype,
       })),
     [asanaEvents],
   );
