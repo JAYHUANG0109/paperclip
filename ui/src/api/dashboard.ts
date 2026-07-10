@@ -157,6 +157,11 @@ export const dashboardApi = {
     api.get<AsanaTaskDetail>(
       `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/detail`,
     ),
+  commentAsanaTask: (companyId: string, gid: string, text: string) =>
+    api.post<{ ok: boolean; comments: AsanaTaskComment[]; count: number }>(
+      `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/comment`,
+      { text },
+    ),
   asanaTaskComments: (companyId: string, gid: string) =>
     api.get<{ comments: AsanaTaskComment[]; count: number }>(
       `/companies/${companyId}/asana-digest/tasks/${encodeURIComponent(gid)}/comments`,

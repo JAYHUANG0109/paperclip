@@ -5788,7 +5788,11 @@
     },
     "allCaughtUp": "今日與本週的任務都完成了 🎉 — 按「更新」看看有沒有新任務。",
     "subtasks": "子任務",
-    "loadingDetail": "載入中…"
+    "loadingDetail": "載入中…",
+    "description": "描述",
+    "commentPlaceholder": "留言…（將以你的身分張貼到 Asana）",
+    "postComment": "送出",
+    "commentPostError": "送出失敗，請再試一次。"
   },
   "founder": {
     "close": "結案",

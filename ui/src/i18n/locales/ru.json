@@ -5788,7 +5788,11 @@
     },
     "allCaughtUp": "All caught up for today & this week 🎉 — tap 更新 to check for new tasks.",
     "subtasks": "Subtasks",
-    "loadingDetail": "Loading…"
+    "loadingDetail": "Loading…",
+    "description": "Description",
+    "commentPlaceholder": "Comment… (posted to Asana as you)",
+    "postComment": "Post",
+    "commentPostError": "Couldn't post — try again."
   },
   "founder": {
     "close": "Close",

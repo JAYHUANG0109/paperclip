@@ -337,6 +337,34 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     res.json(detail);
   });
 
+  // Post a comment on one of the caller's OWN tasks — server-direct with their
+  // OWN token (posts to Asana AS them, not the AI). Zero LLM tokens. Returns the
+  // refreshed comment list so the UI updates immediately.
+  router.post("/companies/:companyId/asana-digest/tasks/:gid/comment", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const gid = req.params.gid as string;
+    assertCompanyAccess(req, companyId);
+    const text = (req.body as { text?: unknown })?.text;
+    if (typeof text !== "string" || !text.trim()) {
+      res.status(400).json({ ok: false, error: "Comment text is required." });
+      return;
+    }
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account to comment on Asana." });
+      return;
+    }
+    const ok = await postAsanaComment(db, companyId, agentId, gid, text.trim());
+    if (!ok) {
+      res.status(502).json({ ok: false, error: "Could not post the comment to Asana." });
+      return;
+    }
+    const comments = (await getAsanaTaskComments(db, companyId, agentId, gid)) ?? [];
+    res.json({ ok: true, comments, count: comments.length });
+  });
+
   // Manual refresh: the user presses "更新" on the Asana tasks card. Rebuilds the
   // digest server-side using the caller's OWN Asana token — no LLM, no agent
   // wakeup. Returns the fresh digest in the response so the UI can update

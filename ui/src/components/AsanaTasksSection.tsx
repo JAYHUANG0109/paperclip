@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarRange, Check, CheckCircle2, ChevronRight, Circle, Diamond, ExternalLink, ListTodo, Loader2, MessageSquare, RotateCcw, Stamp, X, XCircle } from "lucide-react";
+import { CalendarRange, Check, CheckCircle2, ChevronRight, Circle, Diamond, ExternalLink, ListTodo, Loader2, MessageSquare, RotateCcw, Send, Stamp, X, XCircle } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { dashboardApi, type AsanaApprovalStatus, type AsanaDigest, type AsanaDigestTask } from "../api/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -307,6 +307,35 @@ function AsanaTaskRow({
   // per-row fetch); once the row is opened, the freshly-loaded exact count wins.
   const commentCount = comments.data?.count ?? task.commentCount;
 
+  // Manual comment composer — posts to Asana AS the user (their own token,
+  // server-direct, zero LLM tokens), then refreshes this task's comment list.
+  const queryClient = useQueryClient();
+  const [commentText, setCommentText] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState(false);
+  const postComment = async () => {
+    const text = commentText.trim();
+    if (!text || posting) return;
+    setPosting(true);
+    setPostError(false);
+    try {
+      const res = await dashboardApi.commentAsanaTask(companyId, task.gid, text);
+      if (res.ok) {
+        queryClient.setQueryData(["asana-task-comments", companyId, task.gid], {
+          comments: res.comments,
+          count: res.count,
+        });
+        setCommentText("");
+      } else {
+        setPostError(true);
+      }
+    } catch {
+      setPostError(true);
+    } finally {
+      setPosting(false);
+    }
+  };
+
   useEffect(() => {
     if (open) setEverOpened(true);
   }, [open]);
@@ -456,15 +485,11 @@ function AsanaTaskRow({
       </div>
 
       {open && (
-        <div className="ml-[26px] mt-2 space-y-3">
-          {/* Full description (untruncated once detail loads; digest preview until then) */}
-          {description && (
-            <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{description}</p>
-          )}
-          <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-xs">
-            <DetailRow label={t("asana.detailStatus", { defaultValue: "Status" })} value={task.completed ? t("asana.statusDone", { defaultValue: "Completed" }) : t("asana.statusOpen", { defaultValue: "Open" })} />
-            <DetailRow
-              label={t("asana.detailType", { defaultValue: "Type" })}
+        <div className="ml-[26px] mt-2 space-y-4 rounded-lg border border-border/70 bg-muted/20 p-3">
+          {/* Metadata — compact wrapping chips instead of a stacked label/value list */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <MetaChip
+              icon={type === "milestone" ? Diamond : type === "approval" ? Stamp : Circle}
               value={
                 type === "milestone"
                   ? t("asana.typeMilestone", { defaultValue: "Milestone" })
@@ -473,48 +498,65 @@ function AsanaTaskRow({
                     : t("asana.typeTask", { defaultValue: "Task" })
               }
             />
+            <MetaChip
+              label={t("asana.detailStatus", { defaultValue: "Status" })}
+              value={task.completed ? t("asana.statusDone", { defaultValue: "Completed" }) : t("asana.statusOpen", { defaultValue: "Open" })}
+              valueClass={task.completed ? "text-emerald-600 dark:text-emerald-400" : undefined}
+            />
             {type === "approval" && task.approvalStatus && (
-              <DetailRow
+              <MetaChip
                 label={t("asana.detailApproval", { defaultValue: "Approval" })}
-                value={
-                  <span className={cn("font-medium", APPROVAL_TINT[task.approvalStatus] ?? "")}>
-                    {t(`asana.approval.${task.approvalStatus}`, { defaultValue: task.approvalStatus })}
-                  </span>
-                }
+                value={t(`asana.approval.${task.approvalStatus}`, { defaultValue: task.approvalStatus })}
+                valueClass={APPROVAL_TINT[task.approvalStatus]}
               />
             )}
-            {task.projectName && <DetailRow label={t("asana.detailProject", { defaultValue: "Project" })} value={task.projectName} />}
-            {task.priority && <DetailRow label={t("asana.detailPriority", { defaultValue: "Priority" })} value={task.priority} />}
-            {due && <DetailRow label={t("asana.detailDue", { defaultValue: "Due" })} value={due.toLocaleDateString()} />}
+            {due && <MetaChip icon={CalendarRange} value={due.toLocaleDateString(undefined, { month: "numeric", day: "numeric" })} />}
+            {task.projectName && <MetaChip label={t("asana.detailProject", { defaultValue: "Project" })} value={task.projectName} />}
+            {task.priority && prClass && (
+              <span className={cn("inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-medium", prClass)}>{task.priority}</span>
+            )}
             {task.permalinkUrl && (
-              <DetailRow
-                label={t("asana.detailLink", { defaultValue: "Link" })}
-                value={
-                  <a href={task.permalinkUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                    {t("asana.openInAsana", { defaultValue: "Open in Asana" })}
-                  </a>
-                }
-              />
+              <a
+                href={task.permalinkUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-primary transition-colors hover:bg-accent"
+              >
+                <ExternalLink className="h-3 w-3" />
+                {t("asana.openInAsana", { defaultValue: "Open in Asana" })}
+              </a>
             )}
-          </dl>
+          </div>
+
+          {/* Description */}
+          {description && (
+            <section className="space-y-1">
+              <SectionLabel>{t("asana.description", { defaultValue: "Description" })}</SectionLabel>
+              <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/80">{description}</p>
+            </section>
+          )}
 
           {/* Subtasks (loaded on demand). Each links out to Asana like the parent. */}
           {(subtasks.length > 0 || detail.isLoading) && (
-            <div className="space-y-1.5">
-              <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                <ListTodo className="h-3 w-3" />
+            <section className="space-y-1.5">
+              <SectionLabel icon={ListTodo}>
                 {t("asana.subtasks", { defaultValue: "Subtasks" })}
-                {subtasks.length > 0 && <span className="tabular-nums">· {subtasks.length}</span>}
-              </p>
+                {subtasks.length > 0 && (
+                  <span className="tabular-nums">
+                    {" "}
+                    {subtasks.filter((s) => s.completed).length}/{subtasks.length}
+                  </span>
+                )}
+              </SectionLabel>
               {detail.isLoading ? (
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   {t("asana.loadingDetail", { defaultValue: "Loading…" })}
                 </p>
               ) : (
-                <ul className="space-y-1">
+                <ul className="divide-y divide-border/60 overflow-hidden rounded-md border border-border/60">
                   {subtasks.map((s) => (
-                    <li key={s.gid} className="flex items-center gap-1.5 text-xs">
+                    <li key={s.gid} className="flex items-center gap-2 bg-background/40 px-2.5 py-1.5 text-xs">
                       {s.completed ? (
                         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                       ) : (
@@ -542,16 +584,15 @@ function AsanaTaskRow({
                   ))}
                 </ul>
               )}
-            </div>
+            </section>
           )}
 
-          {/* Comments (loaded on demand, server-direct) */}
-          <div className="space-y-1.5">
-            <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              <MessageSquare className="h-3 w-3" />
+          {/* Comments (loaded on demand, server-direct) + composer */}
+          <section className="space-y-2">
+            <SectionLabel icon={MessageSquare}>
               {t("asana.comments", { defaultValue: "Comments" })}
-              {typeof commentCount === "number" && <span className="tabular-nums">· {commentCount}</span>}
-            </p>
+              {typeof commentCount === "number" && <span className="tabular-nums"> {commentCount}</span>}
+            </SectionLabel>
             {comments.isLoading ? (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -562,32 +603,105 @@ function AsanaTaskRow({
             ) : (comments.data?.comments.length ?? 0) === 0 ? (
               <p className="text-xs text-muted-foreground">{t("asana.noComments", { defaultValue: "No comments." })}</p>
             ) : (
-              <ul className="space-y-2">
-                {comments.data!.comments.map((c) => (
-                  <li key={c.id} className="rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-xs font-medium text-foreground">{c.author ?? t("asana.commentAuthorUnknown", { defaultValue: "Someone" })}</span>
-                      {c.createdAt && (
-                        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{new Date(c.createdAt).toLocaleDateString()}</span>
-                      )}
-                    </div>
-                    <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{c.text}</p>
-                  </li>
-                ))}
+              <ul className="space-y-2.5">
+                {comments.data!.comments.map((c) => {
+                  const who = c.author ?? t("asana.commentAuthorUnknown", { defaultValue: "Someone" });
+                  return (
+                    <li key={c.id} className="flex gap-2">
+                      <Avatar name={who} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="truncate text-xs font-medium text-foreground">{who}</span>
+                          {c.createdAt && (
+                            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                              {new Date(c.createdAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 whitespace-pre-wrap break-words rounded-lg rounded-tl-sm bg-muted/60 px-2.5 py-1.5 text-xs text-foreground/80">
+                          {c.text}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
-          </div>
+
+            {/* Composer — posts to Asana AS the user (their token, zero LLM tokens). */}
+            <div className="flex items-end gap-2 pt-1">
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    void postComment();
+                  }
+                }}
+                rows={1}
+                placeholder={t("asana.commentPlaceholder", { defaultValue: "留言…（將以你的身分張貼到 Asana）" })}
+                className="min-h-[34px] flex-1 resize-y rounded-md border border-border bg-background px-2.5 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={() => void postComment()}
+                disabled={posting || !commentText.trim()}
+                className="inline-flex h-[34px] shrink-0 items-center gap-1 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {posting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                {t("asana.postComment", { defaultValue: "送出" })}
+              </button>
+            </div>
+            {postError && (
+              <p className="text-[11px] text-red-500">
+                {t("asana.commentPostError", { defaultValue: "Couldn't post — try again." })}
+              </p>
+            )}
+          </section>
         </div>
       )}
     </li>
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+// A compact metadata chip: optional icon, optional dim label, then the value.
+function MetaChip({
+  icon: Icon,
+  label,
+  value,
+  valueClass,
+}: {
+  icon?: typeof Circle;
+  label?: string;
+  value: React.ReactNode;
+  valueClass?: string;
+}) {
   return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-foreground">{value}</dd>
-    </>
+    <span className="inline-flex max-w-[16rem] items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px]">
+      {Icon && <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />}
+      {label && <span className="shrink-0 text-muted-foreground">{label}</span>}
+      <span className={cn("truncate font-medium text-foreground", valueClass)}>{value}</span>
+    </span>
+  );
+}
+
+// A small uppercase section header with an optional leading icon.
+function SectionLabel({ icon: Icon, children }: { icon?: typeof Circle; children: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      {Icon && <Icon className="h-3 w-3" />}
+      {children}
+    </p>
+  );
+}
+
+// An initial-in-a-circle avatar for comment authors (no external image needed).
+function Avatar({ name }: { name: string }) {
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground">
+      {initial}
+    </span>
   );
 }
