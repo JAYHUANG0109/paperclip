@@ -4,7 +4,14 @@ import { assertValidLocaleMessages } from "./locale-validation";
 
 export const DEFAULT_LOCALE = "en" as const;
 
-const localeModules = import.meta.glob("./locales/*.json", {
+// Only the locales the app can actually select (AppLocale = "en" | "zh-TW";
+// see resolveLocale.ts and the language switcher). The repo ships ~40 language
+// files (~328 KB each) that no UI path can ever reach — globbing them all in
+// `eager` mode bundled ~13 MB of unreachable JSON straight into the entry chunk,
+// which dominated first-load time. Restricting the glob to the two real locales
+// keeps the simple synchronous init while cutting the entry by ~12 MB. Add a
+// pattern here (and to AppLocale) if a new language is genuinely wired up.
+const localeModules = import.meta.glob(["./locales/en.json", "./locales/zh-TW.json"], {
   eager: true,
   import: "default",
 }) as Record<string, unknown>;

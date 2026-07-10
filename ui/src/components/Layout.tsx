@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "@/i18n";
 import { Outlet, useLocation, useNavigate, useNavigationType, useParams } from "@/lib/router";
@@ -19,6 +19,7 @@ import { WorktreeBanner } from "./WorktreeBanner";
 import { DevRestartBanner } from "./DevRestartBanner";
 import { StandaloneBrowserControls } from "./StandaloneBrowserControls";
 import { RouteErrorBoundary } from "./RouteErrorBoundary";
+import { PageSkeleton } from "./PageSkeleton";
 import { SidebarShell } from "./SidebarShell";
 import { SecondarySidebar } from "./SecondarySidebar";
 import { SidebarAccountMenu } from "./SidebarAccountMenu";
@@ -600,7 +601,12 @@ export function Layout() {
                 />
               ) : (
                 <RouteErrorBoundary>
-                  <Outlet />
+                  {/* Page chunks are code-split (React.lazy), so a page suspends
+                      here while its chunk loads. Skeleton fills only the content
+                      area — the sidebar and chrome stay put. */}
+                  <Suspense fallback={<PageSkeleton />}>
+                    <Outlet />
+                  </Suspense>
                 </RouteErrorBoundary>
               )}
             </main>
