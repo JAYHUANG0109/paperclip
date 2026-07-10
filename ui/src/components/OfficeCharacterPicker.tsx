@@ -47,6 +47,8 @@ export function OfficeCharacterPicker({ agent, companyId, open, onClose }: {
     mutationFn: (characterId: string) => agentsApi.setOfficeCharacter(agent!.id, characterId, companyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
+      // The office floor/catalog render from the roster, not agents.list.
+      queryClient.invalidateQueries({ queryKey: ["office-roster", companyId] });
       onClose();
     },
   });

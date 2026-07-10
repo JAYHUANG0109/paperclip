@@ -118,6 +118,10 @@ function agentPath(id: string, companyId?: string, suffix = "") {
 
 export const agentsApi = {
   list: (companyId: string) => api.get<Agent[]>(`/companies/${companyId}/agents`),
+  // Company-wide Virtual Office roster: ALL agents, display-safe (no access
+  // filter). Used to populate the office floor + catalog for every user;
+  // interaction (查看代理人) stays gated by myVisibleAgents.
+  officeRoster: (companyId: string) => api.get<Agent[]>(`/companies/${companyId}/agents/office-roster`),
   mine: (companyId: string) => api.get<Agent[]>(`/companies/${companyId}/agents/mine`),
   org: (companyId: string) => api.get<OrgNode[]>(`/companies/${companyId}/org`),
   listConfigurations: (companyId: string) =>

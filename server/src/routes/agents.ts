@@ -1552,6 +1552,28 @@ export function agentRoutes(
     };
   }
 
+  // Display-safe projection for the company-wide Virtual Office roster: EVERY
+  // user sees every agent on the floor / catalog, but only the fields needed to
+  // render them. Strips config (adapterConfig/runtimeConfig) AND narrows
+  // metadata to a whitelist — metadata otherwise carries private founderDigest /
+  // asanaDigest / console content that must NOT leak company-wide. Access-gated
+  // detail (the 查看代理人 button → full agent) stays behind visibleAgentIds.
+  const OFFICE_METADATA_KEYS = ["teams", "team", "officeCharacterId", "officeAvatarUrl"] as const;
+  function redactForRosterView(agent: Awaited<ReturnType<typeof svc.getById>>) {
+    if (!agent) return null;
+    const md = agent.metadata && typeof agent.metadata === "object" ? (agent.metadata as Record<string, unknown>) : {};
+    const safeMeta: Record<string, unknown> = {};
+    for (const key of OFFICE_METADATA_KEYS) {
+      if (key in md) safeMeta[key] = md[key];
+    }
+    return {
+      ...agent,
+      adapterConfig: {},
+      runtimeConfig: {},
+      metadata: safeMeta,
+    };
+  }
+
   function redactAgentConfiguration(agent: Awaited<ReturnType<typeof svc.getById>>) {
     if (!agent) return null;
     return {
@@ -2141,6 +2163,18 @@ export function agentRoutes(
     const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
     const ids = userId ? [...(await visibleAgentIds(companyId, userId))] : [];
     res.json({ privileged: false, agentIds: ids });
+  });
+
+  // Company-wide Virtual Office roster: ALL agents, display-safe, NO access
+  // filter — so the office floor + catalog are populated for every user. Only
+  // company membership is required; sensitive fields are stripped by
+  // redactForRosterView. Interacting with an agent (the 查看代理人 button) is
+  // still gated client-side by /my-visible-agents.
+  router.get("/companies/:companyId/agents/office-roster", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const all = await svc.list(companyId);
+    res.json(all.map((agent) => redactForRosterView(agent)));
   });
 
   router.get("/companies/:companyId/agents", async (req, res) => {

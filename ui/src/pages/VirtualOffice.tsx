@@ -66,9 +66,13 @@ export function VirtualOffice() {
   // populate, so navigating here finds a warm cache instead of rendering an
   // empty grid first and popping all the desks in — that cold-render cascade is
   // what made this page "twitch/flash" while others felt instant.
+  // Company-wide roster: EVERY agent is visible on the floor + catalog for every
+  // user (display-safe fields only). Interaction is still access-gated below via
+  // canViewAgent (myVisibleAgents) — that's what controls the 查看代理人 button.
+  // Distinct query key from the access-filtered agents.list used elsewhere.
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
+    queryKey: ["office-roster", selectedCompanyId],
+    queryFn: () => agentsApi.officeRoster(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
   const { data: liveRuns } = useQuery({
@@ -386,6 +390,8 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
+      // The office floor/catalog render from the roster, not agents.list.
+      queryClient.invalidateQueries({ queryKey: ["office-roster", companyId] });
     },
   });
 
