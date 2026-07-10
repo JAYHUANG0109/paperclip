@@ -205,7 +205,7 @@ async function learnCardActionUrl(ctx: PluginContext, headers: Record<string, st
 /** Build the DM "new task" reset action button for a given endpoint URL. */
 function newConversationButton(actionUrl: string) {
   return {
-    text: "＋ 開新任務 / New task",
+    text: "＋ 開新任務",
     actionUrl,
     parameters: [{ key: "fn", value: NEW_CONVERSATION_FN }]
   };
@@ -214,7 +214,7 @@ function newConversationButton(actionUrl: string) {
 /** Build the DM "my tasks" button — opens the recent-tasks picker on click. */
 function showTasksButton(actionUrl: string) {
   return {
-    text: "📋 我的任務 / My tasks",
+    text: "📋 我的任務",
     actionUrl,
     parameters: [{ key: "fn", value: SHOW_TASKS_FN }]
   };
@@ -255,11 +255,11 @@ async function postInteractionCard(
                   buttonList: {
                     buttons: [
                       {
-                        text: "✅ 確認 / Accept",
+                        text: "✅ 確認",
                         onClick: { action: { function: actionUrl, parameters: params("accept") } }
                       },
                       {
-                        text: "✳️ 需修改 / Request changes",
+                        text: "✳️ 需修改",
                         onClick: { action: { function: actionUrl, parameters: params("reject") } }
                       }
                     ]
@@ -411,8 +411,8 @@ async function postCheckboxCard(
           {
             buttonList: {
               buttons: [
-                { text: info.acceptLabel || "✅ 確認 / Confirm", onClick: { action: { function: actionUrl, parameters: base("accept") } } },
-                { text: info.rejectLabel || "✳️ 需修改 / Request changes", onClick: { action: { function: actionUrl, parameters: base("reject") } } }
+                { text: info.acceptLabel || "✅ 確認", onClick: { action: { function: actionUrl, parameters: base("accept") } } },
+                { text: info.rejectLabel || "✳️ 需修改", onClick: { action: { function: actionUrl, parameters: base("reject") } } }
               ]
             }
           }
@@ -450,7 +450,7 @@ async function postQuestionsFormCard(
   widgets.push({
     buttonList: {
       buttons: [{
-        text: info.submitLabel || "送出 / Submit",
+        text: info.submitLabel || "送出",
         onClick: {
           action: {
             function: actionUrl,
@@ -505,8 +505,8 @@ async function postSuggestTasksCard(
           {
             buttonList: {
               buttons: [
-                { text: "✅ 建立所選 / Create selected", onClick: { action: { function: actionUrl, parameters: base("accept") } } },
-                { text: "✳️ 不用了 / Decline", onClick: { action: { function: actionUrl, parameters: base("reject") } } }
+                { text: "✅ 建立所選", onClick: { action: { function: actionUrl, parameters: base("accept") } } },
+                { text: "✳️ 不用了", onClick: { action: { function: actionUrl, parameters: base("reject") } } }
               ]
             }
           }
@@ -532,7 +532,7 @@ async function postRecentTasksCard(
       text: t.title.slice(0, 120) || t.identifier,
       wrapText: true,
       button: {
-        text: "↩ 繼續 / Resume",
+        text: "↩ 繼續",
         onClick: {
           action: {
             function: actionUrl,
