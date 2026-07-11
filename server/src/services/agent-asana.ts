@@ -253,6 +253,76 @@ export async function autoPostFounderAiComments(
   return { posted, skipped, blocked };
 }
 
+/** Delete one Asana story (comment) as the agent. Only the story's author token
+ *  can delete it — which is exactly this agent's own token. Returns true on 200. */
+export async function deleteAsanaStory(
+  db: Db,
+  companyId: string,
+  agentId: string,
+  storyGid: string,
+): Promise<boolean> {
+  const t = await tokenFor(db, companyId, agentId);
+  if (!t || t.readOnly) return false;
+  try {
+    const res = await fetch(`${ASANA_API}/stories/${encodeURIComponent(storyGid)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${t.token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One-off cleanup: remove the AI auto-comments this agent posted to Asana for
+ * its founder/園長 console(s). Scans every task referenced by the agent's stored
+ * digests (the item gid AND its private-link inner task), finds stories carrying
+ * AI_DIGEST_COMMENT_MARKER, and deletes them with the agent's OWN token. Only
+ * marker comments are touched — human comments and task state are never altered.
+ * Dry-run unless `apply` is true. Returns a per-task report.
+ */
+export async function revertFounderAiCommentsForAgent(
+  db: Db,
+  companyId: string,
+  agentId: string,
+  opts: { apply: boolean },
+): Promise<{ scannedTasks: number; found: number; deleted: number; failed: number; details: Array<{ taskGid: string; storyGid: string; deleted: boolean }> }> {
+  const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
+  const md = row?.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : {};
+  const CONSOLE_KEYS = ["founderDigest", "principalDigest", "principalDigestZhengXitun"];
+  const taskGids = new Set<string>();
+  for (const key of CONSOLE_KEYS) {
+    const digest = md[key] as { categories?: Record<string, Array<{ gid?: unknown; commentTargetGid?: unknown }>> } | undefined;
+    const cats = digest?.categories;
+    if (!cats) continue;
+    for (const cat of ["urgent", "nonUrgent", "meetings", "reminders"]) {
+      for (const item of cats[cat] ?? []) {
+        if (typeof item.gid === "string") taskGids.add(item.gid);
+        if (typeof item.commentTargetGid === "string") taskGids.add(item.commentTargetGid);
+      }
+    }
+  }
+  const details: Array<{ taskGid: string; storyGid: string; deleted: boolean }> = [];
+  let found = 0, deleted = 0, failed = 0;
+  for (const taskGid of taskGids) {
+    const comments = await getAsanaTaskComments(db, companyId, agentId, taskGid);
+    if (!comments) continue;
+    for (const c of comments) {
+      if (!c.id || !c.text.includes(AI_DIGEST_COMMENT_MARKER)) continue;
+      found += 1;
+      let ok = false;
+      if (opts.apply) {
+        ok = await deleteAsanaStory(db, companyId, agentId, c.id);
+        if (ok) deleted += 1; else failed += 1;
+      }
+      details.push({ taskGid, storyGid: c.id, deleted: ok });
+    }
+  }
+  return { scannedTasks: taskGids.size, found, deleted, failed, details };
+}
+
 /** Post a comment (story) to an Asana task as the agent. Returns true on success. */
 export async function postAsanaComment(
   db: Db,
