@@ -287,11 +287,11 @@ export async function revertFounderAiCommentsForAgent(
   db: Db,
   companyId: string,
   agentId: string,
-  opts: { apply: boolean },
+  opts: { apply: boolean; consoleKeys?: string[] },
 ): Promise<{ scannedTasks: number; found: number; deleted: number; failed: number; details: Array<{ taskGid: string; storyGid: string; deleted: boolean }> }> {
   const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
   const md = row?.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : {};
-  const CONSOLE_KEYS = ["founderDigest", "principalDigest", "principalDigestZhengXitun"];
+  const CONSOLE_KEYS = opts.consoleKeys ?? ["founderDigest", "principalDigest", "principalDigestZhengXitun"];
   const taskGids = new Set<string>();
   for (const key of CONSOLE_KEYS) {
     const digest = md[key] as { categories?: Record<string, Array<{ gid?: unknown; commentTargetGid?: unknown }>> } | undefined;

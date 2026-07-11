@@ -11,11 +11,12 @@
  *
  * Run this ON THE LIVE HOST (the agents' Asana tokens live in the live DB):
  *   cd server
- *   npx tsx scripts/revert-founder-asana.ts <companyId>            # dry-run
- *   npx tsx scripts/revert-founder-asana.ts <companyId> --apply    # delete
+ *   npx tsx scripts/revert-founder-asana.ts <companyId>                    # dry-run, all consoles
+ *   npx tsx scripts/revert-founder-asana.ts <companyId> --founder-only     # dry-run, founder only
+ *   npx tsx scripts/revert-founder-asana.ts <companyId> --founder-only --apply   # delete founder's
  *
- * Pair with the pause switch (PAPERCLIP_FOUNDER_ASANA_PAUSED, default paused) so
- * nothing re-posts after cleanup.
+ * Automated re-posting stays off via PAPERCLIP_FOUNDER_AUTOPOST_PAUSED (default
+ * paused), so nothing re-posts after cleanup.
  */
 import { createDb, agents } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
@@ -23,9 +24,11 @@ import { revertFounderAiCommentsForAgent } from "../src/services/agent-asana.js"
 
 const COMPANY = process.argv[2];
 const APPLY = process.argv.includes("--apply");
+const FOUNDER_ONLY = process.argv.includes("--founder-only");
 const DB_URL = process.env.DATABASE_URL || process.env.SEED_DB_URL || "postgres://paperclip:paperclip@127.0.0.1:54329/paperclip";
 
-const CONSOLE_KEYS = ["founderDigest", "principalDigest", "principalDigestZhengXitun"];
+const ALL_CONSOLE_KEYS = ["founderDigest", "principalDigest", "principalDigestZhengXitun"];
+const CONSOLE_KEYS = FOUNDER_ONLY ? ["founderDigest"] : ALL_CONSOLE_KEYS;
 
 async function main() {
   if (!COMPANY) {
@@ -41,11 +44,12 @@ async function main() {
 
   console.log(`Mode: ${APPLY ? "APPLY (will delete)" : "DRY-RUN (no changes)"}`);
   console.log(`Company: ${COMPANY}`);
-  console.log(`Founder/園長 console agents found: ${targets.length}\n`);
+  console.log(`Scope: ${FOUNDER_ONLY ? "founder console only" : "all founder/園長 consoles"}`);
+  console.log(`Console agents found: ${targets.length}\n`);
 
   let totalFound = 0, totalDeleted = 0, totalFailed = 0;
   for (const agent of targets) {
-    const report = await revertFounderAiCommentsForAgent(db, COMPANY, agent.id, { apply: APPLY });
+    const report = await revertFounderAiCommentsForAgent(db, COMPANY, agent.id, { apply: APPLY, consoleKeys: CONSOLE_KEYS });
     totalFound += report.found;
     totalDeleted += report.deleted;
     totalFailed += report.failed;

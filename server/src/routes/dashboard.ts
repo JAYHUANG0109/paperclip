@@ -50,15 +50,14 @@ import { routineService } from "../services/routines.js";
 import { assertCompanyAccess, assertPrivilegedMemberView } from "./authz.js";
 
 /**
- * Master kill-switch for founder/園長 console → Asana writes (auto AI-comment
- * posting AND the button-triggered decision / close / comment writes). PAUSED by
- * default — every founder/園長 side-effect on Asana is suppressed while the
- * dashboard still updates locally. Set PAPERCLIP_FOUNDER_ASANA_PAUSED=false to
- * re-enable. (Personal "My tasks" digest writes are unaffected — different code
- * path.)
+ * Kill-switch for the AUTOMATED founder/園長 Asana posting only — the AI
+ * summary/批閱草稿 comment auto-posted on every digest write. PAUSED by default.
+ * MANUAL, button-triggered writes (裁示 / 結案 / 手動留言) are NOT affected and
+ * keep working, as does the personal "My tasks" digest. Set
+ * PAPERCLIP_FOUNDER_AUTOPOST_PAUSED=false to re-enable automated posting.
  */
-function founderAsanaPaused(): boolean {
-  return process.env.PAPERCLIP_FOUNDER_ASANA_PAUSED !== "false";
+function founderAutoPostPaused(): boolean {
+  return process.env.PAPERCLIP_FOUNDER_AUTOPOST_PAUSED !== "false";
 }
 
 /**
@@ -552,7 +551,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       // fired and no AI comment was posted despite a finished run.
       const consoleKey = asConsoleKey((req.body as { console?: unknown })?.console);
       const agentId = req.actor.agentId;
-      if (consoleKey === "founder" && agentId && !founderAsanaPaused()) {
+      if (consoleKey === "founder" && agentId && !founderAutoPostPaused()) {
         const items = [...digest.categories.urgent, ...digest.categories.nonUrgent];
         void autoPostFounderAiComments(db, companyId, agentId, items)
           .then((r) =>
@@ -721,20 +720,18 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     }
     const enforcedCommentTargetGid = target.hasPrivateLink ? target.targetGid : null;
     const digest = await setFounderItemDecision(db, agentId, gid, decision, note);
-    // PAUSED: record the verdict on the dashboard but do NOT wake the agent to
-    // post the note / apply the decision on Asana.
-    if (!founderAsanaPaused()) {
-      await heartbeat.wakeup(agentId, {
-        source: "on_demand",
-        triggerDetail: "manual",
-        reason: "founder-review-item",
-        payload: { directive: "founder-review-item", taskGid: gid, commentTargetGid: enforcedCommentTargetGid, decision, note },
-        idempotencyKey: `founder-review:${gid}:${decision ?? "reset"}:${Math.floor(Date.now() / 60000)}`,
-        requestedByActorType: "user",
-        requestedByActorId: userId ?? null,
-      });
-    }
-    res.json({ ok: true, digest, paused: founderAsanaPaused() });
+    // Manual 裁示 — always applied (button-triggered by 唐姐 herself); the agent
+    // posts the note / applies the decision on Asana with her own token.
+    await heartbeat.wakeup(agentId, {
+      source: "on_demand",
+      triggerDetail: "manual",
+      reason: "founder-review-item",
+      payload: { directive: "founder-review-item", taskGid: gid, commentTargetGid: enforcedCommentTargetGid, decision, note },
+      idempotencyKey: `founder-review:${gid}:${decision ?? "reset"}:${Math.floor(Date.now() / 60000)}`,
+      requestedByActorType: "user",
+      requestedByActorId: userId ?? null,
+    });
+    res.json({ ok: true, digest });
   });
 
   // Mark a meeting/reminder item 結案 (done) or reopen it. Unlike 待批閱 items
@@ -758,31 +755,28 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     }
     const closed = (req.body as { closed?: unknown })?.closed !== false; // default true
     const digest = await setFounderItemClosed(db, agentId, gid, closed);
-    // PAUSED: clear the item off the dashboard but do NOT complete/reopen it on
-    // Asana (no server write, no agent wake).
-    if (!founderAsanaPaused()) {
-      // Apply to Asana immediately with the agent's own token (instant, no heartbeat
-      // wait). HARD privacy guard: complete the inner private task when the item is
-      // private-linked — never the public outer shell. If the private link can't be
-      // resolved, don't guess: hand off to the agent instead of touching the shell.
-      const item = await getFounderItemByGid(db, agentId, gid);
-      const target = await resolveFounderPostTargetGid(db, companyId, agentId, gid, item?.commentTargetGid ?? null);
-      const applied = target.hasPrivateLink && target.blocked
-        ? false
-        : await setAsanaTaskCompleted(db, companyId, agentId, target.targetGid ?? gid, closed);
-      if (!applied) {
-        await heartbeat.wakeup(agentId, {
-          source: "on_demand",
-          triggerDetail: "manual",
-          reason: "founder-close-item",
-          payload: { directive: "founder-close-item", taskGid: gid, commentTargetGid: target.hasPrivateLink ? target.targetGid : null, closed },
-          idempotencyKey: `founder-close:${gid}:${closed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
-          requestedByActorType: "user",
-          requestedByActorId: userId ?? null,
-        });
-      }
+    // Manual 結案 — always applied. Apply to Asana immediately with the agent's own
+    // token (instant, no heartbeat wait). HARD privacy guard: complete the inner
+    // private task when the item is private-linked — never the public outer shell.
+    // If the private link can't be resolved, don't guess: hand off to the agent
+    // instead of touching the shell.
+    const item = await getFounderItemByGid(db, agentId, gid);
+    const target = await resolveFounderPostTargetGid(db, companyId, agentId, gid, item?.commentTargetGid ?? null);
+    const applied = target.hasPrivateLink && target.blocked
+      ? false
+      : await setAsanaTaskCompleted(db, companyId, agentId, target.targetGid ?? gid, closed);
+    if (!applied) {
+      await heartbeat.wakeup(agentId, {
+        source: "on_demand",
+        triggerDetail: "manual",
+        reason: "founder-close-item",
+        payload: { directive: "founder-close-item", taskGid: gid, commentTargetGid: target.hasPrivateLink ? target.targetGid : null, closed },
+        idempotencyKey: `founder-close:${gid}:${closed ? "1" : "0"}:${Math.floor(Date.now() / 60000)}`,
+        requestedByActorType: "user",
+        requestedByActorId: userId ?? null,
+      });
     }
-    res.json({ ok: true, digest, paused: founderAsanaPaused() });
+    res.json({ ok: true, digest });
   });
 
   // Post a free-form comment to an item's thread — decision-independent (unlike
@@ -823,11 +817,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       return;
     }
     const commentTargetGid = target.hasPrivateLink ? target.targetGid : null;
-    // PAUSED: never post the founder/園長 comment to Asana (and don't wake the
-    // agent to do it). It stays a local-only pending reply on the dashboard.
-    const posted = founderAsanaPaused()
-      ? false
-      : await postAsanaComment(db, companyId, agentId, target.targetGid ?? gid, text);
+    const posted = await postAsanaComment(db, companyId, agentId, target.targetGid ?? gid, text);
     const id = `pending-${randomUUID()}`;
     const digest = await appendFounderItemComment(db, agentId, gid, {
       id,
@@ -837,7 +827,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       createdAt: new Date().toISOString(),
       ...(posted ? {} : { pending: true }),
     });
-    if (!posted && !founderAsanaPaused()) {
+    if (!posted) {
       await heartbeat.wakeup(agentId, {
         source: "on_demand",
         triggerDetail: "manual",
