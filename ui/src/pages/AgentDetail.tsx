@@ -115,6 +115,7 @@ import {
   isReadOnlyUnmanagedSkillEntry,
 } from "../lib/agent-skills-state";
 import { t as standaloneT, useTranslation } from "@/i18n";
+import { localizeCategory } from "@/lib/skill-i18n";
 
 async function loadDuplicateInstructionsBundle(
   agentId: string,
@@ -2671,9 +2672,11 @@ export function AgentSkillsTab({
     linkTo: string | null;
     readOnly: boolean;
     adapterEntry: AgentSkillEntry | null;
+    categories: string[];
   };
 
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const skillLang = i18n.language?.toLowerCase().startsWith("zh") ? "zh" : "en";
   const queryClient = useQueryClient();
   const [skillDraft, setSkillDraft] = useState<string[]>([]);
   const [lastSavedSkills, setLastSavedSkills] = useState<string[]>([]);
@@ -2776,6 +2779,7 @@ export function AgentSkillsTab({
           linkTo: `/skills/${skill.id}`,
           readOnly: false,
           adapterEntry: adapterEntryByKey.get(skill.key) ?? null,
+          categories: skill.categories ?? [],
         })),
     [adapterEntryByKey, companySkills],
   );
@@ -2796,6 +2800,7 @@ export function AgentSkillsTab({
             linkTo: companySkill ? `/skills/${companySkill.id}` : null,
             readOnly: false,
             adapterEntry: entry,
+            categories: companySkill?.categories ?? [],
           };
         }),
     [companySkillByKey, skillSnapshot],
@@ -2815,6 +2820,7 @@ export function AgentSkillsTab({
           linkTo: null,
           readOnly: true,
           adapterEntry: entry,
+          categories: [],
         })),
     [companySkillKeys, skillSnapshot],
   );
@@ -2975,6 +2981,20 @@ export function AgentSkillsTab({
               );
             };
 
+            // Group the equipped/optional skills into collapsible category
+            // "folders" so a large library (100+) is navigable instead of one
+            // flat scroll. Category slugs sort naturally (00-…, 01-…); an
+            // uncategorized bucket sinks to the bottom.
+            const optionalByCategory = new Map<string, SkillRow[]>();
+            for (const row of optionalSkillRows) {
+              const cat = row.categories[0] ?? "__uncategorized__";
+              if (!optionalByCategory.has(cat)) optionalByCategory.set(cat, []);
+              optionalByCategory.get(cat)!.push(row);
+            }
+            const sortedCategories = Array.from(optionalByCategory.keys()).sort((a, b) =>
+              a === b ? 0 : a === "__uncategorized__" ? 1 : b === "__uncategorized__" ? -1 : a.localeCompare(b),
+            );
+
             if (optionalSkillRows.length === 0 && requiredSkillRows.length === 0 && unmanagedSkillRows.length === 0) {
               return (
                 <section className="border-y border-border">
@@ -2988,8 +3008,25 @@ export function AgentSkillsTab({
             return (
               <>
                 {optionalSkillRows.length > 0 && (
-                  <section className="border-y border-border">
-                    {optionalSkillRows.map(renderSkillRow)}
+                  <section className="space-y-2">
+                    {sortedCategories.map((cat) => {
+                      const rows = optionalByCategory.get(cat)!;
+                      const label =
+                        cat === "__uncategorized__"
+                          ? t("agentDetail.skills.uncategorized", { defaultValue: "Uncategorized" })
+                          : localizeCategory(cat, skillLang);
+                      return (
+                        <details key={cat} className="overflow-hidden rounded-xl border border-border">
+                          <summary className="flex cursor-pointer select-none items-center justify-between gap-2 bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted/60">
+                            <span className="truncate">{label}</span>
+                            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                              {rows.length}
+                            </span>
+                          </summary>
+                          <div className="border-t border-border">{rows.map(renderSkillRow)}</div>
+                        </details>
+                      );
+                    })}
                   </section>
                 )}
 

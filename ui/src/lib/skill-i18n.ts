@@ -188,6 +188,18 @@ export const CATEGORY_ZH: Record<string, string> = {
   svg: "SVG",
   workflow: "工作流程",
   triage: "分流",
+  // Founder (唐富美) skill-library folders — mirror the source Skill/ folders.
+  "00-global-rules": "00 全域規則",
+  "01-teaching-plans": "01 教學與預想書",
+  "02-guidance-teacher-training": "02 輔導關懷與師訓",
+  "03-weekly-journal": "03 週誌系統",
+  "04-asana-digital-systems": "04 Asana 與數位系統",
+  "05-department-management": "05 部門管理",
+  "06-founder-meetings": "06 創辦人與會議",
+  "07-parent-comms-crisis": "07 家長溝通與危機",
+  "08-presentation-templates": "08 簡報版型",
+  "09-growth-awards-family": "09 成長藍圖獎項與家族",
+  "10-investment": "10 投資",
 };
 
 /** Localize a category/tag label. Falls back to the raw slug (English) in EN mode
