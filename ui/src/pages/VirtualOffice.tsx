@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users, Palette, LayoutGrid, Building2, Award } from "lucide-react";
+import { Wrench, Zap, ExternalLink, Clock, Trophy, Lock, Camera, RefreshCw, Users, LayoutGrid, Building2, Award } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useToastActions } from "../context/ToastContext";
@@ -14,7 +14,6 @@ import { OfficeAvatar } from "../components/OfficeAvatar";
 import { LivingOfficeFloor } from "../components/LivingOfficeFloor";
 import { MobileOfficeRooms } from "../components/MobileOfficeRooms";
 import { useIsMobile } from "../hooks/useIsMobile";
-import { OfficeCharacterPicker } from "../components/OfficeCharacterPicker";
 import { displayAgentName } from "../lib/agent-name";
 import { TeamFilterBar } from "../components/TeamFilterBar";
 import { ViewSwitchButton } from "../components/ViewSwitchButton";
@@ -382,7 +381,6 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const upload = useMutation({
     mutationFn: async (file: File) => {
       const asset = await assetsApi.uploadImage(companyId, file, "office-avatar");
@@ -462,17 +460,6 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
 
         {progression && <BadgeShelf progression={progression} full />}
 
-        {canManage && (
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent"
-          >
-            <Palette className="h-4 w-4" />
-            {t("office.changeCharacter", { defaultValue: "Change character" })}
-          </button>
-        )}
-
         {canView ? (
           <Link
             to={agentUrl(agent)}
@@ -489,13 +476,6 @@ function AgentModal({ agent, companyId, canManage, canView, working, skillCount,
           </div>
         )}
       </DialogContent>
-
-      <OfficeCharacterPicker
-        agent={pickerOpen ? agent : null}
-        companyId={companyId}
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-      />
     </Dialog>
   );
 }

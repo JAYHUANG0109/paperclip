@@ -391,6 +391,16 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen, userZo
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(a);
     }
+    // Explicit left→right seat order for specific agents within their room
+    // (overrides the default access-level ordering). Matched by name substring;
+    // anyone not listed keeps their existing order after the listed ones.
+    const SEAT_ORDER = ["Jay", "Jessica", "偉誠"];
+    const orderOf = (a: Agent) => {
+      const name = a.name ?? "";
+      const i = SEAT_ORDER.findIndex((s) => name.includes(s));
+      return i === -1 ? Number.POSITIVE_INFINITY : i;
+    };
+    for (const list of map.values()) list.sort((a, b) => orderOf(a) - orderOf(b));
     return map;
   }, [agents]);
 
