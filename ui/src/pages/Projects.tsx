@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowUpDown, Check, Hexagon, Plus } from "lucide-react";
+import { Card } from "@/components/ui/card";
 
 type ProjectSortField = "name" | "updated" | "created" | "targetDate";
 type ProjectSortDir = "asc" | "desc";
@@ -202,7 +203,7 @@ export function Projects() {
                     {t("projects.projectCount", { count: sectionProjects.length })}
                   </span>
                 </div>
-                <div className="border border-border">
+                <Card className="block py-0 overflow-hidden divide-y divide-border">
                   {sectionProjects.map((project) => {
                     const state = resourceMembershipState(membershipsQuery.data, "project", project.id);
                     const pending = membershipMutation.isPending &&
@@ -274,7 +275,7 @@ export function Projects() {
                       />
                     );
                   })}
-                </div>
+                </Card>
               </section>
             );
           })}

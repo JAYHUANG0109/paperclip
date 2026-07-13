@@ -3837,6 +3837,9 @@ export function CompanySkills() {
   const [uploadScope, setUploadScope] = useState<"company" | "team" | "private">("company");
   const [uploadTeams, setUploadTeams] = useState<string[]>([]);
   const [uploadEquip, setUploadEquip] = useState(true);
+  // Files chosen for upload are STAGED here first; the skill is only created when
+  // the user clicks the confirm button (so they set the scope before committing).
+  const [stagedUpload, setStagedUpload] = useState<File[]>([]);
   const uploadFilesRef = useRef<HTMLInputElement | null>(null);
   const uploadFolderRef = useRef<HTMLInputElement | null>(null);
   const parsedRoute = useMemo(() => parseSkillRoute(routePath), [routePath]);
@@ -4126,9 +4129,8 @@ export function CompanySkills() {
   // Feature: upload a skill from local files/folders. Reads SKILL.md + supporting
   // text files in the browser, creates the skill, then writes the rest via updateFile.
   // Uses existing endpoints (create + updateFile) — no backend change needed.
-  async function handleUploadSkillFiles(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0 || !selectedCompanyId) return;
-    const files = Array.from(fileList);
+  async function handleUploadSkillFiles(files: File[]) {
+    if (files.length === 0 || !selectedCompanyId) return;
 
     // Locate the SKILL.md (case-insensitive). Folder uploads expose webkitRelativePath.
     const relPath = (f: File) => (f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name);
@@ -4200,6 +4202,7 @@ export function CompanySkills() {
       });
     } finally {
       setUploading(false);
+      setStagedUpload([]);
       if (uploadFilesRef.current) uploadFilesRef.current.value = "";
       if (uploadFolderRef.current) uploadFolderRef.current.value = "";
     }
@@ -4599,7 +4602,7 @@ export function CompanySkills() {
   }
 
   const deleteSkill = useMutation({
-    mutationFn: () => companySkillsApi.delete(selectedCompanyId!, deleteTargetSkillId!),
+    mutationFn: (opts?: { force?: boolean }) => companySkillsApi.delete(selectedCompanyId!, deleteTargetSkillId!, opts),
     onSuccess: async (skill) => {
       closeDeleteDialog(false);
       setDisplayedDetail(null);
@@ -4698,15 +4701,29 @@ export function CompanySkills() {
             ) : null}
             {(deleteTargetDetail?.usedByAgents.length ?? 0) > 0 ? (
               <p className="text-muted-foreground">
-                Detach this skill from all agents to enable removal.
+                {t("companySkills.forceRemoveHint", { defaultValue: "You can detach it from all agents and remove it in one step below." })}
               </p>
             ) : null}
           </div>
           <DialogFooter>
             {(deleteTargetDetail?.usedByAgents.length ?? 0) > 0 ? (
-              <Button variant="ghost" onClick={() => closeDeleteDialog(false)}>
-                {t("common.close", { defaultValue: "Close" })}
-              </Button>
+              <>
+                <Button variant="ghost" onClick={() => closeDeleteDialog(false)} disabled={deleteSkill.isPending}>
+                  {t("common.close", { defaultValue: "Close" })}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteSkill.mutate({ force: true })}
+                  disabled={deleteSkill.isPending || !deleteTargetSkillId}
+                >
+                  {deleteSkill.isPending
+                    ? t("companySkills.removingSkill", { defaultValue: "Removing..." })
+                    : t("companySkills.detachAllAndRemove", {
+                        defaultValue: "Detach from all agents & remove ({{count}})",
+                        count: deleteTargetDetail?.usedByAgents.length ?? 0,
+                      })}
+                </Button>
+              </>
             ) : (
               <>
                 <Button variant="ghost" onClick={() => closeDeleteDialog(false)} disabled={deleteSkill.isPending}>
@@ -4941,8 +4958,8 @@ export function CompanySkills() {
                   disabled={uploading}
                   onClick={() => uploadFilesRef.current?.click()}
                 >
-                  {uploading ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
-                  {t("companySkills.uploadFiles", { defaultValue: "Upload files" })}
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                  {t("companySkills.chooseFiles", { defaultValue: "Choose files" })}
                 </Button>
                 <Button
                   size="sm"
@@ -4950,16 +4967,52 @@ export function CompanySkills() {
                   disabled={uploading}
                   onClick={() => uploadFolderRef.current?.click()}
                 >
-                  {uploading ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FolderUp className="mr-1.5 h-3.5 w-3.5" />}
-                  {t("companySkills.uploadFolder", { defaultValue: "Upload a folder" })}
+                  <FolderUp className="mr-1.5 h-3.5 w-3.5" />
+                  {t("companySkills.chooseFolder", { defaultValue: "Choose a folder" })}
                 </Button>
               </div>
+              {stagedUpload.length > 0 && (() => {
+                const relOf = (f: File) => (f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name);
+                const skillMd = stagedUpload.find((f) => relOf(f).toLowerCase().endsWith("skill.md"));
+                const detectedName = skillMd
+                  ? (relOf(skillMd).replace(/\/?[^/]*skill\.md$/i, "").split("/").pop() || skillMd.name)
+                  : null;
+                return (
+                  <div className="mt-2.5 rounded-md border border-border p-2.5">
+                    {skillMd ? (
+                      <div className="text-xs text-foreground">
+                        {t("companySkills.uploadStaged", { defaultValue: "Ready to create: {{name}}", name: detectedName ?? "—" })}
+                        <span className="ml-1 text-muted-foreground">
+                          {t("companySkills.uploadStagedFiles", { defaultValue: "({{count}} file(s))", count: stagedUpload.length })}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-destructive">
+                        {t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection must include a SKILL.md file." })}
+                      </div>
+                    )}
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <Button size="sm" variant="ghost" disabled={uploading} onClick={() => setStagedUpload([])}>
+                        {t("common.clear", { defaultValue: "Clear" })}
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={uploading || !skillMd}
+                        onClick={() => handleUploadSkillFiles(stagedUpload)}
+                      >
+                        {uploading ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                        {t("companySkills.createSkillConfirm", { defaultValue: "Create skill" })}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })()}
               <input
                 ref={uploadFilesRef}
                 type="file"
                 multiple
                 className="hidden"
-                onChange={(event) => handleUploadSkillFiles(event.target.files)}
+                onChange={(event) => { setStagedUpload(Array.from(event.target.files ?? [])); event.target.value = ""; }}
               />
               <input
                 ref={uploadFolderRef}
@@ -4969,7 +5022,7 @@ export function CompanySkills() {
                 directory=""
                 multiple
                 className="hidden"
-                onChange={(event) => handleUploadSkillFiles(event.target.files)}
+                onChange={(event) => { setStagedUpload(Array.from(event.target.files ?? [])); event.target.value = ""; }}
               />
             </div>
           </div>
