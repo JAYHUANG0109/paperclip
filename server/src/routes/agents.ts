@@ -2172,10 +2172,19 @@ export function agentRoutes(
     // their team without being able to edit unrelated agents. Only applies when
     // the acting agent IS this manager; privileged/board actors go through
     // assertCanUpdateAgent as before.
-    const managerSubtreeIds =
-      req.actor.type === "agent" && req.actor.agentId === manager.id
-        ? subtreeIdsUnder(manager.id)
-        : new Set<string>();
+    const actingAsManager = req.actor.type === "agent" && req.actor.agentId === manager.id;
+    // An agent may auto-equip a skill to its own reporting SUBTREE (the team it
+    // manages) AND to its SAME-LEVEL peers (agents sharing its supervisor).
+    // Distributing UPWARD to a supervisor is not auto — it needs the supervisor's
+    // approval (handled separately); such targets fall through to "forbidden" here.
+    const managerSubtreeIds = actingAsManager ? subtreeIdsUnder(manager.id) : new Set<string>();
+    const managerPeerIds = actingAsManager
+      ? new Set(
+          roster
+            .filter((a) => a.id !== manager.id && (a.reportsTo ?? null) === (manager.reportsTo ?? null))
+            .map((a) => a.id),
+        )
+      : new Set<string>();
 
     const requestedEntries = normalizeDesiredSkillSelections(skillKeys) ?? [];
     const actor = getActorInfo(req);
@@ -2195,7 +2204,7 @@ export function agentRoutes(
         } catch {
           // Fall through to the manager-chain check.
         }
-        if (!permitted && managerSubtreeIds.has(target.id)) permitted = true;
+        if (!permitted && (managerSubtreeIds.has(target.id) || managerPeerIds.has(target.id))) permitted = true;
         if (!permitted) {
           results.push({ agentId: targetId, name: target.name, status: "forbidden" });
           continue;

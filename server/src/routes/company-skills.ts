@@ -270,6 +270,25 @@ export function companySkillRoutes(db: Db) {
     }
   }
 
+  // Creating a NEW skill is open to everyone: any board member of the company,
+  // and any agent whose canCreateSkills is not explicitly false. (Editing or
+  // deleting EXISTING skills stays gated by assertCanMutateCompanySkills / grants.)
+  async function assertCanCreateCompanySkill(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") return; // membership implies create rights
+    if (!req.actor.agentId) {
+      throw forbidden("Agent authentication required");
+    }
+    const actorAgent = await agents.getById(req.actor.agentId);
+    if (!actorAgent || actorAgent.companyId !== companyId) {
+      throw forbidden("Agent key cannot access another company");
+    }
+    const permissions = actorAgent.permissions as Record<string, unknown> | null | undefined;
+    if (permissions && typeof permissions === "object" && permissions.canCreateSkills === false) {
+      throw forbidden("This agent is not allowed to create skills (canCreateSkills is disabled).");
+    }
+  }
+
   router.get("/skills/catalog", async (req, res) => {
     assertAuthenticated(req);
     const query = catalogSkillListQuerySchema.parse({
@@ -1002,9 +1021,7 @@ export function companySkillRoutes(db: Db) {
     validate(companySkillCreateSchema),
     async (req, res) => {
       const companyId = req.params.companyId as string;
-      await assertCanMutateCompanySkills(req, companyId, skillMutationTargets({
-        slug: req.body.slug,
-      }));
+      await assertCanCreateCompanySkill(req, companyId);
       const result = await svc.createLocalSkill(companyId, req.body, skillActor(req), { isPrivileged: isPrivilegedMemberViewer(req, companyId, true) });
 
       const actor = getActorInfo(req);
