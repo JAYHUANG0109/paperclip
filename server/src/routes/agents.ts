@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Db } from "@paperclipai/db";
-import { agents as agentsTable, companies, heartbeatRuns, issues as issuesTable, projects as projectsTable } from "@paperclipai/db";
+import { agentMemberships, agents as agentsTable, companies, heartbeatRuns, issues as issuesTable, projects as projectsTable } from "@paperclipai/db";
 import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import {
   agentSkillSyncSchema,
@@ -2185,18 +2185,19 @@ export function agentRoutes(
             .map((a) => a.id),
         )
       : new Set<string>();
-    // Supervisors = the manager's ancestor chain (reportsTo, then ITS reportsTo, …).
-    // Distributing UP to a supervisor is not auto-equipped: it creates an approval
-    // the supervisor must accept before the skill lands.
-    const managerAncestorIds = new Set<string>();
-    if (actingAsManager) {
-      const byId = new Map(roster.map((a) => [a.id, a]));
-      let cursor = manager.reportsTo ?? null;
-      while (cursor && !managerAncestorIds.has(cursor)) {
-        managerAncestorIds.add(cursor);
-        cursor = byId.get(cursor)?.reportsTo ?? null;
-      }
-    }
+    // Owner users of an agent (the humans it's mapped to) — used to route an
+    // upward-distribution approval to the RECIPIENT's own user(s) to accept.
+    const ownerUserIdsOf = async (agentId: string): Promise<string[]> => {
+      const rows = await db
+        .select({ userId: agentMemberships.userId })
+        .from(agentMemberships)
+        .where(and(
+          eq(agentMemberships.companyId, manager.companyId),
+          eq(agentMemberships.agentId, agentId),
+          eq(agentMemberships.state, "joined"),
+        ));
+      return Array.from(new Set(rows.map((r) => r.userId)));
+    };
 
     const requestedEntries = normalizeDesiredSkillSelections(skillKeys) ?? [];
     const actor = getActorInfo(req);
@@ -2218,26 +2219,26 @@ export function agentRoutes(
         }
         if (!permitted && (managerSubtreeIds.has(target.id) || managerPeerIds.has(target.id))) permitted = true;
         if (!permitted) {
-          // Upward (to a supervisor): don't equip — request the supervisor's approval.
-          if (managerAncestorIds.has(target.id)) {
-            const approval = await approvalsSvc.create(manager.companyId, {
-              type: "skill_distribution",
-              requestedByAgentId: manager.id,
-              requestedByUserId: null,
-              status: "pending",
-              payload: {
-                skillKeys,
-                mode,
-                targetAgentId: target.id,
-                targetAgentName: target.name,
-                distributedByAgentId: manager.id,
-                distributedByAgentName: manager.name,
-              },
-            });
-            results.push({ agentId: targetId, name: target.name, status: "pending_approval", detail: `approval:${approval.id}` });
-            continue;
-          }
-          results.push({ agentId: targetId, name: target.name, status: "forbidden" });
+          // Not my team and not a peer → this target is above/outside my level.
+          // Don't equip: route an approval to the RECIPIENT's own user(s) — they
+          // accept the skill themselves. The skill lands only on their approval.
+          const approverUserIds = await ownerUserIdsOf(target.id);
+          const approval = await approvalsSvc.create(manager.companyId, {
+            type: "skill_distribution",
+            requestedByAgentId: manager.id,
+            requestedByUserId: null,
+            status: "pending",
+            payload: {
+              skillKeys,
+              mode,
+              targetAgentId: target.id,
+              targetAgentName: target.name,
+              distributedByAgentId: manager.id,
+              distributedByAgentName: manager.name,
+              approverUserIds,
+            },
+          });
+          results.push({ agentId: targetId, name: target.name, status: "pending_approval", detail: `approval:${approval.id}` });
           continue;
         }
         // Union with the target's current skills unless explicitly replacing.

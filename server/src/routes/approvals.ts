@@ -20,7 +20,7 @@ import {
   secretService,
 } from "../services/index.js";
 import { readPaperclipSkillSyncPreference, writePaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, getActorInfo, hasBoardOrgAccess } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
@@ -49,6 +49,18 @@ export function approvalRoutes(
   const svc = approvalService(db);
   const access = accessService(db);
   const agentsSvc = agentService(db);
+
+  // A skill_distribution request may only be resolved by the RECIPIENT's own
+  // user(s) (payload.approverUserIds) — or an org admin as a fallback. Other
+  // approval types are unaffected (board resolves as before).
+  function canResolveSkillDistribution(req: Request, approval: { type: string; payload: Record<string, unknown> }): boolean {
+    if (approval.type !== "skill_distribution") return true;
+    const raw = approval.payload.approverUserIds;
+    const approverUserIds = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
+    const actingUserId = req.actor.userId ?? null;
+    if (actingUserId && approverUserIds.includes(actingUserId)) return true;
+    return hasBoardOrgAccess(req);
+  }
 
   // On approving a skill_distribution request, equip the skill to the target
   // (supervisor) agent — the upward-distribution flow: an agent asks to add a
@@ -223,8 +235,13 @@ export function approvalRoutes(
   router.post("/approvals/:id/approve", validate(resolveApprovalSchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
-    if (!(await requireApprovalAccess(req, id))) {
+    const existingApproval = await requireApprovalAccess(req, id);
+    if (!existingApproval) {
       res.status(404).json({ error: "Approval not found" });
+      return;
+    }
+    if (!canResolveSkillDistribution(req, existingApproval)) {
+      res.status(403).json({ error: "Only the skill recipient (or an admin) can approve this request." });
       return;
     }
     const decidedByUserId = req.actor.userId ?? "board";
@@ -326,8 +343,13 @@ export function approvalRoutes(
   router.post("/approvals/:id/reject", validate(resolveApprovalSchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
-    if (!(await requireApprovalAccess(req, id))) {
+    const existingApproval = await requireApprovalAccess(req, id);
+    if (!existingApproval) {
       res.status(404).json({ error: "Approval not found" });
+      return;
+    }
+    if (!canResolveSkillDistribution(req, existingApproval)) {
+      res.status(403).json({ error: "Only the skill recipient (or an admin) can reject this request." });
       return;
     }
     const decidedByUserId = req.actor.userId ?? "board";

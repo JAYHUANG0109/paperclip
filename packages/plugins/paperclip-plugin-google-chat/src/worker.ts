@@ -1282,6 +1282,7 @@ const plugin = definePlugin({
           interactionPayload?: {
             title?: string | null;
             prompt?: string | null;
+            detailsMarkdown?: string | null;
             submitLabel?: string | null;
             acceptLabel?: string | null;
             rejectLabel?: string | null;
@@ -1313,9 +1314,16 @@ const plugin = definePlugin({
 
         if (actionUrl && kind === "request_confirmation") {
           mode = "confirm";
+          // Carry the ACTUAL context so the recipient knows what they're confirming —
+          // the interaction's prompt/details, plus a link to open the task. Without
+          // this the card was a bare "Needs your confirmation" with no content.
+          const contextText = [p.interactionSummary, pl.prompt, pl.detailsMarkdown]
+            .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+            .join("\n\n");
+          const link = p.issueUrl ? `\n\n🔗 <${p.issueUrl}|開啟任務 / Open task>` : "";
           await postInteractionCard(ctx, config, space, {
-            title: p.interactionTitle ?? "需要你確認 / Needs your confirmation",
-            summary: p.interactionSummary ?? "",
+            title: p.interactionTitle ?? pl.title ?? "需要你確認 / Needs your confirmation",
+            summary: (contextText || "請開啟任務查看詳情 / Open the task for details") + link,
             ...common
           });
         } else if (actionUrl && kind === "ask_user_questions" && (pl.questions?.length ?? 0) > 0) {
