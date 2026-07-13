@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Db } from "@paperclipai/db";
-import { agentMemberships, agents as agentsTable, companies, heartbeatRuns, issues as issuesTable, projects as projectsTable } from "@paperclipai/db";
+import { agentMemberships, agents as agentsTable, authUsers, companies, heartbeatRuns, issues as issuesTable, projects as projectsTable } from "@paperclipai/db";
 import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import {
   agentSkillSyncSchema,
@@ -2547,7 +2547,26 @@ export function agentRoutes(
       });
       return;
     }
-    res.json(await buildAgentDetail(agent));
+    // Surface the *owner* (responsible user) so the agent can distinguish who
+    // it belongs to (the Paperclip SSO user) from the worker/engine account it
+    // runs on (its runtime userEmail / claudeAccountConfigDirs). Without this,
+    // "which email are you?" gets answered with the engine login, which is
+    // confusing — the two are deliberately decoupled.
+    const ownerUserId = req.actor.onBehalfOfUserId ?? null;
+    const owner = ownerUserId
+      ? await db
+          .select({ id: authUsers.id, email: authUsers.email, name: authUsers.name })
+          .from(authUsers)
+          .where(eq(authUsers.id, ownerUserId))
+          .then((rows) => rows[0] ?? null)
+      : null;
+    const detail = await buildAgentDetail(agent);
+    res.json({
+      ...detail,
+      responsibleUser: owner
+        ? { id: owner.id, email: owner.email, name: owner.name }
+        : null,
+    });
   });
 
   router.get("/agents/me/inbox-lite", async (req, res) => {
