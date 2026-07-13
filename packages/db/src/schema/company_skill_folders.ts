@@ -22,6 +22,8 @@ export const companySkillFolders = pgTable(
     scope: text("scope").$type<CompanySkillFolderScope>().notNull().default("company"),
     // For scope = "team": the team names allowed to see/use this folder.
     sharingTeams: text("sharing_teams").array().notNull().default([]),
+    // For scope = "private": extra user ids (besides the creator) who may see it.
+    sharedUserIds: text("shared_user_ids").array().notNull().default([]),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

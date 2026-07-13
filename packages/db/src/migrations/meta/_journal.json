@@ -1121,6 +1121,13 @@
       "when": 1782366112990,
       "tag": "9015_skill_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1782366113990,
+      "tag": "9016_skill_folder_members",
+      "breakpoints": true
     }
   ]
 }

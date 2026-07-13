@@ -6242,6 +6242,7 @@ export function companySkillService(db: Db) {
       name: row.name,
       scope: row.scope,
       sharingTeams: row.sharingTeams ?? [],
+      sharedUserIds: row.sharedUserIds ?? [],
       createdByUserId: row.createdByUserId,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -6258,16 +6259,19 @@ export function companySkillService(db: Db) {
     const sharingTeams = scope === "team"
       ? Array.from(new Set((input.sharingTeams ?? []).filter((t) => typeof t === "string" && t.trim()).map((t) => t.trim()))).slice(0, 50)
       : [];
+    const sharedUserIds = scope === "private"
+      ? Array.from(new Set((input.sharedUserIds ?? []).filter((u) => typeof u === "string" && u.trim()).map((u) => u.trim()))).slice(0, 200)
+      : [];
     const [inserted] = await db
       .insert(companySkillFolders)
-      .values({ companyId, name, scope, sharingTeams, createdByUserId })
+      .values({ companyId, name, scope, sharingTeams, sharedUserIds, createdByUserId })
       .onConflictDoNothing()
       .returning();
     if (inserted) return toFolder(inserted);
-    // Already exists → update its scope/teams (folder owner adjusting), return it.
+    // Already exists → update its scope/teams/members (folder owner adjusting), return it.
     const [updated] = await db
       .update(companySkillFolders)
-      .set({ scope, sharingTeams, updatedAt: new Date() })
+      .set({ scope, sharingTeams, sharedUserIds, updatedAt: new Date() })
       .where(and(eq(companySkillFolders.companyId, companyId), eq(companySkillFolders.name, name)))
       .returning();
     return toFolder(updated!);
@@ -6284,7 +6288,7 @@ export function companySkillService(db: Db) {
         if (!viewer || viewer.isPrivileged) return true;
         const isCreator = !!viewer.userId && row.createdByUserId === viewer.userId;
         if (row.scope === "company") return true;
-        if (row.scope === "private") return isCreator;
+        if (row.scope === "private") return isCreator || (!!viewer.userId && (row.sharedUserIds ?? []).includes(viewer.userId));
         // team
         return isCreator || (!!viewerTeams && (row.sharingTeams ?? []).some((t) => viewerTeams.has(t)));
       })

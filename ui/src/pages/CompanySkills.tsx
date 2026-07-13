@@ -1337,11 +1337,13 @@ function CategoryMultiSelect({
   value,
   onChange,
   placeholder,
+  onAddFolder,
 }: {
   options: string[];
   value: string[];
   onChange: (next: string[]) => void;
   placeholder: string;
+  onAddFolder?: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -1376,9 +1378,19 @@ function CategoryMultiSelect({
             })}
           </div>
           <div className="flex items-center justify-between border-t border-border px-2 py-1.5">
-            <span className="text-[11px] text-muted-foreground">
-              {t("companySkills.foldersSelectedCount", { defaultValue: "{{count}} selected", count: value.length })}
-            </span>
+            {onAddFolder ? (
+              <button
+                type="button"
+                onClick={() => { setOpen(false); onAddFolder(); }}
+                className="text-[11px] font-medium text-primary hover:underline"
+              >
+                + {t("companySkills.addFolder", { defaultValue: "Add folder" })}
+              </button>
+            ) : (
+              <span className="text-[11px] text-muted-foreground">
+                {t("companySkills.foldersSelectedCount", { defaultValue: "{{count}} selected", count: value.length })}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -1485,20 +1497,23 @@ function NewFolderDialog({
   onClose,
   onSubmit,
   availableTeams,
+  memberOptions,
   isPending,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (payload: CompanySkillFolderCreateRequest) => void;
   availableTeams: string[];
+  memberOptions: { id: string; label: string }[];
   isPending: boolean;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [scope, setScope] = useState<CompanySkillFolderScope>("company");
   const [teams, setTeams] = useState<string[]>([]);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
   useEffect(() => {
-    if (!open) { setName(""); setScope("company"); setTeams([]); }
+    if (!open) { setName(""); setScope("company"); setTeams([]); setMemberIds([]); }
   }, [open]);
   const valid = name.trim().length > 0 && (scope !== "team" || teams.length > 0);
   return (
@@ -1557,12 +1572,25 @@ function NewFolderDialog({
               </div>
             )
           )}
+          {scope === "private" && (
+            <div>
+              <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+                {t("companySkills.folderShareWithUsers", { defaultValue: "Also visible to (private)" })}
+              </div>
+              <AgentMultiSelect
+                options={memberOptions}
+                value={memberIds}
+                onChange={setMemberIds}
+                placeholder={t("companySkills.folderShareWithUsersPlaceholder", { defaultValue: "Just me — add people…" })}
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={isPending}>{t("common.cancel", { defaultValue: "Cancel" })}</Button>
           <Button
             disabled={isPending || !valid}
-            onClick={() => onSubmit({ name: name.trim(), scope, sharingTeams: scope === "team" ? teams : [] })}
+            onClick={() => onSubmit({ name: name.trim(), scope, sharingTeams: scope === "team" ? teams : [], sharedUserIds: scope === "private" ? memberIds : [] })}
           >
             {isPending ? t("companySkills.creating", { defaultValue: "Creating..." }) : t("companySkills.createFolderBtn", { defaultValue: "Create folder" })}
           </Button>
@@ -1581,6 +1609,7 @@ function NewSkillWizard({
   availableTeams,
   existingCategories = [],
   shareAgents = [],
+  onAddFolder,
 }: {
   initialDraft: SkillCreateDraft;
   onCreate: (payload: CompanySkillCreateRequest) => void;
@@ -1590,6 +1619,7 @@ function NewSkillWizard({
   availableTeams: string[];
   existingCategories?: string[];
   shareAgents?: { id: string; label: string }[];
+  onAddFolder?: () => void;
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
@@ -1783,6 +1813,7 @@ function NewSkillWizard({
                   value={draft.categories}
                   onChange={(next) => patchDraft({ categories: next })}
                   placeholder={t("companySkills.chooseExistingFolders", { defaultValue: "Choose from existing folders…" })}
+                  onAddFolder={onAddFolder}
                 />
               </div>
             )}
@@ -4732,6 +4763,18 @@ export function CompanySkills() {
       .map((a) => ({ id: a.id, label: a.name ?? a.id.slice(0, 8) })),
     [agentsQuery.data],
   );
+  // Users offered in the "private folder → also visible to" picker.
+  const membersQuery = useQuery({
+    queryKey: ["company-members", selectedCompanyId],
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+  });
+  const memberOptions = useMemo(
+    () => (membersQuery.data?.members ?? [])
+      .filter((m) => m.status === "active")
+      .map((m) => ({ id: m.principalId, label: m.user?.name ?? m.user?.email ?? m.principalId.slice(0, 8) })),
+    [membersQuery.data],
+  );
 
   const installedByKey = useMemo(
     () => new Map(installedSkills.map((skill) => [skill.key, skill])),
@@ -5189,6 +5232,7 @@ export function CompanySkills() {
             isPending={createSkill.isPending}
             error={createError}
             onCancel={() => setCreateDialogOpen(false)}
+            onAddFolder={() => setFolderDialogOpen(true)}
           />
         </DialogContent>
       </Dialog>
@@ -5325,6 +5369,7 @@ export function CompanySkills() {
                     value={uploadCategories}
                     onChange={setUploadCategories}
                     placeholder={t("companySkills.folderAutoFilePlaceholder", { defaultValue: "Auto-file (or choose folders…)" })}
+                    onAddFolder={() => setFolderDialogOpen(true)}
                   />
                 )}
               </div>
@@ -5439,6 +5484,7 @@ export function CompanySkills() {
         onClose={() => setFolderDialogOpen(false)}
         onSubmit={(payload) => createFolder.mutate(payload)}
         availableTeams={availableTeams}
+        memberOptions={memberOptions}
         isPending={createFolder.isPending}
       />
 

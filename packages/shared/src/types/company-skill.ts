@@ -20,6 +20,7 @@ export interface CompanySkillFolder {
   name: string;
   scope: CompanySkillFolderScope;
   sharingTeams: string[];
+  sharedUserIds: string[];
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -28,6 +29,8 @@ export interface CompanySkillFolderCreateRequest {
   name: string;
   scope?: CompanySkillFolderScope;
   sharingTeams?: string[];
+  /** For scope = "private": extra user ids (besides the creator) who may see it. */
+  sharedUserIds?: string[];
 }
 
 export type CompanySkillListSort = "alphabetical" | "recent" | "installs" | "stars" | "agents" | "forks";
