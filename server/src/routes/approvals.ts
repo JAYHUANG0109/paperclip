@@ -13,11 +13,13 @@ import { logger } from "../middleware/logger.js";
 import {
   approvalService,
   accessService,
+  agentService,
   heartbeatService,
   issueApprovalService,
   logActivity,
   secretService,
 } from "../services/index.js";
+import { readPaperclipSkillSyncPreference, writePaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
@@ -46,6 +48,31 @@ export function approvalRoutes(
   const router = Router();
   const svc = approvalService(db);
   const access = accessService(db);
+  const agentsSvc = agentService(db);
+
+  // On approving a skill_distribution request, equip the skill to the target
+  // (supervisor) agent — the upward-distribution flow: an agent asks to add a
+  // skill to a supervisor; it lands only after the supervisor/board approves.
+  async function applySkillDistributionApproval(approval: { companyId: string; payload: Record<string, unknown> }) {
+    const payload = approval.payload;
+    const targetAgentId = typeof payload.targetAgentId === "string" ? payload.targetAgentId : null;
+    const skillKeys = Array.isArray(payload.skillKeys)
+      ? payload.skillKeys.filter((k): k is string => typeof k === "string" && k.trim().length > 0)
+      : [];
+    if (!targetAgentId || skillKeys.length === 0) return;
+    const target = await agentsSvc.getById(targetAgentId);
+    if (!target || target.companyId !== approval.companyId) return;
+    const config = (target.adapterConfig ?? {}) as Record<string, unknown>;
+    const pref = readPaperclipSkillSyncPreference(config);
+    const missing = skillKeys.filter((k) => !pref.desiredSkillEntries.some((e) => e.key === k));
+    if (missing.length === 0) return;
+    const nextEntries = [...pref.desiredSkillEntries, ...missing.map((key) => ({ key, versionId: null }))];
+    await agentsSvc.update(
+      targetAgentId,
+      { adapterConfig: writePaperclipSkillSyncPreference(config, nextEntries) },
+      { recordRevision: { createdByAgentId: null, createdByUserId: null, source: "skill-distribute-approved" } },
+    );
+  }
   const heartbeat = heartbeatService(db, {
     pluginWorkerManager: options.pluginWorkerManager,
   });
@@ -204,6 +231,13 @@ export function approvalRoutes(
     const { approval, applied } = await svc.approve(id, decidedByUserId, req.body.decisionNote);
 
     if (applied) {
+      if (approval.type === "skill_distribution") {
+        try {
+          await applySkillDistributionApproval(approval);
+        } catch (err) {
+          logger.warn({ err, approvalId: approval.id }, "skill_distribution approval: equip failed");
+        }
+      }
       const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
       const linkedIssueIds = linkedIssues.map((issue) => issue.id);
       const primaryIssueId = linkedIssueIds[0] ?? null;
