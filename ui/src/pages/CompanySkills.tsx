@@ -4835,6 +4835,18 @@ export function CompanySkills() {
       .filter((name) => canSeeRestrictedFolders || !/^\s*\d{2}[\s-]/.test(name))
       .sort((a, b) => a.localeCompare(b));
   }, [folderCategoryCounts, foldersQuery.data, canSeeRestrictedFolders]);
+  // Sidebar rail: skill-derived category counts PLUS any registered folder that
+  // has no skills yet (count 0) — so a just-created empty folder still appears.
+  const sidebarCategoryCounts = useMemo<DiscoveryCategory[]>(() => {
+    const present = new Set(folderCategoryCounts.map((c) => c.slug));
+    const extras = (foldersQuery.data ?? [])
+      .filter((f) => !present.has(f.name))
+      .filter((f) => canSeeRestrictedFolders || !/^\s*\d{2}[\s-]/.test(f.name))
+      .map((f) => ({ slug: f.name, count: 0 }));
+    return [...folderCategoryCounts, ...extras].sort(
+      (a, b) => b.count - a.count || a.slug.localeCompare(b.slug),
+    );
+  }, [folderCategoryCounts, foldersQuery.data, canSeeRestrictedFolders]);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const createFolder = useMutation({
     mutationFn: (payload: CompanySkillFolderCreateRequest) => companySkillsApi.createFolder(selectedCompanyId!, payload),
@@ -5493,7 +5505,7 @@ export function CompanySkills() {
           tab={discoveryTab}
           tabCounts={discoveryTabCounts}
           onTabChange={setDiscoveryTab}
-          categories={folderCategoryCounts}
+          categories={sidebarCategoryCounts}
           categoryTotal={discoveryTabCards.length}
           activeCategory={discoveryCategory}
           onCategoryChange={setDiscoveryCategory}
