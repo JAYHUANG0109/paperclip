@@ -27,6 +27,7 @@ function lazyPage<M, K extends keyof M>(loader: () => Promise<M>, key: K) {
 const Dashboard = lazyPage(() => import("./pages/Dashboard"), "Dashboard");
 const DashboardLive = lazyPage(() => import("./pages/DashboardLive"), "DashboardLive");
 const Timeline = lazyPage(() => import("./pages/Timeline"), "Timeline");
+const WhatNeedsMe = lazyPage(() => import("./pages/WhatNeedsMe"), "WhatNeedsMe");
 const Companies = lazyPage(() => import("./pages/Companies"), "Companies");
 const Agents = lazyPage(() => import("./pages/Agents"), "Agents");
 const AgentDetail = lazyPage(() => import("./pages/AgentDetail"), "AgentDetail");
@@ -103,6 +104,7 @@ function boardRoutes() {
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="dashboard/live" element={<DashboardLive />} />
       <Route path="timeline" element={<Timeline />} />
+      <Route path="decisions" element={<WhatNeedsMe />} />
       <Route path="onboarding" element={<OnboardingRoutePage />} />
       <Route path="companies" element={<Companies />} />
       <Route path="company/settings" element={<CompanySettings />} />

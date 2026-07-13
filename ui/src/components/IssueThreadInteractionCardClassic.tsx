@@ -1874,6 +1874,10 @@ export function IssueThreadInteractionCardClassic({
             onAcceptInteraction={onAcceptInteraction}
             onRejectInteraction={onRejectInteraction}
           />
+        ) : interaction.kind === "request_item_verdicts" ? (
+          // The classic card predates item-verdicts; the redesigned
+          // IssueThreadInteractionCard handles that kind. Skip here.
+          null
         ) : (
           <RequestConfirmationCard
             interaction={interaction}

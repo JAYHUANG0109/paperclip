@@ -42,7 +42,8 @@
     "newTask": "New Task",
     "leaderboard": "Leaderboard",
     "bounties": "Bounties",
-    "office": "Virtual Office"
+    "office": "Virtual Office",
+    "decisions": "Decisions"
   },
   "sort": {
     "top": "Top",

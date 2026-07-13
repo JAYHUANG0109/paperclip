@@ -42,7 +42,8 @@
     "newTask": "新增任務",
     "leaderboard": "排行榜",
     "bounties": "懸賞看板",
-    "office": "虛擬辦公室"
+    "office": "虛擬辦公室",
+    "decisions": "待決議"
   },
   "sort": {
     "top": "置頂",

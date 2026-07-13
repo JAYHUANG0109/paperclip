@@ -23,6 +23,7 @@ import {
   Lightbulb,
   Building2,
   Bot,
+  ListChecks,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "@/lib/router";
@@ -194,6 +195,7 @@ export function Sidebar() {
           {conferenceRoomChatEnabled ? (
             <SidebarNavItem to="/board-chat" label={t("nav.conferenceRoom", { defaultValue: "Conference Room" })} icon={MessagesSquare} />
           ) : null}
+          <SidebarNavItem to="/decisions" label={t("nav.decisions", { defaultValue: "Decisions" })} icon={ListChecks} />
         </div>
 
         <SidebarSection label={t("nav.work", { defaultValue: "Work" })}>
