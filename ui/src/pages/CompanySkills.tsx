@@ -4878,7 +4878,7 @@ export function CompanySkills() {
                 {t("companySkills.uploadFiles", { defaultValue: "Upload files" })}
               </div>
               <p className="mb-2.5 text-xs text-muted-foreground">
-                {t("companySkills.uploadSubtitle", { defaultValue: "Drop a SKILL.md (and its supporting files) to create a skill directly." })}
+                {t("companySkills.uploadSubtitle", { defaultValue: "Drop a SKILL.md (and its supporting files), or a .skill / .zip package, to create a skill directly." })}
               </p>
               {/* Sharing scope for the uploaded skill */}
               <div className="mb-2.5 flex gap-2">
