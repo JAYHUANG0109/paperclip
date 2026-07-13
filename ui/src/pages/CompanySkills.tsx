@@ -56,6 +56,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -1515,24 +1516,30 @@ function NewSkillWizard({
               </span>
             </label>
             {existingCategories.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {existingCategories.map((slug) => {
-                  const selected = draft.categories.includes(slug);
-                  return (
-                    <button
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="mb-2 h-8 w-full justify-between text-xs font-normal">
+                    <span className="truncate">
+                      {draft.categories.length === 0
+                        ? t("companySkills.chooseExistingFolders", { defaultValue: "Choose from existing folders…" })
+                        : draft.categories.join(", ")}
+                    </span>
+                    <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-h-64 w-64 overflow-y-auto">
+                  {existingCategories.map((slug) => (
+                    <DropdownMenuCheckboxItem
                       key={slug}
-                      type="button"
-                      onClick={() => patchDraft({ categories: selected ? draft.categories.filter((x) => x !== slug) : [...draft.categories, slug] })}
-                      className={cn(
-                        "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
-                        selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring",
-                      )}
+                      checked={draft.categories.includes(slug)}
+                      onCheckedChange={(on) => patchDraft({ categories: on ? [...draft.categories, slug] : draft.categories.filter((x) => x !== slug) })}
+                      onSelect={(e) => e.preventDefault()}
                     >
                       {slug}
-                    </button>
-                  );
-                })}
-              </div>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             <Input
               value={categoryDraft}
@@ -4859,7 +4866,7 @@ export function CompanySkills() {
       </Dialog>
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t("companySkills.importTitle", { defaultValue: "Add a skill" })}</DialogTitle>
             <DialogDescription>
@@ -4972,23 +4979,44 @@ export function CompanySkills() {
                 {discoveryCategoryCounts.length === 0 ? (
                   <p className="text-[11px] text-muted-foreground">{t("companySkills.noCategoriesYet", { defaultValue: "No categories yet." })}</p>
                 ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {discoveryCategoryCounts.map(({ slug }) => {
-                      const selected = uploadCategories.includes(slug);
-                      return (
-                        <button
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 w-full justify-between text-[11px] font-normal">
+                        <span className="truncate">
+                          {uploadCategories.length === 0
+                            ? t("companySkills.folderAutoFilePlaceholder", { defaultValue: "Auto-file (or choose folders…)" })
+                            : uploadCategories.join(", ")}
+                        </span>
+                        <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-64 w-64 overflow-y-auto">
+                      {discoveryCategoryCounts.map(({ slug }) => (
+                        <DropdownMenuCheckboxItem
                           key={slug}
-                          type="button"
-                          onClick={() => setUploadCategories((cur) => selected ? cur.filter((x) => x !== slug) : [...cur, slug])}
-                          className={cn(
-                            "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
-                            selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring",
-                          )}
+                          checked={uploadCategories.includes(slug)}
+                          onCheckedChange={(on) => setUploadCategories((cur) => on ? [...cur, slug] : cur.filter((x) => x !== slug))}
+                          onSelect={(e) => e.preventDefault()}
                         >
                           {slug}
-                        </button>
-                      );
-                    })}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                {uploadCategories.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {uploadCategories.map((slug) => (
+                      <button
+                        key={slug}
+                        type="button"
+                        onClick={() => setUploadCategories((cur) => cur.filter((x) => x !== slug))}
+                        className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-foreground"
+                        title={t("companySkills.removeFolder", { defaultValue: "Remove" })}
+                      >
+                        {slug} ✕
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
