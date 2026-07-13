@@ -33,6 +33,7 @@ import type {
 import { companySkillsApi } from "../api/companySkills";
 import { agentsApi } from "../api/agents";
 import { accessApi } from "../api/access";
+import { authApi } from "../api/auth";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
@@ -4563,6 +4564,15 @@ export function CompanySkills() {
       .map(([slug, count]) => ({ slug, count }))
       .sort((a, b) => b.count - a.count || a.slug.localeCompare(b.slug));
   }, [discoveryTabCards]);
+  // Restricted taxonomy: the numbered "NN …" folders are the founder's org scheme
+  // — only the founder + Jay may see/use them. Everyone else gets the folder rail
+  // and the create/upload pickers WITHOUT those entries.
+  const { data: authSession } = useQuery({ queryKey: queryKeys.auth.session, queryFn: () => authApi.getSession() });
+  const canSeeRestrictedFolders = ["tang@seasonart.org", "jay20020109@seasonart.org"]
+    .includes((authSession?.user?.email ?? "").trim().toLowerCase());
+  const folderCategoryCounts = canSeeRestrictedFolders
+    ? discoveryCategoryCounts
+    : discoveryCategoryCounts.filter((c) => !/^\s*\d{2}[\s-]/.test(c.slug));
   const visibleDiscoveryCards = useMemo(() => {
     const filtered = discoveryTabCards.filter((card) => {
       if (discoveryCategory && !card.categories.includes(discoveryCategory)) return false;
@@ -4941,7 +4951,7 @@ export function CompanySkills() {
           </DialogHeader>
           <NewSkillWizard
             availableTeams={availableTeams}
-            existingCategories={discoveryCategoryCounts.map((c) => c.slug)}
+            existingCategories={folderCategoryCounts.map((c) => c.slug)}
             initialDraft={createDraft}
             onCreate={(payload) => createSkill.mutate(payload)}
             isPending={createSkill.isPending}
@@ -5062,11 +5072,11 @@ export function CompanySkills() {
                     {t("companySkills.folderAutoHint", { defaultValue: "— leave blank to auto-file" })}
                   </span>
                 </div>
-                {discoveryCategoryCounts.length === 0 ? (
+                {folderCategoryCounts.length === 0 ? (
                   <p className="text-[11px] text-muted-foreground">{t("companySkills.noCategoriesYet", { defaultValue: "No categories yet." })}</p>
                 ) : (
                   <CategoryMultiSelect
-                    options={discoveryCategoryCounts.map(({ slug }) => slug)}
+                    options={folderCategoryCounts.map(({ slug }) => slug)}
                     value={uploadCategories}
                     onChange={setUploadCategories}
                     placeholder={t("companySkills.folderAutoFilePlaceholder", { defaultValue: "Auto-file (or choose folders…)" })}
@@ -5184,7 +5194,7 @@ export function CompanySkills() {
           tab={discoveryTab}
           tabCounts={discoveryTabCounts}
           onTabChange={setDiscoveryTab}
-          categories={discoveryCategoryCounts}
+          categories={folderCategoryCounts}
           categoryTotal={discoveryTabCards.length}
           activeCategory={discoveryCategory}
           onCategoryChange={setDiscoveryCategory}
