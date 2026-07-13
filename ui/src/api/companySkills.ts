@@ -8,6 +8,8 @@ import type {
   CompanySkillCommentCreateRequest,
   CompanySkillCommentUpdateRequest,
   CompanySkillCreateRequest,
+  CompanySkillFolder,
+  CompanySkillFolderCreateRequest,
   CompanySkillDetail,
   CompanySkillFileDetail,
   CompanySkillFileDeleteRequest,
@@ -205,6 +207,10 @@ export const companySkillsApi = {
       `/companies/${encodeURIComponent(companyId)}/skills`,
       payload,
     ),
+  listFolders: (companyId: string) =>
+    api.get<CompanySkillFolder[]>(`/companies/${encodeURIComponent(companyId)}/skill-folders`),
+  createFolder: (companyId: string, payload: CompanySkillFolderCreateRequest) =>
+    api.post<CompanySkillFolder>(`/companies/${encodeURIComponent(companyId)}/skill-folders`, payload),
   update: (companyId: string, skillId: string, payload: CompanySkillUpdateRequest) =>
     api.patch<CompanySkill>(
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}`,

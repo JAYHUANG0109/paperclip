@@ -25,6 +25,8 @@ import type {
   CompanySkillListItem,
   CompanySkillProjectScanResult,
   CompanySkillSharingScope,
+  CompanySkillFolderScope,
+  CompanySkillFolderCreateRequest,
   CompanySkillSourceBadge,
   CompanySkillTrustLevel,
   CompanySkillUpdateStatus,
@@ -90,6 +92,7 @@ import {
   AlertTriangle,
   ArrowUpCircle,
   Boxes,
+  FolderPlus,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -979,6 +982,7 @@ export function DiscoveryGrid({
   onCreate,
   onImport,
   onBrowseCatalog,
+  onAddFolder,
   onScan,
   scanPending,
   scanStatus,
@@ -1002,6 +1006,7 @@ export function DiscoveryGrid({
   onCreate: () => void;
   onImport: () => void;
   onBrowseCatalog: () => void;
+  onAddFolder: () => void;
   onScan: () => void;
   scanPending: boolean;
   scanStatus: string | null;
@@ -1137,6 +1142,10 @@ export function DiscoveryGrid({
               <DropdownMenuItem onSelect={onImport}>
                 <Globe className="mr-2 h-4 w-4" />
                 {t("companySkills.importFromPath", { defaultValue: "Upload file or URL" })}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onAddFolder}>
+                <FolderPlus className="mr-2 h-4 w-4" />
+                {t("companySkills.addFolder", { defaultValue: "Add folder" })}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1466,6 +1475,100 @@ function AgentMultiSelect({
         </div>
       )}
     </div>
+  );
+}
+
+// Create a scoped folder (company / team / private). Folders are stored in the
+// registry so they exist even before any skill is filed into them.
+function NewFolderDialog({
+  open,
+  onClose,
+  onSubmit,
+  availableTeams,
+  isPending,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (payload: CompanySkillFolderCreateRequest) => void;
+  availableTeams: string[];
+  isPending: boolean;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [scope, setScope] = useState<CompanySkillFolderScope>("company");
+  const [teams, setTeams] = useState<string[]>([]);
+  useEffect(() => {
+    if (!open) { setName(""); setScope("company"); setTeams([]); }
+  }, [open]);
+  const valid = name.trim().length > 0 && (scope !== "team" || teams.length > 0);
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("companySkills.addFolder", { defaultValue: "Add folder" })}</DialogTitle>
+          <DialogDescription>
+            {t("companySkills.addFolderSubtitle", { defaultValue: "Create a folder and choose who can see it." })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("companySkills.folderNamePlaceholder", { defaultValue: "Folder name" })}
+            className="h-9"
+          />
+          <div className="flex gap-2">
+            {(["company", "team", "private"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setScope(s)}
+                className={cn(
+                  "flex-1 rounded-md border px-2.5 py-1.5 text-xs",
+                  scope === s ? "border-foreground bg-accent/50 text-foreground" : "border-border text-muted-foreground",
+                )}
+              >
+                {s === "company"
+                  ? t("companySkills.scopePublic", { defaultValue: "Public" })
+                  : s === "team"
+                    ? t("companySkills.scopeTeam", { defaultValue: "Team" })
+                    : t("companySkills.scopePrivate", { defaultValue: "Private" })}
+              </button>
+            ))}
+          </div>
+          {scope === "team" && (
+            availableTeams.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t("companySkills.noTeams", { defaultValue: "You don't belong to any team yet." })}</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {availableTeams.map((team) => {
+                  const sel = teams.includes(team);
+                  return (
+                    <button
+                      key={team}
+                      type="button"
+                      onClick={() => setTeams((cur) => sel ? cur.filter((x) => x !== team) : [...cur, team])}
+                      className={cn("rounded-full border px-2.5 py-0.5 text-xs", sel ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring")}
+                    >
+                      {team}
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={isPending}>{t("common.cancel", { defaultValue: "Cancel" })}</Button>
+          <Button
+            disabled={isPending || !valid}
+            onClick={() => onSubmit({ name: name.trim(), scope, sharingTeams: scope === "team" ? teams : [] })}
+          >
+            {isPending ? t("companySkills.creating", { defaultValue: "Creating..." }) : t("companySkills.createFolderBtn", { defaultValue: "Create folder" })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -4675,6 +4778,32 @@ export function CompanySkills() {
   const folderCategoryCounts = canSeeRestrictedFolders
     ? discoveryCategoryCounts
     : discoveryCategoryCounts.filter((c) => !/^\s*\d{2}[\s-]/.test(c.slug));
+  // Registered (scoped) folders the viewer can see — merged with skill-derived
+  // categories so a just-created empty folder is still selectable in the pickers.
+  const foldersQuery = useQuery({
+    queryKey: ["company-skill-folders", selectedCompanyId],
+    queryFn: () => companySkillsApi.listFolders(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+  });
+  const pickerFolderNames = useMemo(() => {
+    const set = new Set<string>(folderCategoryCounts.map((c) => c.slug));
+    for (const f of foldersQuery.data ?? []) set.add(f.name);
+    return [...set]
+      .filter((name) => canSeeRestrictedFolders || !/^\s*\d{2}[\s-]/.test(name))
+      .sort((a, b) => a.localeCompare(b));
+  }, [folderCategoryCounts, foldersQuery.data, canSeeRestrictedFolders]);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const createFolder = useMutation({
+    mutationFn: (payload: CompanySkillFolderCreateRequest) => companySkillsApi.createFolder(selectedCompanyId!, payload),
+    onSuccess: async (folder) => {
+      setFolderDialogOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["company-skill-folders", selectedCompanyId] });
+      pushToast({ tone: "success", title: t("companySkills.folderCreated", { defaultValue: "Folder created" }), body: folder.name });
+    },
+    onError: (error) => {
+      pushToast({ tone: "error", title: t("companySkills.folderCreateFailed", { defaultValue: "Could not create folder" }), body: error instanceof Error ? error.message : String(error) });
+    },
+  });
   const visibleDiscoveryCards = useMemo(() => {
     const filtered = discoveryTabCards.filter((card) => {
       if (discoveryCategory && !card.categories.includes(discoveryCategory)) return false;
@@ -5053,7 +5182,7 @@ export function CompanySkills() {
           </DialogHeader>
           <NewSkillWizard
             availableTeams={availableTeams}
-            existingCategories={folderCategoryCounts.map((c) => c.slug)}
+            existingCategories={pickerFolderNames}
             shareAgents={agentShareOptions}
             initialDraft={createDraft}
             onCreate={(payload) => createSkill.mutate(payload)}
@@ -5188,11 +5317,11 @@ export function CompanySkills() {
                     {t("companySkills.folderAutoHint", { defaultValue: "— leave blank to auto-file" })}
                   </span>
                 </div>
-                {folderCategoryCounts.length === 0 ? (
+                {pickerFolderNames.length === 0 ? (
                   <p className="text-[11px] text-muted-foreground">{t("companySkills.noCategoriesYet", { defaultValue: "No categories yet." })}</p>
                 ) : (
                   <CategoryMultiSelect
-                    options={folderCategoryCounts.map(({ slug }) => slug)}
+                    options={pickerFolderNames}
                     value={uploadCategories}
                     onChange={setUploadCategories}
                     placeholder={t("companySkills.folderAutoFilePlaceholder", { defaultValue: "Auto-file (or choose folders…)" })}
@@ -5305,6 +5434,14 @@ export function CompanySkills() {
         </DialogContent>
       </Dialog>
 
+      <NewFolderDialog
+        open={folderDialogOpen}
+        onClose={() => setFolderDialogOpen(false)}
+        onSubmit={(payload) => createFolder.mutate(payload)}
+        availableTeams={availableTeams}
+        isPending={createFolder.isPending}
+      />
+
       {isDiscovery ? (
         <DiscoveryGrid
           tab={discoveryTab}
@@ -5325,6 +5462,7 @@ export function CompanySkills() {
           totalCount={discoveryCards.length}
           onCreate={() => openCreateWizard()}
           onImport={() => setImportDialogOpen(true)}
+          onAddFolder={() => setFolderDialogOpen(true)}
           onBrowseCatalog={() => setDiscoveryTab("catalog")}
           onScan={() => scanProjects.mutate()}
           scanPending={scanProjects.isPending}
