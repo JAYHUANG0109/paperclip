@@ -118,6 +118,7 @@ export {
   companySkillTestRunTemplates,
   companySkillTestRuns,
 } from "./company_skills.js";
+export { companySkillFolders, type CompanySkillFolderScope } from "./company_skill_folders.js";
 export { plugins } from "./plugins.js";
 export { pluginConfig } from "./plugin_config.js";
 export { pluginCompanySettings } from "./plugin_company_settings.js";
