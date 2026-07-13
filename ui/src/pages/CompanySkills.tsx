@@ -56,7 +56,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -1314,6 +1313,71 @@ function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft {
   };
 }
 
+// Inline multi-select for folder/category. Deliberately NOT a Radix dropdown:
+// a portaled menu inside a Dialog fights the dialog's outside-click dismissal
+// (clicking to close the menu closed the whole dialog). This is a plain inline
+// collapsible checklist — toggled by its own button, so selecting keeps it open
+// and clicking elsewhere in the dialog does nothing.
+function CategoryMultiSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+}: {
+  options: string[];
+  value: string[];
+  onChange: (next: string[]) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const toggle = (slug: string) =>
+    onChange(value.includes(slug) ? value.filter((x) => x !== slug) : [...value, slug]);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-8 w-full items-center justify-between rounded-md border border-border px-2.5 text-[11px] text-foreground hover:border-ring"
+      >
+        <span className="truncate">{value.length === 0 ? placeholder : value.join(", ")}</span>
+        <ChevronDown className={cn("ml-1 h-3.5 w-3.5 shrink-0 opacity-60 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border p-1">
+          {options.map((slug) => {
+            const sel = value.includes(slug);
+            return (
+              <button
+                key={slug}
+                type="button"
+                onClick={() => toggle(slug)}
+                className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] hover:bg-accent/60"
+              >
+                <span className={cn("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px]", sel ? "border-primary bg-primary/20 text-foreground" : "border-border text-transparent")}>✓</span>
+                <span className="truncate">{slug}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {value.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {value.map((slug) => (
+            <button
+              key={slug}
+              type="button"
+              onClick={() => toggle(slug)}
+              className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-foreground"
+            >
+              {slug} ✕
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NewSkillWizard({
   initialDraft,
   onCreate,
@@ -1516,30 +1580,14 @@ function NewSkillWizard({
               </span>
             </label>
             {existingCategories.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="mb-2 h-8 w-full justify-between text-xs font-normal">
-                    <span className="truncate">
-                      {draft.categories.length === 0
-                        ? t("companySkills.chooseExistingFolders", { defaultValue: "Choose from existing folders…" })
-                        : draft.categories.join(", ")}
-                    </span>
-                    <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="max-h-64 w-64 overflow-y-auto">
-                  {existingCategories.map((slug) => (
-                    <DropdownMenuCheckboxItem
-                      key={slug}
-                      checked={draft.categories.includes(slug)}
-                      onCheckedChange={(on) => patchDraft({ categories: on ? [...draft.categories, slug] : draft.categories.filter((x) => x !== slug) })}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {slug}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="mb-2">
+                <CategoryMultiSelect
+                  options={existingCategories}
+                  value={draft.categories}
+                  onChange={(next) => patchDraft({ categories: next })}
+                  placeholder={t("companySkills.chooseExistingFolders", { defaultValue: "Choose from existing folders…" })}
+                />
+              </div>
             )}
             <Input
               value={categoryDraft}
@@ -4979,45 +5027,12 @@ export function CompanySkills() {
                 {discoveryCategoryCounts.length === 0 ? (
                   <p className="text-[11px] text-muted-foreground">{t("companySkills.noCategoriesYet", { defaultValue: "No categories yet." })}</p>
                 ) : (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8 w-full justify-between text-[11px] font-normal">
-                        <span className="truncate">
-                          {uploadCategories.length === 0
-                            ? t("companySkills.folderAutoFilePlaceholder", { defaultValue: "Auto-file (or choose folders…)" })
-                            : uploadCategories.join(", ")}
-                        </span>
-                        <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-60" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="max-h-64 w-64 overflow-y-auto">
-                      {discoveryCategoryCounts.map(({ slug }) => (
-                        <DropdownMenuCheckboxItem
-                          key={slug}
-                          checked={uploadCategories.includes(slug)}
-                          onCheckedChange={(on) => setUploadCategories((cur) => on ? [...cur, slug] : cur.filter((x) => x !== slug))}
-                          onSelect={(e) => e.preventDefault()}
-                        >
-                          {slug}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {uploadCategories.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {uploadCategories.map((slug) => (
-                      <button
-                        key={slug}
-                        type="button"
-                        onClick={() => setUploadCategories((cur) => cur.filter((x) => x !== slug))}
-                        className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-foreground"
-                        title={t("companySkills.removeFolder", { defaultValue: "Remove" })}
-                      >
-                        {slug} ✕
-                      </button>
-                    ))}
-                  </div>
+                  <CategoryMultiSelect
+                    options={discoveryCategoryCounts.map(({ slug }) => slug)}
+                    value={uploadCategories}
+                    onChange={setUploadCategories}
+                    placeholder={t("companySkills.folderAutoFilePlaceholder", { defaultValue: "Auto-file (or choose folders…)" })}
+                  />
                 )}
               </div>
               <label className="mb-2.5 flex cursor-pointer items-start gap-2 rounded-md border border-border p-2.5">
