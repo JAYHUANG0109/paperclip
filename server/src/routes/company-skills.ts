@@ -12,6 +12,7 @@ import {
   companySkillCommentUpdateSchema,
   companySkillCreateSchema,
   companySkillFolderCreateSchema,
+  companySkillFolderUpdateSchema,
   companySkillFileDeleteSchema,
   companySkillFileUpdateSchema,
   companySkillForkSchema,
@@ -1503,6 +1504,81 @@ export function companySkillRoutes(db: Db) {
       res.status(201).json(result);
     },
   );
+
+  // Only the folder's creator or a privileged member (owner/admin) may change or
+  // remove a folder; the reserved numbered taxonomy stays founder/Jay-only.
+  async function assertCanManageFolder(req: Request, companyId: string, folder: { name: string; createdByUserId: string | null }) {
+    const isPrivileged = isPrivilegedMemberViewer(req, companyId, true);
+    const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    const isCreator = !!userId && folder.createdByUserId === userId;
+    if (!isPrivileged && !isCreator) {
+      throw forbidden("You can only manage folders you created.");
+    }
+    if (/^\s*\d{2}[\s-]/.test(folder.name) && !(await actorAllowsRestrictedFolders(req))) {
+      throw forbidden("That folder is reserved.");
+    }
+  }
+
+  router.patch(
+    "/companies/:companyId/skill-folders/:folderId",
+    validate(companySkillFolderUpdateSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const folderId = req.params.folderId as string;
+      assertCompanyAccess(req, companyId);
+      const existing = await svc.getSkillFolderById(companyId, folderId);
+      if (!existing) {
+        res.status(404).json({ error: "Folder not found" });
+        return;
+      }
+      await assertCanManageFolder(req, companyId, existing);
+      // Renaming to a reserved numbered name is likewise founder/Jay-only.
+      if (req.body.name && /^\s*\d{2}[\s-]/.test(String(req.body.name)) && !(await actorAllowsRestrictedFolders(req))) {
+        res.status(403).json({ error: "That folder name is reserved." });
+        return;
+      }
+      const result = await svc.updateSkillFolder(companyId, folderId, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "company.skill_folder_updated",
+        entityType: "company",
+        entityId: companyId,
+        details: { folderId: result.id, name: result.name, scope: result.scope },
+      });
+      res.json(result);
+    },
+  );
+
+  router.delete("/companies/:companyId/skill-folders/:folderId", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const folderId = req.params.folderId as string;
+    assertCompanyAccess(req, companyId);
+    const existing = await svc.getSkillFolderById(companyId, folderId);
+    if (!existing) {
+      res.status(404).json({ error: "Folder not found" });
+      return;
+    }
+    await assertCanManageFolder(req, companyId, existing);
+    const result = await svc.deleteSkillFolder(companyId, folderId);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "company.skill_folder_deleted",
+      entityType: "company",
+      entityId: companyId,
+      details: { folderId, name: result.name, skillsUpdated: result.skillsUpdated },
+    });
+    res.json(result);
+  });
 
   // ---- Virtual office: per-agent skill counts ----
   router.get("/companies/:companyId/agent-skill-counts", async (req, res) => {

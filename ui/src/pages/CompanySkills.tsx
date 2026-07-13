@@ -26,7 +26,9 @@ import type {
   CompanySkillProjectScanResult,
   CompanySkillSharingScope,
   CompanySkillFolderScope,
+  CompanySkillFolder,
   CompanySkillFolderCreateRequest,
+  CompanySkillFolderUpdateRequest,
   CompanySkillSourceBadge,
   CompanySkillTrustLevel,
   CompanySkillUpdateStatus,
@@ -117,6 +119,7 @@ import {
   ExternalLink,
   Paperclip,
   Pause,
+  MoreHorizontal,
   Pencil,
   Pin,
   Plus,
@@ -922,11 +925,15 @@ function CategoryNav({
   total,
   active,
   onSelect,
+  manageableFolders,
+  onManageFolder,
 }: {
   categories: DiscoveryCategory[];
   total: number;
   active: string | null;
   onSelect: (slug: string | null) => void;
+  manageableFolders?: Map<string, CompanySkillFolder>;
+  onManageFolder?: (folder: CompanySkillFolder) => void;
 }) {
   const { t } = useTranslation();
   const lang = useSkillLang();
@@ -943,21 +950,43 @@ function CategoryNav({
         <span>{t("companySkills.sidebarAll", { defaultValue: "All" })}</span>
         <span className="text-xs text-muted-foreground">{total}</span>
       </button>
-      {categories.map((category) => (
-        <button
-          key={category.slug}
-          type="button"
-          onClick={() => onSelect(category.slug)}
-          className={cn(
-            "flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent/40",
-            lang === "en" && "capitalize",
-            active === category.slug ? "bg-accent/60 font-medium text-foreground" : "text-muted-foreground",
-          )}
-        >
-          <span className="truncate">{localizeCategory(category.slug, lang)}</span>
-          <span className="ml-2 shrink-0 text-xs text-muted-foreground">{category.count}</span>
-        </button>
-      ))}
+      {categories.map((category) => {
+        const folder = manageableFolders?.get(category.slug);
+        const canManage = Boolean(folder && onManageFolder);
+        return (
+          <div
+            key={category.slug}
+            className={cn(
+              "group flex items-center rounded-md pr-1 transition-colors hover:bg-accent/40",
+              active === category.slug && "bg-accent/60",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => onSelect(category.slug)}
+              className={cn(
+                "flex min-w-0 flex-1 items-center justify-between rounded-md px-2 py-1.5 text-sm",
+                lang === "en" && "capitalize",
+                active === category.slug ? "font-medium text-foreground" : "text-muted-foreground",
+              )}
+            >
+              <span className="truncate">{localizeCategory(category.slug, lang)}</span>
+              <span className="ml-2 shrink-0 text-xs text-muted-foreground">{category.count}</span>
+            </button>
+            {canManage ? (
+              <button
+                type="button"
+                aria-label={t("companySkills.folderSettings", { defaultValue: "Folder settings" })}
+                title={t("companySkills.folderSettings", { defaultValue: "Folder settings" })}
+                onClick={(e) => { e.stopPropagation(); onManageFolder!(folder!); }}
+                className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
     </nav>
   );
 }
@@ -986,6 +1015,8 @@ export function DiscoveryGrid({
   onScan,
   scanPending,
   scanStatus,
+  manageableFolders,
+  onManageFolder,
 }: {
   tab: DiscoveryTab;
   tabCounts: Record<DiscoveryTab, number>;
@@ -994,6 +1025,8 @@ export function DiscoveryGrid({
   categoryTotal: number;
   activeCategory: string | null;
   onCategoryChange: (slug: string | null) => void;
+  manageableFolders?: Map<string, CompanySkillFolder>;
+  onManageFolder?: (folder: CompanySkillFolder) => void;
   search: string;
   onSearchChange: (value: string) => void;
   sort: DiscoverySort;
@@ -1056,6 +1089,8 @@ export function DiscoveryGrid({
             total={categoryTotal}
             active={activeCategory}
             onSelect={onCategoryChange}
+            manageableFolders={manageableFolders}
+            onManageFolder={onManageFolder}
           />
         </div>
       </aside>
@@ -1593,6 +1628,150 @@ function NewFolderDialog({
             onClick={() => onSubmit({ name: name.trim(), scope, sharingTeams: scope === "team" ? teams : [], sharedUserIds: scope === "private" ? memberIds : [] })}
           >
             {isPending ? t("companySkills.creating", { defaultValue: "Creating..." }) : t("companySkills.createFolderBtn", { defaultValue: "Create folder" })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Manage an existing folder: rename, change scope, add/remove people (private) or
+// teams, or delete it. Rename re-tags the skills inside; delete strips the folder
+// label from every skill and removes the registry row.
+function FolderSettingsDialog({
+  folder,
+  onClose,
+  onSave,
+  onDelete,
+  availableTeams,
+  memberOptions,
+  isPending,
+  isDeleting,
+}: {
+  folder: CompanySkillFolder | null;
+  onClose: () => void;
+  onSave: (folderId: string, payload: CompanySkillFolderUpdateRequest) => void;
+  onDelete: (folder: CompanySkillFolder) => void;
+  availableTeams: string[];
+  memberOptions: { id: string; label: string }[];
+  isPending: boolean;
+  isDeleting: boolean;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [scope, setScope] = useState<CompanySkillFolderScope>("company");
+  const [teams, setTeams] = useState<string[]>([]);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => {
+    if (folder) {
+      setName(folder.name);
+      setScope(folder.scope);
+      setTeams(folder.sharingTeams ?? []);
+      setMemberIds(folder.sharedUserIds ?? []);
+      setConfirmDelete(false);
+    }
+  }, [folder]);
+  const open = folder != null;
+  const valid = name.trim().length > 0 && (scope !== "team" || teams.length > 0);
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("companySkills.folderSettings", { defaultValue: "Folder settings" })}</DialogTitle>
+          <DialogDescription>
+            {t("companySkills.folderSettingsSubtitle", { defaultValue: "Rename, change who can see it, or remove the folder." })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("companySkills.folderNamePlaceholder", { defaultValue: "Folder name" })}
+            className="h-9"
+          />
+          <div className="flex gap-2">
+            {(["company", "team", "private"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setScope(s)}
+                className={cn(
+                  "flex-1 rounded-md border px-2.5 py-1.5 text-xs",
+                  scope === s ? "border-foreground bg-accent/50 text-foreground" : "border-border text-muted-foreground",
+                )}
+              >
+                {s === "company"
+                  ? t("companySkills.scopePublic", { defaultValue: "Public" })
+                  : s === "team"
+                    ? t("companySkills.scopeTeam", { defaultValue: "Team" })
+                    : t("companySkills.scopePrivate", { defaultValue: "Private" })}
+              </button>
+            ))}
+          </div>
+          {scope === "team" && (
+            availableTeams.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t("companySkills.noTeams", { defaultValue: "You don't belong to any team yet." })}</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {availableTeams.map((team) => {
+                  const sel = teams.includes(team);
+                  return (
+                    <button
+                      key={team}
+                      type="button"
+                      onClick={() => setTeams((cur) => sel ? cur.filter((x) => x !== team) : [...cur, team])}
+                      className={cn("rounded-full border px-2.5 py-0.5 text-xs", sel ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring")}
+                    >
+                      {team}
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          )}
+          {scope === "private" && (
+            <div>
+              <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+                {t("companySkills.folderShareWithUsers", { defaultValue: "Also visible to (private)" })}
+              </div>
+              <AgentMultiSelect
+                options={memberOptions}
+                value={memberIds}
+                onChange={setMemberIds}
+                placeholder={t("companySkills.folderShareWithUsersPlaceholder", { defaultValue: "Just me — add people…" })}
+              />
+            </div>
+          )}
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2.5">
+            {confirmDelete ? (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {t("companySkills.folderDeleteConfirm", { defaultValue: "Remove this folder and un-file its skills?" })}
+                </span>
+                <Button size="sm" variant="destructive" disabled={isDeleting} onClick={() => folder && onDelete(folder)}>
+                  {isDeleting ? t("companySkills.deleting", { defaultValue: "Removing…" }) : t("common.confirm", { defaultValue: "Confirm" })}
+                </Button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-destructive hover:underline"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t("companySkills.deleteFolder", { defaultValue: "Delete folder" })}
+              </button>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={isPending}>{t("common.cancel", { defaultValue: "Cancel" })}</Button>
+          <Button
+            disabled={isPending || !valid || !folder}
+            onClick={() => folder && onSave(folder.id, { name: name.trim(), scope, sharingTeams: scope === "team" ? teams : [], sharedUserIds: scope === "private" ? memberIds : [] })}
+          >
+            {isPending ? t("companySkills.saving", { defaultValue: "Saving…" }) : t("common.save", { defaultValue: "Save" })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -4859,6 +5038,44 @@ export function CompanySkills() {
       pushToast({ tone: "error", title: t("companySkills.folderCreateFailed", { defaultValue: "Could not create folder" }), body: error instanceof Error ? error.message : String(error) });
     },
   });
+  // Which registry folders can THIS user manage (settings ⋯)? The creator, plus
+  // founder/Jay (privileged). Keyed by folder name to match the sidebar slug.
+  const myUserId = authSession?.user?.id ?? null;
+  const manageableFolders = useMemo(() => {
+    const map = new Map<string, CompanySkillFolder>();
+    for (const f of foldersQuery.data ?? []) {
+      const mine = !!myUserId && f.createdByUserId === myUserId;
+      if (mine || canSeeRestrictedFolders) map.set(f.name, f);
+    }
+    return map;
+  }, [foldersQuery.data, myUserId, canSeeRestrictedFolders]);
+  const [settingsFolder, setSettingsFolder] = useState<CompanySkillFolder | null>(null);
+  const updateFolder = useMutation({
+    mutationFn: ({ folderId, payload }: { folderId: string; payload: CompanySkillFolderUpdateRequest }) =>
+      companySkillsApi.updateFolder(selectedCompanyId!, folderId, payload),
+    onSuccess: async (folder) => {
+      setSettingsFolder(null);
+      await queryClient.invalidateQueries({ queryKey: ["company-skill-folders", selectedCompanyId] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId!) });
+      pushToast({ tone: "success", title: t("companySkills.folderSaved", { defaultValue: "Folder updated" }), body: folder.name });
+    },
+    onError: (error) => {
+      pushToast({ tone: "error", title: t("companySkills.folderSaveFailed", { defaultValue: "Could not update folder" }), body: error instanceof Error ? error.message : String(error) });
+    },
+  });
+  const deleteFolder = useMutation({
+    mutationFn: (folderId: string) => companySkillsApi.deleteFolder(selectedCompanyId!, folderId),
+    onSuccess: async (result) => {
+      setSettingsFolder(null);
+      if (discoveryCategory === result.name) setDiscoveryCategory(null);
+      await queryClient.invalidateQueries({ queryKey: ["company-skill-folders", selectedCompanyId] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId!) });
+      pushToast({ tone: "success", title: t("companySkills.folderDeleted", { defaultValue: "Folder removed" }), body: result.name });
+    },
+    onError: (error) => {
+      pushToast({ tone: "error", title: t("companySkills.folderDeleteFailed", { defaultValue: "Could not remove folder" }), body: error instanceof Error ? error.message : String(error) });
+    },
+  });
   const visibleDiscoveryCards = useMemo(() => {
     const filtered = discoveryTabCards.filter((card) => {
       if (discoveryCategory && !card.categories.includes(discoveryCategory)) return false;
@@ -5500,6 +5717,17 @@ export function CompanySkills() {
         isPending={createFolder.isPending}
       />
 
+      <FolderSettingsDialog
+        folder={settingsFolder}
+        onClose={() => setSettingsFolder(null)}
+        onSave={(folderId, payload) => updateFolder.mutate({ folderId, payload })}
+        onDelete={(folder) => deleteFolder.mutate(folder.id)}
+        availableTeams={availableTeams}
+        memberOptions={memberOptions}
+        isPending={updateFolder.isPending}
+        isDeleting={deleteFolder.isPending}
+      />
+
       {isDiscovery ? (
         <DiscoveryGrid
           tab={discoveryTab}
@@ -5509,6 +5737,8 @@ export function CompanySkills() {
           categoryTotal={discoveryTabCards.length}
           activeCategory={discoveryCategory}
           onCategoryChange={setDiscoveryCategory}
+          manageableFolders={manageableFolders}
+          onManageFolder={setSettingsFolder}
           search={discoverySearch}
           onSearchChange={setDiscoverySearch}
           sort={discoverySort}

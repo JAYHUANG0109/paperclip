@@ -120,6 +120,7 @@ export type {
   CompanySkillFolder,
   CompanySkillFolderScope,
   CompanySkillFolderCreateRequest,
+  CompanySkillFolderUpdateRequest,
   CompanySkillFileDetail,
   CompanySkillFileUpdateRequest,
   CompanySkillFileDeleteRequest,

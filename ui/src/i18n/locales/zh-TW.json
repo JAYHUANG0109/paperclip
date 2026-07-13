@@ -2140,6 +2140,15 @@
     "noStoredError": "沒有儲存的錯誤訊息。"
   },
   "companySkills": {
+    "folderSettings": "資料夾設定",
+    "folderSettingsSubtitle": "重新命名、變更誰可見，或移除此資料夾。",
+    "folderDeleteConfirm": "移除此資料夾並將其技能取消歸檔？",
+    "deleteFolder": "刪除資料夾",
+    "deleting": "移除中…",
+    "folderSaved": "資料夾已更新",
+    "folderSaveFailed": "無法更新資料夾",
+    "folderDeleted": "資料夾已移除",
+    "folderDeleteFailed": "無法移除資料夾",
     "addFolder": "新增資料夾",
     "addFolderSubtitle": "建立資料夾並選擇誰可以看到。",
     "agentsSelectedCount": "已選 {{count}} 個",

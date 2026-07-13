@@ -10,6 +10,7 @@ import type {
   CompanySkillCreateRequest,
   CompanySkillFolder,
   CompanySkillFolderCreateRequest,
+  CompanySkillFolderUpdateRequest,
   CompanySkillDetail,
   CompanySkillFileDetail,
   CompanySkillFileDeleteRequest,
@@ -211,6 +212,15 @@ export const companySkillsApi = {
     api.get<CompanySkillFolder[]>(`/companies/${encodeURIComponent(companyId)}/skill-folders`),
   createFolder: (companyId: string, payload: CompanySkillFolderCreateRequest) =>
     api.post<CompanySkillFolder>(`/companies/${encodeURIComponent(companyId)}/skill-folders`, payload),
+  updateFolder: (companyId: string, folderId: string, payload: CompanySkillFolderUpdateRequest) =>
+    api.patch<CompanySkillFolder>(
+      `/companies/${encodeURIComponent(companyId)}/skill-folders/${encodeURIComponent(folderId)}`,
+      payload,
+    ),
+  deleteFolder: (companyId: string, folderId: string) =>
+    api.delete<{ name: string; skillsUpdated: number }>(
+      `/companies/${encodeURIComponent(companyId)}/skill-folders/${encodeURIComponent(folderId)}`,
+    ),
   update: (companyId: string, skillId: string, payload: CompanySkillUpdateRequest) =>
     api.patch<CompanySkill>(
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}`,

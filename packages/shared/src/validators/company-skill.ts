@@ -325,6 +325,13 @@ export const companySkillFolderCreateSchema = z.object({
   sharedUserIds: z.array(z.string().min(1)).optional(),
 });
 
+export const companySkillFolderUpdateSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  scope: companySkillFolderScopeSchema.optional(),
+  sharingTeams: z.array(z.string().min(1)).optional(),
+  sharedUserIds: z.array(z.string().min(1)).optional(),
+});
+
 export const companySkillFileDetailSchema = z.object({
   skillId: z.string().uuid(),
   path: z.string().min(1),

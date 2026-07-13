@@ -6296,6 +6296,67 @@ export function companySkillService(db: Db) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  async function getSkillFolderById(companyId: string, folderId: string) {
+    const [row] = await db
+      .select()
+      .from(companySkillFolders)
+      .where(and(eq(companySkillFolders.companyId, companyId), eq(companySkillFolders.id, folderId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async function updateSkillFolder(
+    companyId: string,
+    folderId: string,
+    patch: Partial<CompanySkillFolderCreateRequest>,
+  ): Promise<CompanySkillFolder> {
+    const existing = await getSkillFolderById(companyId, folderId);
+    if (!existing) throw notFound("Folder not found");
+    const scope = patch.scope ?? existing.scope;
+    const nextName = patch.name != null && patch.name.trim() ? patch.name.trim() : existing.name;
+    const sharingTeams = scope === "team"
+      ? Array.from(new Set(((patch.sharingTeams ?? existing.sharingTeams) ?? []).filter((t) => typeof t === "string" && t.trim()).map((t) => t.trim()))).slice(0, 50)
+      : [];
+    const sharedUserIds = scope === "private"
+      ? Array.from(new Set(((patch.sharedUserIds ?? existing.sharedUserIds) ?? []).filter((u) => typeof u === "string" && u.trim()).map((u) => u.trim()))).slice(0, 200)
+      : [];
+    // Renaming the folder re-tags every skill carrying the old category label so
+    // the sidebar and the folder registry stay in agreement.
+    if (nextName !== existing.name) {
+      await db.execute(sql`
+        update company_skills
+        set categories = array_replace(categories, ${existing.name}, ${nextName})
+        where company_id = ${companyId} and ${existing.name} = any(categories)`);
+    }
+    const [updated] = await db
+      .update(companySkillFolders)
+      .set({ name: nextName, scope, sharingTeams, sharedUserIds, updatedAt: new Date() })
+      .where(and(eq(companySkillFolders.companyId, companyId), eq(companySkillFolders.id, folderId)))
+      .returning();
+    return toFolder(updated!);
+  }
+
+  async function deleteSkillFolder(
+    companyId: string,
+    folderId: string,
+    options: { stripFromSkills?: boolean } = {},
+  ): Promise<{ name: string; skillsUpdated: number }> {
+    const existing = await getSkillFolderById(companyId, folderId);
+    if (!existing) throw notFound("Folder not found");
+    let skillsUpdated = 0;
+    if (options.stripFromSkills !== false) {
+      const result = await db.execute(sql`
+        update company_skills
+        set categories = array_remove(categories, ${existing.name})
+        where company_id = ${companyId} and ${existing.name} = any(categories)`);
+      skillsUpdated = (result as unknown as { count?: number }).count ?? 0;
+    }
+    await db
+      .delete(companySkillFolders)
+      .where(and(eq(companySkillFolders.companyId, companyId), eq(companySkillFolders.id, folderId)));
+    return { name: existing.name, skillsUpdated };
+  }
+
   async function visiblePrivateSkillIdsForUser(companyId: string, userId: string): Promise<Set<string>> {
     const [owned, member] = await Promise.all([
       db.select({ id: companySkills.id }).from(companySkills)
@@ -6315,6 +6376,9 @@ export function companySkillService(db: Db) {
     addSkillAccessMember,
     createSkillFolder,
     listSkillFolders,
+    getSkillFolderById,
+    updateSkillFolder,
+    deleteSkillFolder,
     removeSkillAccessMember,
     visiblePrivateSkillIdsForUser,
     getUserTeams,

@@ -136,6 +136,7 @@ export {
   companySkillProjectScanResultSchema,
   companySkillCreateSchema,
   companySkillFolderCreateSchema,
+  companySkillFolderUpdateSchema,
   companySkillFolderScopeSchema,
   companySkillFileDetailSchema,
   companySkillFileUpdateSchema,

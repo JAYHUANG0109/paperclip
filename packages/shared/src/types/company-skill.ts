@@ -33,6 +33,13 @@ export interface CompanySkillFolderCreateRequest {
   sharedUserIds?: string[];
 }
 
+export interface CompanySkillFolderUpdateRequest {
+  name?: string;
+  scope?: CompanySkillFolderScope;
+  sharingTeams?: string[];
+  sharedUserIds?: string[];
+}
+
 export type CompanySkillListSort = "alphabetical" | "recent" | "installs" | "stars" | "agents" | "forks";
 
 export type CompanySkillListInclude = "lastEditor";
