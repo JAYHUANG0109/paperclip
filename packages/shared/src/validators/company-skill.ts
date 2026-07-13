@@ -317,6 +317,13 @@ export const companySkillCreateSchema = z.object({
   equipAgentIds: z.array(z.string().min(1)).optional(),
 });
 
+export const companySkillFolderScopeSchema = z.enum(["private", "team", "company"]);
+export const companySkillFolderCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  scope: companySkillFolderScopeSchema.optional(),
+  sharingTeams: z.array(z.string().min(1)).optional(),
+});
+
 export const companySkillFileDetailSchema = z.object({
   skillId: z.string().uuid(),
   path: z.string().min(1),

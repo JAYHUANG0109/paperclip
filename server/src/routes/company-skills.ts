@@ -11,6 +11,7 @@ import {
   companySkillCommentCreateSchema,
   companySkillCommentUpdateSchema,
   companySkillCreateSchema,
+  companySkillFolderCreateSchema,
   companySkillFileDeleteSchema,
   companySkillFileUpdateSchema,
   companySkillForkSchema,
@@ -1463,6 +1464,45 @@ export function companySkillRoutes(db: Db) {
     const teams = await svc.getUserTeams(companyId, userId);
     res.json({ teams: [...teams].sort() });
   });
+
+  // ---- Folder registry (scoped, user-created folders) ----
+  router.get("/companies/:companyId/skill-folders", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const viewer = req.actor.type === "board"
+      ? { userId: req.actor.userId ?? null, isPrivileged: isPrivilegedMemberViewer(req, companyId, true) }
+      : { isPrivileged: true }; // agents aren't scope-filtered here
+    res.json(await svc.listSkillFolders(companyId, viewer));
+  });
+
+  router.post(
+    "/companies/:companyId/skill-folders",
+    validate(companySkillFolderCreateSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      await assertCanCreateCompanySkill(req, companyId);
+      // The reserved numbered folders (00–10 …) may only be created by founder/Jay.
+      if (/^\s*\d{2}[\s-]/.test(String(req.body.name ?? "")) && !(await actorAllowsRestrictedFolders(req))) {
+        res.status(403).json({ error: "That folder name is reserved." });
+        return;
+      }
+      const createdByUserId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+      const result = await svc.createSkillFolder(companyId, req.body, createdByUserId);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "company.skill_folder_created",
+        entityType: "company",
+        entityId: companyId,
+        details: { folderId: result.id, name: result.name, scope: result.scope },
+      });
+      res.status(201).json(result);
+    },
+  );
 
   // ---- Virtual office: per-agent skill counts ----
   router.get("/companies/:companyId/agent-skill-counts", async (req, res) => {

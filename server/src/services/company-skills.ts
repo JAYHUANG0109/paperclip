@@ -18,6 +18,7 @@ import {
   companySkillTestRuns,
   companySkillVersions,
   companySkills,
+  companySkillFolders,
   costEvents,
   documents,
   issueAttachments,
@@ -40,6 +41,8 @@ import type {
   CompanySkillCommentCreateRequest,
   CompanySkillCommentUpdateRequest,
   CompanySkillCreateRequest,
+  CompanySkillFolder,
+  CompanySkillFolderCreateRequest,
   CompanySkillCompatibility,
   CompanySkillDetail,
   CompanySkillFileDeleteRequest,
@@ -6231,6 +6234,64 @@ export function companySkillService(db: Db) {
     return out;
   }
 
+  // ---- Folder registry (scoped, owned folders) ----
+  function toFolder(row: typeof companySkillFolders.$inferSelect): CompanySkillFolder {
+    return {
+      id: row.id,
+      companyId: row.companyId,
+      name: row.name,
+      scope: row.scope,
+      sharingTeams: row.sharingTeams ?? [],
+      createdByUserId: row.createdByUserId,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  async function createSkillFolder(
+    companyId: string,
+    input: CompanySkillFolderCreateRequest,
+    createdByUserId: string | null,
+  ): Promise<CompanySkillFolder> {
+    const name = input.name.trim();
+    const scope = input.scope ?? "company";
+    const sharingTeams = scope === "team"
+      ? Array.from(new Set((input.sharingTeams ?? []).filter((t) => typeof t === "string" && t.trim()).map((t) => t.trim()))).slice(0, 50)
+      : [];
+    const [inserted] = await db
+      .insert(companySkillFolders)
+      .values({ companyId, name, scope, sharingTeams, createdByUserId })
+      .onConflictDoNothing()
+      .returning();
+    if (inserted) return toFolder(inserted);
+    // Already exists → update its scope/teams (folder owner adjusting), return it.
+    const [updated] = await db
+      .update(companySkillFolders)
+      .set({ scope, sharingTeams, updatedAt: new Date() })
+      .where(and(eq(companySkillFolders.companyId, companyId), eq(companySkillFolders.name, name)))
+      .returning();
+    return toFolder(updated!);
+  }
+
+  async function listSkillFolders(
+    companyId: string,
+    viewer?: { userId?: string | null; isPrivileged?: boolean },
+  ): Promise<CompanySkillFolder[]> {
+    const rows = await db.select().from(companySkillFolders).where(eq(companySkillFolders.companyId, companyId));
+    const viewerTeams = viewer && !viewer.isPrivileged && viewer.userId ? await getUserTeams(companyId, viewer.userId) : null;
+    return rows
+      .filter((row) => {
+        if (!viewer || viewer.isPrivileged) return true;
+        const isCreator = !!viewer.userId && row.createdByUserId === viewer.userId;
+        if (row.scope === "company") return true;
+        if (row.scope === "private") return isCreator;
+        // team
+        return isCreator || (!!viewerTeams && (row.sharingTeams ?? []).some((t) => viewerTeams.has(t)));
+      })
+      .map(toFolder)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async function visiblePrivateSkillIdsForUser(companyId: string, userId: string): Promise<Set<string>> {
     const [owned, member] = await Promise.all([
       db.select({ id: companySkills.id }).from(companySkills)
@@ -6248,6 +6309,8 @@ export function companySkillService(db: Db) {
     setApprovalStatus,
     listPendingApprovals,
     addSkillAccessMember,
+    createSkillFolder,
+    listSkillFolders,
     removeSkillAccessMember,
     visiblePrivateSkillIdsForUser,
     getUserTeams,

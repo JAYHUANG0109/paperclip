@@ -12,6 +12,24 @@ export type CompanySkillSourceBadge = "paperclip" | "github" | "local" | "url" |
 export type CompanySkillSharingScope = "private" | "company" | "team" | "public_link";
 export type CompanySkillApprovalStatus = "approved" | "pending" | "rejected" | "revision";
 
+// A folder (category) promoted to a scoped, owned entity via the folder registry.
+export type CompanySkillFolderScope = "private" | "team" | "company";
+export interface CompanySkillFolder {
+  id: string;
+  companyId: string;
+  name: string;
+  scope: CompanySkillFolderScope;
+  sharingTeams: string[];
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface CompanySkillFolderCreateRequest {
+  name: string;
+  scope?: CompanySkillFolderScope;
+  sharingTeams?: string[];
+}
+
 export type CompanySkillListSort = "alphabetical" | "recent" | "installs" | "stars" | "agents" | "forks";
 
 export type CompanySkillListInclude = "lastEditor";

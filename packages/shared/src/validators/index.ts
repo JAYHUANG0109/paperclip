@@ -135,6 +135,8 @@ export {
   companySkillProjectScanConflictSchema,
   companySkillProjectScanResultSchema,
   companySkillCreateSchema,
+  companySkillFolderCreateSchema,
+  companySkillFolderScopeSchema,
   companySkillFileDetailSchema,
   companySkillFileUpdateSchema,
   companySkillFileDeleteSchema,
