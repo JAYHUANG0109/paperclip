@@ -64,6 +64,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { unzipSync, strFromU8 } from "fflate";
 import {
   Popover,
   PopoverContent,
@@ -4232,32 +4233,55 @@ export function CompanySkills() {
   async function handleUploadSkillFiles(files: File[]) {
     if (files.length === 0 || !selectedCompanyId) return;
 
-    // Locate the SKILL.md (case-insensitive). Folder uploads expose webkitRelativePath.
-    const relPath = (f: File) => (f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name);
-    const skillMd = files.find((f) => relPath(f).toLowerCase().endsWith("skill.md"));
-    if (!skillMd) {
+    const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|woff2?|ttf|otf|mp4|mov|mp3|wav)$/i;
+    // Normalize the selection into path→reader entries. A single .skill/.zip is a
+    // package we unzip in the browser; otherwise use the raw file(s)/folder.
+    type UploadEntry = { rel: string; read: () => Promise<string>; binary: boolean };
+    let entries: UploadEntry[];
+    const isArchive = files.length === 1 && /\.(skill|zip)$/i.test(files[0]!.name);
+    if (isArchive) {
+      try {
+        const bytes = new Uint8Array(await files[0]!.arrayBuffer());
+        const unzipped = unzipSync(bytes);
+        entries = Object.entries(unzipped)
+          .filter(([p]) => !p.endsWith("/"))
+          .map(([p, data]) => ({ rel: p, read: async () => strFromU8(data), binary: BINARY_EXT.test(p) }));
+      } catch {
+        pushToast({
+          tone: "error",
+          title: t("companySkills.uploadBadArchive", { defaultValue: "Could not read package" }),
+          body: t("companySkills.uploadBadArchiveBody", { defaultValue: "The .skill / .zip file could not be unpacked." }),
+        });
+        return;
+      }
+    } else {
+      const relPath = (f: File) => (f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name);
+      entries = files.map((f) => ({ rel: relPath(f), read: () => f.text(), binary: BINARY_EXT.test(relPath(f)) }));
+    }
+
+    // Locate the SKILL.md (case-insensitive) among the entries.
+    const skillEntry = entries.find((e) => e.rel.toLowerCase().endsWith("skill.md"));
+    if (!skillEntry) {
       pushToast({
         tone: "error",
         title: t("companySkills.uploadNoSkillMd", { defaultValue: "No SKILL.md found" }),
-        body: t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection must include a SKILL.md file." }),
+        body: t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection (or package) must include a SKILL.md file." }),
       });
       return;
     }
 
     // Strip the common top-level folder prefix so paths are relative to the skill root.
     const skillRootPrefix = (() => {
-      const p = relPath(skillMd);
+      const p = skillEntry.rel;
       const idx = p.toLowerCase().lastIndexOf("skill.md");
       return p.slice(0, idx); // e.g. "my-skill/" or ""
     })();
-    const toSkillRelative = (f: File) => {
-      const p = relPath(f);
-      return p.startsWith(skillRootPrefix) ? p.slice(skillRootPrefix.length) : p;
-    };
+    const toSkillRelative = (rel: string) => (rel.startsWith(skillRootPrefix) ? rel.slice(skillRootPrefix.length) : rel);
+    const archiveBaseName = isArchive ? files[0]!.name.replace(/\.(skill|zip)$/i, "") : "";
 
     setUploading(true);
     try {
-      const markdown = await skillMd.text();
+      const markdown = await skillEntry.read();
       // Parse YAML frontmatter for name/description/slug (best-effort).
       const fm = /^---\s*\n([\s\S]*?)\n---/.exec(markdown);
       const readField = (key: string): string | null => {
@@ -4265,21 +4289,20 @@ export function CompanySkills() {
         const m = new RegExp(`^${key}\\s*:\\s*(.+)$`, "m").exec(fm[1]!);
         return m ? m[1]!.trim().replace(/^["']|["']$/g, "") : null;
       };
-      const fallbackName = (skillRootPrefix.replace(/\/$/, "") || skillMd.name).split("/").pop() || "Uploaded skill";
+      const fallbackName = (skillRootPrefix.replace(/\/$/, "") || archiveBaseName || "Uploaded skill").split("/").pop() || "Uploaded skill";
       const name = readField("name") ?? fallbackName;
       const description = readField("description");
 
       const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [], equipOnCreate: uploadEquip, categories: uploadCategories, autoCategorize: uploadCategories.length === 0 });
 
       // Write every other file (skip SKILL.md itself; skip obviously-binary by extension).
-      const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|woff2?|ttf|otf|mp4|mov|mp3|wav)$/i;
-      const supporting = files.filter((f) => f !== skillMd && !toSkillRelative(f).toLowerCase().endsWith("skill.md"));
+      const supporting = entries.filter((e) => e !== skillEntry && !toSkillRelative(e.rel).toLowerCase().endsWith("skill.md"));
       let skipped = 0;
-      for (const f of supporting) {
-        const rel = toSkillRelative(f);
+      for (const e of supporting) {
+        const rel = toSkillRelative(e.rel);
         if (!rel || rel.startsWith(".")) { skipped++; continue; }
-        if (BINARY_EXT.test(rel)) { skipped++; continue; }
-        const content = await f.text();
+        if (e.binary) { skipped++; continue; }
+        const content = await e.read();
         await companySkillsApi.updateFile(selectedCompanyId, created.id, rel, content);
       }
 
@@ -5092,22 +5115,30 @@ export function CompanySkills() {
               </div>
               {stagedUpload.length > 0 && (() => {
                 const relOf = (f: File) => (f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name);
+                const isArchive = stagedUpload.length === 1 && /\.(skill|zip)$/i.test(stagedUpload[0]!.name);
                 const skillMd = stagedUpload.find((f) => relOf(f).toLowerCase().endsWith("skill.md"));
-                const detectedName = skillMd
-                  ? (relOf(skillMd).replace(/\/?[^/]*skill\.md$/i, "").split("/").pop() || skillMd.name)
-                  : null;
+                const valid = isArchive || !!skillMd;
+                const detectedName = isArchive
+                  ? stagedUpload[0]!.name.replace(/\.(skill|zip)$/i, "")
+                  : skillMd
+                    ? (relOf(skillMd).replace(/\/?[^/]*skill\.md$/i, "").split("/").pop() || skillMd.name)
+                    : null;
                 return (
                   <div className="mt-2.5 rounded-md border border-border p-2.5">
-                    {skillMd ? (
+                    {valid ? (
                       <div className="text-xs text-foreground">
-                        {t("companySkills.uploadStaged", { defaultValue: "Ready to create: {{name}}", name: detectedName ?? "—" })}
-                        <span className="ml-1 text-muted-foreground">
-                          {t("companySkills.uploadStagedFiles", { defaultValue: "({{count}} file(s))", count: stagedUpload.length })}
-                        </span>
+                        {isArchive
+                          ? t("companySkills.uploadStagedPackage", { defaultValue: "Ready to unpack: {{name}}", name: detectedName ?? "—" })
+                          : t("companySkills.uploadStaged", { defaultValue: "Ready to create: {{name}}", name: detectedName ?? "—" })}
+                        {!isArchive && (
+                          <span className="ml-1 text-muted-foreground">
+                            {t("companySkills.uploadStagedFiles", { defaultValue: "({{count}} file(s))", count: stagedUpload.length })}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <div className="text-xs text-destructive">
-                        {t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection must include a SKILL.md file." })}
+                        {t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection (or package) must include a SKILL.md file." })}
                       </div>
                     )}
                     <div className="mt-2 flex items-center justify-end gap-2">
@@ -5116,7 +5147,7 @@ export function CompanySkills() {
                       </Button>
                       <Button
                         size="sm"
-                        disabled={uploading || !skillMd}
+                        disabled={uploading || !valid}
                         onClick={() => handleUploadSkillFiles(stagedUpload)}
                       >
                         {uploading ? <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
