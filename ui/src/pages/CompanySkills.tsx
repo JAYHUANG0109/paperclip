@@ -1329,6 +1329,7 @@ function CategoryMultiSelect({
   onChange: (next: string[]) => void;
   placeholder: string;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const toggle = (slug: string) =>
     onChange(value.includes(slug) ? value.filter((x) => x !== slug) : [...value, slug]);
@@ -1343,21 +1344,35 @@ function CategoryMultiSelect({
         <ChevronDown className={cn("ml-1 h-3.5 w-3.5 shrink-0 opacity-60 transition-transform", open && "rotate-180")} />
       </button>
       {open && (
-        <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border p-1">
-          {options.map((slug) => {
-            const sel = value.includes(slug);
-            return (
-              <button
-                key={slug}
-                type="button"
-                onClick={() => toggle(slug)}
-                className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] hover:bg-accent/60"
-              >
-                <span className={cn("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px]", sel ? "border-primary bg-primary/20 text-foreground" : "border-border text-transparent")}>✓</span>
-                <span className="truncate">{slug}</span>
-              </button>
-            );
-          })}
+        <div className="mt-1 rounded-md border border-border">
+          <div className="max-h-40 overflow-y-auto p-1">
+            {options.map((slug) => {
+              const sel = value.includes(slug);
+              return (
+                <button
+                  key={slug}
+                  type="button"
+                  onClick={() => toggle(slug)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] hover:bg-accent/60"
+                >
+                  <span className={cn("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px]", sel ? "border-primary bg-primary/20 text-foreground" : "border-border text-transparent")}>✓</span>
+                  <span className="truncate">{slug}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between border-t border-border px-2 py-1.5">
+            <span className="text-[11px] text-muted-foreground">
+              {t("companySkills.foldersSelectedCount", { defaultValue: "{{count}} selected", count: value.length })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90"
+            >
+              {t("common.done", { defaultValue: "Done" })}
+            </button>
+          </div>
         </div>
       )}
       {value.length > 0 && (
