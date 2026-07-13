@@ -314,6 +314,7 @@ export const companySkillCreateSchema = z.object({
   forkedFromSkillId: z.string().uuid().nullable().optional(),
   equipOnCreate: z.boolean().optional(),
   autoCategorize: z.boolean().optional(),
+  equipAgentIds: z.array(z.string().min(1)).optional(),
 });
 
 export const companySkillFileDetailSchema = z.object({

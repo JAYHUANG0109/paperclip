@@ -1272,6 +1272,7 @@ type SkillCreateDraft = {
   sharingScope: Exclude<CompanySkillSharingScope, "public_link">;
   sharingTeams: string[];
   equipOnCreate: boolean;
+  shareAgentIds: string[];
   minutesPerUse: number;
   forkedFromSkillId: string | null;
   forkedFromName: string | null;
@@ -1290,6 +1291,7 @@ function buildBlankSkillDraft(): SkillCreateDraft {
     minutesPerUse: 0,
     sharingTeams: [],
     equipOnCreate: true,
+    shareAgentIds: [],
     forkedFromSkillId: null,
     forkedFromName: null,
   };
@@ -1310,6 +1312,7 @@ function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft {
     minutesPerUse: 0,
     sharingTeams: [],
     equipOnCreate: true,
+    shareAgentIds: [],
     forkedFromSkillId: skill.id,
     forkedFromName: skill.name,
   };
@@ -1395,6 +1398,77 @@ function CategoryMultiSelect({
   );
 }
 
+// Same inline-checklist pattern as CategoryMultiSelect, but for agents (id→label).
+// Used under the 私人 scope to pick agents to share + equip the skill with.
+function AgentMultiSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+}: {
+  options: { id: string; label: string }[];
+  value: string[];
+  onChange: (next: string[]) => void;
+  placeholder: string;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const toggle = (id: string) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  const labelFor = (id: string) => options.find((o) => o.id === id)?.label ?? id;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-8 w-full items-center justify-between rounded-md border border-border px-2.5 text-[11px] text-foreground hover:border-ring"
+      >
+        <span className="truncate">{value.length === 0 ? placeholder : value.map(labelFor).join(", ")}</span>
+        <ChevronDown className={cn("ml-1 h-3.5 w-3.5 shrink-0 opacity-60 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="mt-1 rounded-md border border-border">
+          <div className="max-h-40 overflow-y-auto p-1">
+            {options.length === 0 ? (
+              <div className="px-2 py-1 text-[11px] text-muted-foreground">{t("companySkills.noAgents", { defaultValue: "No agents" })}</div>
+            ) : options.map((o) => {
+              const sel = value.includes(o.id);
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => toggle(o.id)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] hover:bg-accent/60"
+                >
+                  <span className={cn("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px]", sel ? "border-primary bg-primary/20 text-foreground" : "border-border text-transparent")}>✓</span>
+                  <span className="truncate">{o.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between border-t border-border px-2 py-1.5">
+            <span className="text-[11px] text-muted-foreground">
+              {t("companySkills.agentsSelectedCount", { defaultValue: "{{count}} selected", count: value.length })}
+            </span>
+            <button type="button" onClick={() => setOpen(false)} className="rounded bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90">
+              {t("common.done", { defaultValue: "Done" })}
+            </button>
+          </div>
+        </div>
+      )}
+      {value.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {value.map((id) => (
+            <button key={id} type="button" onClick={() => toggle(id)} className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-foreground">
+              {labelFor(id)} ✕
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NewSkillWizard({
   initialDraft,
   onCreate,
@@ -1403,6 +1477,7 @@ function NewSkillWizard({
   onCancel,
   availableTeams,
   existingCategories = [],
+  shareAgents = [],
 }: {
   initialDraft: SkillCreateDraft;
   onCreate: (payload: CompanySkillCreateRequest) => void;
@@ -1411,6 +1486,7 @@ function NewSkillWizard({
   onCancel: () => void;
   availableTeams: string[];
   existingCategories?: string[];
+  shareAgents?: { id: string; label: string }[];
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
@@ -1448,6 +1524,7 @@ function NewSkillWizard({
       sharingScope: draft.sharingScope,
       sharingTeams: draft.sharingScope === "team" ? draft.sharingTeams : [],
       equipOnCreate: draft.equipOnCreate,
+      equipAgentIds: draft.sharingScope === "private" ? draft.shareAgentIds : [],
       minutesPerUse: draft.minutesPerUse,
       forkedFromSkillId: draft.forkedFromSkillId,
     });
@@ -1691,6 +1768,22 @@ function NewSkillWizard({
                     })}
                   </div>
                 )}
+              </div>
+            )}
+            {draft.sharingScope === "private" && (
+              <div className="rounded-md border border-border p-3">
+                <div className="mb-2 text-xs font-medium text-muted-foreground">
+                  {t("companySkills.shareWithAgents", { defaultValue: "Also share with agents (private)" })}
+                </div>
+                <AgentMultiSelect
+                  options={shareAgents}
+                  value={draft.shareAgentIds}
+                  onChange={(next) => patchDraft({ shareAgentIds: next })}
+                  placeholder={t("companySkills.shareWithAgentsPlaceholder", { defaultValue: "Just me — pick agents to add…" })}
+                />
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  {t("companySkills.shareWithAgentsHint", { defaultValue: "Selected agents get the skill equipped and their owner can see it — still private to you + them." })}
+                </p>
               </div>
             )}
             <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-3">
@@ -3939,6 +4032,8 @@ export function CompanySkills() {
   const [uploadEquip, setUploadEquip] = useState(true);
   // Category folders chosen for the uploaded skill. Empty → server auto-files it.
   const [uploadCategories, setUploadCategories] = useState<string[]>([]);
+  // Agents to share a private uploaded skill with (equip + visibility).
+  const [uploadShareAgentIds, setUploadShareAgentIds] = useState<string[]>([]);
   // Files chosen for upload are STAGED here first; the skill is only created when
   // the user clicks the confirm button (so they set the scope before committing).
   const [stagedUpload, setStagedUpload] = useState<File[]>([]);
@@ -4294,7 +4389,7 @@ export function CompanySkills() {
       const name = readField("name") ?? fallbackName;
       const description = readField("description");
 
-      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [], equipOnCreate: uploadEquip, categories: uploadCategories, autoCategorize: uploadCategories.length === 0 });
+      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [], equipOnCreate: uploadEquip, categories: uploadCategories, autoCategorize: uploadCategories.length === 0, equipAgentIds: uploadScope === "private" ? uploadShareAgentIds : [] });
 
       // Write every other file (skip SKILL.md itself; skip obviously-binary by extension).
       const supporting = entries.filter((e) => e !== skillEntry && !toSkillRelative(e.rel).toLowerCase().endsWith("skill.md"));
@@ -4527,6 +4622,13 @@ export function CompanySkills() {
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId),
   });
+  // Agents offered in the "share this private skill with…" picker.
+  const agentShareOptions = useMemo(
+    () => (agentsQuery.data ?? [])
+      .filter((a) => a.status !== "terminated")
+      .map((a) => ({ id: a.id, label: a.name ?? a.id.slice(0, 8) })),
+    [agentsQuery.data],
+  );
 
   const installedByKey = useMemo(
     () => new Map(installedSkills.map((skill) => [skill.key, skill])),
@@ -4952,6 +5054,7 @@ export function CompanySkills() {
           <NewSkillWizard
             availableTeams={availableTeams}
             existingCategories={folderCategoryCounts.map((c) => c.slug)}
+            shareAgents={agentShareOptions}
             initialDraft={createDraft}
             onCreate={(payload) => createSkill.mutate(payload)}
             isPending={createSkill.isPending}
@@ -5063,6 +5166,19 @@ export function CompanySkills() {
                       })}
                     </div>
                   )}
+                </div>
+              )}
+              {uploadScope === "private" && (
+                <div className="mb-2.5 rounded-md border border-border p-2.5">
+                  <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                    {t("companySkills.shareWithAgents", { defaultValue: "Also share with agents (private)" })}
+                  </div>
+                  <AgentMultiSelect
+                    options={agentShareOptions}
+                    value={uploadShareAgentIds}
+                    onChange={setUploadShareAgentIds}
+                    placeholder={t("companySkills.shareWithAgentsPlaceholder", { defaultValue: "Just me — pick agents to add…" })}
+                  />
                 </div>
               )}
               <div className="mb-2.5 rounded-md border border-border p-2.5">

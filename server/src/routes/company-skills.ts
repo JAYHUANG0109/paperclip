@@ -1075,6 +1075,32 @@ export function companySkillRoutes(db: Db) {
         );
         await equipSkillToAgents(companyId, result.key, targets, actor.agentId ?? null);
       }
+      // Explicitly-picked agents to share with (the private "share with these agents"
+      // dropdown). Equip them, and for a private skill also add their owner user(s)
+      // as access members so the skill is VISIBLE to them.
+      const equipAgentIds = Array.isArray(req.body.equipAgentIds)
+        ? (req.body.equipAgentIds as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+        : [];
+      if (equipAgentIds.length > 0) {
+        await equipSkillToAgents(companyId, result.key, equipAgentIds, actor.agentId ?? null);
+        if (result.sharingScope === "private") {
+          try {
+            const ownerRows = await db
+              .select({ userId: agentMemberships.userId })
+              .from(agentMemberships)
+              .where(and(
+                eq(agentMemberships.companyId, companyId),
+                inArray(agentMemberships.agentId, equipAgentIds),
+                eq(agentMemberships.state, "joined"),
+              ));
+            for (const userId of new Set(ownerRows.map((r) => r.userId))) {
+              await svc.addSkillAccessMember(companyId, result.id, userId);
+            }
+          } catch (err) {
+            console.warn(`[skills] private share access-member grant failed for ${result.key}:`, err);
+          }
+        }
+      }
 
       res.status(201).json(result);
     },
