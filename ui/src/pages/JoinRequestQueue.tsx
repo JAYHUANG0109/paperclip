@@ -5,6 +5,7 @@ import { accessApi } from "@/api/access";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
@@ -87,7 +88,7 @@ export function JoinRequestQueue() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-3 rounded-xl border border-border bg-card p-4">
+      <Card className="flex-row flex-wrap gap-3 p-4">
         <label className="space-y-2 text-sm">
           <span className="font-medium">{t("joinRequests.status")}</span>
           <select
@@ -116,7 +117,7 @@ export function JoinRequestQueue() {
             <option value="agent">{t("joinRequests.typeAgent")}</option>
           </select>
         </label>
-      </div>
+      </Card>
 
       <div className="space-y-4">
         {(requestsQuery.data ?? []).length === 0 ? (
@@ -125,7 +126,7 @@ export function JoinRequestQueue() {
           </div>
         ) : (
           requestsQuery.data!.map((request) => (
-            <div key={request.id} className="rounded-xl border border-border bg-card p-4">
+            <Card key={request.id} className="block p-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -187,7 +188,7 @@ export function JoinRequestQueue() {
                   {request.requestType === "agent" && request.capabilities ? <div>{request.capabilities}</div> : null}
                 </div>
               </div>
-            </div>
+            </Card>
           ))
         )}
       </div>

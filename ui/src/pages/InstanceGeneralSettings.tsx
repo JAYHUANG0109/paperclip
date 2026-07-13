@@ -14,6 +14,7 @@ import { healthApi } from "@/api/health";
 import { instanceSettingsApi } from "@/api/instanceSettings";
 import { ModeBadge } from "@/components/access/ModeBadge";
 import { Button } from "../components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
@@ -102,7 +103,7 @@ export function InstanceGeneralSettings() {
         </div>
       )}
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <Card className="block p-5">
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold">{t("settings.instance.general.deploymentAuth")}</h2>
@@ -133,9 +134,9 @@ export function InstanceGeneralSettings() {
             />
           </div>
         </div>
-      </section>
+      </Card>
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <Card className="block p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold">{t("settings.instance.general.censorTitle")}</h2>
@@ -150,9 +151,9 @@ export function InstanceGeneralSettings() {
             aria-label={t("settings.instance.general.censorAria")}
           />
         </div>
-      </section>
+      </Card>
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <Card className="block p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold">{t("settings.instance.general.shortcutsTitle")}</h2>
@@ -167,9 +168,9 @@ export function InstanceGeneralSettings() {
             aria-label={t("settings.instance.general.shortcutsAria")}
           />
         </div>
-      </section>
+      </Card>
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <Card className="block p-5">
         <div className="space-y-5">
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold">{t("settings.instance.general.backupTitle")}</h2>
@@ -267,9 +268,9 @@ export function InstanceGeneralSettings() {
             </div>
           </div>
         </div>
-      </section>
+      </Card>
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <Card className="block p-5">
         <div className="space-y-4">
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold">{t("settings.instance.general.feedbackTitle")}</h2>
@@ -341,9 +342,9 @@ export function InstanceGeneralSettings() {
             chosen yet.
           </p>
         </div>
-      </section>
+      </Card>
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <Card className="block p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold">{t("settings.instance.general.signOutTitle")}</h2>
@@ -361,7 +362,7 @@ export function InstanceGeneralSettings() {
             {signOutMutation.isPending ? t("settings.instance.general.signingOut") : t("settings.instance.general.signOut")}
           </Button>
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

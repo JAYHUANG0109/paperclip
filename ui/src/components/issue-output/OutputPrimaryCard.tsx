@@ -11,6 +11,7 @@ import {
 } from "@/lib/issue-output";
 import { OutputVideoPlayer } from "./OutputVideoPlayer";
 import { OutputFileTile } from "./OutputFileTile";
+import { Card } from "@/components/ui/card";
 
 interface OutputPrimaryCardProps {
   item: IssueOutputItem;
@@ -28,7 +29,7 @@ export function OutputPrimaryCard({ item, creatorName }: OutputPrimaryCardProps)
   const contentType = meta?.contentType;
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <Card className="block overflow-hidden py-0">
       {/* Media region */}
       {meta && isVideoContentType(contentType) ? (
         <OutputVideoPlayer src={meta.contentPath} title={filename} />
@@ -91,6 +92,6 @@ export function OutputPrimaryCard({ item, creatorName }: OutputPrimaryCardProps)
           </div>
         ) : null}
       </div>
-    </div>
+    </Card>
   );
 }

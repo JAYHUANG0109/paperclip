@@ -58,7 +58,8 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
     label: "ACPX",
     description: "Experimental local ACPX multi-agent adapter",
     icon: Bot,
-    experimental: true,
+    comingSoon: true,
+    disabledLabel: "Use Claude Code or Codex with the ACP engine",
     hideFromVisualSelection: true,
   },
   claude_local: {

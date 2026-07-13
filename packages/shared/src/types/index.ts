@@ -1,6 +1,22 @@
 export type { Company } from "./company.js";
 export type {
+  AttentionDecisionVerb,
+  AttentionDetailImage,
+  AttentionFeed,
+  AttentionItem,
+  AttentionItemDetail,
+  AttentionItemDismissal,
+  AttentionProjectRef,
+  AttentionSeverity,
+  AttentionSourceKind,
+  AttentionSubject,
+  AttentionSubjectKind,
+  AttentionWorkspaceRef,
+} from "./attention.js";
+export type {
   Environment,
+  EnvironmentDeleteBlastRadius,
+  EnvironmentDeleteBlockedReason,
   EnvironmentLease,
   EnvironmentProbeResult,
   FakeSandboxEnvironmentConfig,
@@ -63,6 +79,8 @@ export type {
   CompanySkillSharingScope,
   CompanySkillApprovalStatus,
   CompanySkillListSort,
+  CompanySkillListInclude,
+  CompanySkillLastEditor,
   CompanySkillFileInventoryEntry,
   CompanySkillVersionFileInventoryEntry,
   CompanySkill,
@@ -78,6 +96,11 @@ export type {
   CompanySkillCommentCreateRequest,
   CompanySkillCommentUpdateRequest,
   CompanySkillForkRequest,
+  CompanySkillOriginalSummary,
+  CompanySkillForkSummary,
+  CompanySkillForkReassignment,
+  CompanySkillForkResult,
+  CompanySkillForkPrecheckResult,
   CompanySkillUpdateRequest,
   CompanySkillUpdateStatus,
   CompanySkillAuditSeverity,
@@ -96,6 +119,23 @@ export type {
   CompanySkillCreateRequest,
   CompanySkillFileDetail,
   CompanySkillFileUpdateRequest,
+  CompanySkillFileDeleteRequest,
+  CompanySkillFileDeleteResult,
+  CompanySkillTestRunStatus,
+  CompanySkillTestInput,
+  CompanySkillTestInputCreateRequest,
+  CompanySkillTestInputUpdateRequest,
+  CompanySkillTestRunTemplate,
+  CompanySkillTestRunTemplateCreateRequest,
+  CompanySkillTestRunTemplateUpdateRequest,
+  CompanySkillTestRunTemplateSnapshot,
+  CompanySkillTestRunCostSummary,
+  CompanySkillTestRun,
+  CompanySkillTestRunCreateRequest,
+  CompanySkillTestRunListQuery,
+  CompanySkillTestRunHarnessContentUnavailableReason,
+  CompanySkillTestRunHarnessContent,
+  CompanySkillTestRunDetail,
   CatalogSkillKind,
   CatalogSkillFileKind,
   CatalogSkillFile,
@@ -194,16 +234,23 @@ export type {
 } from "./document-annotation.js";
 export type { Project, ProjectBudgetSummary, ProjectCodebase, ProjectCodebaseOrigin, ProjectGoalRef, ProjectManagedByPlugin, ProjectWorkspace } from "./project.js";
 export type {
+  CompanySearchCountType,
+  CompanySearchFilterOptionCounts,
   CompanySearchHighlight,
   CompanySearchArtifactSummary,
+  CompanySearchIssueFilterKey,
   CompanySearchIssueSummary,
   CompanySearchResponse,
   CompanySearchResult,
   CompanySearchResultType,
   CompanySearchScope,
   CompanySearchSnippet,
+  CompanySearchSort,
+  CompanySearchUpdatedWithinOption,
+  CompanySearchZeroResults,
+  CompanySearchZeroResultsLoosenSuggestion,
 } from "./search.js";
-export { COMPANY_SEARCH_SCOPES } from "./search.js";
+export { COMPANY_SEARCH_SCOPES, COMPANY_SEARCH_SORTS, COMPANY_SEARCH_UPDATED_WITHIN_OPTIONS } from "./search.js";
 export type {
   ExecutionWorkspace,
   ExecutionWorkspaceSummary,
@@ -286,6 +333,7 @@ export type {
   ExternalObjectSummaryItem,
 } from "./external-object.js";
 export type {
+  CompactIssue,
   Issue,
   IssueWorkMode,
   IssueAssigneeAdapterOverrides,
@@ -367,6 +415,11 @@ export type {
   RequestCheckboxConfirmationOption,
   RequestCheckboxConfirmationPayload,
   RequestCheckboxConfirmationResult,
+  RequestItemVerdictValue,
+  RequestItemVerdictsItem,
+  RequestItemVerdictsPayload,
+  RequestItemVerdictsResultItem,
+  RequestItemVerdictsResult,
   AcceptedPlanDecompositionStatus,
   AcceptedPlanDecompositionChild,
   AcceptedPlanDecomposition,
@@ -378,6 +431,7 @@ export type {
   AskUserQuestionsInteraction,
   RequestConfirmationInteraction,
   RequestCheckboxConfirmationInteraction,
+  RequestItemVerdictsInteraction,
   IssueThreadInteraction,
   IssueThreadInteractionPayload,
   IssueThreadInteractionResult,
@@ -485,6 +539,7 @@ export type {
   AgentWakeupSkipped,
   GitWorktreeBranchAncestryVerdict,
   GitWorktreeBranchIncoherenceEvidence,
+  GitWorktreeInProgressOperation,
   HeartbeatRun,
   HeartbeatRunEvent,
   HeartbeatRunStatusPhase,
@@ -526,7 +581,7 @@ export type {
   UpdateResourceMembership,
 } from "./resource-memberships.js";
 export { RESOURCE_MEMBERSHIP_STATES } from "./resource-memberships.js";
-export type { InboxDismissal } from "./inbox-dismissal.js";
+export type { InboxDismissal, InboxDismissalKind } from "./inbox-dismissal.js";
 export type {
   AccessUserProfile,
   CompanyMemberRecord,

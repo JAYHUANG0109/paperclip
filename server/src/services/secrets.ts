@@ -407,6 +407,11 @@ type SecretResolutionOptions = {
   allowUserSecretScope?: boolean;
 };
 
+type ResolveAdapterConfigForRuntimeOptions = {
+  adapterType?: string | null;
+  skipUserSecrets?: boolean;
+};
+
 export type RuntimeSecretManifestEntry = {
   configPath: string;
   envKey: string | null;
@@ -4091,7 +4096,7 @@ export function secretService(db: Db) {
       companyId: string,
       adapterConfig: Record<string, unknown>,
       context?: Omit<SecretConsumerContext, "configPath">,
-      opts?: { adapterType?: string | null },
+      opts?: ResolveAdapterConfigForRuntimeOptions,
     ): Promise<{ config: Record<string, unknown>; secretKeys: Set<string>; manifest: RuntimeSecretManifestEntry[] }> => {
       const resolved = { ...adapterConfig };
       const secretKeys = new Set<string>();
@@ -4129,6 +4134,7 @@ export function secretService(db: Db) {
               manifest.push(secretResolution.manifestEntry);
               secretKeys.add(key);
             } else {
+              if (opts?.skipUserSecrets) continue;
               const secretResolution = await secretService(db).resolveUserSecretValue(
                 companyId,
                 {
@@ -4162,6 +4168,10 @@ export function secretService(db: Db) {
         const binding = canonicalizeBinding(parsed.data as EnvBinding);
         if (binding.type === "plain") continue;
         if (binding.type === "user_secret_ref") {
+          if (opts?.skipUserSecrets) {
+            delete resolved[key];
+            continue;
+          }
           const secretResolution = await secretService(db).resolveUserSecretValue(
             companyId,
             {

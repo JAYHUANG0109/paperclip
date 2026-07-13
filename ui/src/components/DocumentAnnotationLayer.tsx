@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Profiler, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, MessageSquarePlus } from "lucide-react";
 import type {
   DocumentAnnotationAnchorState,
@@ -12,6 +12,14 @@ import {
   getContainerTextOffset,
   rangesForNormalizedSpan,
 } from "@/lib/document-annotation-selection";
+import {
+  initializeSelectionDebug,
+  isSelectionDebugEnabled,
+  recordAnnotationCommit,
+  recordCaptureSelection,
+  recordMarkdownMutations,
+  recordSelectionChange,
+} from "@/lib/document-annotation-debug";
 import type { DocumentAnnotationAnchorSelector } from "@paperclipai/shared";
 
 export interface AnnotationOverlayThread {
@@ -247,6 +255,8 @@ export function DocumentAnnotationLayer({
     [reactId],
   );
   const nativeHighlightsSupported = getNativeHighlightApi() !== null;
+  const selectionDebugEnabled = isSelectionDebugEnabled();
+  if (selectionDebugEnabled) initializeSelectionDebug();
 
   const visibleThreads = useMemo(() => {
     if (!hideResolved) return threads;
@@ -367,6 +377,12 @@ export function DocumentAnnotationLayer({
 
     const mutationObserver = typeof window.MutationObserver === "function" && container
       ? new window.MutationObserver((mutations) => {
+        if (selectionDebugEnabled) {
+          const markdownMutations = mutations.filter((mutation) =>
+            Boolean(elementFromNode(mutation.target)?.closest(".paperclip-markdown")),
+          );
+          if (markdownMutations.length > 0) recordMarkdownMutations(markdownMutations.length);
+        }
         const onlyLayerMutations = mutations.every((mutation) => {
           const target = elementFromNode(mutation.target);
           return !!target?.closest(".paperclip-doc-annotation-layer, .paperclip-doc-annotation-visual-layer");
@@ -394,7 +410,7 @@ export function DocumentAnnotationLayer({
       window.removeEventListener("resize", handleResizeOrScroll);
       window.removeEventListener("scroll", handleResizeOrScroll, true);
     };
-  }, [computeHighlightRects, containerRef]);
+  }, [computeHighlightRects, containerRef, selectionDebugEnabled]);
 
   const captureSelection = useCallback((): PendingAnchor | null => {
     const container = containerRef.current;
@@ -423,7 +439,17 @@ export function DocumentAnnotationLayer({
   useEffect(() => {
     if (typeof document === "undefined") return;
     const handleSelectionChange = () => {
+      const selection = window.getSelection();
+      const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      const selectionIsActive = Boolean(
+        selection && !selection.isCollapsed && range && containerRef.current?.contains(range.commonAncestorContainer),
+      );
+      if (selectionDebugEnabled) recordSelectionChange(selectionIsActive);
+      const captureStartedAt = selectionDebugEnabled ? performance.now() : 0;
       const anchor = captureSelection();
+      if (selectionDebugEnabled) {
+        recordCaptureSelection(performance.now() - captureStartedAt, Boolean(anchor));
+      }
       if (!anchor) {
         onPendingAnchorChange(null);
         setToolbarPosition(null);
@@ -433,7 +459,7 @@ export function DocumentAnnotationLayer({
     };
     document.addEventListener("selectionchange", handleSelectionChange);
     return () => document.removeEventListener("selectionchange", handleSelectionChange);
-  }, [captureSelection, onPendingAnchorChange]);
+  }, [captureSelection, containerRef, onPendingAnchorChange, selectionDebugEnabled]);
 
   useEffect(() => {
     if (captureSelectionRequestId === undefined) return;
@@ -451,7 +477,7 @@ export function DocumentAnnotationLayer({
     if (pendingAnchor) onRequestComment(pendingAnchor);
   };
 
-  return (
+  const content = (
     <>
       {!nativeHighlightsSupported ? (
         <div className="paperclip-doc-annotation-visual-layer pointer-events-none absolute inset-0 z-0" aria-hidden="true">
@@ -580,4 +606,10 @@ export function DocumentAnnotationLayer({
       </div>
     </>
   );
+
+  return selectionDebugEnabled ? (
+    <Profiler id="DocumentAnnotationLayer" onRender={recordAnnotationCommit}>
+      {content}
+    </Profiler>
+  ) : content;
 }

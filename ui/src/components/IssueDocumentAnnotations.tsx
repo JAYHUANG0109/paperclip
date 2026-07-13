@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Profiler, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Agent, DocumentAnnotationThreadWithComments, IssueDocument } from "@paperclipai/shared";
 import { MessageSquare } from "lucide-react";
@@ -7,6 +7,11 @@ import { cn } from "@/lib/utils";
 import { documentAnnotationsApi, type DocumentAnnotationTarget } from "@/api/document-annotations";
 import { queryKeys } from "@/lib/queryKeys";
 import { parseDocumentAnnotationHash } from "@/lib/document-annotation-hash";
+import {
+  initializeSelectionDebug,
+  isSelectionDebugEnabled,
+  recordAnnotationCommit,
+} from "@/lib/document-annotation-debug";
 import { DocumentAnnotationLayer, type PendingAnchor } from "./DocumentAnnotationLayer";
 import { DocumentAnnotationPanel } from "./DocumentAnnotationPanel";
 import type { CompanyUserProfile } from "@/lib/company-members";
@@ -59,6 +64,8 @@ export function IssueDocumentAnnotations({
   userProfileMap,
   defaultFocusedThreadId,
 }: IssueDocumentAnnotationsProps) {
+  const selectionDebugEnabled = isSelectionDebugEnabled();
+  if (selectionDebugEnabled) initializeSelectionDebug();
   const containerRef = useRef<HTMLElement | null>(null);
   const [focusedThreadId, setFocusedThreadId] = useState<string | null>(defaultFocusedThreadId ?? null);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
@@ -158,6 +165,8 @@ export function IssueDocumentAnnotations({
   const annotationsQuery = useQuery({
     queryKey: target?.kind === "routine"
       ? queryKeys.routines.documentAnnotations(target.routineId, target.documentKey, "all")
+      : target?.kind === "case"
+        ? queryKeys.cases.documentAnnotations(target.caseId, target.documentKey, "all")
       : queryKeys.issues.documentAnnotations(issueId, doc.key, "all"),
     queryFn: () => target
       ? documentAnnotationsApi.listForTarget(target, { status: "all", includeComments: true })
@@ -316,7 +325,7 @@ export function IssueDocumentAnnotations({
     />
   ) : null;
 
-  return (
+  const content = (
     <div className="paperclip-doc-annotation-host relative">
       <section
         ref={(element) => {
@@ -363,6 +372,12 @@ export function IssueDocumentAnnotations({
       {panelOpen && isMobile ? annotationPanel : null}
     </div>
   );
+
+  return selectionDebugEnabled ? (
+    <Profiler id="IssueDocumentAnnotations" onRender={recordAnnotationCommit}>
+      {content}
+    </Profiler>
+  ) : content;
 }
 
 export interface DocumentAnnotationsCountChipProps {
@@ -387,6 +402,8 @@ export function DocumentAnnotationsCountChip({
   const annotationsQuery = useQuery({
     queryKey: target?.kind === "routine"
       ? queryKeys.routines.documentAnnotations(target.routineId, target.documentKey, "all")
+      : target?.kind === "case"
+        ? queryKeys.cases.documentAnnotations(target.caseId, target.documentKey, "all")
       : queryKeys.issues.documentAnnotations(issueId, docKey, "all"),
     queryFn: () => target
       ? documentAnnotationsApi.listForTarget(target, { status: "all", includeComments: true })
