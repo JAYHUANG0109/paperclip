@@ -395,6 +395,13 @@ export interface CompanySkillCreateRequest {
    * into the best-matching existing category. Set false to leave it uncategorized.
    */
   autoCategorize?: boolean;
+  /**
+   * Agents to equip with this skill on create (in addition to the sharing-scope
+   * equip). For a `private` skill, each of these agents' owner user(s) are also
+   * added as access members so the skill is visible to them — "private, just for
+   * us + these agents." Equip respects the distribution hierarchy for agent actors.
+   */
+  equipAgentIds?: string[];
 }
 
 export interface CompanySkillFileDetail {

@@ -270,6 +270,19 @@ export function companySkillRoutes(db: Db) {
     }
   }
 
+  // Only these two logins may file skills into the reserved numbered (00–10)
+  // folders — the founder's org taxonomy. Others get them stripped server-side.
+  const RESTRICTED_FOLDER_EMAILS = new Set(["tang@seasonart.org", "jay20020109@seasonart.org"]);
+  async function actorAllowsRestrictedFolders(req: Request): Promise<boolean> {
+    if (req.actor.type !== "board" || !req.actor.userId) return false;
+    const row = await db
+      .select({ email: authUsers.email })
+      .from(authUsers)
+      .where(eq(authUsers.id, req.actor.userId))
+      .then((rows) => rows[0] ?? null);
+    return RESTRICTED_FOLDER_EMAILS.has((row?.email ?? "").trim().toLowerCase());
+  }
+
   // Creating a NEW skill is open to everyone: any board member of the company,
   // and any agent whose canCreateSkills is not explicitly false. (Editing or
   // deleting EXISTING skills stays gated by assertCanMutateCompanySkills / grants.)
@@ -1022,7 +1035,11 @@ export function companySkillRoutes(db: Db) {
     async (req, res) => {
       const companyId = req.params.companyId as string;
       await assertCanCreateCompanySkill(req, companyId);
-      const result = await svc.createLocalSkill(companyId, req.body, skillActor(req), { isPrivileged: isPrivilegedMemberViewer(req, companyId, true) });
+      const allowRestrictedFolders = await actorAllowsRestrictedFolders(req);
+      const result = await svc.createLocalSkill(companyId, req.body, skillActor(req), {
+        isPrivileged: isPrivilegedMemberViewer(req, companyId, true),
+        allowRestrictedFolders,
+      });
 
       const actor = getActorInfo(req);
       await logActivity(db, {

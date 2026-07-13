@@ -1557,6 +1557,13 @@ function tokenizeForMatch(text: string): string[] {
   return out;
 }
 
+// The numbered "NN …" folders (00 全域規則, 01 …, 10 投資) are the founder's org
+// taxonomy — reserved to the founder + Jay. Non-privileged creators can't file
+// into them (explicitly or via auto-categorize).
+function isRestrictedFolderName(name: string): boolean {
+  return /^\s*\d{2}[\s-]/.test(name);
+}
+
 function normalizeCategoryList(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   const seen = new Set<string>();
@@ -2877,11 +2884,13 @@ export function companySkillService(db: Db) {
   async function pickAutoCategory(
     companyId: string,
     text: { name?: string | null; description?: string | null; markdown?: string | null },
+    allowRestricted = true,
   ): Promise<string | null> {
     const skills = await listFull(companyId);
     const agg = new Map<string, string[]>(); // category -> member text tokens
     for (const s of skills) {
       for (const c of s.categories ?? []) {
+        if (!allowRestricted && isRestrictedFolderName(c)) continue; // never auto-file into a reserved folder
         const bucket = agg.get(c) ?? [];
         bucket.push(...tokenizeForMatch(`${s.name ?? ""} ${s.description ?? ""}`));
         agg.set(c, bucket);
@@ -3852,7 +3861,7 @@ export function companySkillService(db: Db) {
     companyId: string,
     input: CompanySkillCreateRequest,
     actor: SkillActor | null = null,
-    options: { isPrivileged?: boolean } = {},
+    options: { isPrivileged?: boolean; allowRestrictedFolders?: boolean } = {},
   ): Promise<CompanySkill> {
     const slug = normalizeSkillSlug(input.slug ?? input.name) ?? "skill";
     const key = `company/${companyId}/${slug}`;
@@ -3932,11 +3941,16 @@ export function companySkillService(db: Db) {
 
     const created = imported[0]!;
     // Resolve categories: explicit input → fork/frontmatter → auto-file (fallback).
+    const allowRestrictedFolders = options.allowRestrictedFolders ?? false;
     let resolvedCategories = input.categories
       ? normalizeCategoryList(input.categories)
       : forkSource?.categories ?? created.categories;
+    // Non-privileged creators can't file into the reserved numbered folders.
+    if (!allowRestrictedFolders) {
+      resolvedCategories = (resolvedCategories ?? []).filter((c) => !isRestrictedFolderName(c));
+    }
     if ((!resolvedCategories || resolvedCategories.length === 0) && input.autoCategorize !== false && !forkSource) {
-      const auto = await pickAutoCategory(companyId, { name: created.name, description: created.description, markdown });
+      const auto = await pickAutoCategory(companyId, { name: created.name, description: created.description, markdown }, allowRestrictedFolders);
       if (auto) resolvedCategories = [auto];
     }
     const row = await db
