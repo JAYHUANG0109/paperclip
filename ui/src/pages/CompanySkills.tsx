@@ -574,7 +574,7 @@ function skillAccentColor(key: string, explicit: string | null | undefined): str
   return DISCOVERY_ACCENTS[hash % DISCOVERY_ACCENTS.length];
 }
 
-function SkillCardIcon({ card, size = 36 }: { card: DiscoveryCard; size?: number }) {
+export function SkillCardIcon({ card, size = 36 }: { card: DiscoveryCard; size?: number }) {
   if (card.iconUrl) {
     return (
       <img
@@ -1320,6 +1320,7 @@ function NewSkillWizard({
   error,
   onCancel,
   availableTeams,
+  existingCategories = [],
 }: {
   initialDraft: SkillCreateDraft;
   onCreate: (payload: CompanySkillCreateRequest) => void;
@@ -1327,6 +1328,7 @@ function NewSkillWizard({
   error: string | null;
   onCancel: () => void;
   availableTeams: string[];
+  existingCategories?: string[];
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
@@ -1360,6 +1362,7 @@ function NewSkillWizard({
       color: draft.color,
       tagline: draft.tagline.trim() || null,
       categories: draft.categories,
+      autoCategorize: draft.categories.length === 0,
       sharingScope: draft.sharingScope,
       sharingTeams: draft.sharingScope === "team" ? draft.sharingTeams : [],
       equipOnCreate: draft.equipOnCreate,
@@ -1505,7 +1508,32 @@ function NewSkillWizard({
             </div>
           </div>
           <div>
-            <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("companySkills.categories", { defaultValue: "Categories" })}</label>
+            <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("companySkills.categories", { defaultValue: "Categories" })}
+              <span className="ml-1 normal-case font-normal text-muted-foreground/80">
+                {t("companySkills.folderAutoHint", { defaultValue: "— leave blank to auto-file" })}
+              </span>
+            </label>
+            {existingCategories.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {existingCategories.map((slug) => {
+                  const selected = draft.categories.includes(slug);
+                  return (
+                    <button
+                      key={slug}
+                      type="button"
+                      onClick={() => patchDraft({ categories: selected ? draft.categories.filter((x) => x !== slug) : [...draft.categories, slug] })}
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+                        selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring",
+                      )}
+                    >
+                      {slug}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <Input
               value={categoryDraft}
               onChange={(event) => patchDraft({ categories: splitCategoryDraft(event.target.value) })}
@@ -3837,6 +3865,8 @@ export function CompanySkills() {
   const [uploadScope, setUploadScope] = useState<"company" | "team" | "private">("company");
   const [uploadTeams, setUploadTeams] = useState<string[]>([]);
   const [uploadEquip, setUploadEquip] = useState(true);
+  // Category folders chosen for the uploaded skill. Empty → server auto-files it.
+  const [uploadCategories, setUploadCategories] = useState<string[]>([]);
   // Files chosen for upload are STAGED here first; the skill is only created when
   // the user clicks the confirm button (so they set the scope before committing).
   const [stagedUpload, setStagedUpload] = useState<File[]>([]);
@@ -4169,7 +4199,7 @@ export function CompanySkills() {
       const name = readField("name") ?? fallbackName;
       const description = readField("description");
 
-      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [], equipOnCreate: uploadEquip });
+      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [], equipOnCreate: uploadEquip, categories: uploadCategories, autoCategorize: uploadCategories.length === 0 });
 
       // Write every other file (skip SKILL.md itself; skip obviously-binary by extension).
       const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|woff2?|ttf|otf|mp4|mov|mp3|wav)$/i;
@@ -4731,7 +4761,7 @@ export function CompanySkills() {
                 </Button>
                 <Button
                   variant="destructive"
-                  onClick={() => deleteSkill.mutate()}
+                  onClick={() => deleteSkill.mutate({})}
                   disabled={deleteSkill.isPending || !deleteTargetSkillId}
                 >
                   {deleteSkill.isPending ? t("companySkills.removingSkill", { defaultValue: "Removing..." }) : t("companySkills.removeSkill", { defaultValue: "Remove skill" })}
@@ -4818,6 +4848,7 @@ export function CompanySkills() {
           </DialogHeader>
           <NewSkillWizard
             availableTeams={availableTeams}
+            existingCategories={discoveryCategoryCounts.map((c) => c.slug)}
             initialDraft={createDraft}
             onCreate={(payload) => createSkill.mutate(payload)}
             isPending={createSkill.isPending}
@@ -4931,6 +4962,36 @@ export function CompanySkills() {
                   )}
                 </div>
               )}
+              <div className="mb-2.5 rounded-md border border-border p-2.5">
+                <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                  {t("companySkills.folderCategory", { defaultValue: "Folder (category)" })}
+                  <span className="ml-1 font-normal">
+                    {t("companySkills.folderAutoHint", { defaultValue: "— leave blank to auto-file" })}
+                  </span>
+                </div>
+                {discoveryCategoryCounts.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">{t("companySkills.noCategoriesYet", { defaultValue: "No categories yet." })}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {discoveryCategoryCounts.map(({ slug }) => {
+                      const selected = uploadCategories.includes(slug);
+                      return (
+                        <button
+                          key={slug}
+                          type="button"
+                          onClick={() => setUploadCategories((cur) => selected ? cur.filter((x) => x !== slug) : [...cur, slug])}
+                          className={cn(
+                            "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+                            selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring",
+                          )}
+                        >
+                          {slug}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <label className="mb-2.5 flex cursor-pointer items-start gap-2 rounded-md border border-border p-2.5">
                 <input
                   type="checkbox"

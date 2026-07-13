@@ -313,6 +313,7 @@ export const companySkillCreateSchema = z.object({
   minutesPerUse: z.number().int().min(0).optional(),
   forkedFromSkillId: z.string().uuid().nullable().optional(),
   equipOnCreate: z.boolean().optional(),
+  autoCategorize: z.boolean().optional(),
 });
 
 export const companySkillFileDetailSchema = z.object({

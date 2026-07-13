@@ -1545,6 +1545,18 @@ function categoryLookupKey(value: string) {
   return value.toLocaleLowerCase();
 }
 
+// Lightweight tokenizer for fuzzy category matching: ASCII words (len>=3) plus
+// CJK character bigrams (Chinese has no word spaces), so "週誌批閱" ↔ "週誌系統"
+// share the "週誌" bigram.
+function tokenizeForMatch(text: string): string[] {
+  const s = (text ?? "").toLowerCase();
+  const out: string[] = [];
+  for (const m of s.matchAll(/[a-z0-9]{3,}/g)) out.push(m[0]);
+  const cjk = (s.match(/[一-鿿]/g) ?? []).join("");
+  for (let i = 0; i + 1 < cjk.length; i++) out.push(cjk.slice(i, i + 2));
+  return out;
+}
+
 function normalizeCategoryList(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   const seen = new Set<string>();
@@ -2859,6 +2871,37 @@ export function companySkillService(db: Db) {
     return items;
   }
 
+  // Best-matching existing category for a new skill, or null if nothing is a
+  // clear fit. Heuristic only (no LLM): score each existing category by how much
+  // its name + its member skills' text overlaps the new skill's text.
+  async function pickAutoCategory(
+    companyId: string,
+    text: { name?: string | null; description?: string | null; markdown?: string | null },
+  ): Promise<string | null> {
+    const skills = await listFull(companyId);
+    const agg = new Map<string, string[]>(); // category -> member text tokens
+    for (const s of skills) {
+      for (const c of s.categories ?? []) {
+        const bucket = agg.get(c) ?? [];
+        bucket.push(...tokenizeForMatch(`${s.name ?? ""} ${s.description ?? ""}`));
+        agg.set(c, bucket);
+      }
+    }
+    if (agg.size === 0) return null;
+    const hay = new Set(tokenizeForMatch(`${text.name ?? ""} ${text.description ?? ""} ${(text.markdown ?? "").slice(0, 1000)}`));
+    let best: string | null = null;
+    let bestScore = 0;
+    for (const [category, memberTokens] of agg) {
+      // Category-name tokens weigh heavily; member-text overlap breaks ties.
+      const nameCore = category.replace(/^[\d.\-\s]+/, "");
+      let score = 0;
+      for (const tok of new Set(tokenizeForMatch(nameCore))) if (hay.has(tok)) score += 3;
+      for (const tok of new Set(memberTokens)) if (hay.has(tok)) score += 1;
+      if (score > bestScore) { bestScore = score; best = category; }
+    }
+    return bestScore >= 4 ? best : null;
+  }
+
   async function listFull(companyId: string): Promise<CompanySkill[]> {
     await ensureSkillInventoryCurrent(companyId);
     const rows = await db
@@ -3888,6 +3931,14 @@ export function companySkillService(db: Db) {
     }]);
 
     const created = imported[0]!;
+    // Resolve categories: explicit input → fork/frontmatter → auto-file (fallback).
+    let resolvedCategories = input.categories
+      ? normalizeCategoryList(input.categories)
+      : forkSource?.categories ?? created.categories;
+    if ((!resolvedCategories || resolvedCategories.length === 0) && input.autoCategorize !== false && !forkSource) {
+      const auto = await pickAutoCategory(companyId, { name: created.name, description: created.description, markdown });
+      if (auto) resolvedCategories = [auto];
+    }
     const row = await db
       .update(companySkills)
       .set({
@@ -3896,7 +3947,7 @@ export function companySkillService(db: Db) {
         tagline: normalizeStoreText(input.tagline, 120) ?? forkSource?.tagline ?? created.tagline,
         authorName: normalizeStoreText(input.authorName, 200) ?? forkSource?.authorName ?? created.authorName,
         homepageUrl: normalizeStoreText(input.homepageUrl, 2000) ?? forkSource?.homepageUrl ?? created.homepageUrl,
-        categories: input.categories ? normalizeCategoryList(input.categories) : forkSource?.categories ?? created.categories,
+        categories: resolvedCategories,
         sharingScope,
         createdByUserId: actor?.type === "user" ? actor.userId ?? null : null,
         minutesPerUse: Math.max(0, Math.min(100000, Math.round(input.minutesPerUse ?? 0))),

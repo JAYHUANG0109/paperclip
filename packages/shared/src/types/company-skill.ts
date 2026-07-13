@@ -389,6 +389,12 @@ export interface CompanySkillCreateRequest {
    * is unaffected.
    */
   equipOnCreate?: boolean;
+  /**
+   * When true (default) and no categories are resolved (neither `categories`
+   * here nor a `categories:` frontmatter block), the server auto-files the skill
+   * into the best-matching existing category. Set false to leave it uncategorized.
+   */
+  autoCategorize?: boolean;
 }
 
 export interface CompanySkillFileDetail {
