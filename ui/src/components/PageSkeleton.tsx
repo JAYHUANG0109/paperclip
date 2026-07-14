@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface PageSkeletonProps {
@@ -12,7 +13,38 @@ interface PageSkeletonProps {
     | "org-chart";
 }
 
-export function PageSkeleton({ variant = "list" }: PageSkeletonProps) {
+/**
+ * A centered spinner + label floating over the skeleton. The gray skeleton
+ * blocks alone read as a "blank screen" to some users (Frank, 2026-07), so we
+ * overlay an unmistakable spinning indicator that says the page is loading.
+ */
+function SkeletonLoadingOverlay() {
+  const { t } = useTranslation();
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+      <div className="flex items-center gap-2 rounded-full border border-border bg-background/85 px-3 py-1.5 shadow-sm backdrop-blur-sm">
+        <div
+          className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground"
+          aria-hidden="true"
+        />
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("common.loading", { defaultValue: "Loading…" })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function PageSkeleton(props: PageSkeletonProps) {
+  return (
+    <div className="relative min-h-[40vh]" role="status" aria-live="polite" aria-busy="true">
+      <PageSkeletonBody {...props} />
+      <SkeletonLoadingOverlay />
+    </div>
+  );
+}
+
+function PageSkeletonBody({ variant = "list" }: PageSkeletonProps) {
   if (variant === "dashboard") {
     return (
       <div className="space-y-6">

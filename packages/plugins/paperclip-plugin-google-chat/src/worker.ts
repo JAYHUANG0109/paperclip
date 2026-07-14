@@ -555,6 +555,28 @@ async function postRecentTasksCard(
   }, "recent-tasks");
 }
 
+/** The agent's most-recent tasks from Paperclip (newest-activity first),
+ *  regardless of which channel created them — so the picker reflects real
+ *  recent work, not only tasks this DM happens to have touched. Returns [] on
+ *  any lookup failure (caller falls back to the per-DM remembered list). */
+async function fetchAgentRecentTasks(
+  ctx: PluginContext,
+  companyId: string,
+  agentId: string,
+  limit: number
+): Promise<Array<{ issueId: string; identifier: string; title: string; status: string }>> {
+  if (!agentId) return [];
+  const issues = await ctx.issues
+    .list({ companyId, assigneeAgentId: agentId, limit })
+    .catch(() => [] as Awaited<ReturnType<typeof ctx.issues.list>>);
+  return issues.map((iss) => ({
+    issueId: iss.id,
+    identifier: iss.identifier ?? iss.id.slice(0, 8),
+    title: iss.title ?? "",
+    status: iss.status ?? ""
+  }));
+}
+
 /**
  * DM target for an agent's OWNER — the person paired to it in the Assignments
  * map. Lets us mirror an agent's reply to Chat even when the conversation
@@ -718,11 +740,16 @@ async function routeToAgent(
   const cmd = (inbound.text ?? "").trim();
   if (inbound.spaceType === "DM" && /^(\/tasks?|任務清單|最近任務)$/i.test(cmd)) {
     const actionUrl = await getCardActionUrl(ctx, config);
-    const recentIds = await getRecentTasks(ctx, inbound.spaceName);
-    const tasks: Array<{ issueId: string; identifier: string; title: string; status: string }> = [];
-    for (const id of recentIds) {
-      const iss = await ctx.issues.get(id, companyId).catch(() => null);
-      if (iss) tasks.push({ issueId: id, identifier: iss.identifier ?? id.slice(0, 8), title: iss.title ?? "", status: iss.status ?? "" });
+    // Show the agent's real recent tasks (any channel), newest first — not just
+    // tasks this DM created. Fall back to this DM's remembered list only if the
+    // lookup yields nothing (e.g. agent unresolved).
+    const tasks = await fetchAgentRecentTasks(ctx, companyId, agentId, 10);
+    if (tasks.length === 0) {
+      const recentIds = await getRecentTasks(ctx, inbound.spaceName);
+      for (const id of recentIds) {
+        const iss = await ctx.issues.get(id, companyId).catch(() => null);
+        if (iss) tasks.push({ issueId: id, identifier: iss.identifier ?? id.slice(0, 8), title: iss.title ?? "", status: iss.status ?? "" });
+      }
     }
     if (actionUrl) {
       await postRecentTasksCard(ctx, config, inbound.spaceName, companyId, actionUrl, tasks);
@@ -737,23 +764,24 @@ async function routeToAgent(
   const resumeMatch = /^(?:\/task|任務)\s+(\S+)$/i.exec(cmd);
   if (inbound.spaceType === "DM" && resumeMatch) {
     const wanted = resumeMatch[1].trim().toUpperCase();
-    const recentIds = await getRecentTasks(ctx, inbound.spaceName);
-    let match: { id: string; identifier: string } | null = null;
-    for (const id of recentIds) {
+    // Match against the agent's recent tasks (any channel) AND this DM's
+    // remembered list, so any task shown by /tasks can be resumed by number.
+    const candidates = await fetchAgentRecentTasks(ctx, companyId, agentId, 10);
+    const seen = new Set(candidates.map((t) => t.issueId));
+    for (const id of await getRecentTasks(ctx, inbound.spaceName)) {
+      if (seen.has(id)) continue;
       const iss = await ctx.issues.get(id, companyId).catch(() => null);
-      if (iss && (iss.identifier ?? "").toUpperCase() === wanted) {
-        match = { id, identifier: iss.identifier ?? id };
-        break;
-      }
+      if (iss) candidates.push({ issueId: id, identifier: iss.identifier ?? id.slice(0, 8), title: iss.title ?? "", status: iss.status ?? "" });
     }
+    const match = candidates.find((t) => t.identifier.toUpperCase() === wanted) ?? null;
     if (!match) {
       return `找不到最近任務「${resumeMatch[1]}」。輸入 /tasks 看看清單。/ Task not found — try /tasks.`;
     }
     const rk = conversationKey({ spaceType: "DM", spaceName: inbound.spaceName });
     if (rk) {
-      await setConversationIssue(ctx, rk, match.id, companyId);
-      await rememberChatTarget(ctx, match.id, target);
-      await rememberRecentTask(ctx, inbound.spaceName, match.id);
+      await setConversationIssue(ctx, rk, match.issueId, companyId);
+      await rememberChatTarget(ctx, match.issueId, target);
+      await rememberRecentTask(ctx, inbound.spaceName, match.issueId);
     }
     return `✅ 已切回 ${match.identifier}，接下來的訊息會繼續這個任務。/ Switched back — your next messages continue it.`;
   }
@@ -1477,12 +1505,17 @@ const plugin = definePlugin({
       try {
         const assignment = email ? await getAssignment(ctx, email) : null;
         const companyId = assignment?.companyId ?? (await resolveCompanyId(ctx, config.companyId));
+        const agentId = assignment?.agentId ?? (await resolveAgentId(ctx, companyId, config.defaultAgentUrlKey));
         const actionUrl = await getCardActionUrl(ctx, config);
-        const recentIds = await getRecentTasks(ctx, click.spaceName);
-        const tasks: Array<{ issueId: string; identifier: string; title: string; status: string }> = [];
-        for (const tid of recentIds) {
-          const iss = await ctx.issues.get(tid, companyId).catch(() => null);
-          if (iss) tasks.push({ issueId: tid, identifier: iss.identifier ?? tid.slice(0, 8), title: iss.title ?? "", status: iss.status ?? "" });
+        // Agent's real recent tasks (any channel), newest first; fall back to
+        // this DM's remembered list only when the lookup is empty.
+        const tasks = await fetchAgentRecentTasks(ctx, companyId, agentId, 10);
+        if (tasks.length === 0) {
+          const recentIds = await getRecentTasks(ctx, click.spaceName);
+          for (const tid of recentIds) {
+            const iss = await ctx.issues.get(tid, companyId).catch(() => null);
+            if (iss) tasks.push({ issueId: tid, identifier: iss.identifier ?? tid.slice(0, 8), title: iss.title ?? "", status: iss.status ?? "" });
+          }
         }
         await postRecentTasksCard(ctx, config, click.spaceName, companyId, actionUrl, tasks);
         return chatTextResponse("📋 最近的任務 / Your recent tasks:");
