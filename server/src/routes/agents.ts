@@ -61,6 +61,7 @@ import {
 } from "./workspace-command-authz.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import { environmentService } from "../services/environments.js";
+import { notificationService } from "../services/notifications.js";
 import { resolveEnvironmentExecutionTarget } from "../services/environment-execution-target.js";
 import { environmentRuntimeService } from "../services/environment-runtime.js";
 import type { AdapterExecutionTarget } from "@paperclipai/adapter-utils/execution-target";
@@ -203,6 +204,18 @@ export function agentRoutes(
   const secretsSvc = secretService(db);
   const instructions = agentInstructionsService();
   const companySkills = companySkillService(db);
+  const notifications = notificationService(db);
+  // Ranks that may distribute skills to ANYONE (incl. upward) without the
+  // recipient's approval — the recipient just gets a notification. Covers
+  // 副理/經理 及以上 and 副園長/園長/總園長, plus the founder and Jay (board owner).
+  // Matched against the agent's name + title, so a new 副理/園長 auto-qualifies.
+  const PRIVILEGED_DISTRIBUTOR_KEYWORDS = [
+    "園長", "副理", "經理", "協理", "總監", "副總", "執行長", "董事長", "創辦人", "Founder",
+  ];
+  const isPrivilegedDistributor = (a: { name?: string | null; title?: string | null }): boolean => {
+    const hay = `${a.name ?? ""} ${a.title ?? ""}`;
+    return PRIVILEGED_DISTRIBUTOR_KEYWORDS.some((k) => hay.includes(k));
+  };
   const workspaceOperations = workspaceOperationService(db);
   const instanceSettings = instanceSettingsService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
@@ -2228,6 +2241,10 @@ export function agentRoutes(
       return Array.from(new Set(rows.map((r) => r.userId)));
     };
 
+    // 副理/園長 及以上 (含 founder + Jay) may push skills to anyone — including
+    // upward — without the recipient's approval; the recipient is only notified.
+    const privilegedDistributor = isPrivilegedDistributor(manager);
+
     const requestedEntries = normalizeDesiredSkillSelections(skillKeys) ?? [];
     const actor = getActorInfo(req);
     const results: Array<{ agentId: string; name: string | null; status: string; detail?: string }> = [];
@@ -2247,6 +2264,11 @@ export function agentRoutes(
           // Fall through to the manager-chain check.
         }
         if (!permitted && (managerSubtreeIds.has(target.id) || managerPeerIds.has(target.id))) permitted = true;
+        // Track whether this target was above/outside the distributor's level
+        // (i.e. would normally need approval) BEFORE the privileged bypass, so we
+        // know when to send the recipient a courtesy notification instead.
+        const wasUpwardTarget = !permitted;
+        if (!permitted && privilegedDistributor) permitted = true;
         if (!permitted) {
           // Not my team and not a peer → this target is above/outside my level.
           // Don't equip: route an approval to the RECIPIENT's own user(s) — they
@@ -2340,6 +2362,28 @@ export function agentRoutes(
           runId: actor.runId,
           details: { via: "distribute", distributedBy: manager.id, skills: desiredSkills, mode },
         });
+        // Privileged distributor pushed a skill UP to someone above/outside their
+        // level: no approval was required, but notify the recipient's user(s) so
+        // they know a skill was added to their agent.
+        if (privilegedDistributor && wasUpwardTarget) {
+          try {
+            const recipientUserIds = await ownerUserIdsOf(target.id);
+            const skillLabel = skillKeys.map((k) => k.split("/").pop()).join(", ");
+            for (const uid of recipientUserIds) {
+              await notifications.create({
+                companyId: updated.companyId,
+                userId: uid,
+                kind: "skill_distributed",
+                title: `${manager.name ?? "A manager"} 已為你的代理人裝備技能`,
+                body: `${target.name ?? "你的代理人"} 已自動裝備：${skillLabel}`,
+                link: "/skills",
+                dedupeKey: `skill-distributed:${target.id}:${uid}:${skillKeys.slice().sort().join("|")}`,
+              });
+            }
+          } catch (err) {
+            console.error("[agents/skills/distribute] recipient notification failed", err);
+          }
+        }
         results.push({ agentId: targetId, name: target.name, status: "equipped" });
       } catch (err) {
         results.push({
