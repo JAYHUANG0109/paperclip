@@ -1989,6 +1989,35 @@ export function agentRoutes(
         return;
       }
 
+      // Equipping a PRIVATE skill to an agent ("Add to agent") should also let
+      // the agent's OWNER user(s) see/manage it in the skills store — otherwise
+      // the agent runs the skill but its owner can't find it (the skill stays
+      // hidden because they're not an access member). Grant that access here,
+      // idempotently. Mirrors the create-time equipAgentIds behaviour.
+      try {
+        const ownerRows = await db
+          .select({ userId: agentMemberships.userId })
+          .from(agentMemberships)
+          .where(and(
+            eq(agentMemberships.companyId, updated.companyId),
+            eq(agentMemberships.agentId, updated.id),
+            eq(agentMemberships.state, "joined"),
+          ));
+        const ownerUserIds = ownerRows.map((r) => r.userId).filter((v): v is string => Boolean(v));
+        if (ownerUserIds.length > 0) {
+          for (const key of desiredSkills) {
+            const skill = await companySkills.getByKey(updated.companyId, key).catch(() => null);
+            if (skill && skill.sharingScope === "private") {
+              for (const uid of ownerUserIds) {
+                await companySkills.addSkillAccessMember(updated.companyId, skill.id, uid);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[agents/skills/sync] failed to grant owner access for equipped private skills", err);
+      }
+
       const adapter = findActiveServerAdapter(updated.adapterType);
       const { config: runtimeConfig } = await secretsSvc.resolveAdapterConfigForRuntime(
         updated.companyId,

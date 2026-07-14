@@ -563,6 +563,7 @@ export type DiscoveryCard = {
   sourceBadge?: CompanySkillSourceBadge | null;
   sourceLabel?: string | null;
   approvalStatus?: string;
+  sharingScope?: CompanySkillSharingScope;
 };
 
 // Stable palette used to auto-assign an accent colour to a skill when the
@@ -708,6 +709,7 @@ function buildDiscoveryCards(
       updatedAt: new Date(skill.updatedAt).getTime() || 0,
       sourceBadge: skill.sourceBadge,
       sourceLabel: skill.sourceLabel,
+      sharingScope: skill.sharingScope,
     });
   }
 
@@ -5030,9 +5032,25 @@ export function CompanySkills() {
   const { data: authSession } = useQuery({ queryKey: queryKeys.auth.session, queryFn: () => authApi.getSession() });
   const canSeeRestrictedFolders = ["tang@seasonart.org", "jay20020109@seasonart.org"]
     .includes((authSession?.user?.email ?? "").trim().toLowerCase());
+  // The numbered "NN …" folders are the founder's private taxonomy — hidden
+  // from everyone but founder/Jay. EXCEPTION: if a specific skill inside one is
+  // explicitly shared to this viewer (private/team scope they can see), surface
+  // that folder for them, holding only the items they're allowed to see. So a
+  // shared skill in "03-weekly-journal" makes that folder visible to its
+  // recipient without exposing the whole numbered scheme.
+  const sharedRestrictedCats = useMemo(() => {
+    const set = new Set<string>();
+    if (canSeeRestrictedFolders) return set;
+    for (const card of discoveryTabCards) {
+      if (card.sharingScope === "private" || card.sharingScope === "team") {
+        for (const cat of card.categories) if (/^\s*\d{2}[\s-]/.test(cat)) set.add(cat);
+      }
+    }
+    return set;
+  }, [discoveryTabCards, canSeeRestrictedFolders]);
   const folderCategoryCounts = canSeeRestrictedFolders
     ? discoveryCategoryCounts
-    : discoveryCategoryCounts.filter((c) => !/^\s*\d{2}[\s-]/.test(c.slug));
+    : discoveryCategoryCounts.filter((c) => !/^\s*\d{2}[\s-]/.test(c.slug) || sharedRestrictedCats.has(c.slug));
   // Registered (scoped) folders the viewer can see — merged with skill-derived
   // categories so a just-created empty folder is still selectable in the pickers.
   const foldersQuery = useQuery({
