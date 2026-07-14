@@ -13,6 +13,15 @@ export type CreateApproval = z.infer<typeof createApprovalSchema>;
 
 export const resolveApprovalSchema = z.object({
   decisionNote: multilineTextSchema.optional().nullable(),
+  // For skill_distribution: the reviewer may EDIT the request before approving —
+  // trim/change which skills get distributed and/or retarget a different agent.
+  // Ignored for other approval types.
+  payloadOverride: z
+    .object({
+      skillKeys: z.array(z.string().min(1)).optional(),
+      targetAgentId: z.string().uuid().optional(),
+    })
+    .optional(),
 });
 
 export type ResolveApproval = z.infer<typeof resolveApprovalSchema>;

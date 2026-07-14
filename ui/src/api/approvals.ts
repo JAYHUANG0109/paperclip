@@ -9,8 +9,12 @@ export const approvalsApi = {
   create: (companyId: string, data: Record<string, unknown>) =>
     api.post<Approval>(`/companies/${companyId}/approvals`, data),
   get: (id: string) => api.get<Approval>(`/approvals/${id}`),
-  approve: (id: string, decisionNote?: string) =>
-    api.post<Approval>(`/approvals/${id}/approve`, { decisionNote }),
+  approve: (
+    id: string,
+    decisionNote?: string,
+    payloadOverride?: { skillKeys?: string[]; targetAgentId?: string },
+  ) =>
+    api.post<Approval>(`/approvals/${id}/approve`, { decisionNote, payloadOverride }),
   reject: (id: string, decisionNote?: string) =>
     api.post<Approval>(`/approvals/${id}/reject`, { decisionNote }),
   requestRevision: (id: string, decisionNote?: string) =>

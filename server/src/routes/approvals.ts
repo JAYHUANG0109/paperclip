@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
-import { eq } from "drizzle-orm";
-import { heartbeatRuns, type Db } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
+import { agentMemberships, approvals as approvalsTable, heartbeatRuns, type Db } from "@paperclipai/db";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
@@ -235,7 +235,7 @@ export function approvalRoutes(
   router.post("/approvals/:id/approve", validate(resolveApprovalSchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
-    const existingApproval = await requireApprovalAccess(req, id);
+    let existingApproval = await requireApprovalAccess(req, id);
     if (!existingApproval) {
       res.status(404).json({ error: "Approval not found" });
       return;
@@ -243,6 +243,41 @@ export function approvalRoutes(
     if (!canResolveSkillDistribution(req, existingApproval)) {
       res.status(403).json({ error: "Only the skill recipient (or an admin) can approve this request." });
       return;
+    }
+    // Reviewer edits (skill_distribution only): trim/change the distributed skills
+    // and/or retarget a different agent, then approve the edited request. Persist
+    // the edited payload BEFORE approving so the equip uses it.
+    const override = req.body.payloadOverride as { skillKeys?: string[]; targetAgentId?: string } | undefined;
+    if (override && existingApproval.type === "skill_distribution") {
+      const payload = { ...(existingApproval.payload as Record<string, unknown>) };
+      if (Array.isArray(override.skillKeys)) {
+        const keys = override.skillKeys.filter((k) => typeof k === "string" && k.trim().length > 0).map((k) => k.trim());
+        if (keys.length === 0) {
+          res.status(400).json({ error: "At least one skill must remain to approve this distribution." });
+          return;
+        }
+        payload.skillKeys = Array.from(new Set(keys));
+      }
+      if (typeof override.targetAgentId === "string" && override.targetAgentId !== payload.targetAgentId) {
+        const newTarget = await agentService(db).getById(override.targetAgentId);
+        if (!newTarget || newTarget.companyId !== existingApproval.companyId) {
+          res.status(400).json({ error: "Target agent not found in this company." });
+          return;
+        }
+        const ownerRows = await db
+          .select({ userId: agentMemberships.userId })
+          .from(agentMemberships)
+          .where(and(
+            eq(agentMemberships.companyId, existingApproval.companyId),
+            eq(agentMemberships.agentId, newTarget.id),
+            eq(agentMemberships.state, "joined"),
+          ));
+        payload.targetAgentId = newTarget.id;
+        payload.targetAgentName = newTarget.name;
+        payload.approverUserIds = Array.from(new Set(ownerRows.map((r) => r.userId).filter(Boolean)));
+      }
+      await db.update(approvalsTable).set({ payload }).where(eq(approvalsTable.id, id));
+      existingApproval = { ...existingApproval, payload } as typeof existingApproval;
     }
     const decidedByUserId = req.actor.userId ?? "board";
     const { approval, applied } = await svc.approve(id, decidedByUserId, req.body.decisionNote);
