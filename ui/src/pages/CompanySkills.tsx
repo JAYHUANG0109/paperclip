@@ -8,7 +8,7 @@ import {
   type SkillLang,
 } from "@/lib/skill-i18n";
 import { SkillMembersPanel } from "../components/SkillMembersPanel";
-import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -927,6 +927,7 @@ function CategoryNav({
   onSelect,
   manageableFolders,
   onManageFolder,
+  onDeleteFolder,
 }: {
   categories: DiscoveryCategory[];
   total: number;
@@ -934,6 +935,7 @@ function CategoryNav({
   onSelect: (slug: string | null) => void;
   manageableFolders?: Map<string, CompanySkillFolder>;
   onManageFolder?: (folder: CompanySkillFolder) => void;
+  onDeleteFolder?: (folder: CompanySkillFolder) => void;
 }) {
   const { t } = useTranslation();
   const lang = useSkillLang();
@@ -965,25 +967,51 @@ function CategoryNav({
               type="button"
               onClick={() => onSelect(category.slug)}
               className={cn(
-                "flex min-w-0 flex-1 items-center justify-between rounded-md px-2 py-1.5 text-sm",
+                "flex min-w-0 flex-1 items-center rounded-md px-2 py-1.5 text-sm",
                 lang === "en" && "capitalize",
                 active === category.slug ? "font-medium text-foreground" : "text-muted-foreground",
               )}
             >
               <span className="truncate">{localizeCategory(category.slug, lang)}</span>
-              <span className="ml-2 shrink-0 text-xs text-muted-foreground">{category.count}</span>
             </button>
-            {canManage ? (
-              <button
-                type="button"
-                aria-label={t("companySkills.folderSettings", { defaultValue: "Folder settings" })}
-                title={t("companySkills.folderSettings", { defaultValue: "Folder settings" })}
-                onClick={(e) => { e.stopPropagation(); onManageFolder!(folder!); }}
-                className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-            ) : null}
+            <div className="ml-1 flex h-6 w-7 shrink-0 items-center justify-end">
+              {canManage ? (
+                <>
+                  {/* On hover the ⋯ menu takes the count's place. */}
+                  <span className="text-xs text-muted-foreground group-hover:hidden">{category.count}</span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t("companySkills.folderSettings", { defaultValue: "Folder settings" })}
+                        title={t("companySkills.folderSettings", { defaultValue: "Folder settings" })}
+                        onClick={(e) => e.stopPropagation()}
+                        className="hidden h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground group-hover:flex data-[state=open]:flex"
+                      >
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuItem onSelect={() => onManageFolder!(folder!)}>
+                        <Settings className="mr-2 h-3.5 w-3.5" />
+                        {t("companySkills.manageFolder", { defaultValue: "Edit & sharing" })}
+                      </DropdownMenuItem>
+                      {onDeleteFolder ? (
+                        <DropdownMenuItem
+                          onSelect={() => onDeleteFolder(folder!)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          {t("companySkills.deleteFolder", { defaultValue: "Delete folder" })}
+                        </DropdownMenuItem>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              ) : (
+                <span className="text-xs text-muted-foreground">{category.count}</span>
+              )}
+            </div>
           </div>
         );
       })}
@@ -1017,6 +1045,7 @@ export function DiscoveryGrid({
   scanStatus,
   manageableFolders,
   onManageFolder,
+  onDeleteFolder,
 }: {
   tab: DiscoveryTab;
   tabCounts: Record<DiscoveryTab, number>;
@@ -1027,6 +1056,7 @@ export function DiscoveryGrid({
   onCategoryChange: (slug: string | null) => void;
   manageableFolders?: Map<string, CompanySkillFolder>;
   onManageFolder?: (folder: CompanySkillFolder) => void;
+  onDeleteFolder?: (folder: CompanySkillFolder) => void;
   search: string;
   onSearchChange: (value: string) => void;
   sort: DiscoverySort;
@@ -1091,6 +1121,7 @@ export function DiscoveryGrid({
             onSelect={onCategoryChange}
             manageableFolders={manageableFolders}
             onManageFolder={onManageFolder}
+            onDeleteFolder={onDeleteFolder}
           />
         </div>
       </aside>
@@ -1647,6 +1678,7 @@ function FolderSettingsDialog({
   memberOptions,
   isPending,
   isDeleting,
+  initialConfirmDelete = false,
 }: {
   folder: CompanySkillFolder | null;
   onClose: () => void;
@@ -1656,6 +1688,7 @@ function FolderSettingsDialog({
   memberOptions: { id: string; label: string }[];
   isPending: boolean;
   isDeleting: boolean;
+  initialConfirmDelete?: boolean;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
@@ -1669,9 +1702,9 @@ function FolderSettingsDialog({
       setScope(folder.scope);
       setTeams(folder.sharingTeams ?? []);
       setMemberIds(folder.sharedUserIds ?? []);
-      setConfirmDelete(false);
+      setConfirmDelete(initialConfirmDelete);
     }
-  }, [folder]);
+  }, [folder, initialConfirmDelete]);
   const open = folder != null;
   const valid = name.trim().length > 0 && (scope !== "team" || teams.length > 0);
   return (
@@ -5050,6 +5083,11 @@ export function CompanySkills() {
     return map;
   }, [foldersQuery.data, myUserId, canSeeRestrictedFolders]);
   const [settingsFolder, setSettingsFolder] = useState<CompanySkillFolder | null>(null);
+  const [settingsDeleteIntent, setSettingsDeleteIntent] = useState(false);
+  const openFolderSettings = useCallback((folder: CompanySkillFolder, opts?: { delete?: boolean }) => {
+    setSettingsDeleteIntent(Boolean(opts?.delete));
+    setSettingsFolder(folder);
+  }, []);
   const updateFolder = useMutation({
     mutationFn: ({ folderId, payload }: { folderId: string; payload: CompanySkillFolderUpdateRequest }) =>
       companySkillsApi.updateFolder(selectedCompanyId!, folderId, payload),
@@ -5719,13 +5757,14 @@ export function CompanySkills() {
 
       <FolderSettingsDialog
         folder={settingsFolder}
-        onClose={() => setSettingsFolder(null)}
+        onClose={() => { setSettingsFolder(null); setSettingsDeleteIntent(false); }}
         onSave={(folderId, payload) => updateFolder.mutate({ folderId, payload })}
         onDelete={(folder) => deleteFolder.mutate(folder.id)}
         availableTeams={availableTeams}
         memberOptions={memberOptions}
         isPending={updateFolder.isPending}
         isDeleting={deleteFolder.isPending}
+        initialConfirmDelete={settingsDeleteIntent}
       />
 
       {isDiscovery ? (
@@ -5738,7 +5777,8 @@ export function CompanySkills() {
           activeCategory={discoveryCategory}
           onCategoryChange={setDiscoveryCategory}
           manageableFolders={manageableFolders}
-          onManageFolder={setSettingsFolder}
+          onManageFolder={(folder) => openFolderSettings(folder)}
+          onDeleteFolder={(folder) => openFolderSettings(folder, { delete: true })}
           search={discoverySearch}
           onSearchChange={setDiscoverySearch}
           sort={discoverySort}

@@ -2141,6 +2141,7 @@
   },
   "companySkills": {
     "folderSettings": "資料夾設定",
+    "manageFolder": "編輯與分享",
     "folderSettingsSubtitle": "重新命名、變更誰可見，或移除此資料夾。",
     "folderDeleteConfirm": "移除此資料夾並將其技能取消歸檔？",
     "deleteFolder": "刪除資料夾",
