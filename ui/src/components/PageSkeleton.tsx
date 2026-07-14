@@ -22,7 +22,7 @@ function SkeletonLoadingOverlay() {
   const { t } = useTranslation();
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-background/85 px-6 py-5 shadow-sm backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-3">
         <div
           className="h-10 w-10 animate-spin rounded-full border-4 border-muted-foreground/25 border-t-foreground"
           aria-hidden="true"
