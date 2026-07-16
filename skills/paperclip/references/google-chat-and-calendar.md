@@ -103,6 +103,23 @@ curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   single day).
 - `end` optional — defaults to +1h (timed) or +1 day (all-day).
 - Success → `201 { created: true, id, htmlLink }`.
-- **`409 { error: "auth_required" }`** → the user has not consented to the
-  calendar write scope. Ask them to sign out and back in with Google SSO once
-  (re-consent) to grant it; then retry. This is not fixable agent-side.
+- **`409 { error: "auth_required" }`** → the user hasn't consented to the calendar
+  write scope. Ask them to sign out/in with Google SSO once (re-consent). Not
+  fixable agent-side.
+- **`403 { error: "forbidden", detail: "…writer access…" }`** → the token is fine
+  but the user's account only has **view** access to that calendar. Ask them to
+  set their access to **「變更活動 (Make changes to events)」** in that calendar's
+  sharing settings, OR target a calendar they can edit (check `canWrite` from the
+  list endpoint; `"primary"` is always writable). Do NOT tell them to re-authorize
+  — that won't help; this is a calendar-sharing issue.
+
+### Delete an event
+
+```bash
+curl -s -X DELETE -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-calendar/me/events?eventId=<id>&calendarId=<calId>"
+```
+
+`eventId` accepts a bare Google id (with `calendarId`) or the read endpoint's
+composite `"<calendarId>::<eventId>"`. Success → `{ deleted: true }` (also treats
+already-deleted as success). Same 403 forbidden / 409 auth_required semantics.

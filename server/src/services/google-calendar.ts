@@ -197,7 +197,19 @@ export interface CreateCalendarEventInput {
 
 export type CreateCalendarEventResult =
   | { created: true; id: string; htmlLink: string | null }
-  | { created: false; reason: "auth_required" | "not_configured" | "invalid" | "google_error"; detail?: string };
+  | { created: false; reason: "auth_required" | "forbidden" | "not_configured" | "invalid" | "google_error"; detail?: string };
+
+/**
+ * A 403 from Google is EITHER a missing OAuth scope (fix: re-consent) OR the
+ * account lacks writer ACL on that calendar (fix: share the calendar). Only the
+ * latter mentions access level — distinguish so we don't send people to
+ * re-authorize when the real problem is calendar sharing.
+ */
+function classifyForbidden(errorText: string): "auth_required" | "forbidden" {
+  return /requiredAccessLevel|writer access|access role|forbiddenForNonOrganizer|not have permission/i.test(errorText)
+    ? "forbidden"
+    : "auth_required";
+}
 
 function isAllDayValue(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
@@ -253,10 +265,55 @@ export async function createCalendarEventForUser(
     body,
   );
   if (!result.ok) {
-    if (result.status === 401 || result.status === 403) return { created: false, reason: "auth_required", detail: result.error };
+    if (result.status === 401) return { created: false, reason: "auth_required", detail: result.error };
+    if (result.status === 403) return { created: false, reason: classifyForbidden(result.error), detail: result.error };
     return { created: false, reason: "google_error", detail: `${result.status}: ${result.error}` };
   }
   return { created: true, id: result.data.id ?? "", htmlLink: result.data.htmlLink ?? null };
+}
+
+export type DeleteCalendarEventResult =
+  | { deleted: true }
+  | { deleted: false; reason: "auth_required" | "forbidden" | "not_configured" | "invalid" | "not_found" | "google_error"; detail?: string };
+
+/**
+ * Delete an event from the caller's calendar. Accepts either a bare Google event
+ * id (with a separate calendarId) or the dashboard's composite "calendarId::eventId".
+ */
+export async function deleteCalendarEventForUser(
+  db: Db,
+  userId: string,
+  input: { calendarId?: string; eventId: string },
+): Promise<DeleteCalendarEventResult> {
+  if (!googleClientCreds()) return { deleted: false, reason: "not_configured" };
+  let calendarId = input.calendarId?.trim() || "";
+  let eventId = input.eventId?.trim() || "";
+  if (!calendarId && eventId.includes("::")) {
+    const [cal, ev] = eventId.split("::");
+    calendarId = cal;
+    eventId = ev;
+  }
+  if (!calendarId) calendarId = SHARED_CALENDAR.id;
+  if (!eventId) return { deleted: false, reason: "invalid", detail: "eventId is required" };
+
+  const token = await getAccessTokenForUser(db, userId, CALENDAR_WRITE_SCOPE);
+  if (!token) return { deleted: false, reason: "auth_required" };
+
+  try {
+    const res = await fetch(
+      `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+      { method: "DELETE", headers: { authorization: `Bearer ${token}` } },
+    );
+    // Google returns 204 on success; 410 means already deleted (treat as success).
+    if (res.ok || res.status === 410) return { deleted: true };
+    const text = await res.text().catch(() => "");
+    if (res.status === 401) return { deleted: false, reason: "auth_required", detail: text };
+    if (res.status === 403) return { deleted: false, reason: classifyForbidden(text), detail: text };
+    if (res.status === 404) return { deleted: false, reason: "not_found", detail: text };
+    return { deleted: false, reason: "google_error", detail: `${res.status}: ${text}` };
+  } catch (err) {
+    return { deleted: false, reason: "google_error", detail: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** Add whole days to a YYYY-MM-DD string (all-day end is exclusive in Google). */

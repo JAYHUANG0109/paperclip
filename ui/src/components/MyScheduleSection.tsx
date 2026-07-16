@@ -212,6 +212,7 @@ function NewEventForm({
       if (/auth_required/i.test(msg)) setAuthNeeded(true);
     },
   });
+  const isForbidden = create.error instanceof Error && /forbidden|writer access|requiredAccessLevel/i.test(create.error.message);
 
   const valid = title.trim().length > 0 && start.length > 0;
   const errorMsg = create.error instanceof Error ? create.error.message : null;
@@ -292,6 +293,13 @@ function NewEventForm({
               {t("calendar.google.connect", { defaultValue: "Connect Google Calendar" })}
             </button>
           </div>
+        ) : isForbidden ? (
+          <p className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+            {t("schedule.writerAclNeeded", {
+              defaultValue:
+                "This account only has view access to that calendar. Set it to “Make changes to events” (變更活動) in the calendar's sharing settings, or pick a calendar you can edit.",
+            })}
+          </p>
         ) : errorMsg ? (
           <p className="text-xs text-destructive">{errorMsg}</p>
         ) : null}

@@ -39,6 +39,7 @@ import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
   createCalendarEventForUser,
+  deleteCalendarEventForUser,
   listCalendarsForUser,
   getEffectiveAliases,
   getSavedAliases,
@@ -235,11 +236,51 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       attendees: Array.isArray(body.attendees) ? body.attendees.filter((a): a is string => typeof a === "string") : undefined,
     });
     if (!result.created) {
-      const status = result.reason === "auth_required" ? 409 : result.reason === "invalid" ? 400 : 502;
+      const status =
+        result.reason === "auth_required" ? 409
+        : result.reason === "forbidden" ? 403
+        : result.reason === "invalid" ? 400
+        : 502;
       res.status(status).json({ error: result.reason, detail: result.detail ?? null });
       return;
     }
     res.status(201).json({ created: true, id: result.id, htmlLink: result.htmlLink });
+  });
+
+  // Delete an event from the caller's calendar (board user → own; agent → owner
+  // user's). Accepts eventId as a bare id (+ calendarId) or the dashboard's
+  // composite "calendarId::eventId". Used to clean up / manage created events.
+  router.delete("/companies/:companyId/google-calendar/me/events", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId =
+      req.actor.type === "board"
+        ? req.actor.userId ?? null
+        : req.actor.type === "agent"
+          ? req.actor.onBehalfOfUserId ?? null
+          : null;
+    if (!userId) {
+      res.status(401).json({ error: "No user context for calendar write." });
+      return;
+    }
+    const eventId = (req.query.eventId as string | undefined)?.trim() || "";
+    const calendarId = (req.query.calendarId as string | undefined)?.trim() || undefined;
+    if (!eventId) {
+      res.status(400).json({ error: "eventId is required (query param)." });
+      return;
+    }
+    const result = await deleteCalendarEventForUser(db, userId, { eventId, calendarId });
+    if (!result.deleted) {
+      const status =
+        result.reason === "auth_required" ? 409
+        : result.reason === "forbidden" ? 403
+        : result.reason === "not_found" ? 404
+        : result.reason === "invalid" ? 400
+        : 502;
+      res.status(status).json({ error: result.reason, detail: result.detail ?? null });
+      return;
+    }
+    res.json({ deleted: true });
   });
 
   // Read the caller's calendar name-aliases (saved overrides + the auto-derived

@@ -6362,6 +6362,7 @@
     "eventDescription": "說明（選填）",
     "createEvent": "建立活動",
     "writeAuthNeeded": "Google 需要重新授權才能建立活動。請重新連接一次後再試。",
+    "writerAclNeeded": "這個帳號對該日曆只有「查看」權限。請到該日曆的共用設定把權限改成「變更活動」，或改選你有編輯權的日曆。",
     "title": "我的行程",
     "likelyRelated": "可能相關",
     "nameMatching": "日曆名稱比對",
