@@ -82,7 +82,49 @@ curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
 
 Only calendars with `canWrite: true` (accessRole owner/writer) accept new events.
 
-### Create an event
+### ALWAYS ask which calendar first (do NOT assume)
+
+When a user asks you to put something on "the calendar", you MUST NOT silently
+pick a calendar — not even the shared default. Ask them, with a checkbox card
+listing THEIR calendars, and let them multi-select one or more targets.
+
+1. Fetch the user's writable calendars (list endpoint above; keep `canWrite: true`,
+   and always include 跨校共用行事曆 / `defaultCalendarId` as an option).
+2. Create a `request_checkbox_confirmation` interaction on the issue — one option
+   per calendar (`id` = the calendar id, `label` = its name), default-select the
+   shared calendar. Set `continuationPolicy: "wake_assignee"`. See the
+   interactions section of `api-reference.md` for the payload shape.
+3. Move the issue to `in_review` and wait — the pending card is your waiting path.
+4. On the wake, read the selected calendar ids and **create the event once per
+   selected calendar** (the create call below, passing each `calendarId`). Report
+   the resulting event links back in a comment.
+
+Example option list built from the list endpoint:
+
+```json
+{
+  "kind": "request_checkbox_confirmation",
+  "title": "要建立在哪個日曆？ / Which calendar(s)?",
+  "continuationPolicy": "wake_assignee",
+  "payload": {
+    "version": 1,
+    "prompt": "選擇要建立這個活動的日曆（可複選）。",
+    "options": [
+      { "id": "hpuapgl9i1f3830r3bppanqsc0@group.calendar.google.com", "label": "跨校共用行事曆" },
+      { "id": "primary", "label": "我的主要日曆 (personal)" }
+    ],
+    "defaultSelectedOptionIds": ["hpuapgl9i1f3830r3bppanqsc0@group.calendar.google.com"],
+    "minSelected": 1,
+    "acceptLabel": "建立活動",
+    "rejectLabel": "取消"
+  }
+}
+```
+
+Skip the card ONLY if the user already named a specific calendar in their request
+(e.g. "put it on the shared calendar" / "on my personal calendar").
+
+### Create an event (once per selected calendar)
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
@@ -93,6 +135,7 @@ curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
     "start": "2026-07-20T14:00:00+08:00",
     "end":   "2026-07-20T15:00:00+08:00",
     "timeZone": "Asia/Taipei",
+    "calendarId": "hpuapgl9i1f3830r3bppanqsc0@group.calendar.google.com",
     "description": "…",
     "attendees": ["someone@seasonart.org"]
   }'

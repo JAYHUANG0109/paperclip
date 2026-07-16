@@ -471,6 +471,13 @@ through the Paperclip API (`/api/plugins/tools/execute` for chat;
 mounted harness tools, so they won't show in your tool list. Use
 `send_chat_space_message` (room) — not `send_chat_message` (that's a personal DM).
 
+**Creating a calendar event: ALWAYS ask which calendar first.** Do NOT assume a
+calendar (not even the shared default). List the user's calendars
+(`/google-calendar/me/calendars`), present them in a `request_checkbox_confirmation`
+card (multi-select, shared calendar pre-checked), wait, then create the event once
+per selected calendar. Skip the card only if the user already named a specific
+calendar. Full workflow + payload in `references/google-chat-and-calendar.md`.
+
 ## Searching Issues
 
 Use the `q` query parameter on the issues list endpoint to search across titles, identifiers, descriptions, and comments:
