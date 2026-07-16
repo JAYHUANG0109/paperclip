@@ -18,6 +18,7 @@ import {
   setFounderItemDecision,
   setFounderItemClosed,
   appendFounderItemComment,
+  invalidateLiveConsoleCacheForAgent,
   getFounderItemByGid,
   CONSOLE_TITLE,
   toConsoleKey,
@@ -876,6 +877,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     }
     const enforcedCommentTargetGid = target.hasPrivateLink ? target.targetGid : null;
     const digest = await setFounderItemDecision(db, agentId, gid, decision, note);
+    invalidateLiveConsoleCacheForAgent(companyId, agentId); // reflect the裁示 on next read
     // Manual 裁示 — always applied (button-triggered by 唐姐 herself); the agent
     // posts the note / applies the decision on Asana with her own token.
     await heartbeat.wakeup(agentId, {
@@ -911,6 +913,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     }
     const closed = (req.body as { closed?: unknown })?.closed !== false; // default true
     const digest = await setFounderItemClosed(db, agentId, gid, closed);
+    invalidateLiveConsoleCacheForAgent(companyId, agentId);
     // Manual 結案 — always applied. Apply to Asana immediately with the agent's own
     // token (instant, no heartbeat wait). HARD privacy guard: complete the inner
     // private task when the item is private-linked — never the public outer shell.
@@ -983,6 +986,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       createdAt: new Date().toISOString(),
       ...(posted ? {} : { pending: true }),
     });
+    invalidateLiveConsoleCacheForAgent(companyId, agentId);
     if (!posted) {
       await heartbeat.wakeup(agentId, {
         source: "on_demand",

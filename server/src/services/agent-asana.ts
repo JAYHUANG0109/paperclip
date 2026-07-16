@@ -573,6 +573,64 @@ export async function buildFounderDigestPrep(
   return { generatedAt: new Date().toISOString(), categories };
 }
 
+export interface LiveFounderSectionItem {
+  gid: string;
+  name: string;
+  notes: string | null;
+  permalinkUrl: string | null;
+  modifiedAt: string | null;
+  resourceSubtype: string | null;
+  approvalStatus: string | null;
+}
+
+/**
+ * LIGHT server-side fetch of the founder/園長 console's raw section membership —
+ * ONE Asana call per section (name/notes/link/modified, no comments/subtasks, no
+ * LLM). Used to keep the dashboard's 急件/非急件/會議/提醒 lists in lockstep with
+ * Asana WITHOUT waking the agent. Returns null when the owner has no Asana token
+ * (caller keeps the last agent-built digest). The agent path (buildFounderDigestPrep
+ * + summaries) stays for the value-add text, merged over this by gid.
+ */
+export async function fetchLiveFounderSections(
+  db: Db,
+  companyId: string,
+  agentId: string,
+  layout: { sections: { category: "urgent" | "meetings" | "nonUrgent" | "reminders"; sectionGid: string }[] },
+): Promise<{ categories: Record<"urgent" | "meetings" | "nonUrgent" | "reminders", LiveFounderSectionItem[]> } | null> {
+  const t = await tokenFor(db, companyId, agentId);
+  if (!t) return null;
+  const categories: Record<"urgent" | "meetings" | "nonUrgent" | "reminders", LiveFounderSectionItem[]> = {
+    urgent: [], meetings: [], nonUrgent: [], reminders: [],
+  };
+  let anyFetched = false;
+  for (const ref of layout.sections) {
+    let tasks: Record<string, unknown>[];
+    try {
+      tasks = await fetchSectionIncompleteTasks(t.token, ref.sectionGid);
+      anyFetched = true;
+    } catch {
+      continue; // one section failed — keep whatever else we got
+    }
+    for (const task of tasks) {
+      if (task.completed === true) continue;
+      const gid = String(task.gid ?? "");
+      if (!gid) continue;
+      categories[ref.category].push({
+        gid,
+        name: String(task.name ?? "").trim(),
+        notes: typeof task.notes === "string" ? task.notes : null,
+        permalinkUrl: typeof task.permalink_url === "string" ? task.permalink_url : null,
+        modifiedAt: typeof task.modified_at === "string" ? task.modified_at : null,
+        resourceSubtype: typeof task.resource_subtype === "string" ? task.resource_subtype : null,
+        approvalStatus: typeof task.approval_status === "string" ? task.approval_status : null,
+      });
+    }
+  }
+  // If every section fetch threw (e.g. token invalid mid-flight), signal failure
+  // so the caller falls back to the stored digest instead of showing empty lists.
+  return anyFetched ? { categories } : null;
+}
+
 // Asia/Taipei is UTC+8, no DST — fixed 8h offset. Digest "today" is Taipei-local.
 const TPE_OFFSET_MS = 8 * 60 * 60 * 1000;
 function taipeiToday(): string {

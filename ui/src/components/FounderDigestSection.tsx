@@ -567,6 +567,11 @@ function FounderRow({
 
       {open && (
         <div className="ml-6 mt-2 space-y-2 text-xs">
+          {isReview && item.isNew && !item.summary && !item.review && (
+            <div className="rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+              {t("founder.pendingSummary", { defaultValue: "剛從 Asana 加入，AI 摘要／批閱草稿待下次彙整生成。" })}
+            </div>
+          )}
           {isReview && item.summary && (
             <Block label={t("founder.summary", { defaultValue: "AI summary" })} text={item.summary} />
           )}

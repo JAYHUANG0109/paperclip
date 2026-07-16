@@ -1,6 +1,8 @@
 import { agents, type Db } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { resolveOwnAgentId } from "./asana-digest.js";
+import { fetchLiveFounderSections } from "./agent-asana.js";
+import { CONSOLE_ASANA_LAYOUT } from "./founder-digest-consoles.js";
 
 /**
  * Founder daily-calendar digest. PRODUCED by the founder's own agent (their
@@ -68,6 +70,10 @@ export interface FounderItem {
    * regenerating it. Passed through unchanged by the agent.
    */
   modifiedAt?: string | null;
+  /** Present in a LIVE-rebuilt digest: the task is in the Asana section now but
+   *  the agent hasn't produced a summary/批閱草稿 for it yet (added since the last
+   *  agent run). UI shows it with name+link and "摘要待生成". */
+  isNew?: boolean;
 }
 
 export interface FounderDigest {
@@ -80,6 +86,9 @@ export interface FounderDigest {
     reminders: FounderItem[]; // 🔔 提醒事項
   };
   sample?: boolean;
+  /** True when the RAW lists were refreshed live from Asana (server-side, no
+   *  agent). Summaries/批閱草稿 are still the agent's last build, merged by gid. */
+  live?: boolean;
 }
 
 const EMPTY: FounderDigest["categories"] = { urgent: [], meetings: [], nonUrgent: [], reminders: [] };
@@ -368,6 +377,100 @@ export async function getFounderDigestForUser(db: Db, companyId: string, email: 
   return consoles.find((c) => c.key === "founder")?.digest ?? null;
 }
 
+// Short in-memory cache so many dashboard polls don't each hit Asana. The digest
+// is shared, so one rebuild per console serves every viewer. Keyed by
+// company+agent+console. ~60s keeps the list effectively live without hammering.
+const LIVE_DIGEST_TTL_MS = 60_000;
+const liveDigestCache = new Map<string, { at: number; digest: FounderDigest }>();
+
+/**
+ * LIVE console digest: re-fetch the raw section membership from Asana server-side
+ * (no agent, no LLM tokens) and merge the agent's stored summaries/批閱草稿 +
+ * the founder's decisions over it by gid. This keeps the 急件/非急件/會議/提醒
+ * lists in lockstep with Asana between agent runs. Falls back to the stored
+ * digest when the console has no server layout or the Asana fetch fails.
+ */
+export async function buildLiveConsoleDigest(
+  db: Db,
+  companyId: string,
+  ownerAgentId: string,
+  consoleKey: ConsoleKey,
+): Promise<FounderDigest | null> {
+  const stored = await readStoredDigestForAgent(db, ownerAgentId, consoleKey);
+  const layout = CONSOLE_ASANA_LAYOUT[consoleKey];
+  if (!layout) return stored; // no server-side layout → stored digest as before
+
+  const cacheKey = `${companyId}:${ownerAgentId}:${consoleKey}`;
+  const hit = liveDigestCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < LIVE_DIGEST_TTL_MS) return hit.digest;
+
+  const live = await fetchLiveFounderSections(db, companyId, ownerAgentId, layout);
+  if (!live) return stored; // no token / all sections failed → keep last good
+
+  // Index the agent's stored items so we can overlay summary/批閱/decision by gid.
+  const priorByGid = new Map<string, FounderItem>();
+  for (const cat of ["urgent", "meetings", "nonUrgent", "reminders"] as const) {
+    for (const it of stored?.categories?.[cat] ?? []) priorByGid.set(it.gid, it);
+  }
+
+  const build = (cat: "urgent" | "meetings" | "nonUrgent" | "reminders"): FounderItem[] =>
+    live.categories[cat].map((raw) => {
+      const prior = priorByGid.get(raw.gid);
+      if (prior) {
+        // Keep the agent's text + founder's decision; refresh the Asana-owned
+        // fields (name/notes/link/modified/approval) from the live pull.
+        return {
+          ...prior,
+          name: raw.name || prior.name,
+          notes: raw.notes ?? prior.notes,
+          permalinkUrl: raw.permalinkUrl ?? prior.permalinkUrl,
+          modifiedAt: raw.modifiedAt ?? prior.modifiedAt,
+          resourceSubtype: raw.resourceSubtype ?? prior.resourceSubtype,
+          approvalStatus: raw.approvalStatus ?? prior.approvalStatus,
+        };
+      }
+      // New in Asana since the agent last ran — show it now, summary pending.
+      return {
+        gid: raw.gid,
+        name: raw.name,
+        notes: raw.notes,
+        permalinkUrl: raw.permalinkUrl,
+        summary: null,
+        review: null,
+        prep: null,
+        triage: null,
+        decision: null,
+        decisionNote: null,
+        comments: [],
+        subtasks: [],
+        closed: false,
+        resourceSubtype: raw.resourceSubtype,
+        approvalStatus: raw.approvalStatus,
+        modifiedAt: raw.modifiedAt,
+        isNew: true,
+      };
+    });
+
+  const digest: FounderDigest = {
+    generatedAt: new Date().toISOString(),
+    lastRunLabel: stored?.lastRunLabel ?? null,
+    categories: { urgent: build("urgent"), meetings: build("meetings"), nonUrgent: build("nonUrgent"), reminders: build("reminders") },
+    ...(stored?.sample === true ? { sample: true } : {}),
+    live: true,
+  };
+  liveDigestCache.set(cacheKey, { at: Date.now(), digest });
+  return digest;
+}
+
+/** Drop the live cache for all of an agent's consoles (e.g. right after a founder
+ *  decision/close/comment write) so the next read reflects it immediately. */
+export function invalidateLiveConsoleCacheForAgent(companyId: string, agentId: string): void {
+  const prefix = `${companyId}:${agentId}:`;
+  for (const key of liveDigestCache.keys()) {
+    if (key.startsWith(prefix)) liveDigestCache.delete(key);
+  }
+}
+
 /**
  * Read every daily console the caller has on their OWN agent. Allowlist-gated,
  * self-scoped (caller's email → caller's agent → that agent's metadata). Most
@@ -384,7 +487,9 @@ export async function getConsolesForUser(db: Db, companyId: string, email: strin
   if (canViewFounderConsole(email)) {
     const ownerAgentId = await founderConsoleOwnerAgentId(db, companyId);
     if (ownerAgentId) {
-      const digest = await readStoredDigestForAgent(db, ownerAgentId, "founder");
+      // LIVE rebuild from Asana (server-side, no agent) merged with the agent's
+      // stored summaries; falls back to stored if there's no layout/token.
+      const digest = await buildLiveConsoleDigest(db, companyId, ownerAgentId, "founder");
       if (digest && digest.categories) {
         out.push({ key: "founder", title: CONSOLE_TITLE.founder, digest, readOnly: ownerAgentId !== callerAgentId });
       }
@@ -398,8 +503,13 @@ export async function getConsolesForUser(db: Db, companyId: string, email: strin
     if (md && typeof md === "object") {
       for (const key of CONSOLE_KEYS) {
         if (key === "founder") continue; // handled above (owner-based)
-        const digest = md[CONSOLE_META_KEY[key]] as FounderDigest | undefined;
-        if (digest && digest.categories) out.push({ key, title: CONSOLE_TITLE[key], digest, readOnly: false });
+        const stored = md[CONSOLE_META_KEY[key]] as FounderDigest | undefined;
+        if (!stored || !stored.categories) continue;
+        // Live-refresh 園長 consoles that have a server layout too; else stored.
+        const digest = CONSOLE_ASANA_LAYOUT[key]
+          ? (await buildLiveConsoleDigest(db, companyId, callerAgentId, key)) ?? stored
+          : stored;
+        out.push({ key, title: CONSOLE_TITLE[key], digest, readOnly: false });
       }
     }
   }

@@ -74,6 +74,8 @@ export interface FounderItem {
   closed: boolean;
   resourceSubtype?: string | null;
   approvalStatus?: string | null;
+  /** Live-rebuilt item that the agent hasn't summarized yet (just added in Asana). */
+  isNew?: boolean;
 }
 export interface FounderDigest {
   generatedAt: string | null;
@@ -85,6 +87,8 @@ export interface FounderDigest {
     reminders: FounderItem[];
   };
   empty?: boolean;
+  /** Raw lists refreshed live from Asana (server-side); summaries are the agent's last build. */
+  live?: boolean;
 }
 
 export type ConsoleKey = "founder" | "principal" | "principalZhengXitun";
