@@ -462,6 +462,15 @@ If `plan` already exists, fetch the current document first and send its latest `
 
 Full endpoint table (company imports/exports, OpenClaw invites, company skills, routines, etc.) lives in `references/api-reference.md`.
 
+## Google Chat rooms & Google Calendar events
+
+To post to a Google Chat **group room** (空間), DM a person, or **create a Google
+Calendar event**, read `references/google-chat-and-calendar.md`. These are reached
+through the Paperclip API (`/api/plugins/tools/execute` for chat;
+`/api/companies/:id/google-calendar/me/events` for calendar) — they are NOT
+mounted harness tools, so they won't show in your tool list. Use
+`send_chat_space_message` (room) — not `send_chat_message` (that's a personal DM).
+
 ## Searching Issues
 
 Use the `q` query parameter on the issues list endpoint to search across titles, identifiers, descriptions, and comments:

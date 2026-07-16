@@ -18,6 +18,8 @@ import { authAccounts, authUsers, userCalendarPreferences, type Db } from "@pape
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+/** Read-write events scope — required to CREATE calendar events on the user's behalf. */
+const CALENDAR_WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 /** Refresh a little before actual expiry to avoid mid-request 401s. */
 const EXPIRY_SKEW_MS = 60_000;
 
@@ -72,15 +74,19 @@ async function getGoogleAccount(db: Db, userId: string) {
  * user has no Google account, no calendar scope, or no usable refresh path —
  * callers surface that as `auth_required` so the UI can prompt a re-consent.
  */
-async function getAccessTokenForUser(db: Db, userId: string): Promise<string | null> {
+async function getAccessTokenForUser(
+  db: Db,
+  userId: string,
+  requiredScope: string = CALENDAR_SCOPE,
+): Promise<string | null> {
   const creds = googleClientCreds();
   if (!creds) return null;
   const account = await getGoogleAccount(db, userId);
   if (!account) return null;
 
-  // The token must actually carry the calendar scope — tokens issued before the
-  // scope was added (or for users who declined consent) cannot read calendars.
-  if (!account.scope || !account.scope.includes(CALENDAR_SCOPE)) return null;
+  // The token must actually carry the required calendar scope — tokens issued
+  // before the scope was added (or for users who declined consent) can't use it.
+  if (!account.scope || !account.scope.includes(requiredScope)) return null;
 
   const now = Date.now();
   const notExpired =
@@ -135,6 +141,120 @@ async function googleGet<T>(token: string, url: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+async function googlePost<T>(
+  token: string,
+  url: string,
+  body: unknown,
+): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, status: res.status, error: text || res.statusText };
+    }
+    return { ok: true, data: (await res.json()) as T };
+  } catch (err) {
+    return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export interface CreateCalendarEventInput {
+  /** Event title. */
+  summary: string;
+  /** RFC3339 datetime (e.g. "2026-07-20T14:00:00+08:00") or YYYY-MM-DD for all-day. */
+  start: string;
+  /** RFC3339 datetime or YYYY-MM-DD. Optional for all-day single-day events. */
+  end?: string;
+  description?: string;
+  location?: string;
+  /** IANA timezone for timed events, e.g. "Asia/Taipei". */
+  timeZone?: string;
+  /** Target calendar id; defaults to the user's primary calendar. */
+  calendarId?: string;
+  /** Attendee emails to invite. */
+  attendees?: string[];
+}
+
+export type CreateCalendarEventResult =
+  | { created: true; id: string; htmlLink: string | null }
+  | { created: false; reason: "auth_required" | "not_configured" | "invalid" | "google_error"; detail?: string };
+
+function isAllDayValue(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+}
+
+/**
+ * Create a Google Calendar event on the CALLER's OWN calendar, using their
+ * stored Google token (write-scoped). Per-user isolation is structural: the
+ * userId → that user's token → only their calendar. Requires the user to have
+ * consented to the `calendar.events` scope (re-consent after the scope change);
+ * otherwise returns `auth_required`.
+ */
+export async function createCalendarEventForUser(
+  db: Db,
+  userId: string,
+  input: CreateCalendarEventInput,
+): Promise<CreateCalendarEventResult> {
+  if (!googleClientCreds()) return { created: false, reason: "not_configured" };
+  const summary = input.summary?.trim();
+  const start = input.start?.trim();
+  if (!summary || !start) return { created: false, reason: "invalid", detail: "summary and start are required" };
+
+  const token = await getAccessTokenForUser(db, userId, CALENDAR_WRITE_SCOPE);
+  if (!token) return { created: false, reason: "auth_required" };
+
+  const allDay = isAllDayValue(start);
+  const tz = input.timeZone || "Asia/Taipei";
+  // All-day events use { date }; timed events use { dateTime, timeZone }. Google
+  // requires an end; default a timed event to +1h and an all-day one to +1 day.
+  const endRaw = input.end?.trim();
+  const startObj = allDay ? { date: start } : { dateTime: start, timeZone: tz };
+  const endObj = allDay
+    ? { date: endRaw && isAllDayValue(endRaw) ? endRaw : addDays(start, 1) }
+    : { dateTime: endRaw || addHoursRfc3339(start, 1), timeZone: tz };
+
+  const calendarId = encodeURIComponent(input.calendarId?.trim() || "primary");
+  const body: Record<string, unknown> = {
+    summary,
+    start: startObj,
+    end: endObj,
+    ...(input.description ? { description: input.description } : {}),
+    ...(input.location ? { location: input.location } : {}),
+    ...(input.attendees && input.attendees.length
+      ? { attendees: input.attendees.filter((e) => typeof e === "string" && e.includes("@")).map((email) => ({ email })) }
+      : {}),
+  };
+
+  const result = await googlePost<{ id?: string; htmlLink?: string }>(
+    token,
+    `${CALENDAR_API}/calendars/${calendarId}/events`,
+    body,
+  );
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) return { created: false, reason: "auth_required", detail: result.error };
+    return { created: false, reason: "google_error", detail: `${result.status}: ${result.error}` };
+  }
+  return { created: true, id: result.data.id ?? "", htmlLink: result.data.htmlLink ?? null };
+}
+
+/** Add whole days to a YYYY-MM-DD string (all-day end is exclusive in Google). */
+function addDays(dateKey: string, days: number): string {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Add hours to an RFC3339 datetime, preserving its offset where possible. */
+function addHoursRfc3339(value: string, hours: number): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return new Date(d.getTime() + hours * 3600_000).toISOString();
 }
 
 interface RawCalendarListEntry {

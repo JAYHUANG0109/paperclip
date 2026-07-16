@@ -38,6 +38,7 @@ import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
+  createCalendarEventForUser,
   getEffectiveAliases,
   getSavedAliases,
   setSavedAliases,
@@ -170,6 +171,50 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     }
     const aliases = await getEffectiveAliases(db, userId);
     res.json({ connected: true, events: result.events.filter((e) => eventIsMine(e, aliases)) });
+  });
+
+  // Create an event on the caller's OWN Google Calendar. Works for a board user
+  // (their calendar) OR an agent (its responsible/owner user's calendar) — same
+  // structural per-user isolation. Requires the calendar.events (write) scope,
+  // so the user must have re-consented Google SSO after the scope was added;
+  // otherwise returns auth_required. This is the robust server-side create path
+  // that does NOT depend on the flaky per-user MCP connector.
+  router.post("/companies/:companyId/google-calendar/me/events", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId =
+      req.actor.type === "board"
+        ? req.actor.userId ?? null
+        : req.actor.type === "agent"
+          ? req.actor.onBehalfOfUserId ?? null
+          : null;
+    if (!userId) {
+      res.status(401).json({ error: "No user context for calendar write (agent needs a responsible user)." });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const summary = typeof body.summary === "string" ? body.summary : typeof body.title === "string" ? body.title : "";
+    const start = typeof body.start === "string" ? body.start : "";
+    if (!summary.trim() || !start.trim()) {
+      res.status(400).json({ error: "summary (or title) and start are required." });
+      return;
+    }
+    const result = await createCalendarEventForUser(db, userId, {
+      summary,
+      start,
+      end: typeof body.end === "string" ? body.end : undefined,
+      description: typeof body.description === "string" ? body.description : undefined,
+      location: typeof body.location === "string" ? body.location : undefined,
+      timeZone: typeof body.timeZone === "string" ? body.timeZone : undefined,
+      calendarId: typeof body.calendarId === "string" ? body.calendarId : undefined,
+      attendees: Array.isArray(body.attendees) ? body.attendees.filter((a): a is string => typeof a === "string") : undefined,
+    });
+    if (!result.created) {
+      const status = result.reason === "auth_required" ? 409 : result.reason === "invalid" ? 400 : 502;
+      res.status(status).json({ error: result.reason, detail: result.detail ?? null });
+      return;
+    }
+    res.status(201).json({ created: true, id: result.id, htmlLink: result.htmlLink });
   });
 
   // Read the caller's calendar name-aliases (saved overrides + the auto-derived
