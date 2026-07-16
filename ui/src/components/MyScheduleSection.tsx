@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, ExternalLink, Settings2, Loader2 } from "lucide-react";
+import { CalendarClock, ExternalLink, Settings2, Loader2, Plus } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { dashboardApi, type GoogleCalendarEventDto } from "../api/dashboard";
 import { authApi } from "../api/auth";
@@ -20,6 +20,7 @@ const ALIASES_KEY = (companyId: string) => ["google-calendar-aliases", companyId
 export function MyScheduleSection({ companyId }: { companyId: string }) {
   const { t } = useTranslation();
   const [showSettings, setShowSettings] = useState(false);
+  const [showNewEvent, setShowNewEvent] = useState(false);
 
   const { data } = useQuery({
     queryKey: SCHEDULE_KEY(companyId),
@@ -67,17 +68,35 @@ export function MyScheduleSection({ companyId }: { companyId: string }) {
             {t("schedule.likelyRelated", { defaultValue: "likely related" })}
           </span>
         </h2>
-        <button
-          type="button"
-          onClick={() => setShowSettings((v) => !v)}
-          aria-expanded={showSettings}
-          aria-label={t("schedule.nameMatching", { defaultValue: "Calendar name matching" })}
-          className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-        >
-          <Settings2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setShowNewEvent((v) => !v)}
+            aria-expanded={showNewEvent}
+            className="inline-flex h-7 items-center gap-1 rounded border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("schedule.newEvent", { defaultValue: "New event" })}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings((v) => !v)}
+            aria-expanded={showSettings}
+            aria-label={t("schedule.nameMatching", { defaultValue: "Calendar name matching" })}
+            className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          >
+            <Settings2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
+      {showNewEvent && (
+        <NewEventForm
+          companyId={companyId}
+          onDone={() => setShowNewEvent(false)}
+          onNeedsConnect={connectGoogle}
+        />
+      )}
       {showSettings && <AliasEditor companyId={companyId} />}
 
       <Card className="min-w-0 overflow-hidden">
@@ -136,6 +155,132 @@ export function MyScheduleSection({ companyId }: { companyId: string }) {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** Inline "New event" form — creates on the user's own Google Calendar via the
+ *  server-side write endpoint (no MCP). Needs the calendar.events scope, so on
+ *  auth_required it prompts a one-time Google re-consent. */
+function NewEventForm({
+  companyId,
+  onDone,
+  onNeedsConnect,
+}: {
+  companyId: string;
+  onDone: () => void;
+  onNeedsConnect: () => void;
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [allDay, setAllDay] = useState(false);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [description, setDescription] = useState("");
+  const [authNeeded, setAuthNeeded] = useState(false);
+
+  const create = useMutation({
+    mutationFn: () =>
+      dashboardApi.createCalendarEvent(companyId, {
+        summary: title.trim(),
+        // datetime-local gives "YYYY-MM-DDTHH:mm"; append seconds. All-day uses the
+        // bare date. timeZone lets Google interpret a no-offset dateTime correctly.
+        start: allDay ? start : start ? `${start}:00` : "",
+        end: end ? (allDay ? end : `${end}:00`) : undefined,
+        description: description.trim() || undefined,
+        timeZone: allDay ? undefined : "Asia/Taipei",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SCHEDULE_KEY(companyId) });
+      onDone();
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/auth_required/i.test(msg)) setAuthNeeded(true);
+    },
+  });
+
+  const valid = title.trim().length > 0 && start.length > 0;
+  const errorMsg = create.error instanceof Error ? create.error.message : null;
+
+  return (
+    <div className="rounded-md border border-border bg-muted/30 p-3">
+      <div className="space-y-2">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={t("schedule.eventTitle", { defaultValue: "Event title" })}
+          className="h-8 w-full rounded border border-border bg-background px-2 text-sm"
+        />
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+          {t("schedule.allDay", { defaultValue: "All day" })}
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <label className="flex-1 text-xs text-muted-foreground">
+            {t("schedule.start", { defaultValue: "Start" })}
+            <input
+              type={allDay ? "date" : "datetime-local"}
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="mt-0.5 h-8 w-full rounded border border-border bg-background px-2 text-sm"
+            />
+          </label>
+          <label className="flex-1 text-xs text-muted-foreground">
+            {t("schedule.end", { defaultValue: "End (optional)" })}
+            <input
+              type={allDay ? "date" : "datetime-local"}
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="mt-0.5 h-8 w-full rounded border border-border bg-background px-2 text-sm"
+            />
+          </label>
+        </div>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={t("schedule.eventDescription", { defaultValue: "Description (optional)" })}
+          rows={2}
+          className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+        />
+        {authNeeded ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5">
+            <span className="text-xs text-amber-700 dark:text-amber-300">
+              {t("schedule.writeAuthNeeded", {
+                defaultValue: "Google needs re-authorization to create events. Reconnect once, then try again.",
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={onNeedsConnect}
+              className="rounded-md border border-emerald-500/40 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
+            >
+              {t("calendar.google.connect", { defaultValue: "Connect Google Calendar" })}
+            </button>
+          </div>
+        ) : errorMsg ? (
+          <p className="text-xs text-destructive">{errorMsg}</p>
+        ) : null}
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onDone}
+            className="rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t("common.cancel", { defaultValue: "Cancel" })}
+          </button>
+          <button
+            type="button"
+            disabled={!valid || create.isPending}
+            onClick={() => { setAuthNeeded(false); create.mutate(); }}
+            className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {create.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+            {t("schedule.createEvent", { defaultValue: "Create event" })}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

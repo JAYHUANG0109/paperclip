@@ -138,6 +138,22 @@ export const dashboardApi = {
   summary: (companyId: string) => api.get<DashboardSummary>(`/companies/${companyId}/dashboard`),
   googleCalendar: (companyId: string, opts?: { timeMin?: string; timeMax?: string; mine?: boolean }) =>
     api.get<GoogleCalendarResponse>(`/companies/${companyId}/google-calendar/me${calendarQuery(opts)}`),
+  createCalendarEvent: (
+    companyId: string,
+    event: {
+      summary: string;
+      start: string;
+      end?: string;
+      description?: string;
+      location?: string;
+      timeZone?: string;
+      attendees?: string[];
+    },
+  ) =>
+    api.post<{ created: true; id: string; htmlLink: string | null }>(
+      `/companies/${companyId}/google-calendar/me/events`,
+      event,
+    ),
   calendarAliases: (companyId: string) =>
     api.get<CalendarAliasesResponse>(`/companies/${companyId}/google-calendar/aliases`),
   saveCalendarAliases: (companyId: string, aliases: string[]) =>

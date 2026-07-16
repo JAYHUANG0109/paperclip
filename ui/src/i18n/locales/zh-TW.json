@@ -6353,6 +6353,14 @@
     "markAllRead": "全部標為已讀"
   },
   "schedule": {
+    "newEvent": "新增活動",
+    "eventTitle": "活動標題",
+    "allDay": "整天",
+    "start": "開始",
+    "end": "結束（選填）",
+    "eventDescription": "說明（選填）",
+    "createEvent": "建立活動",
+    "writeAuthNeeded": "Google 需要重新授權才能建立活動。請重新連接一次後再試。",
     "title": "我的行程",
     "likelyRelated": "可能相關",
     "nameMatching": "日曆名稱比對",
