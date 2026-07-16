@@ -148,12 +148,20 @@ export const dashboardApi = {
       location?: string;
       timeZone?: string;
       attendees?: string[];
+      calendarId?: string;
     },
   ) =>
     api.post<{ created: true; id: string; htmlLink: string | null }>(
       `/companies/${companyId}/google-calendar/me/events`,
       event,
     ),
+  googleCalendarList: (companyId: string) =>
+    api.get<{
+      connected: boolean;
+      reason?: string;
+      defaultCalendarId?: string;
+      calendars: Array<{ id: string; name: string | null; primary: boolean; accessRole: string | null; canWrite: boolean; color: string | null }>;
+    }>(`/companies/${companyId}/google-calendar/me/calendars`),
   calendarAliases: (companyId: string) =>
     api.get<CalendarAliasesResponse>(`/companies/${companyId}/google-calendar/aliases`),
   saveCalendarAliases: (companyId: string, aliases: string[]) =>

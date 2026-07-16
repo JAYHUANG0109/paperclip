@@ -20,6 +20,20 @@ const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 /** Read-write events scope — required to CREATE calendar events on the user's behalf. */
 const CALENDAR_WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+
+/**
+ * The org's shared cross-campus calendar (跨校共用行事曆) — where MOST events are
+ * created. This is company-wide knowledge (the same id for everyone); each
+ * user/agent still writes with their OWN token, so they must have edit rights on
+ * this calendar. New events default here unless a specific calendarId is given.
+ * Overridable via env for other deployments.
+ */
+export const SHARED_CALENDAR = {
+  id:
+    process.env.PAPERCLIP_DEFAULT_CALENDAR_ID?.trim() ||
+    "hpuapgl9i1f3830r3bppanqsc0@group.calendar.google.com",
+  name: process.env.PAPERCLIP_DEFAULT_CALENDAR_NAME?.trim() || "跨校共用行事曆",
+} as const;
 /** Refresh a little before actual expiry to avoid mid-request 401s. */
 const EXPIRY_SKEW_MS = 60_000;
 
@@ -219,7 +233,9 @@ export async function createCalendarEventForUser(
     ? { date: endRaw && isAllDayValue(endRaw) ? endRaw : addDays(start, 1) }
     : { dateTime: endRaw || addHoursRfc3339(start, 1), timeZone: tz };
 
-  const calendarId = encodeURIComponent(input.calendarId?.trim() || "primary");
+  // Default to the shared cross-campus calendar (most events go there); pass
+  // "primary" or a specific id to target a personal/other calendar instead.
+  const calendarId = encodeURIComponent(input.calendarId?.trim() || SHARED_CALENDAR.id);
   const body: Record<string, unknown> = {
     summary,
     start: startObj,
@@ -260,10 +276,56 @@ function addHoursRfc3339(value: string, hours: number): string {
 interface RawCalendarListEntry {
   id: string;
   summary?: string;
+  summaryOverride?: string;
   backgroundColor?: string;
   primary?: boolean;
   deleted?: boolean;
   selected?: boolean;
+  accessRole?: string;
+}
+
+export interface UserCalendarInfo {
+  id: string;
+  name: string | null;
+  primary: boolean;
+  /** Google access role: "owner" | "writer" | "reader" | "freeBusyReader". */
+  accessRole: string | null;
+  color: string | null;
+  /** True if the caller can create/edit events on this calendar (owner/writer). */
+  canWrite: boolean;
+}
+
+export type ListCalendarsResult =
+  | { connected: true; calendars: UserCalendarInfo[]; defaultCalendarId: string }
+  | { connected: false; reason: "auth_required" | "not_configured" };
+
+/**
+ * List the calendars the caller can see (their 我的日曆 + 其他日曆), so an agent can
+ * learn its owner user's calendars and pick the right target. Read-only; uses the
+ * user's own token → only their calendar list. `defaultCalendarId` is the shared
+ * cross-campus calendar new events default to.
+ */
+export async function listCalendarsForUser(db: Db, userId: string): Promise<ListCalendarsResult> {
+  if (!googleClientCreds()) return { connected: false, reason: "not_configured" };
+  const token = await getAccessTokenForUser(db, userId);
+  if (!token) return { connected: false, reason: "auth_required" };
+  const list = await googleGet<{ items?: RawCalendarListEntry[] }>(
+    token,
+    `${CALENDAR_API}/users/me/calendarList`,
+  );
+  if (!list) return { connected: false, reason: "auth_required" };
+  const calendars: UserCalendarInfo[] = (list.items ?? [])
+    .filter((c) => c.id && !c.deleted)
+    .map((c) => ({
+      id: c.id,
+      name: c.summaryOverride ?? c.summary ?? null,
+      primary: Boolean(c.primary),
+      accessRole: c.accessRole ?? null,
+      color: c.backgroundColor ?? null,
+      canWrite: c.accessRole === "owner" || c.accessRole === "writer",
+    }))
+    .sort((a, b) => (a.primary === b.primary ? 0 : a.primary ? -1 : 1));
+  return { connected: true, calendars, defaultCalendarId: SHARED_CALENDAR.id };
 }
 interface RawEvent {
   id?: string;

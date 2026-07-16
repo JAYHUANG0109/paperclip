@@ -46,15 +46,43 @@ If the room name isn't found, the tool returns the list of rooms it can reach �
 pick the right name and retry. To DM one person instead, use the same execute
 call with `"tool": "…:send_chat_message"` and `parameters: { "email", "text" }`.
 
-## Create a Google Calendar event
+## Google Calendar
 
-Reading calendar events (the dashboard) and creating them use **different**
-Google auth. Creating goes through this server-side endpoint, which uses the
-target user's own stored Google token (write scope) — it does NOT depend on any
-per-user MCP connector, so it works from autonomous/task runs.
+Reading calendar events (the dashboard) and creating them use **different** Google
+auth. Creating goes through the server-side endpoints below, which use the target
+user's own stored Google token (write scope) — NOT any per-user MCP connector, so
+they work from autonomous/task runs. As a board user it acts on your own calendar;
+as an agent it acts on your **responsible/owner user's** calendar.
 
-- As a **board user**, it creates on your own calendar.
-- As an **agent**, it creates on your **responsible/owner user's** calendar.
+### The shared calendar (where most events go)
+
+The org's cross-campus shared calendar **跨校共用行事曆** is company-wide knowledge —
+the **same id for everyone**, though each person writes with their own token (so
+they need edit rights on it):
+
+```
+id:   hpuapgl9i1f3830r3bppanqsc0@group.calendar.google.com
+name: 跨校共用行事曆
+```
+
+**New events default to this calendar** when you don't pass a `calendarId`. Pass a
+specific id (e.g. `"primary"` for the person's personal calendar) only when the
+event clearly belongs elsewhere.
+
+### List the owner user's calendars
+
+Different users have different 我的日曆 / 其他日曆 by role/department/campus. Fetch the
+owner's list (ids + names + whether they can write) so you target the right one:
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-calendar/me/calendars"
+# → { connected, defaultCalendarId, calendars: [ { id, name, primary, accessRole, canWrite, color } ] }
+```
+
+Only calendars with `canWrite: true` (accessRole owner/writer) accept new events.
+
+### Create an event
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \

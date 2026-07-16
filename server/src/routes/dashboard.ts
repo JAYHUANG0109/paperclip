@@ -39,6 +39,7 @@ import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
   createCalendarEventForUser,
+  listCalendarsForUser,
   getEffectiveAliases,
   getSavedAliases,
   setSavedAliases,
@@ -171,6 +172,30 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     }
     const aliases = await getEffectiveAliases(db, userId);
     res.json({ connected: true, events: result.events.filter((e) => eventIsMine(e, aliases)) });
+  });
+
+  // List the calendars the caller can see (board user → own; agent → its
+  // responsible/owner user's). Lets an agent learn which calendars its owner has
+  // (per role/department/campus) and their ids, plus the shared default. Read-only.
+  router.get("/companies/:companyId/google-calendar/me/calendars", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId =
+      req.actor.type === "board"
+        ? req.actor.userId ?? null
+        : req.actor.type === "agent"
+          ? req.actor.onBehalfOfUserId ?? null
+          : null;
+    if (!userId) {
+      res.json({ connected: false, reason: "auth_required", calendars: [] });
+      return;
+    }
+    const result = await listCalendarsForUser(db, userId);
+    if (!result.connected) {
+      res.json({ connected: false, reason: result.reason, calendars: [] });
+      return;
+    }
+    res.json({ connected: true, calendars: result.calendars, defaultCalendarId: result.defaultCalendarId });
   });
 
   // Create an event on the caller's OWN Google Calendar. Works for a board user

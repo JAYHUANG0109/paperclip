@@ -179,6 +179,17 @@ function NewEventForm({
   const [end, setEnd] = useState("");
   const [description, setDescription] = useState("");
   const [authNeeded, setAuthNeeded] = useState(false);
+  const [calendarId, setCalendarId] = useState<string>("");
+
+  const { data: calList } = useQuery({
+    queryKey: ["google-calendar-list", companyId],
+    queryFn: () => dashboardApi.googleCalendarList(companyId),
+    enabled: !!companyId,
+    staleTime: 300_000,
+  });
+  // Default the target to the shared cross-campus calendar (most events go there).
+  const writable = useMemo(() => (calList?.calendars ?? []).filter((c) => c.canWrite), [calList]);
+  const effectiveCalendarId = calendarId || calList?.defaultCalendarId || "";
 
   const create = useMutation({
     mutationFn: () =>
@@ -190,6 +201,7 @@ function NewEventForm({
         end: end ? (allDay ? end : `${end}:00`) : undefined,
         description: description.trim() || undefined,
         timeZone: allDay ? undefined : "Asia/Taipei",
+        calendarId: effectiveCalendarId || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: SCHEDULE_KEY(companyId) });
@@ -213,6 +225,27 @@ function NewEventForm({
           placeholder={t("schedule.eventTitle", { defaultValue: "Event title" })}
           className="h-8 w-full rounded border border-border bg-background px-2 text-sm"
         />
+        {calList?.connected && (writable.length > 0 || calList.defaultCalendarId) && (
+          <label className="block text-xs text-muted-foreground">
+            {t("schedule.calendar", { defaultValue: "Calendar" })}
+            <select
+              value={effectiveCalendarId}
+              onChange={(e) => setCalendarId(e.target.value)}
+              className="mt-0.5 h-8 w-full rounded border border-border bg-background px-2 text-sm"
+            >
+              {/* Ensure the shared default is always selectable, even if the user's
+                  writable list doesn't include it (they may still have edit rights). */}
+              {calList.defaultCalendarId && !writable.some((c) => c.id === calList.defaultCalendarId) && (
+                <option value={calList.defaultCalendarId}>跨校共用行事曆</option>
+              )}
+              {writable.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.primary ? `${c.name ?? c.id}（我）` : c.name ?? c.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
           {t("schedule.allDay", { defaultValue: "All day" })}

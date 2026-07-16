@@ -6355,6 +6355,7 @@
   "schedule": {
     "newEvent": "新增活動",
     "eventTitle": "活動標題",
+    "calendar": "日曆",
     "allDay": "整天",
     "start": "開始",
     "end": "結束（選填）",
