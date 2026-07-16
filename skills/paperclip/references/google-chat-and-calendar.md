@@ -156,6 +156,26 @@ curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   list endpoint; `"primary"` is always writable). Do NOT tell them to re-authorize
   — that won't help; this is a calendar-sharing issue.
 
+### Update an event in place (e.g. change the time)
+
+```bash
+curl -s -X PATCH -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-calendar/me/events" \
+  -d '{
+    "eventId": "<calendarId::eventId or bare id>",
+    "calendarId": "<calId if eventId is bare>",
+    "start": "2026-07-17T15:00:00+08:00",
+    "end":   "2026-07-17T16:00:00+08:00",
+    "timeZone": "Asia/Taipei"
+  }'
+```
+
+Only the fields you send change (`summary`, `start`, `end`, `description`,
+`location`). To reschedule, send `start`+`end`. Get the `eventId` from the read
+endpoint (its `id` is the composite `"<calendarId>::<eventId>"`). Success →
+`{ updated: true, id, htmlLink }`; same 403/409/404 semantics as create.
+
 ### Delete an event
 
 ```bash

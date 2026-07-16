@@ -39,6 +39,7 @@ import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
 import {
   getCalendarEventsForUser,
   createCalendarEventForUser,
+  updateCalendarEventForUser,
   deleteCalendarEventForUser,
   listCalendarsForUser,
   getEffectiveAliases,
@@ -245,6 +246,50 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       return;
     }
     res.status(201).json({ created: true, id: result.id, htmlLink: result.htmlLink });
+  });
+
+  // Update (patch) an existing event in place — e.g. change its time. board user
+  // → own calendar; agent → owner user's. Only provided fields change.
+  router.patch("/companies/:companyId/google-calendar/me/events", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId =
+      req.actor.type === "board"
+        ? req.actor.userId ?? null
+        : req.actor.type === "agent"
+          ? req.actor.onBehalfOfUserId ?? null
+          : null;
+    if (!userId) {
+      res.status(401).json({ error: "No user context for calendar write." });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const eventId = typeof body.eventId === "string" ? body.eventId : "";
+    if (!eventId.trim()) {
+      res.status(400).json({ error: "eventId is required." });
+      return;
+    }
+    const result = await updateCalendarEventForUser(db, userId, {
+      eventId,
+      calendarId: typeof body.calendarId === "string" ? body.calendarId : undefined,
+      summary: typeof body.summary === "string" ? body.summary : typeof body.title === "string" ? body.title : undefined,
+      start: typeof body.start === "string" ? body.start : undefined,
+      end: typeof body.end === "string" ? body.end : undefined,
+      description: typeof body.description === "string" ? body.description : undefined,
+      location: typeof body.location === "string" ? body.location : undefined,
+      timeZone: typeof body.timeZone === "string" ? body.timeZone : undefined,
+    });
+    if (!result.updated) {
+      const status =
+        result.reason === "auth_required" ? 409
+        : result.reason === "forbidden" ? 403
+        : result.reason === "not_found" ? 404
+        : result.reason === "invalid" ? 400
+        : 502;
+      res.status(status).json({ error: result.reason, detail: result.detail ?? null });
+      return;
+    }
+    res.json({ updated: true, id: result.id, htmlLink: result.htmlLink });
   });
 
   // Delete an event from the caller's calendar (board user → own; agent → owner

@@ -157,6 +157,28 @@ async function googleGet<T>(token: string, url: string): Promise<T | null> {
   }
 }
 
+async function googleSend<T>(
+  method: "POST" | "PATCH",
+  token: string,
+  url: string,
+  body: unknown,
+): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, status: res.status, error: text || res.statusText };
+    }
+    return { ok: true, data: (await res.json()) as T };
+  } catch (err) {
+    return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 async function googlePost<T>(
   token: string,
   url: string,
@@ -314,6 +336,74 @@ export async function deleteCalendarEventForUser(
   } catch (err) {
     return { deleted: false, reason: "google_error", detail: err instanceof Error ? err.message : String(err) };
   }
+}
+
+export interface UpdateCalendarEventInput {
+  eventId: string;
+  calendarId?: string;
+  summary?: string;
+  start?: string;
+  end?: string;
+  description?: string;
+  location?: string;
+  timeZone?: string;
+}
+
+export type UpdateCalendarEventResult =
+  | { updated: true; id: string; htmlLink: string | null }
+  | { updated: false; reason: "auth_required" | "forbidden" | "not_configured" | "invalid" | "not_found" | "google_error"; detail?: string };
+
+/**
+ * Patch an existing event in place (e.g. change its time). Only the provided
+ * fields change; start/end must be given together-ish (either can be updated,
+ * but changing timed↔all-day cleanly needs both). Same per-user token/ACL rules
+ * as create.
+ */
+export async function updateCalendarEventForUser(
+  db: Db,
+  userId: string,
+  input: UpdateCalendarEventInput,
+): Promise<UpdateCalendarEventResult> {
+  if (!googleClientCreds()) return { updated: false, reason: "not_configured" };
+  let calendarId = input.calendarId?.trim() || "";
+  let eventId = input.eventId?.trim() || "";
+  if (!calendarId && eventId.includes("::")) {
+    const [cal, ev] = eventId.split("::");
+    calendarId = cal;
+    eventId = ev;
+  }
+  if (!calendarId) calendarId = SHARED_CALENDAR.id;
+  if (!eventId) return { updated: false, reason: "invalid", detail: "eventId is required" };
+
+  const token = await getAccessTokenForUser(db, userId, CALENDAR_WRITE_SCOPE);
+  if (!token) return { updated: false, reason: "auth_required" };
+
+  const tz = input.timeZone || "Asia/Taipei";
+  const patch: Record<string, unknown> = {};
+  if (input.summary != null) patch.summary = input.summary;
+  if (input.description != null) patch.description = input.description;
+  if (input.location != null) patch.location = input.location;
+  if (input.start) {
+    patch.start = isAllDayValue(input.start) ? { date: input.start } : { dateTime: input.start, timeZone: tz };
+  }
+  if (input.end) {
+    patch.end = isAllDayValue(input.end) ? { date: input.end } : { dateTime: input.end, timeZone: tz };
+  }
+  if (Object.keys(patch).length === 0) return { updated: false, reason: "invalid", detail: "no fields to update" };
+
+  const result = await googleSend<{ id?: string; htmlLink?: string }>(
+    "PATCH",
+    token,
+    `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    patch,
+  );
+  if (!result.ok) {
+    if (result.status === 401) return { updated: false, reason: "auth_required", detail: result.error };
+    if (result.status === 403) return { updated: false, reason: classifyForbidden(result.error), detail: result.error };
+    if (result.status === 404) return { updated: false, reason: "not_found", detail: result.error };
+    return { updated: false, reason: "google_error", detail: `${result.status}: ${result.error}` };
+  }
+  return { updated: true, id: result.data.id ?? eventId, htmlLink: result.data.htmlLink ?? null };
 }
 
 /** Add whole days to a YYYY-MM-DD string (all-day end is exclusive in Google). */
