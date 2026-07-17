@@ -448,8 +448,8 @@ function FounderRow({
             )}
           >
             {item.triage === "now"
-              ? t("founder.triageNow", { defaultValue: "現在可先處理" })
-              : t("founder.triageEvening", { defaultValue: "留待晚上" })}
+              ? t("founder.triageNow", { defaultValue: "今晚可處理" })
+              : t("founder.triageEvening", { defaultValue: "明天續辦" })}
           </span>
         )}
         {isReview && threadComments.length > 0 && (
@@ -569,14 +569,14 @@ function FounderRow({
         <div className="ml-6 mt-2 space-y-2 text-xs">
           {isReview && item.isNew && !item.summary && !item.review && (
             <div className="rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground">
-              {t("founder.pendingSummary", { defaultValue: "剛從 Asana 加入，AI 摘要／批閱草稿待下次彙整生成。" })}
+              {t("founder.pendingSummary", { defaultValue: "剛從 Asana 加入，AI 摘要／回饋參考待下次彙整生成。" })}
             </div>
           )}
           {isReview && item.summary && (
             <Block label={t("founder.summary", { defaultValue: "AI summary" })} text={item.summary} />
           )}
           {isReview && item.review && (
-            <Block label={t("founder.draftReview", { defaultValue: "Draft 批閱 (review before approving)" })} text={item.review} accent />
+            <Block label={t("founder.draftReview", { defaultValue: "回饋參考（決定前請先閱讀）" })} text={item.review} accent />
           )}
           {kind === "meeting" && item.prep && (
             <Block label={t("founder.meetingPrep", { defaultValue: "Meeting prep" })} text={item.prep} />
