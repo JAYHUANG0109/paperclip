@@ -55,14 +55,15 @@ import { routineService } from "../services/routines.js";
 import { assertCompanyAccess, assertPrivilegedMemberView } from "./authz.js";
 
 /**
- * Kill-switch for the AUTOMATED founder/園長 Asana posting only — the AI
- * summary/批閱草稿 comment auto-posted on every digest write. PAUSED by default.
- * MANUAL, button-triggered writes (裁示 / 結案 / 手動留言) are NOT affected and
- * keep working, as does the personal "My tasks" digest. Set
- * PAPERCLIP_FOUNDER_AUTOPOST_PAUSED=false to re-enable automated posting.
+ * HARD RULE (三條鐵律, enforced 2026-07-17): no agent may EVER auto-post a
+ * comment, change status, or approve on ANY Asana task for the founder/園長
+ * consoles. The AI 摘要／批閱草稿 output goes ONLY to the owner-private Paperclip
+ * card. This is the vector that leaked 唐姐's identity onto public 送批閱 shells,
+ * so it is disabled in CODE — NOT via an env flag that could be flipped back on.
+ * (Kept as a function so every call site reads as an explicit, permanent gate.)
  */
 function founderAutoPostPaused(): boolean {
-  return process.env.PAPERCLIP_FOUNDER_AUTOPOST_PAUSED !== "false";
+  return true; // permanently off — do not add an env escape hatch
 }
 
 /**

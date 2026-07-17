@@ -223,34 +223,19 @@ export const AI_DIGEST_COMMENT_MARKER = "【🤖 AI 每日彙整】";
  * structurally impossible. Best-effort per item — one failure never blocks others.
  */
 export async function autoPostFounderAiComments(
-  db: Db,
-  companyId: string,
-  agentId: string,
+  _db: Db,
+  _companyId: string,
+  _agentId: string,
   items: Array<{ gid: string; summary?: string | null; review?: string | null; commentTargetGid?: string | null }>,
 ): Promise<{ posted: number; skipped: number; blocked: number }> {
-  let posted = 0, skipped = 0, blocked = 0;
-  for (const item of items) {
-    const summary = item.summary?.trim();
-    const review = item.review?.trim();
-    if (!summary && !review) { skipped += 1; continue; } // nothing to post
-    try {
-      const target = await resolveFounderPostTargetGid(db, companyId, agentId, item.gid, item.commentTargetGid ?? null);
-      // HARD stop: a private link that can't be resolved → never touch the shell.
-      if ((target.hasPrivateLink && target.blocked) || !target.targetGid) { blocked += 1; continue; }
-      const targetGid = target.targetGid;
-      // Idempotency check on the SAME task we'll post to (inner when private).
-      const existing = await getAsanaTaskComments(db, companyId, agentId, targetGid);
-      if (existing && existing.some((c) => c.text.includes(AI_DIGEST_COMMENT_MARKER))) { skipped += 1; continue; }
-      const text =
-        `${AI_DIGEST_COMMENT_MARKER}\n【摘要】${summary ?? "（無）"}` +
-        (review ? `\n\n【批閱草稿・僅供參考，未經核准；核准／要求變更／拒絕仍需在儀表板手動裁示】\n${review}` : "");
-      const ok = await postAsanaComment(db, companyId, agentId, targetGid, text);
-      if (ok) posted += 1; else blocked += 1; // failure → not posted anywhere (no fallback)
-    } catch {
-      blocked += 1; // never let one item's error post elsewhere or break the loop
-    }
-  }
-  return { posted, skipped, blocked };
+  // 三條鐵律 (hard-enforced 2026-07-17): agents NEVER auto-write to Asana for the
+  // founder/園長 consoles — no comment, no status change, no approval. The AI
+  // 摘要／批閱草稿 output lives ONLY on the owner-private Paperclip card. This is
+  // the vector that leaked 唐姐's identity onto public 送批閱 shells, so the
+  // function is a permanent no-op — the block is in CODE, not a flag. Manual,
+  // human-initiated actions from the dashboard are handled by their own routes
+  // (fail-closed to the private inner task), NOT here.
+  return { posted: 0, skipped: items.length, blocked: 0 };
 }
 
 /** Delete one Asana story (comment) as the agent. Only the story's author token
