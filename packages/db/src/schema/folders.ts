@@ -10,7 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { companies } from "./companies.js";
-import type { FolderKind } from "@paperclipai/shared";
+import type { FolderKind, FolderScope } from "@paperclipai/shared";
 
 export const folders = pgTable(
   "folders",
@@ -24,6 +24,12 @@ export const folders = pgTable(
     systemKey: text("system_key"),
     color: text("color"),
     position: integer("position").notNull().default(0),
+    // Access control (consolidated from the fork's company_skill_folders model).
+    // Scope gates both the folder and its items; enforced server-side.
+    scope: text("scope").$type<FolderScope>().notNull().default("company"),
+    sharingTeams: text("sharing_teams").array().notNull().default([]),
+    sharedUserIds: text("shared_user_ids").array().notNull().default([]),
+    createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

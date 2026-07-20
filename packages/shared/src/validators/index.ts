@@ -199,6 +199,7 @@ export {
 } from "./company-skill.js";
 export {
   folderKindSchema,
+  folderScopeSchema,
   folderSlugSchema,
   folderSchema,
   folderListItemSchema,

@@ -2129,6 +2129,7 @@ export type {
 export type { AdapterRegistryEntry } from "./types/adapter-registry.js";
 export type {
   FolderKind,
+  FolderScope,
   Folder,
   FolderListItem,
   FolderListResult,
@@ -2146,6 +2147,7 @@ export {
 } from "./validators/adapter-registry.js";
 export {
   folderKindSchema,
+  folderScopeSchema,
   folderSlugSchema,
   folderSchema,
   folderListItemSchema,

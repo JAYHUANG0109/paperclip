@@ -170,6 +170,7 @@ export type {
 } from "./company-skill.js";
 export type {
   FolderKind,
+  FolderScope,
   Folder,
   FolderListItem,
   FolderListResult,

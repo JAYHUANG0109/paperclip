@@ -1,10 +1,13 @@
 import { z } from "zod";
 
 export const folderKindSchema = z.enum(["routine", "skill"]);
+export const folderScopeSchema = z.enum(["company", "team", "private"]);
 export const folderSlugSchema = z.string().trim().min(1).max(120).regex(
   /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
   "Folder slug must contain only lowercase letters, numbers, and single hyphens",
 );
+const folderSharingTeamsSchema = z.array(z.string().trim().min(1).max(120)).max(50);
+const folderSharedUserIdsSchema = z.array(z.string().trim().min(1).max(200)).max(200);
 
 export const folderSchema = z.object({
   id: z.string().uuid(),
@@ -18,6 +21,10 @@ export const folderSchema = z.object({
   depth: z.number().int().min(1),
   color: z.string().nullable(),
   position: z.number().int(),
+  scope: folderScopeSchema,
+  sharingTeams: z.array(z.string()),
+  sharedUserIds: z.array(z.string()),
+  createdByUserId: z.string().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -40,6 +47,9 @@ export const createFolderSchema = z.object({
   slug: folderSlugSchema.optional().nullable(),
   color: z.string().trim().min(1).max(80).optional().nullable(),
   position: z.number().int().min(0).optional().nullable(),
+  scope: folderScopeSchema.optional(),
+  sharingTeams: folderSharingTeamsSchema.optional(),
+  sharedUserIds: folderSharedUserIdsSchema.optional(),
 });
 
 export const updateFolderSchema = z.object({
@@ -47,6 +57,9 @@ export const updateFolderSchema = z.object({
   slug: folderSlugSchema.optional(),
   color: z.string().trim().min(1).max(80).optional().nullable(),
   position: z.number().int().min(0).optional(),
+  scope: folderScopeSchema.optional(),
+  sharingTeams: folderSharingTeamsSchema.optional(),
+  sharedUserIds: folderSharedUserIdsSchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, {
   message: "At least one folder field is required",
 });
