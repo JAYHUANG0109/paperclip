@@ -205,6 +205,28 @@ export function isImageContentType(contentType: string | null | undefined): bool
   return normalizeOutputContentType(contentType).startsWith("image/");
 }
 
+// Filename extensions that mark a generic-binary output as a video (from
+// upstream; used by the skill studio to preview video work products).
+const VIDEO_FILENAME_EXTENSIONS = [
+  ".mp4",
+  ".m4v",
+  ".webm",
+  ".mov",
+  ".qt",
+  ".quicktime",
+];
+
+export function isVideoLikeOutput(
+  contentType: string | null | undefined,
+  originalFilename?: string | null | undefined,
+): boolean {
+  const type = normalizeOutputContentType(contentType);
+  if (type.startsWith("video/")) return true;
+  if (!GENERIC_BINARY_CONTENT_TYPES.has(type)) return false;
+  const filename = (originalFilename ?? "").trim().toLowerCase();
+  return VIDEO_FILENAME_EXTENSIONS.some((extension) => filename.endsWith(extension));
+}
+
 /**
  * A single rendered output. `metadata` is null when the work product's stored
  * metadata fails validation — the row is still surfaced (degraded) so we never
