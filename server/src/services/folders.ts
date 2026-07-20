@@ -6,6 +6,7 @@ import type {
   Folder,
   FolderKind,
   FolderListResult,
+  FolderScope,
   MoveFolder,
   MoveFolderItem,
   UpdateFolder,
@@ -41,6 +42,82 @@ export function normalizeFolderSlug(value: string) {
     .replace(/^-+|-+$/g, "")
     .replace(/-+/g, "-");
   return slug || "folder";
+}
+
+/** Reserved numbered founder folders ("00 …" – "10 …"). */
+function isRestrictedFolderName(name: string): boolean {
+  return /^\s*\d{2}[\s-]/.test(name);
+}
+
+/** Keep only the sharing list relevant to the folder's scope; dedupe + cap. */
+function normalizeSharing(
+  scope: FolderScope,
+  teams?: readonly string[] | null,
+  users?: readonly string[] | null,
+): { sharingTeams: string[]; sharedUserIds: string[] } {
+  const sharingTeams = scope === "team"
+    ? Array.from(new Set((teams ?? []).filter((tItem) => typeof tItem === "string" && tItem.trim()).map((tItem) => tItem.trim()))).slice(0, 50)
+    : [];
+  const sharedUserIds = scope === "private"
+    ? Array.from(new Set((users ?? []).filter((u) => typeof u === "string" && u.trim()).map((u) => u.trim()))).slice(0, 200)
+    : [];
+  return { sharingTeams, sharedUserIds };
+}
+
+/**
+ * Who is asking to see folders. Fully resolved by the route:
+ * - isPrivileged: owner/admin/local-implicit/instance-admin → sees everything.
+ * - allowRestrictedFolders: founder/Jay (by email) OR privileged → sees the
+ *   reserved numbered folders.
+ * - teams: the viewer's team names (for team-scoped folders).
+ */
+export type FolderViewer = {
+  userId?: string | null;
+  isPrivileged?: boolean;
+  allowRestrictedFolders?: boolean;
+  teams?: readonly string[];
+};
+
+/** Per-folder scope check (does NOT walk ancestors — see visibleFolderIds). */
+function folderScopeVisible(view: Folder, viewer: FolderViewer): boolean {
+  if (viewer.isPrivileged) return true;
+  if (isRestrictedFolderName(view.name) && !viewer.allowRestrictedFolders) return false;
+  if (view.scope === "company") return true;
+  const isCreator = !!viewer.userId && view.createdByUserId === viewer.userId;
+  if (view.scope === "private") {
+    return isCreator || (!!viewer.userId && (view.sharedUserIds ?? []).includes(viewer.userId));
+  }
+  // team
+  return isCreator || (view.sharingTeams ?? []).some((tName) => (viewer.teams ?? []).includes(tName));
+}
+
+/**
+ * Folders the viewer may see, honoring inheritance: a folder is visible only
+ * when it AND every ancestor is visible, so a child never leaks out of a
+ * hidden private/team parent. Undefined viewer = privileged (sees all).
+ */
+export function visibleFolderIds(views: Map<string, Folder>, viewer?: FolderViewer): Set<string> {
+  const visible = new Set<string>();
+  if (!viewer || viewer.isPrivileged) {
+    for (const id of views.keys()) visible.add(id);
+    return visible;
+  }
+  const cache = new Map<string, boolean>();
+  const chainVisible = (view: Folder | undefined, seen: Set<string>): boolean => {
+    if (!view) return false;
+    const cached = cache.get(view.id);
+    if (cached !== undefined) return cached;
+    if (seen.has(view.id)) return false; // cycle guard
+    seen.add(view.id);
+    const ok = folderScopeVisible(view, viewer)
+      && (view.parentId ? chainVisible(views.get(view.parentId), seen) : true);
+    cache.set(view.id, ok);
+    return ok;
+  };
+  for (const view of views.values()) {
+    if (chainVisible(view, new Set())) visible.add(view.id);
+  }
+  return visible;
 }
 
 function buildFolderViews(rows: FolderRow[]) {
@@ -156,7 +233,7 @@ export function folderService(db: Db, mutationLockHeld = false) {
       .groupBy(companySkills.folderId);
   }
 
-  async function list(companyId: string, kind: FolderKind): Promise<FolderListResult> {
+  async function list(companyId: string, kind: FolderKind, viewer?: FolderViewer): Promise<FolderListResult> {
     const [folderRows, countRows] = await Promise.all([
       getRows(companyId, kind),
       kind === "routine" ? routineCounts(companyId) : skillCounts(companyId),
@@ -164,15 +241,18 @@ export function folderService(db: Db, mutationLockHeld = false) {
     const views = buildFolderViews(folderRows);
     const countsByFolderId = new Map<string | null, number>();
     for (const row of countRows) countsByFolderId.set(row.folderId ?? null, Number(row.count ?? 0));
-    return {
-      kind,
-      folders: folderRows.map((row) => ({
-        ...views.get(row.id)!,
-        itemCount: countsByFolderId.get(row.id) ?? 0,
-      })),
-      allCount: Array.from(countsByFolderId.values()).reduce((sum, count) => sum + count, 0),
-      unfiledCount: countsByFolderId.get(null) ?? 0,
-    };
+    // Access control: drop folders the viewer isn't allowed to see (private/team
+    // scope, reserved numbered founder folders) — enforced server-side so hidden
+    // folders never reach the client. `allCount` is recomputed from what remains.
+    const visible = visibleFolderIds(views, viewer);
+    const visibleRows = folderRows.filter((row) => visible.has(row.id));
+    const folders = visibleRows.map((row) => ({
+      ...views.get(row.id)!,
+      itemCount: countsByFolderId.get(row.id) ?? 0,
+    }));
+    const unfiledCount = countsByFolderId.get(null) ?? 0;
+    const allCount = folders.reduce((sum, f) => sum + f.itemCount, 0) + unfiledCount;
+    return { kind, folders, allCount, unfiledCount };
   }
 
   function isReservedRootSlug(kind: FolderKind, parentId: string | null, slug: string) {
@@ -212,9 +292,13 @@ export function folderService(db: Db, mutationLockHeld = false) {
     return parent;
   }
 
-  async function create(companyId: string, input: CreateFolder): Promise<Folder> {
+  async function create(
+    companyId: string,
+    input: CreateFolder,
+    options: { createdByUserId?: string | null } = {},
+  ): Promise<Folder> {
     if (!mutationLockHeld) {
-      return withCompanyFolderLock(companyId, (lockedDb) => folderService(lockedDb, true).create(companyId, input));
+      return withCompanyFolderLock(companyId, (lockedDb) => folderService(lockedDb, true).create(companyId, input, options));
     }
     const parentId = input.parentId ?? null;
     const parent = await validateParent(companyId, input.kind, parentId);
@@ -228,11 +312,25 @@ export function folderService(db: Db, mutationLockHeld = false) {
     }
     await assertNoSlugConflict(companyId, input.kind, parentId, slug);
     const position = input.position ?? await nextPosition(companyId, input.kind, parentId);
+    const scope = input.scope ?? "company";
+    const { sharingTeams, sharedUserIds } = normalizeSharing(scope, input.sharingTeams, input.sharedUserIds);
     let row: FolderRow;
     try {
       row = await db
         .insert(folders)
-        .values({ companyId, kind: input.kind, parentId, name, slug, color: normalizeColor(input.color) ?? null, position })
+        .values({
+          companyId,
+          kind: input.kind,
+          parentId,
+          name,
+          slug,
+          color: normalizeColor(input.color) ?? null,
+          position,
+          scope,
+          sharingTeams,
+          sharedUserIds,
+          createdByUserId: options.createdByUserId ?? null,
+        })
         .returning()
         .then((rows) => rows[0]!);
     } catch (error) {
@@ -255,6 +353,15 @@ export function folderService(db: Db, mutationLockHeld = false) {
       throw forbidden("Reserved skill folders are system-managed");
     }
     await assertNoSlugConflict(companyId, existing.kind, existing.parentId, slug, existing.id);
+    const scope = patch.scope ?? existing.scope;
+    // When scope changes (or its sharing lists are edited) re-normalize both
+    // lists against the effective scope so a private folder never keeps stale
+    // team names and vice-versa.
+    const { sharingTeams, sharedUserIds } = normalizeSharing(
+      scope,
+      patch.sharingTeams ?? existing.sharingTeams,
+      patch.sharedUserIds ?? existing.sharedUserIds,
+    );
     try {
       await db
         .update(folders)
@@ -263,6 +370,9 @@ export function folderService(db: Db, mutationLockHeld = false) {
           slug,
           color: patch.color === undefined ? existing.color : normalizeColor(patch.color),
           position: patch.position ?? existing.position,
+          scope,
+          sharingTeams,
+          sharedUserIds,
           updatedAt: new Date(),
         })
         .where(and(eq(folders.companyId, companyId), eq(folders.id, folderId)));

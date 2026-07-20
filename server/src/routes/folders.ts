@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request } from "express";
 import type { Db } from "@paperclipai/db";
 import {
   createFolderSchema,
@@ -10,12 +11,14 @@ import {
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { badRequest, forbidden } from "../errors.js";
-import { folderService, logActivity } from "../services/index.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { companySkillService, folderService, logActivity } from "../services/index.js";
+import type { FolderViewer } from "../services/folders.js";
+import { actorAllowsRestrictedFolders, assertCompanyAccess, getActorInfo, isPrivilegedMemberViewer } from "./authz.js";
 
 export function folderRoutes(db: Db) {
   const router = Router();
   const svc = folderService(db);
+  const skillSvc = companySkillService(db);
 
   function parseKind(value: unknown) {
     const result = folderKindSchema.safeParse(value);
@@ -23,16 +26,30 @@ export function folderRoutes(db: Db) {
     return result.data;
   }
 
+  // Resolve who is asking so the service can scope-filter folders. Agents (and
+  // non-board actors) get `undefined` = privileged (they resolve folders via
+  // assignment, not the browse UI). Board users are filtered by scope +
+  // membership + the founder numbered-folder allowlist.
+  async function resolveViewer(req: Request, companyId: string): Promise<FolderViewer | undefined> {
+    if (req.actor.type !== "board") return undefined;
+    const isPrivileged = isPrivilegedMemberViewer(req, companyId, true);
+    const userId = req.actor.userId ?? null;
+    const allowRestrictedFolders = isPrivileged || await actorAllowsRestrictedFolders(req, db);
+    const teams = userId && !isPrivileged ? Array.from(await skillSvc.getUserTeams(companyId, userId)) : [];
+    return { userId, isPrivileged, allowRestrictedFolders, teams };
+  }
+
   router.get("/companies/:companyId/folders", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    res.json(await svc.list(companyId, parseKind(req.query.kind)));
+    res.json(await svc.list(companyId, parseKind(req.query.kind), await resolveViewer(req, companyId)));
   });
 
   router.post("/companies/:companyId/folders", validate(createFolderSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const created = await svc.create(companyId, req.body);
+    const createdByUserId = req.actor.type === "board" ? (req.actor.userId ?? null) : null;
+    const created = await svc.create(companyId, req.body, { createdByUserId });
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId,

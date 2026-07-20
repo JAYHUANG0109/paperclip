@@ -1,10 +1,28 @@
 import type { Request, Response } from "express";
 import type { Db } from "@paperclipai/db";
-import { agentMemberships, agents } from "@paperclipai/db";
+import { agentMemberships, agents, authUsers } from "@paperclipai/db";
 import { and, eq } from "drizzle-orm";
 import { forbidden, HttpError, unauthorized } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { responsibleUserAuthzShadowMode } from "../services/authorization.js";
+
+/**
+ * The only logins that may see/file into the reserved numbered (00–10) folders
+ * — the founder's private org taxonomy. Everyone else has them stripped/hidden
+ * server-side. Single source of truth, shared by the skills + folders routes.
+ */
+export const RESTRICTED_FOLDER_EMAILS = new Set(["tang@seasonart.org", "jay20020109@seasonart.org"]);
+
+/** True when the actor is one of the founder logins allowed the numbered folders. */
+export async function actorAllowsRestrictedFolders(req: Request, db: Db): Promise<boolean> {
+  if (req.actor.type !== "board" || !req.actor.userId) return false;
+  const row = await db
+    .select({ email: authUsers.email })
+    .from(authUsers)
+    .where(eq(authUsers.id, req.actor.userId))
+    .then((rows) => rows[0] ?? null);
+  return RESTRICTED_FOLDER_EMAILS.has((row?.email ?? "").trim().toLowerCase());
+}
 
 function throwOrShadowResponsibleUserCompanyAccessDeny(
   req: Request,
