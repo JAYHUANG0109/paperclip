@@ -5190,10 +5190,21 @@ export function CompanySkills() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed.";
+      // The server blocks a re-upload of an already-present skill (same slug)
+      // with a 409. Surface that as a clear "already uploaded" message rather
+      // than the raw slug-conflict text, so people who forgot they'd uploaded
+      // it understand the upload was intentionally blocked (no overwrite).
+      const isDuplicate = /already exists|already used|slug/i.test(message);
       pushToast({
         tone: "error",
-        title: t("companySkills.uploadFailed", { defaultValue: "Upload failed" }),
-        body: message,
+        title: isDuplicate
+          ? t("companySkills.uploadDuplicate", { defaultValue: "Already uploaded" })
+          : t("companySkills.uploadFailed", { defaultValue: "Upload failed" }),
+        body: isDuplicate
+          ? t("companySkills.uploadDuplicateBody", {
+              defaultValue: "A skill with this name is already in the store, so this upload was blocked to avoid a duplicate. Open the existing skill to edit it instead.",
+            })
+          : message,
       });
     } finally {
       setUploading(false);
