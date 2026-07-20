@@ -9,7 +9,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import type { FolderKind, FolderListItem, FolderListResult } from "@paperclipai/shared";
+import type { FolderKind, FolderListItem, FolderListResult, FolderScope } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -606,6 +606,14 @@ function MoveToMenuItems({
   );
 }
 
+export type FolderFormPayload = {
+  name: string;
+  color: string | null;
+  scope: FolderScope;
+  sharingTeams: string[];
+  sharedUserIds: string[];
+};
+
 export function FolderFormDialog({
   open,
   kind,
@@ -613,23 +621,55 @@ export function FolderFormDialog({
   onOpenChange,
   onSubmit,
   pending = false,
+  memberOptions = [],
+  availableTeams = [],
 }: {
   open: boolean;
   kind: FolderKind;
   folder: FolderListItem | null;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (payload: { name: string; color: string | null }) => void;
+  onSubmit: (payload: FolderFormPayload) => void;
   pending?: boolean;
+  /** Company users selectable when scope = private (id → label). */
+  memberOptions?: { id: string; label: string }[];
+  /** Team names selectable when scope = team. */
+  availableTeams?: string[];
 }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState<string | null>(FOLDER_COLORS[0] ?? null);
+  const [scope, setScope] = useState<FolderScope>("company");
+  const [sharedUserIds, setSharedUserIds] = useState<string[]>([]);
+  const [sharingTeams, setSharingTeams] = useState<string[]>([]);
   const isEdit = Boolean(folder);
 
   useEffect(() => {
     if (!open) return;
     setName(folder?.name ?? "");
     setColor(folder?.color ?? FOLDER_COLORS[0] ?? null);
+    setScope(folder?.scope ?? "company");
+    setSharedUserIds(folder?.sharedUserIds ?? []);
+    setSharingTeams(folder?.sharingTeams ?? []);
   }, [folder, open]);
+
+  const submit = () => {
+    if (!name.trim()) return;
+    onSubmit({
+      name: name.trim(),
+      color,
+      scope,
+      sharingTeams: scope === "team" ? sharingTeams : [],
+      sharedUserIds: scope === "private" ? sharedUserIds : [],
+    });
+  };
+
+  const toggle = (list: string[], value: string) =>
+    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
+  const SCOPES: { value: FolderScope; label: string; hint: string }[] = [
+    { value: "company", label: "Company", hint: "Everyone in the company can see it" },
+    { value: "team", label: "Team", hint: "Only chosen teams can see it" },
+    { value: "private", label: "Private", hint: "Only you + people you add can see it" },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -649,7 +689,7 @@ export function FolderFormDialog({
               onChange={(event) => setName(event.target.value)}
               autoFocus
               onKeyDown={(event) => {
-                if (event.key === "Enter" && name.trim()) onSubmit({ name: name.trim(), color });
+                if (event.key === "Enter") submit();
               }}
             />
           </div>
@@ -681,12 +721,74 @@ export function FolderFormDialog({
               </button>
             </div>
           </div>
+          {/* Access: who can see this folder and its skills. Enforced server-side. */}
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Who can see it</div>
+            <div className="flex flex-col gap-1">
+              {SCOPES.map((s) => (
+                <label
+                  key={s.value}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2 rounded-md border border-border px-3 py-2 text-sm",
+                    scope === s.value && "border-primary bg-accent/30",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="folder-scope"
+                    className="mt-0.5"
+                    checked={scope === s.value}
+                    onChange={() => setScope(s.value)}
+                  />
+                  <span className="flex flex-col">
+                    <span className="font-medium text-foreground">{s.label}</span>
+                    <span className="text-xs text-muted-foreground">{s.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+          {scope === "team" && availableTeams.length > 0 ? (
+            <div className="space-y-1.5">
+              <div className="text-sm font-medium">Teams with access</div>
+              <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                {availableTeams.map((team) => (
+                  <label key={team} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={sharingTeams.includes(team)}
+                      onChange={() => setSharingTeams((cur) => toggle(cur, team))}
+                    />
+                    <span className="truncate">{team}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {scope === "private" && memberOptions.length > 0 ? (
+            <div className="space-y-1.5">
+              <div className="text-sm font-medium">People with access</div>
+              <p className="text-xs text-muted-foreground">You always have access. Add others below.</p>
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                {memberOptions.map((m) => (
+                  <label key={m.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={sharedUserIds.includes(m.id)}
+                      onChange={() => setSharedUserIds((cur) => toggle(cur, m.id))}
+                    />
+                    <span className="truncate">{m.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={() => onSubmit({ name: name.trim(), color })} disabled={pending || !name.trim()}>
+          <Button onClick={submit} disabled={pending || !name.trim()}>
             {pending ? "Saving..." : isEdit ? "Save" : "Create folder"}
           </Button>
         </DialogFooter>

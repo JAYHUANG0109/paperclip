@@ -176,7 +176,7 @@ import {
   X,
   XOctagon,
 } from "lucide-react";
-import type { FolderListItem, FolderListResult } from "@paperclipai/shared";
+import type { FolderListItem, FolderListResult, FolderScope } from "@paperclipai/shared";
 
 type SkillTreeNode = {
   name: string;
@@ -5653,7 +5653,7 @@ export function CompanySkills() {
     },
   });
   const createFolder = useMutation({
-    mutationFn: (payload: { name: string; color: string | null }) =>
+    mutationFn: (payload: { name: string; color: string | null; scope?: FolderScope; sharingTeams?: string[]; sharedUserIds?: string[] }) =>
       foldersApi.create(selectedCompanyId!, { kind: "skill", parentId: folderDialogParentId, ...payload }),
     onSuccess: async (folder) => {
       setFolderDialogOpen(false);
@@ -5693,7 +5693,7 @@ export function CompanySkills() {
     },
   });
   const updateFolder = useMutation({
-    mutationFn: ({ folderId, payload }: { folderId: string; payload: { name?: string; color?: string | null } }) =>
+    mutationFn: ({ folderId, payload }: { folderId: string; payload: { name?: string; color?: string | null; scope?: FolderScope; sharingTeams?: string[]; sharedUserIds?: string[] } }) =>
       foldersApi.update(selectedCompanyId!, folderId, payload),
     onSuccess: async () => {
       setFolderDialogOpen(false);
@@ -6531,6 +6531,8 @@ export function CompanySkills() {
         kind="skill"
         folder={folderDialogTarget}
         pending={createFolder.isPending || updateFolder.isPending}
+        memberOptions={memberOptions}
+        availableTeams={availableTeams}
         onOpenChange={(open) => {
           setFolderDialogOpen(open);
           if (!open) setFolderDialogParentId(null);
