@@ -17,7 +17,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { displayAgentName } from "../lib/agent-name";
 import { TeamFilterBar } from "../components/TeamFilterBar";
 import { ViewSwitchButton } from "../components/ViewSwitchButton";
-import { agentMatchesTeams, listAllTeams, useAgentTeamFilter } from "../lib/agent-teams";
+import { agentMatchesTeams, agentTeams, listAllTeams, useAgentTeamFilter } from "../lib/agent-teams";
 import { sortAgentsByAccessLevel } from "../lib/agent-order";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { agentUrl } from "../lib/utils";
@@ -27,6 +27,9 @@ import { OFFICE_BADGES, OFFICE_BADGE_BY_KEY, rankLadder, XP_SOURCES } from "../l
 import type { Agent } from "@paperclipai/shared";
 
 const OFFICE_VIEW_KEY = "paperclip:office-view";
+// The system-automation team folder — its agents (e.g. Reflection Coach) are
+// infrastructure, not colleagues, so they sort to the very bottom of the office.
+const AUTOMATION_TEAM = "系統自動化";
 
 export function VirtualOffice() {
   const { t, i18n } = useTranslation();
@@ -103,18 +106,38 @@ export function VirtualOffice() {
   const canViewAgent = (agentId: string) =>
     Boolean(viewable?.privileged) || (viewable?.agentIds ?? []).includes(agentId);
 
+  // The agent(s) THIS user is paired with — used to float the current user's own
+  // agent to the very first card (top-left), so everyone sees themselves first.
+  const { data: myAgents } = useQuery({
+    queryKey: queryKeys.agents.mine(selectedCompanyId!),
+    queryFn: () => agentsApi.mine(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const myAgentIds = useMemo(() => new Set((myAgents ?? []).map((a) => a.id)), [myAgents]);
+
   const { selected: teamFilter, toggle: toggleTeam, clear: clearTeams } = useAgentTeamFilter(selectedCompanyId);
   const workingAgentIds = useMemo(() => new Set((liveRuns ?? []).map((r) => r.agentId)), [liveRuns]);
   const allAgents = useMemo(() => (agents ?? []).filter((a) => a.status !== "terminated"), [agents]);
   const allTeams = useMemo(() => listAllTeams(allAgents), [allAgents]);
   // Avatars are filtered by the shared team selection (same one the Agents page
   // uses), so switching between the two views keeps the same filter applied.
-  // Ranked by access level (org seniority) by default; placeholder C-suite
-  // agents sort last.
-  const visibleAgents = useMemo(
-    () => sortAgentsByAccessLevel(allAgents.filter((a) => agentMatchesTeams(a, teamFilter)), allAgents),
-    [allAgents, teamFilter],
-  );
+  // Ordering (top-left → bottom-right):
+  //   1. the current user's OWN agent(s) — so you always see yourself first;
+  //   2. everyone else ranked by access level (org seniority);
+  //   3. the 系統自動化 (system-automation) team last, in any order — these are
+  //      infrastructure agents (e.g. Reflection Coach), not real colleagues.
+  const visibleAgents = useMemo(() => {
+    const ranked = sortAgentsByAccessLevel(
+      allAgents.filter((a) => agentMatchesTeams(a, teamFilter)),
+      allAgents,
+    );
+    const isAutomation = (a: (typeof ranked)[number]) => agentTeams(a).includes(AUTOMATION_TEAM);
+    // Partition while preserving the access-level order within each bucket.
+    const mine = ranked.filter((a) => myAgentIds.has(a.id));
+    const automation = ranked.filter((a) => !myAgentIds.has(a.id) && isAutomation(a));
+    const rest = ranked.filter((a) => !myAgentIds.has(a.id) && !isAutomation(a));
+    return [...mine, ...rest, ...automation];
+  }, [allAgents, teamFilter, myAgentIds]);
   const leaderboardByUser = useMemo(
     () => new Map((leaderboard?.entries ?? []).map((e) => [e.userId, e])),
     [leaderboard],
