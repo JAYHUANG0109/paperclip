@@ -30,8 +30,7 @@
  *   pnpm tsx scripts/backfill-skill-folders.ts --company ID  # dry-run, one company
  *   pnpm tsx scripts/backfill-skill-folders.ts --apply       # write changes
  */
-import { and, eq, isNull } from "drizzle-orm";
-import { companies, companySkillFolders, companySkills, createDb, folders } from "../packages/db/src/index.js";
+import { and, companies, companySkillFolders, companySkills, createDb, eq, folders, isNull } from "../packages/db/src/index.js";
 import { loadConfig } from "../server/src/config.js";
 import { normalizeFolderSlug } from "../server/src/services/folders.js";
 
@@ -145,7 +144,9 @@ async function main() {
   if (!APPLY) console.log("Re-run with --apply to write these changes.");
 }
 
-void main().catch((error) => {
-  console.error(`skill-folder backfill failed: ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 1;
-});
+void main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(`skill-folder backfill failed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
