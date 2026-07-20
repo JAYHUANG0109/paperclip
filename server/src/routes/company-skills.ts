@@ -424,8 +424,13 @@ export function companySkillRoutes(db: Db) {
   router.get("/companies/:companyId/skills", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    const listPrivileged = isPrivilegedMemberViewer(req, companyId, true);
     const viewer = req.actor.type === "board"
-      ? { userId: req.actor.userId ?? null, isPrivileged: isPrivilegedMemberViewer(req, companyId, true) }
+      ? {
+          userId: req.actor.userId ?? null,
+          isPrivileged: listPrivileged,
+          allowRestrictedFolders: listPrivileged || await actorAllowsRestrictedFolders(req),
+        }
       : { isPrivileged: true }; // agents resolve skills via assignment; no privacy filter
     const result = await svc.list(companyId, companySkillListQuerySchema.parse({
       q: firstQueryString(req.query.q),
@@ -1610,8 +1615,13 @@ export function companySkillRoutes(db: Db) {
   router.get("/companies/:companyId/skill-folders", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    const foldersPrivileged = isPrivilegedMemberViewer(req, companyId, true);
     const viewer = req.actor.type === "board"
-      ? { userId: req.actor.userId ?? null, isPrivileged: isPrivilegedMemberViewer(req, companyId, true) }
+      ? {
+          userId: req.actor.userId ?? null,
+          isPrivileged: foldersPrivileged,
+          allowRestrictedFolders: foldersPrivileged || await actorAllowsRestrictedFolders(req),
+        }
       : { isPrivileged: true }; // agents aren't scope-filtered here
     res.json(await svc.listSkillFolders(companyId, viewer));
   });

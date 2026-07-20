@@ -3024,7 +3024,7 @@ export function companySkillService(db: Db) {
   async function list(
     companyId: string,
     query: CompanySkillListQuery = {},
-    viewer?: { userId?: string | null; isPrivileged?: boolean },
+    viewer?: { userId?: string | null; isPrivileged?: boolean; allowRestrictedFolders?: boolean },
   ): Promise<CompanySkillListItem[]> {
     await ensureSkillInventoryCurrent(companyId);
     // Private-scope visibility: non-privileged users only see private skills they
@@ -3108,6 +3108,19 @@ export function companySkillService(db: Db) {
         const isCreator = viewer.userId && skill.createdByUserId === viewer.userId;
         const sharesTeam = viewerTeams && (skill.sharingTeams ?? []).some((teamName) => viewerTeams.has(teamName));
         if (!isCreator && !sharesTeam) return false;
+      }
+      // Restricted numbered founder folders (00–10) are the founder's private org
+      // taxonomy. Their COMPANY-scoped skills are hidden from everyone except the
+      // founder/Jay (allowRestrictedFolders) and owners/admins (isPrivileged).
+      // Private/team skills are already gated above, so an individually-shared
+      // skill inside a restricted folder still surfaces to its recipient — and
+      // ONLY that skill (the Frank exception), never the whole folder.
+      if (
+        viewer && !viewer.isPrivileged && !viewer.allowRestrictedFolders
+        && skill.sharingScope === "company"
+        && (skill.categories ?? []).some((c) => isRestrictedFolderName(c))
+      ) {
+        return false;
       }
       // Hide not-yet-approved public skills from everyone except reviewers (owner/admin)
       // and the submitter themselves.
@@ -6791,13 +6804,18 @@ export function companySkillService(db: Db) {
 
   async function listSkillFolders(
     companyId: string,
-    viewer?: { userId?: string | null; isPrivileged?: boolean },
+    viewer?: { userId?: string | null; isPrivileged?: boolean; allowRestrictedFolders?: boolean },
   ): Promise<CompanySkillFolder[]> {
     const rows = await db.select().from(companySkillFolders).where(eq(companySkillFolders.companyId, companyId));
     const viewerTeams = viewer && !viewer.isPrivileged && viewer.userId ? await getUserTeams(companyId, viewer.userId) : null;
     return rows
       .filter((row) => {
         if (!viewer || viewer.isPrivileged) return true;
+        // Restricted numbered founder folders (00–10) never appear for ordinary
+        // members. If a specific skill inside one is shared with the viewer it
+        // surfaces via that skill's derived category (skill list), not here — so
+        // the empty registry folder stays hidden.
+        if (isRestrictedFolderName(row.name) && !viewer.allowRestrictedFolders) return false;
         const isCreator = !!viewer.userId && row.createdByUserId === viewer.userId;
         if (row.scope === "company") return true;
         if (row.scope === "private") return isCreator || (!!viewer.userId && (row.sharedUserIds ?? []).includes(viewer.userId));
