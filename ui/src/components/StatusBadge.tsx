@@ -29,9 +29,9 @@ function sentenceCaseStatus(status: string): string {
  * the PAP-75 brand palette behind the Conference Room Chat flag (PAP-139); flag
  * OFF keeps master's palette. Non-issue entries are identical in both records.
  */
-// design-allow(pill-pattern): DECISION-SHEET.md C8 — status badges keep the bespoke WCAG-tuned
+// design-allow(pill-pattern): DECISION-SHEET.md C8 - status badges keep the bespoke WCAG-tuned
 // .status-chip color-mix mechanic and do not wrap the Badge primitive.
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const { enabled: conferenceRoomChatEnabled } = useConferenceRoomChatEnabled();
   const palette = conferenceRoomChatEnabled ? statusBadge : statusBadgeClassic;
   return (
@@ -41,7 +41,7 @@ export function StatusBadge({ status }: { status: string }) {
         palette[status] ?? statusBadgeDefault
       )}
     >
-      {status.replace(/_/g, " ")}
+      {label ?? status.replace(/[_-]/g, " ")}
     </span>
   );
 }

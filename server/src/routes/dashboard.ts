@@ -53,6 +53,22 @@ import {
 import { heartbeatService } from "../services/heartbeat.js";
 import { routineService } from "../services/routines.js";
 import { assertCompanyAccess, assertPrivilegedMemberView } from "./authz.js";
+import {
+  DEFAULT_RECOVERY_RATE_THRESHOLD_PERCENT,
+  MAX_WINDOW_WEEKS,
+  recoveryObservabilityService,
+} from "../services/recovery-observability.js";
+
+function parsePositiveNumber(
+  value: unknown,
+  fallback: number,
+  max?: number,
+): number {
+  if (typeof value !== "string") return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return max != null ? Math.min(parsed, max) : parsed;
+}
 
 /**
  * HARD RULE (三條鐵律, enforced 2026-07-17): no agent may EVER auto-post a
@@ -109,6 +125,7 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
   const heartbeat = heartbeatService(db);
   const routineSvc = routineService(db);
   const notifications = notificationService(db);
+  const recoveryObservability = recoveryObservabilityService(db);
 
   router.get("/companies/:companyId/dashboard", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -1022,6 +1039,21 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     } catch (e) {
       res.status(400).json({ ok: false, error: (e as Error).message });
     }
+  });
+
+  router.get("/companies/:companyId/recovery-observability", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const weeks = parsePositiveNumber(req.query.weeks, 8, MAX_WINDOW_WEEKS);
+    const thresholdPercent = parsePositiveNumber(
+      req.query.threshold,
+      DEFAULT_RECOVERY_RATE_THRESHOLD_PERCENT,
+    );
+    const report = await recoveryObservability.report(companyId, {
+      weeks,
+      thresholdPercent,
+    });
+    res.json(report);
   });
 
   return router;

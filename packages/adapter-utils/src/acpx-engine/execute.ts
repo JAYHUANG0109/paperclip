@@ -146,6 +146,8 @@ interface AcpxPreparedRuntime {
   skillsIdentity: Record<string, unknown>;
   childStderrLogPath: string | null;
   paperclipClaudeSettings: PaperclipClaudeSettingsResult | null;
+  mcpServers: NonNullable<AcpRuntimeOptions["mcpServers"]>;
+  mcpIdentity: Array<{ name: string; url: string; connectionId: string }>;
 }
 
 const defaultWarmHandles = new Map<string, RuntimeCacheEntry>();
@@ -799,6 +801,7 @@ function buildSessionParams(input: {
     ...(prepared.requestedThinkingEffort ? { thinkingEffort: prepared.requestedThinkingEffort } : {}),
     ...(prepared.fastMode ? { fastMode: true } : {}),
     skills: prepared.skillsIdentity,
+    mcpServers: prepared.mcpIdentity,
     ...(prepared.workspaceId ? { workspaceId: prepared.workspaceId } : {}),
     ...(prepared.workspaceRepoUrl ? { repoUrl: prepared.workspaceRepoUrl } : {}),
     ...(prepared.workspaceRepoRef ? { repoRef: prepared.workspaceRepoRef } : {}),
@@ -1017,6 +1020,18 @@ async function buildRuntime(input: {
   const requestedModel = asString(config.model, "").trim();
   const requestedThinkingEffort = normalizeRequestedThinkingEffort(config);
   const fastMode = acpxAgent === "codex" && config.fastMode === true;
+  const runtimeMcpServers = input.ctx.runtimeMcp?.getServers() ?? [];
+  const mcpIdentity = runtimeMcpServers.map(({ name, url, connectionId }) => ({
+    name,
+    url,
+    connectionId,
+  }));
+  const mcpServers: NonNullable<AcpRuntimeOptions["mcpServers"]> = runtimeMcpServers.map((server) => ({
+    type: "http",
+    name: server.name,
+    url: server.url,
+    headers: [{ name: "Authorization", value: `Bearer ${server.token}` }],
+  }));
   // Resolve the wall-clock timeout through the shared execution-target
   // resolver so sandbox-backed runs pick up the 4h backstop default while
   // local/SSH runs keep the historical "0 = no adapter timeout" behavior.
@@ -1275,6 +1290,7 @@ async function buildRuntime(input: {
           defaultMode: paperclipClaudeSettings.defaultMode,
         }
       : null,
+    mcpServers: mcpIdentity,
     secretManifestHash: shortHash(secretManifest),
     // Fold the resolved adapter env (all applied user-configured values —
     // plain, secret_ref, and stable PAPERCLIP_* config such as an explicit
@@ -1324,6 +1340,8 @@ async function buildRuntime(input: {
     },
     childStderrLogPath,
     paperclipClaudeSettings,
+    mcpServers,
+    mcpIdentity,
   };
 }
 
@@ -1949,6 +1967,7 @@ export function createAcpxEngineExecutor(deps: AcpxEngineExecutorOptions = {}) {
       agentRegistry: prepared.agentRegistry,
       permissionMode: prepared.permissionMode,
       nonInteractivePermissions: prepared.nonInteractivePermissions,
+      mcpServers: prepared.mcpServers,
       timeoutMs: prepared.timeoutSec > 0 ? prepared.timeoutSec * 1000 : undefined,
       // Scope ACPX runtime verbose logs to the claude agent only. Codex
       // and custom agents already emit their own per-tool output and don't

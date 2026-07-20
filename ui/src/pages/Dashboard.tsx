@@ -32,6 +32,7 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
 import { ApiError } from "../api/client";
+import { SmokeLabDashboardCard } from "../components/SmokeLabDashboardCard";
 
 const DASHBOARD_ACTIVITY_LIMIT = 10;
 
@@ -355,6 +356,8 @@ export function Dashboard() {
             />
           </div>
           )}
+
+          <SmokeLabDashboardCard companyId={selectedCompanyId!} />
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <ChartCard title={t("dashboard.runActivity")} subtitle={t("dashboard.last14Days")}>

@@ -1,7 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { INBOX_MINE_ISSUE_STATUS_FILTER } from "@paperclipai/shared";
+import { deriveOriginatingActor, INBOX_MINE_ISSUE_STATUS_FILTER } from "@paperclipai/shared";
+import { usePublishSharedQueryData, useSharedPollingQuery } from "@/hooks/useSharedPolling";
 import { approvalsApi } from "../api/approvals";
 import { accessApi } from "../api/access";
 import { authApi } from "../api/auth";
@@ -170,6 +171,17 @@ type SectionKey =
 
 /** A flat navigation entry for keyboard j/k traversal that includes expanded children. */
 type NavEntry = InboxKeyboardNavEntry;
+// Stable identity for a nav row, resilient to the numeric index shifting when
+// the inbox reshapes (archive/poll). Used to re-anchor both the keyboard
+// selection and the hovered row across list refreshes.
+const navEntryKey = (entry: NavEntry | undefined): string | null =>
+  !entry
+    ? null
+    : entry.type === "top"
+      ? `top:${entry.itemKey}`
+      : entry.type === "child"
+        ? `child:${entry.issueId}`
+        : `group:${entry.groupKey}`;
 type CreatorOption = {
   id: string;
   label: string;
@@ -952,12 +964,23 @@ export function Inbox() {
     refetchOnWindowFocus: false,
     staleTime: INBOX_HOT_PATH_STALE_MS,
   });
-  const { data: liveRuns } = useQuery({
-    queryKey: queryKeys.liveRuns(selectedCompanyId!),
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+  const liveRunsQueryKey = queryKeys.liveRuns(selectedCompanyId!);
+  const sharedLiveRuns = useSharedPollingQuery({
+    companyId: selectedCompanyId,
+    resourceKey: "live-runs",
+    queryKey: liveRunsQueryKey,
     enabled: !!selectedCompanyId,
-    refetchInterval: 5000,
+    // Event-sourced via LiveUpdatesProvider (#9627); no interval poll needed.
+    refetchInterval: false,
+    leaderOnly: true,
   });
+  const { data: liveRuns, dataUpdatedAt: liveRunsUpdatedAt } = useQuery({
+    queryKey: liveRunsQueryKey,
+    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    enabled: sharedLiveRuns.enabled,
+    refetchInterval: sharedLiveRuns.refetchInterval,
+  });
+  usePublishSharedQueryData(sharedLiveRuns, liveRuns, liveRunsUpdatedAt);
   const liveIssueIds = useMemo(() => collectLiveIssueIds(liveRuns), [liveRuns]);
   const { data: companyMembers } = useQuery({
     queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!),
@@ -1428,6 +1451,10 @@ export function Inbox() {
   const flatNavItems = useMemo((): NavEntry[] => {
     return buildInboxKeyboardNavEntries(groupedSections, collapsedGroupKeys, collapsedInboxParents);
   }, [collapsedGroupKeys, collapsedInboxParents, groupedSections]);
+  // Read the current nav list from event handlers without recreating them (and
+  // without capturing a stale array), so hover can resolve the row's key.
+  const flatNavItemsRef = useRef(flatNavItems);
+  flatNavItemsRef.current = flatNavItems;
   // Roll live descendant runs up to their ancestors across the loaded inbox tree
   // so a parent that is not itself live can still surface "n live below".
   const subtreeLiveCounts = useMemo(() => {
@@ -1622,6 +1649,34 @@ export function Inbox() {
   const [archivingNonIssueIds, setArchivingNonIssueIds] = useState<Set<string>>(new Set());
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const listRef = useRef<HTMLDivElement>(null);
+  // Keyboard nav scrolls the list, which fires mouseenter on whatever row lands
+  // under the stationary cursor — that must not steal the selection. Hover only
+  // selects after the pointer has physically moved since the last key nav.
+  const pointerMovedSinceKeyNavRef = useRef(true);
+  useEffect(() => {
+    const handlePointerMove = () => {
+      pointerMovedSinceKeyNavRef.current = true;
+    };
+    window.addEventListener("mousemove", handlePointerMove, { passive: true });
+    return () => window.removeEventListener("mousemove", handlePointerMove);
+  }, []);
+  // Which row the cursor is over, tracked WITHOUT React state so scrubbing the
+  // list costs zero re-renders (hover paints via CSS `:hover`, see IssueRow).
+  // Keyboard nav reads this to continue from the hovered row.
+  const hoveredIndexRef = useRef<number | null>(null);
+  // The hovered row's stable key, kept alongside the numeric index so a poll
+  // that reshapes the list can re-anchor the hover to the same row instead of
+  // dropping it (which stranded j/k back at the top — PAP-9679 regression).
+  const hoveredNavKeyRef = useRef<string | null>(null);
+  const setSelectedIndexFromPointer = useCallback((idx: number) => {
+    if (!pointerMovedSinceKeyNavRef.current) return;
+    hoveredIndexRef.current = idx;
+    hoveredNavKeyRef.current = navEntryKey(flatNavItemsRef.current[idx]);
+    // Drop any keyboard selection band the moment the mouse takes over, so we
+    // never show two identical highlights at once. React bails out when the
+    // value is already -1, so continuous hovering triggers no re-render.
+    setSelectedIndex((prev) => (prev < 0 ? prev : -1));
+  }, []);
 
   const invalidateInboxIssueQueries = () => {
     if (!selectedCompanyId) return;
@@ -1799,10 +1854,33 @@ export function Inbox() {
     return "hidden";
   };
 
-  // Keep selection valid when the list shape changes, but do not auto-select on initial load.
+  // Keep selection on the same logical item when the list shape changes —
+  // rows archived/refreshed above the selection would otherwise shift the
+  // numeric index onto a neighboring row (and Enter would open the wrong
+  // task). Falls back to clamping when the item is gone; never auto-selects
+  // on initial load.
+  const selectedNavKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    setSelectedIndex((prev) => resolveInboxSelectionIndex(prev, flatNavItems.length));
-  }, [flatNavItems.length]);
+    // A reshaped list invalidates the numeric hover index. Re-anchor it to the
+    // same row by key (the inbox polls constantly, so nulling it here silently
+    // broke hover→j/k sync — PAP-9679). Drop it only when the row is gone.
+    const hoveredKey = hoveredNavKeyRef.current;
+    const nextHovered =
+      hoveredKey === null ? -1 : flatNavItems.findIndex((entry) => navEntryKey(entry) === hoveredKey);
+    hoveredIndexRef.current = nextHovered >= 0 ? nextHovered : null;
+    if (nextHovered < 0) hoveredNavKeyRef.current = null;
+    setSelectedIndex((prev) => {
+      if (prev < 0) return resolveInboxSelectionIndex(prev, flatNavItems.length);
+      const prevKey = selectedNavKeyRef.current;
+      const keyIndex = prevKey === null
+        ? -1
+        : flatNavItems.findIndex((entry) => navEntryKey(entry) === prevKey);
+      return keyIndex >= 0 ? keyIndex : resolveInboxSelectionIndex(prev, flatNavItems.length);
+    });
+  }, [flatNavItems]);
+  useEffect(() => {
+    selectedNavKeyRef.current = selectedIndex >= 0 ? navEntryKey(flatNavItems[selectedIndex]) : null;
+  }, [flatNavItems, selectedIndex]);
 
   useEffect(() => {
     setUndoableArchiveIssueIds([]);
@@ -2508,6 +2586,12 @@ export function Inbox() {
                               >
                                 <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-90")} />
                               </button>
+                            ) : (isUnread || isFading) ? (
+                              // Unread rows already carry the leading mark-read
+                              // dot (IssueRow, order-first) in the chevron
+                              // column, so skip the spacer — otherwise the dot
+                              // and this spacer would double-indent the status.
+                              null
                             ) : (
                               <span className="hidden w-4 shrink-0 sm:block" />
                             )
@@ -2616,7 +2700,7 @@ export function Inbox() {
                           if (groupNavIdx >= 0) setSelectedIndex(groupNavIdx);
                         }}
                         onMouseEnter={() => {
-                          if (groupNavIdx >= 0) setSelectedIndex(groupNavIdx);
+                          if (groupNavIdx >= 0) setSelectedIndexFromPointer(groupNavIdx);
                         }}
                       >
                         <IssueGroupHeader
@@ -2654,7 +2738,7 @@ export function Inbox() {
                         data-inbox-item
                         className="relative"
                         onClick={() => setSelectedIndex(navIdx)}
-                        onMouseEnter={() => setSelectedIndex(navIdx)}
+                        onMouseEnter={() => setSelectedIndexFromPointer(navIdx)}
                       >
                         {child}
                       </div>
@@ -2826,7 +2910,7 @@ export function Inbox() {
                               if (childNavIdx >= 0) setSelectedIndex(childNavIdx);
                             }}
                             onMouseEnter={() => {
-                              if (childNavIdx >= 0) setSelectedIndex(childNavIdx);
+                              if (childNavIdx >= 0) setSelectedIndexFromPointer(childNavIdx);
                             }}
                           >
                             {canArchiveIssue ? (

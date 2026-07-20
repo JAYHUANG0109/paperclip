@@ -10,6 +10,11 @@ import { Layout } from "./components/Layout";
 import { ConferenceRoomChatGate } from "./components/ConferenceRoomChatGate";
 import { OnboardingWizardVariant } from "./components/OnboardingWizardVariant";
 import { CloudAccessGate } from "./components/CloudAccessGate";
+import { CasesExperimentalGate } from "./components/CasesExperimentalGate";
+import { AppsExperimentalGate } from "./components/AppsExperimentalGate";
+// ProfileWizardRoute takes a `mode` prop, so it can't use the props-stripping
+// lazyPage() helper — import it eagerly.
+import { ProfileWizardRoute } from "./pages/tools/profiles/ProfileWizardRoute";
 // NotFoundPage stays eager: it's tiny and rendered synchronously for invalid
 // routes/prefixes, so lazy-loading it would only add a needless loading flash.
 import { NotFoundPage } from "./pages/NotFound";
@@ -87,6 +92,21 @@ const BoardClaimPage = lazyPage(() => import("./pages/BoardClaim"), "BoardClaimP
 const CliAuthPage = lazyPage(() => import("./pages/CliAuth"), "CliAuthPage");
 const InviteLandingPage = lazyPage(() => import("./pages/InviteLanding"), "InviteLandingPage");
 const JoinRequestQueue = lazyPage(() => import("./pages/JoinRequestQueue"), "JoinRequestQueue");
+// New pages brought in by the 2026-07 upstream merge — lazy-loaded to keep the
+// first-load bundle small (route-split perf win, commit 6b2262cbc preserved).
+const Cases = lazyPage(() => import("./pages/Cases"), "Cases");
+const CaseDetail = lazyPage(() => import("./pages/CaseDetail"), "CaseDetail");
+const SkillStudio = lazyPage(() => import("./pages/SkillStudio"), "SkillStudio");
+const AdvancedToolsRoute = lazyPage(() => import("./pages/tools/AdvancedToolsRoute"), "AdvancedToolsRoute");
+const ProfileDetailRoute = lazyPage(() => import("./pages/tools/profiles/ProfileDetailRoute"), "ProfileDetailRoute");
+const Connections = lazyPage(() => import("./pages/apps/Connections"), "Connections");
+const Browse = lazyPage(() => import("./pages/apps/Browse"), "Browse");
+const AppsConnect = lazyPage(() => import("./pages/apps/AppsConnect"), "AppsConnect");
+const AppsReview = lazyPage(() => import("./pages/apps/AppsReview"), "AppsReview");
+const AppDetail = lazyPage(() => import("./pages/apps/AppDetail"), "AppDetail");
+const AppNotConnected = lazyPage(() => import("./pages/apps/AppNotConnected"), "AppNotConnected");
+const GatewaysList = lazyPage(() => import("./pages/apps/gateways/GatewaysList"), "GatewaysList");
+const GatewayDetail = lazyPage(() => import("./pages/apps/gateways/GatewayDetail"), "GatewayDetail");
 import { useCompany } from "./context/CompanyContext";
 import { useDialogActions, useDialogState } from "./context/DialogContext";
 import { loadLastInboxTab } from "./lib/inbox";
@@ -112,11 +132,36 @@ function boardRoutes() {
       <Route path="company/settings/cloud-upstream" element={<CloudUpstream />} />
       <Route path="company/settings/members" element={<CompanyAccess />} />
       <Route path="company/settings/access" element={<CompanyAccessLegacyRoute />} />
-      <Route path="company/settings/cloud-upstream" element={<CloudUpstream />} />
       <Route path="company/settings/invites" element={<CompanyInvites />} />
       <Route path="company/export/*" element={<CompanyExport />} />
       <Route path="company/import" element={<CompanyImport />} />
       <Route path="company/settings/secrets" element={<Secrets />} />
+      <Route path="company/settings/tools" element={<LegacyToolsSettingsRedirect />} />
+      <Route path="company/settings/tools/:tab" element={<LegacyToolsSettingsRedirect />} />
+      <Route path="tools" element={<LegacyToolsRedirect />} />
+      <Route path="tools/:tab" element={<LegacyToolsRedirect />} />
+      <Route element={<AppsExperimentalGate />}>
+        <Route path="apps" element={<Connections />} />
+        <Route path="apps/browse" element={<Browse />} />
+        <Route path="apps/connect" element={<AppsConnectEntryRoute />} />
+        <Route path="apps/connect/:appKey" element={<Navigate to="/apps/browse" replace />} />
+        <Route path="apps/connect/:appKey/:stage" element={<Navigate to="/apps/browse" replace />} />
+        <Route path="apps/review" element={<AppsReview />} />
+        {/* Needs attention folded into Connections (PAP-13254); keep legacy links working. */}
+        <Route path="apps/attention" element={<Navigate to="/apps" replace />} />
+        <Route path="apps/gateways" element={<GatewaysList />} />
+        <Route path="apps/gateways/:gatewayId" element={<Navigate to="overview" replace />} />
+        <Route path="apps/gateways/:gatewayId/:tab" element={<GatewayDetail />} />
+        <Route path="apps/advanced" element={<AdvancedToolsRoute />} />
+        <Route path="apps/advanced/profiles/new" element={<ProfileWizardRoute mode="new" />} />
+        <Route path="apps/advanced/profiles/:profileId/edit" element={<ProfileWizardRoute mode="edit" />} />
+        <Route path="apps/advanced/profiles/:profileId" element={<ProfileDetailRoute />} />
+        <Route path="apps/advanced/:tab" element={<AdvancedToolsRoute />} />
+        <Route path="apps/app/:applicationId" element={<AppNotConnected />} />
+        <Route path="apps/app/:applicationId/:tab" element={<AppNotConnected />} />
+        <Route path="apps/:connectionId" element={<Navigate to="setup" replace />} />
+        <Route path="apps/:connectionId/:tab" element={<AppDetail />} />
+      </Route>
       <Route path="company/settings/instance" element={<Navigate to="general" replace />} />
       <Route path="company/settings/instance/profile" element={<ProfileSettings />} />
       <Route path="company/settings/instance/general" element={<InstanceGeneralSettings />} />
@@ -224,6 +269,12 @@ function FullPageLoader() {
   );
 }
 
+function AppsConnectEntryRoute() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  return searchParams.get("byo") === "1" ? <AppsConnect /> : <Navigate to="/apps/browse" replace />;
+}
+
 function InboxRootRedirect() {
   return <Navigate to={`/inbox/${loadLastInboxTab()}`} replace />;
 }
@@ -267,6 +318,24 @@ function LegacySettingsRedirect() {
       replace
     />
   );
+}
+
+function LegacyToolsSettingsRedirect() {
+  const { tab } = useParams<{ tab?: string }>();
+  return <Navigate to={legacyToolsRedirectTarget(tab)} replace />;
+}
+
+// The developer "Tools" surface moved under the Apps "Advanced setup" door
+// (PAP-10862). `/tools` and `/tools/:tab` redirect to their new home.
+function LegacyToolsRedirect() {
+  const { tab } = useParams<{ tab?: string }>();
+  return <Navigate to={legacyToolsRedirectTarget(tab)} replace />;
+}
+
+function legacyToolsRedirectTarget(tab?: string) {
+  if (!tab) return "/apps/advanced/profiles";
+  if (tab === "applications" || tab === "connections" || tab === "overview" || tab === "examples") return "/apps";
+  return `/apps/advanced/${tab}`;
 }
 
 function OnboardingRoutePage() {

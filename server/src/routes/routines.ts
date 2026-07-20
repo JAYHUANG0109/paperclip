@@ -14,7 +14,7 @@ import {
 import { trackRoutineCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
 import { accessService, documentAnnotationService, logActivity, routineService } from "../services/index.js";
-import { assertCompanyAccess, getActorInfo, getVisibleAgentIds, isPrivilegedMemberViewer } from "./authz.js";
+import { assertCompanyAccess, getAccessibleResource, getActorInfo, getVisibleAgentIds, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import { forbidden, unauthorized } from "../errors.js";
 import { getTelemetryClient } from "../telemetry.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
@@ -69,6 +69,7 @@ export function routineRoutes(
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
         action: "routine.document_annotation_remapped",
         entityType: "routine",
         entityId: routineId,
@@ -107,7 +108,7 @@ export function routineRoutes(
 
   async function assertCanManageExistingRoutine(req: Request, routineId: string) {
     const routine = await svc.get(routineId);
-    if (!routine) return null;
+    if (!routine || !hasCompanyAccess(req, routine.companyId)) return null;
     assertCompanyAccess(req, routine.companyId);
     if (req.actor.type === "board") return routine;
     if (req.actor.type !== "agent" || !req.actor.agentId) throw unauthorized();
@@ -133,6 +134,7 @@ export function routineRoutes(
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
       action: "routine.revision_created",
       entityType: "routine",
       entityId: input.routineId,
@@ -181,6 +183,7 @@ export function routineRoutes(
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
       action: "routine.created",
       entityType: "routine",
       entityId: created.id,
@@ -202,12 +205,8 @@ export function routineRoutes(
   });
 
   router.get("/routines/:id", async (req, res) => {
-    const detail = await svc.getDetail(req.params.id as string);
-    if (!detail) {
-      res.status(404).json({ error: "Routine not found" });
-      return;
-    }
-    assertCompanyAccess(req, detail.companyId);
+    const detail = await getAccessibleResource(req, res, svc.getDetail(req.params.id as string), "Routine not found");
+    if (!detail) return;
     res.json(detail);
   });
 
@@ -276,6 +275,7 @@ export function routineRoutes(
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
         action: "routine.document_annotation_thread_created",
         entityType: "routine",
         entityId: routine.id,
@@ -316,6 +316,7 @@ export function routineRoutes(
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
         action: "routine.document_annotation_comment_added",
         entityType: "routine",
         entityId: routine.id,
@@ -354,6 +355,7 @@ export function routineRoutes(
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
         action: thread.status === "resolved"
           ? "routine.document_annotation_thread_resolved"
           : "routine.document_annotation_thread_reopened",
@@ -409,6 +411,7 @@ export function routineRoutes(
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
       action: "routine.updated",
       entityType: "routine",
       entityId: routine.id,
@@ -447,6 +450,7 @@ export function routineRoutes(
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
       action: "routine.revision_restored",
       entityType: "routine",
       entityId: routine.id,
@@ -463,12 +467,8 @@ export function routineRoutes(
   });
 
   router.get("/routines/:id/runs", async (req, res) => {
-    const routine = await svc.get(req.params.id as string);
-    if (!routine) {
-      res.status(404).json({ error: "Routine not found" });
-      return;
-    }
-    assertCompanyAccess(req, routine.companyId);
+    const routine = await getAccessibleResource(req, res, svc.get(req.params.id as string), "Routine not found");
+    if (!routine) return;
     const limit = Number(req.query.limit ?? 50);
     const result = await svc.listRuns(routine.id, Number.isFinite(limit) ? limit : 50);
     res.json(result);
@@ -493,6 +493,7 @@ export function routineRoutes(
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
       action: "routine.trigger_created",
       entityType: "routine_trigger",
       entityId: created.trigger.id,
@@ -517,7 +518,7 @@ export function routineRoutes(
     }
     const routine = await assertCanManageExistingRoutine(req, trigger.routineId);
     if (!routine) {
-      res.status(404).json({ error: "Routine not found" });
+      res.status(404).json({ error: "Routine trigger not found" });
       return;
     }
     await assertBoardCanAssignTasks(req, routine.companyId);
@@ -533,6 +534,7 @@ export function routineRoutes(
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
       action: "routine.trigger_updated",
       entityType: "routine_trigger",
       entityId: trigger.id,
@@ -559,7 +561,7 @@ export function routineRoutes(
     }
     const routine = await assertCanManageExistingRoutine(req, trigger.routineId);
     if (!routine) {
-      res.status(404).json({ error: "Routine not found" });
+      res.status(404).json({ error: "Routine trigger not found" });
       return;
     }
     const deleted = await svc.deleteTrigger(trigger.id, {
@@ -574,6 +576,7 @@ export function routineRoutes(
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
       action: "routine.trigger_deleted",
       entityType: "routine_trigger",
       entityId: trigger.id,
@@ -603,7 +606,7 @@ export function routineRoutes(
       }
       const routine = await assertCanManageExistingRoutine(req, trigger.routineId);
       if (!routine) {
-        res.status(404).json({ error: "Routine not found" });
+        res.status(404).json({ error: "Routine trigger not found" });
         return;
       }
       const rotated = await svc.rotateTriggerSecret(trigger.id, {
@@ -618,6 +621,7 @@ export function routineRoutes(
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
         action: "routine.trigger_secret_rotated",
         entityType: "routine_trigger",
         entityId: trigger.id,
@@ -653,6 +657,7 @@ export function routineRoutes(
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
       action: "routine.run_triggered",
       entityType: "routine_run",
       entityId: run.id,

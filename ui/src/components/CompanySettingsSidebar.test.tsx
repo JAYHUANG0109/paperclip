@@ -159,6 +159,7 @@ describe("CompanySettingsSidebar", () => {
     expect(container.textContent).toContain("Members");
     expect(container.textContent).toContain("Invites");
     expect(container.textContent).toContain("Secrets");
+    expect(container.textContent).not.toContain("Tools & Access");
     expect(sidebarNavItemMock).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "/company/settings",
@@ -208,6 +209,11 @@ describe("CompanySettingsSidebar", () => {
     );
     expect(sidebarNavItemMock).not.toHaveBeenCalledWith(
       expect.objectContaining({ to: "/company/settings/instance/adapters" }),
+    );
+    expect(sidebarNavItemMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/company/settings/tools",
+      }),
     );
 
     await act(async () => {

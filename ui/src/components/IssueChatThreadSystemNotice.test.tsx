@@ -443,6 +443,7 @@ describe("IssueChatThread system notice routing", () => {
       successfulRunHandoff: {
         state: "resolved",
         required: false,
+        hasLiveContinuation: false,
         sourceRunId: "run-stale",
         correctiveRunId: "run-corrective",
         assigneeAgentId: "agent-codex",

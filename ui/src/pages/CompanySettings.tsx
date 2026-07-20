@@ -11,6 +11,7 @@ import { companiesApi } from "../api/companies";
 import { assetsApi } from "../api/assets";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { queryKeys } from "../lib/queryKeys";
+import { Link } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { Settings, CloudUpload, Download, Upload } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
@@ -376,28 +377,28 @@ export function CompanySettings() {
         <div className="rounded-md border border-border px-4 py-4">
           <p className="text-sm text-muted-foreground">
             {t("settings.company.packagesMovedPrefix")}{" "}
-            <a href="/org" className="underline hover:text-foreground">{t("settings.company.orgChart")}</a> {t("settings.company.packagesMovedSuffix")}
+            <Link to="/org" className="underline hover:text-foreground">{t("settings.company.orgChart")}</Link> {t("settings.company.packagesMovedSuffix")}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {cloudSyncEnabled ? (
               <Button size="sm" asChild>
-                <a href="/company/settings/cloud-upstream">
+                <Link to="/company/settings/cloud-upstream">
                   <CloudUpload className="mr-1.5 h-3.5 w-3.5" />
                   {t("settings.company.sendToCloud")}
-                </a>
+                </Link>
               </Button>
             ) : null}
             <Button size="sm" variant="outline" asChild>
-              <a href="/company/export">
+              <Link to="/company/export">
                 <Download className="mr-1.5 h-3.5 w-3.5" />
                 {t("settings.company.export")}
-              </a>
+              </Link>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <a href="/company/import">
+              <Link to="/company/import">
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
                 {t("settings.company.import")}
-              </a>
+              </Link>
             </Button>
           </div>
         </div>

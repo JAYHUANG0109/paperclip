@@ -171,6 +171,28 @@ export function buildBetterAuthAdvancedOptions(input: { disableSecureCookies: bo
   };
 }
 
+export function shouldEnableAuthRateLimit(input: {
+  deploymentMode: Config["deploymentMode"];
+  deploymentExposure?: Config["deploymentExposure"];
+  override?: string | undefined;
+}): boolean {
+  const override = input.override?.trim().toLowerCase();
+  if (override === "true") return true;
+  if (override === "false") return false;
+
+  return input.deploymentMode === "authenticated";
+}
+
+export function buildBetterAuthRateLimitOptions(input: {
+  deploymentMode: Config["deploymentMode"];
+  deploymentExposure?: Config["deploymentExposure"];
+  override?: string | undefined;
+}) {
+  return {
+    enabled: shouldEnableAuthRateLimit(input),
+  };
+}
+
 export function shouldDisableSecureAuthCookies(input: {
   deploymentMode: Config["deploymentMode"];
   deploymentExposure?: Config["deploymentExposure"];
@@ -281,9 +303,14 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
             // `accessType: "offline"` returns a refresh_token so the server can
             // refresh without re-prompting; `prompt: "consent"` forces existing
             // users to re-consent once to grant the new scope (older tokens lack it).
+            // `drive.file` (per-file) lets the server push each agent's OUTPUT
+            // files into the responsible user's OWN Drive folder ("Paperclip 產出
+            // 檔案") — least privilege: the app only ever touches files it created,
+            // never the rest of the user's Drive. See services/google-drive.ts.
             scope: [
               "https://www.googleapis.com/auth/calendar.readonly",
               "https://www.googleapis.com/auth/calendar.events",
+              "https://www.googleapis.com/auth/drive.file",
             ],
             accessType: "offline" as const,
             prompt: "consent" as const,
@@ -310,6 +337,11 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
       disableSignUp: config.authDisableSignUp,
     },
     ...(socialProviders ? { socialProviders } : {}),
+    rateLimit: buildBetterAuthRateLimitOptions({
+      deploymentMode: config.deploymentMode,
+      deploymentExposure: config.deploymentExposure,
+      override: process.env.PAPERCLIP_AUTH_RATE_LIMIT_ENABLED,
+    }),
     advanced: buildBetterAuthAdvancedOptions({ disableSecureCookies }),
     databaseHooks: {
       user: {

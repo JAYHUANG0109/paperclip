@@ -11,7 +11,7 @@ import {
   Sun,
   UserRoundPen,
 } from "lucide-react";
-import type { DeploymentMode } from "@paperclipai/shared";
+import type { DeploymentMode, ServerGitInfo } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { authApi } from "@/api/auth";
 import { queryKeys } from "@/lib/queryKeys";
@@ -25,12 +25,16 @@ import { cn } from "../lib/utils";
 
 const PROFILE_SETTINGS_PATH = "/instance/settings/profile";
 const DOCS_URL = "https://docs.paperclip.ing/";
+const FEEDBACK_URL = "https://paperclip.ing/feedback";
+const SOURCE_REPOSITORY_URL = "https://github.com/paperclipai/paperclip";
+const SOURCE_VERSION_RE = /\+\d+\.git\.([0-9a-f]{7,40})(?:\.dirty)?$/i;
 
 interface SidebarAccountMenuProps {
   deploymentMode?: DeploymentMode;
   instanceSettingsTarget?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  serverGit?: ServerGitInfo;
   version?: string | null;
 }
 
@@ -63,6 +67,11 @@ function deriveUserSlug(name: string | null | undefined, email: string | null | 
     if (slug) return slug;
   }
   return "me";
+}
+
+function sourceVersionSha(version: string): string | null {
+  const sourceVersion = version.match(SOURCE_VERSION_RE);
+  return sourceVersion?.[1] ?? null;
 }
 
 function MenuAction({ label, description, icon: Icon, onClick, href, external = false }: MenuActionProps) {
@@ -109,6 +118,7 @@ export function SidebarAccountMenu({
   instanceSettingsTarget = "/instance/settings",
   open: controlledOpen,
   onOpenChange,
+  serverGit,
   version,
 }: SidebarAccountMenuProps) {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -130,6 +140,7 @@ export function SidebarAccountMenu({
     onSuccess: async () => {
       setOpen(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.health });
     },
   });
 
@@ -139,6 +150,12 @@ export function SidebarAccountMenu({
   const accountBadge = deploymentMode === "authenticated" ? t("accountMenu.account") : t("accountMenu.local");
   const initials = deriveInitials(displayName);
   const profileHref = `/u/${deriveUserSlug(session?.user.name, session?.user.email, session?.user.id)}`;
+  const sourceSha = version ? sourceVersionSha(version) : null;
+  const sourceFullSha =
+    sourceSha && serverGit?.available && serverGit.fullSha.toLowerCase().startsWith(sourceSha.toLowerCase())
+      ? serverGit.fullSha
+      : sourceSha;
+  const sourceBranch = sourceSha && serverGit?.available ? serverGit.branchName : null;
 
   function closeNavigationChrome() {
     setOpen(false);
@@ -184,8 +201,32 @@ export function SidebarAccountMenu({
                   </span>
                 </div>
                 <p className="truncate text-sm text-muted-foreground">{secondaryLabel}</p>
-                {version ? (
-                  <p className="mt-1 text-xs text-muted-foreground">{t("accountMenu.version", { version })}</p>
+                {sourceSha && sourceFullSha ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {sourceBranch ? (
+                      <a
+                        href={`${SOURCE_REPOSITORY_URL}/tree/${encodeURIComponent(sourceBranch)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block truncate transition-colors hover:text-foreground"
+                      >
+                        {sourceBranch}
+                      </a>
+                    ) : null}
+                    <p>
+                      Paperclip{" "}
+                      <a
+                        href={`${SOURCE_REPOSITORY_URL}/commit/${sourceFullSha}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="transition-colors hover:text-foreground"
+                      >
+                        {sourceSha.slice(0, 7)}
+                      </a>
+                    </p>
+                  </div>
+                ) : version ? (
+                  <p className="mt-1 text-xs text-muted-foreground">Paperclip v{version}</p>
                 ) : null}
               </div>
             </div>

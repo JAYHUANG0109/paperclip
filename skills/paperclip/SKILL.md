@@ -100,7 +100,7 @@ If `currentParticipant` does not match you, do not try to advance the stage — 
 
 When work produces a user-inspectable file, upload true deliverables to the current issue before final disposition and create an artifact work product. Local filesystem paths are not enough because board users, reviewers, and cloud operators may not have access to the agent workspace.
 
-**Also save every generated file to the shared output folder.** For any file/artifact you produce (documents, exports, skill files, reports), write a copy into `~/Desktop/Paperclip_產出檔案` — create that folder first if it does not exist (`mkdir -p ~/Desktop/Paperclip_產出檔案`). This applies to **every** agent, not just one person: it gives users one predictable place to find what their agent made. Uploading to the issue is still required; the folder copy is in addition, not instead.
+**Uploading the file to the issue IS the delivery mechanism — do not rely on a local folder.** For any file/artifact you produce (documents, exports, skill files, reports), upload it to the current issue (above). The server then automatically fans that output out to the *responsible user's* own Google Drive folder ("Paperclip 產出檔案") and makes it downloadable in the Paperclip UI, so the person driving you gets it on their own end. Do **not** write copies into `~/Desktop/…` on the runner — that path is the shared runner machine, not the user's computer, so files left there are effectively invisible to the user and just accumulate on the server.
 
 When work produces or updates an operator-facing engineering output, create or update the matching work product: `pull_request` for opened PRs, `preview_url` for published previews, `runtime_service` for managed preview/dev services, `commit` for notable pushed commits, and `branch` when the branch itself is the handoff. Do this even when you also leave a comment; the comment explains the work, while the work product is the inspectable access path.
 
@@ -152,6 +152,14 @@ Status values: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`,
 - `cancelled` — intentionally abandoned, not to be resumed.
 
 **Step 9 — Delegate if needed.** Create subtasks with `POST /api/companies/{companyId}/issues`. Always set `parentId` and `goalId`. When a follow-up issue needs to stay on the same code change but is not a true child task, set `inheritExecutionWorkspaceFromIssueId` to the source issue. Set `billingCode` for cross-team work.
+
+## Managing A User's Inbox
+
+Agents may archive an issue from a user's Mine inbox with `POST /api/issues/{issueId}/inbox-archive` and reverse it with `DELETE /api/issues/{issueId}/inbox-archive`. Omit `userId` for the normal case: Paperclip resolves the responsible user from the agent's run context. An explicit `userId` targets another user and requires a matching `inbox:manage` grant.
+
+Archive only when the issue is truly resolved for that user, such as after a pull request is confirmed merged at its current head and the result is verified. Never archive an issue while the user is still expected to review, approve, answer, choose, or otherwise decide something. Archiving is reversible and audited, and later issue activity can resurface the item, but those safeguards do not make premature cleanup acceptable.
+
+Every archive/unarchive mutation must include `X-Paperclip-Run-Id`. User policy is default-open for the responsible agent, but a user can disable agent inbox management or restrict it to an allowlist. Treat policy denials as final unless the user changes the policy; do not retry around them or substitute an explicit cross-user target.
 
 ## Issue Dependencies (Blockers)
 
@@ -260,6 +268,19 @@ POST /api/issues/{issueId}/interactions
 When the board accepts, your wake delivers `result.selectedOptionIds` — the option ids they picked (which may be empty if `minSelected: 0`). Rejection delivers `result.reason` and a `commentId`.
 
 For full payload schemas, validation limits (option count, label lengths, min/max rules), accept/reject route bodies, and result fields, see `references/api-reference.md` -> **Checkbox confirmations**.
+
+## MCP Tool Approval Gates
+
+Some MCP tools are configured as **ask first**. Their `tools/list` description says that human approval is required. When you call one:
+
+1. Paperclip posts one approval card on your checked-out task and returns `approval_required` with instructions. Do not retry the call while the card is pending. Finish any other useful work, note that you are waiting for tool approval, move the task to `in_review`, and end the run.
+2. Paperclip wakes the assignee after either approval or rejection. The wake includes the decision and, for an approved action, the execution outcome.
+3. Approval means **approve and run**: Paperclip executes the stored, signed call arguments exactly once. If the wake says it executed, use that result and do not call the tool again. If execution failed, adjust your approach; a fresh call may open a new approval.
+4. Rejection means the action did not run. Do not retry the same call; follow the decline reason and change your approach or task disposition.
+
+Approval requests expire after 60 minutes. After expiry, call the tool again to request a fresh approval. Re-calling a tool with identical arguments is idempotent and never stacks approval cards: a pending request is reused, an already executed request returns its stored outcome, and an expired request opens one fresh card.
+
+If the gateway returns `approval_path_missing`, the MCP session is not attached to a checked-out task, so Paperclip has nowhere to post the card. Re-run the action from a run that has the task checked out.
 
 Create `request_item_verdicts` when each known item needs its own verdict:
 
