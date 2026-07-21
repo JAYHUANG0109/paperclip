@@ -244,6 +244,11 @@ type CreateSpaceInput = {
   displayName?: string | null;
   folderMode?: "managed_subfolder" | "existing_local_folder" | null;
   accessScope?: "shared" | "personal" | "team" | null;
+  /** Owner recorded for a `personal` space (the creating user or agent). */
+  ownerUserId?: string | null;
+  ownerAgentId?: string | null;
+  /** Team key recorded for a `team` space. */
+  teamKey?: string | null;
   settings?: Record<string, unknown> | null;
 };
 
@@ -1418,12 +1423,17 @@ export async function createSpace(ctx: PluginContext, input: CreateSpaceInput): 
     throw new Error("Only managed_subfolder spaces are supported until dynamic local folder bindings are available.");
   }
   const accessScope = input.accessScope ?? "shared";
+  // Record ownership so per-user enforcement (see access.ts / WIKI-SPACE-ACCESS-PLAN.md)
+  // can gate the space. personal → owner user/agent; team → team key; shared → none.
+  const ownerUserId = accessScope === "personal" ? (stringField(input.ownerUserId) ?? null) : null;
+  const ownerAgentId = accessScope === "personal" ? (stringField(input.ownerAgentId) ?? null) : null;
+  const teamKey = accessScope === "team" ? (stringField(input.teamKey) ?? null) : null;
   const id = randomUUID();
   const pathPrefix = `spaces/${slug}`;
   await ctx.db.execute(
     `INSERT INTO ${spaceTable(ctx)}
-       (id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key, path_prefix, access_scope, settings, status)
-     VALUES ($1, $2, $3, $4, $5, 'local_folder', $6, $7, $8, $9, $10::jsonb, 'active')`,
+       (id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key, path_prefix, access_scope, owner_user_id, owner_agent_id, team_key, settings, status)
+     VALUES ($1, $2, $3, $4, $5, 'local_folder', $6, $7, $8, $9, $10, $11, $12, $13::jsonb, 'active')`,
     [
       id,
       input.companyId,
@@ -1434,6 +1444,9 @@ export async function createSpace(ctx: PluginContext, input: CreateSpaceInput): 
       WIKI_ROOT_FOLDER_KEY,
       pathPrefix,
       accessScope,
+      ownerUserId,
+      ownerAgentId,
+      teamKey,
       jsonParam(input.settings ?? {}),
     ],
   );
@@ -1449,9 +1462,9 @@ export async function createSpace(ctx: PluginContext, input: CreateSpaceInput): 
     pathPrefix,
     configuredRootPath: null,
     accessScope,
-    ownerUserId: null,
-    ownerAgentId: null,
-    teamKey: null,
+    ownerUserId,
+    ownerAgentId,
+    teamKey,
     settings: input.settings ?? {},
     status: "active",
     createdAt: null,

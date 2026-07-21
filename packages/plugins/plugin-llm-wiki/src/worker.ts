@@ -237,14 +237,20 @@ const plugin = definePlugin({
       });
     });
 
-    ctx.actions.register("create-space", async (params) => {
+    ctx.actions.register("create-space", async (params, context) => {
+      const accessScope = stringField(params.accessScope) as "shared" | "personal" | "team" | null;
+      const actor = context?.actor;
+      // A personal space is owned by whoever creates it (host-resolved actor, never caller params).
       return createSpace(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
         slug: stringField(params.slug),
         displayName: stringField(params.displayName),
         folderMode: stringField(params.folderMode) as "managed_subfolder" | "existing_local_folder" | null,
-        accessScope: stringField(params.accessScope) as "shared" | "personal" | "team" | null,
+        accessScope,
+        ownerUserId: accessScope === "personal" && actor?.type === "user" ? actor.userId : null,
+        ownerAgentId: accessScope === "personal" && actor?.type === "agent" ? actor.agentId : null,
+        teamKey: accessScope === "team" ? stringField(params.teamKey) : null,
         settings: typeof params.settings === "object" && params.settings != null ? params.settings as Record<string, unknown> : null,
       });
     });
