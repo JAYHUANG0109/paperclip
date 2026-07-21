@@ -2693,6 +2693,23 @@ export function pluginRoutes(
       })
       .returning({ id: pluginWebhookDeliveries.id });
 
+    // Resolve a company context for this delivery. Company-scoped host APIs
+    // (config.get, secrets.resolve) require an invocation scope, but inbound
+    // webhooks carry no company. When exactly one company has configured this
+    // plugin (the common single-tenant case), scope the invocation to it so the
+    // worker can read its config and resolve its bound secrets; the plugin's own
+    // payload routing then disambiguates recipients within that company. With
+    // zero or multiple configured companies we pass none (unchanged behavior).
+    let webhookCompanyId: string | undefined;
+    try {
+      const configuredCompanyIds = await registry.listConfiguredCompanyIds(plugin.id);
+      if (configuredCompanyIds.length === 1) {
+        webhookCompanyId = configuredCompanyIds[0];
+      }
+    } catch {
+      // Non-fatal: fall through with no company context.
+    }
+
     // Step 7: Dispatch to the worker via handleWebhook RPC
     try {
       const webhookResult = (await webhookDeps.workerManager.call(plugin.id, "handleWebhook", {
@@ -2701,6 +2718,7 @@ export function pluginRoutes(
         rawBody,
         parsedBody,
         requestId,
+        ...(webhookCompanyId ? { companyId: webhookCompanyId } : {}),
       })) as { status?: number; jsonBody?: unknown } | null | undefined;
 
       // Step 8: Update delivery record to success

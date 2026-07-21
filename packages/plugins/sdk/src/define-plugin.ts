@@ -137,6 +137,13 @@ export interface PluginWebhookInput {
   parsedBody?: unknown;
   /** Unique request identifier for idempotency checks. */
   requestId: string;
+  /**
+   * Resolved company context for this delivery, when the host can determine it
+   * (e.g. exactly one company has configured the plugin). Scopes the invocation
+   * so the worker can read config and resolve bound secrets. Absent when the
+   * host cannot resolve a single owning company (zero or multiple).
+   */
+  companyId?: string;
 }
 
 export interface PluginApiRequestInput {

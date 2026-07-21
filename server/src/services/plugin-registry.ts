@@ -289,6 +289,18 @@ export function pluginRegistryService(db: Db) {
         .then((rows) => rows[0] ?? null),
 
     /**
+     * List the company IDs that have a configuration row for this plugin.
+     * Used to resolve a company context for company-less invocations (e.g.
+     * inbound webhooks) on single-tenant instances.
+     */
+    listConfiguredCompanyIds: (pluginId: string): Promise<string[]> =>
+      db
+        .select({ companyId: pluginConfig.companyId })
+        .from(pluginConfig)
+        .where(eq(pluginConfig.pluginId, pluginId))
+        .then((rows) => rows.map((r) => r.companyId)),
+
+    /**
      * Create or fully replace a plugin's company-scoped configuration.
      * If a config row already exists for the plugin/company pair it is replaced;
      * otherwise a new row is inserted.
