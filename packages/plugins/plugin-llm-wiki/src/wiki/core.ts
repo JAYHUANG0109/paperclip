@@ -21,6 +21,7 @@ import {
   REQUIRED_WIKI_DIRECTORIES,
   REQUIRED_WIKI_FILES,
 } from "../templates.js";
+import { assertSpaceAccess, spaceScopeVisible, type WikiSpaceViewer } from "./access.js";
 
 export const DEFAULT_WIKI_ID = "default";
 export const DEFAULT_SPACE_SLUG = "default";
@@ -235,6 +236,12 @@ type SpaceInput = {
   companyId: string;
   wikiId?: string | null;
   spaceSlug?: string | null;
+  /**
+   * When set, resolveSpace enforces per-user visibility via access.ts and throws
+   * if denied. Omit (undefined) for trusted/system paths (event ingestion,
+   * distillation cron, agent-internal) which must not be gated on a user viewer.
+   */
+  viewer?: WikiSpaceViewer | null;
 };
 
 type CreateSpaceInput = {
@@ -1361,7 +1368,9 @@ export async function resolveSpace(ctx: PluginContext, input: SpaceInput): Promi
   const wikiId = normalizeWikiId(input.wikiId);
   const slug = normalizeSpaceSlug(input.spaceSlug);
   if (slug === DEFAULT_SPACE_SLUG) {
-    return ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId });
+    const def = await ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId });
+    if (input.viewer) assertSpaceAccess(def, input.viewer);
+    return def;
   }
   const rows = await ctx.db.query<WikiSpaceRow>(
     `SELECT id, company_id, wiki_id, slug, display_name, space_type, folder_mode, root_folder_key,
@@ -1373,7 +1382,9 @@ export async function resolveSpace(ctx: PluginContext, input: SpaceInput): Promi
     [input.companyId, wikiId, slug],
   );
   if (!rows[0]) throw new Error(`LLM Wiki space not found: ${slug}`);
-  return wikiSpaceFromRow(rows[0]);
+  const space = wikiSpaceFromRow(rows[0]);
+  if (input.viewer) assertSpaceAccess(space, input.viewer);
+  return space;
 }
 
 async function resolveSpaceAnyStatus(ctx: PluginContext, input: SpaceInput): Promise<WikiSpace> {
@@ -1392,10 +1403,15 @@ async function resolveSpaceAnyStatus(ctx: PluginContext, input: SpaceInput): Pro
     [input.companyId, wikiId, slug],
   );
   if (!rows[0]) throw new Error(`LLM Wiki space not found: ${slug}`);
-  return wikiSpaceFromRow(rows[0]);
+  const space = wikiSpaceFromRow(rows[0]);
+  if (input.viewer) assertSpaceAccess(space, input.viewer);
+  return space;
 }
 
-export async function listSpaces(ctx: PluginContext, input: { companyId: string; wikiId?: string | null }): Promise<{ spaces: WikiSpace[] }> {
+export async function listSpaces(
+  ctx: PluginContext,
+  input: { companyId: string; wikiId?: string | null; viewer?: WikiSpaceViewer | null },
+): Promise<{ spaces: WikiSpace[] }> {
   const wikiId = normalizeWikiId(input.wikiId);
   await ensureDefaultSpace(ctx, { companyId: input.companyId, wikiId });
   const rows = await ctx.db.query<WikiSpaceRow>(
@@ -1407,7 +1423,9 @@ export async function listSpaces(ctx: PluginContext, input: { companyId: string;
       ORDER BY CASE WHEN slug = 'default' THEN 0 ELSE 1 END, display_name, slug`,
     [input.companyId, wikiId],
   );
-  const spaces = rows.length > 0 ? rows.map(wikiSpaceFromRow) : [fallbackDefaultSpace({ companyId: input.companyId, wikiId })];
+  const all = rows.length > 0 ? rows.map(wikiSpaceFromRow) : [fallbackDefaultSpace({ companyId: input.companyId, wikiId })];
+  // When a viewer is supplied (user-facing read), hide spaces they may not see.
+  const spaces = input.viewer ? all.filter((s) => spaceScopeVisible(s, input.viewer!)) : all;
   return { spaces };
 }
 
