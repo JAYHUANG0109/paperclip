@@ -166,16 +166,24 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     res.json(digest ?? { generatedAt: null, daily: [], weekly: [], empty: true });
   });
 
-  // Google Calendar — the caller's OWN events across all calendars they can see.
-  // Reuses the OAuth token better-auth stored at SSO login; per-user isolation is
-  // structural (caller's userId → caller's token → only their calendars). Read-only.
-  // `?mine=1` returns only events related to the caller (real owner/attendee OR a
-  // name-alias match against the freeform title — the team encodes attendees as
-  // title text). `timeMin`/`timeMax` are RFC3339 bounds for the visible window.
+  // Google Calendar — events across all calendars the resolved user can see.
+  // Board user → their OWN calendars; agent → its responsible/owner user's (same
+  // resolution as the calendars + create-event routes below), so a routine can
+  // read its owner's calendar via the robust server-side path instead of the
+  // flaky per-user claude.ai MCP connector. Reuses the OAuth token better-auth
+  // stored at SSO login; per-user isolation is structural (userId → that user's
+  // token → only their calendars). Read-only. `?mine=1` returns only events
+  // related to the user (real owner/attendee OR a name-alias match against the
+  // freeform title). `timeMin`/`timeMax` are RFC3339 bounds for the window.
   router.get("/companies/:companyId/google-calendar/me", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    const userId =
+      req.actor.type === "board"
+        ? req.actor.userId ?? null
+        : req.actor.type === "agent"
+          ? req.actor.onBehalfOfUserId ?? null
+          : null;
     if (!userId) {
       res.json({ connected: false, reason: "auth_required", events: [] });
       return;
