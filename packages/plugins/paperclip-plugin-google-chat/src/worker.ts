@@ -566,15 +566,27 @@ async function fetchAgentRecentTasks(
   limit: number
 ): Promise<Array<{ issueId: string; identifier: string; title: string; status: string }>> {
   if (!agentId) return [];
-  const issues = await ctx.issues
-    .list({ companyId, assigneeAgentId: agentId, limit })
+  // Fetch a larger pool than we display: the list API's default order is by
+  // PRIORITY (not recency), and it includes the daily routine-execution issues
+  // (每日彙整/待決議) that are assigned to the agent and fire constantly. Those
+  // would otherwise flood the picker and bury the user's real conversational /
+  // manual tasks. So we over-fetch, drop routine executions, sort by newest
+  // activity, then take the top `limit`.
+  const pool = await ctx.issues
+    .list({ companyId, assigneeAgentId: agentId, limit: Math.max(limit * 6, 60) })
     .catch(() => [] as Awaited<ReturnType<typeof ctx.issues.list>>);
-  return issues.map((iss) => ({
-    issueId: iss.id,
-    identifier: iss.identifier ?? iss.id.slice(0, 8),
-    title: iss.title ?? "",
-    status: iss.status ?? ""
-  }));
+  const updatedAtMs = (iss: (typeof pool)[number]) =>
+    new Date((iss as unknown as { updatedAt?: string | null }).updatedAt ?? 0).getTime();
+  return pool
+    .filter((iss) => (iss as unknown as { originKind?: string | null }).originKind !== "routine_execution")
+    .sort((a, b) => updatedAtMs(b) - updatedAtMs(a))
+    .slice(0, limit)
+    .map((iss) => ({
+      issueId: iss.id,
+      identifier: iss.identifier ?? iss.id.slice(0, 8),
+      title: iss.title ?? "",
+      status: iss.status ?? ""
+    }));
 }
 
 /**
