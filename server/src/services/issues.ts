@@ -2496,6 +2496,7 @@ const issueListSelect = {
   workMode: issues.workMode,
   harnessKind: issues.harnessKind,
   priority: issues.priority,
+  pinned: issues.pinned,
   assigneeAgentId: issues.assigneeAgentId,
   assigneeUserId: issues.assigneeUserId,
   checkoutRunId: issues.checkoutRunId,

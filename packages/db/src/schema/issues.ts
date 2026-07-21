@@ -7,6 +7,7 @@ import {
   timestamp,
   date,
   integer,
+  boolean,
   jsonb,
   index,
   uniqueIndex,
@@ -37,6 +38,9 @@ export const issues = pgTable(
     workMode: text("work_mode").notNull().default("standard"),
     harnessKind: text("harness_kind"),
     priority: text("priority").notNull().default("medium"),
+    // Pinned tasks float to the top of the agent dashboard and never drop off
+    // the recent-tasks view. Global per-task (scoped by who can see the agent).
+    pinned: boolean("pinned").notNull().default(false),
     assigneeAgentId: uuid("assignee_agent_id").references(() => agents.id),
     assigneeUserId: text("assignee_user_id"),
     checkoutRunId: uuid("checkout_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),

@@ -149,6 +149,8 @@ export interface AcceptedPlanDecompositionChild {
   workMode: IssueWorkMode;
   harnessKind?: IssueHarnessKind | null;
   priority: IssuePriority;
+  /** Pinned to the top of the agent dashboard (and never dropped from recents). */
+  pinned?: boolean;
   assigneeAgentId?: string | null;
   assigneeUserId?: string | null;
   requestDepth?: number;
@@ -716,6 +718,8 @@ export interface Issue {
   status: IssueStatus;
   workMode: IssueWorkMode;
   priority: IssuePriority;
+  /** Pinned to the top of the agent dashboard (and never dropped from recents). */
+  pinned?: boolean;
   assigneeAgentId: string | null;
   assigneeUserId: string | null;
   checkoutRunId: string | null;

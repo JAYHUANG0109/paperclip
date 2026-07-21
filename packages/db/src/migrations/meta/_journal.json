@@ -1352,6 +1352,13 @@
       "when": 1782366114990,
       "tag": "9017_folder_access_control",
       "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1782366115990,
+      "tag": "9018_issue_pinned",
+      "breakpoints": true
     }
   ]
 }
