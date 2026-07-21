@@ -4,6 +4,7 @@ import { useTranslation } from "@/i18n";
 import { Outlet, useLocation, useNavigate, useNavigationType, useParams } from "@/lib/router";
 import { Sidebar } from "./Sidebar";
 import { CompanySettingsSidebar } from "./CompanySettingsSidebar";
+import { InstanceSidebar } from "./InstanceSidebar";
 import { CompanySettingsNav } from "./access/CompanySettingsNav";
 import { BreadcrumbBar } from "./BreadcrumbBar";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -85,6 +86,11 @@ export function Layout() {
   const location = useLocation();
   const navigationType = useNavigationType();
   const isCompanySettingsRoute = location.pathname.includes("/company/settings");
+  // Instance-settings routes live under /company/settings/instance/* and must
+  // show the InstanceSidebar (Plugins/Adapters/etc.). #7680 moved these routes
+  // under company settings but dropped the InstanceSidebar mount, leaving the
+  // desktop secondary sidebar stuck on CompanySettingsSidebar (no Plugins nav).
+  const isInstanceSettingsRoute = location.pathname.includes("/company/settings/instance");
   const onboardingTriggered = useRef(false);
   const lastMainScrollTop = useRef(0);
   const previousPathname = useRef<string | null>(null);
@@ -126,7 +132,9 @@ export function Layout() {
   // the app `<Sidebar/>`. Instead the host collapses it to its rail and renders
   // the contextual sidebar in a second pane (PAP-10695). One resolver drives
   // both desktop (SecondarySidebar) and mobile (off-canvas drawer).
-  const secondarySidebar = isCompanySettingsRoute ? (
+  const secondarySidebar = isInstanceSettingsRoute ? (
+    <InstanceSidebar />
+  ) : isCompanySettingsRoute ? (
     <CompanySettingsSidebar />
   ) : routeSidebarSlot ? (
     <PluginSlotMount
