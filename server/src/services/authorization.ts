@@ -29,6 +29,7 @@ import {
   resolveCoreTrustPreset,
   type TrustPresetResolution,
 } from "./trust-preset-resolver.js";
+import { itEditorMayEditAgent } from "./agent-edit-policy.js";
 import { logger } from "../middleware/logger.js";
 
 export type AuthorizationActor =
@@ -109,6 +110,7 @@ export type AuthorizationDecision = {
     | "allow_company_member"
     | "allow_simple_company_member"
     | "allow_manager_chain"
+    | "allow_it_department_editor"
     | "inbox_target_user_unresolved"
     | "inbox_management_disabled"
     | "inbox_agent_not_allowed"
@@ -857,6 +859,19 @@ export function authorizationService(db: Db) {
         scope: grant.scope ?? null,
       },
     });
+  }
+
+  async function loadUserEmail(userId: string | null | undefined): Promise<string | null> {
+    if (!userId) return null;
+    const rows = await db.select({ email: authUsers.email }).from(authUsers).where(eq(authUsers.id, userId));
+    return rows[0]?.email ?? null;
+  }
+
+  async function loadAgentOwnerEmail(agentId: string): Promise<string | null> {
+    const rows = await db.select({ cfg: agents.adapterConfig }).from(agents).where(eq(agents.id, agentId));
+    const cfg = (rows[0]?.cfg ?? null) as Record<string, unknown> | null;
+    const email = cfg?.assignedUserEmail;
+    return typeof email === "string" && email.trim() ? email.trim() : null;
   }
 
   async function loadAgent(agentId: string): Promise<AgentAuthorizationRow | null> {
@@ -1713,6 +1728,28 @@ export function authorizationService(db: Db) {
         return decideWithAgentConfigReadGrant("user", input.actor.userId);
       }
       if (input.action === "agent_config:update") {
+        // Part (a): 資訊部 (IT) users may edit any agent EXCEPT the protected admin
+        // tier (founder / 惠君 / Jay). This only WIDENS access — a non-資訊部 actor,
+        // or a protected target, falls through to the standard grant logic below.
+        // teams: [] for now — option-3 team grants activate once a team model exists.
+        if (input.resource.type === "agent" && input.resource.agentId) {
+          const [itActorEmail, targetOwnerEmail] = await Promise.all([
+            loadUserEmail(input.actor.userId),
+            loadAgentOwnerEmail(input.resource.agentId),
+          ]);
+          if (
+            itEditorMayEditAgent(
+              { email: itActorEmail, teams: [] },
+              { agentId: input.resource.agentId, ownerEmail: targetOwnerEmail },
+            )
+          ) {
+            return allow({
+              action: input.action,
+              reason: "allow_it_department_editor",
+              explanation: "Allowed: actor is a 資訊部 editor and the target is not a protected admin-tier agent.",
+            });
+          }
+        }
         return decideWithProtectedChangeGrants("user", input.actor.userId, {
           direct: "agents:configure",
           suggest: "agents:suggest-changes",
