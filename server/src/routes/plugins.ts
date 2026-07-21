@@ -72,6 +72,7 @@ import {
   assertCompanyAccess,
   assertInstanceAdmin,
   getActorInfo,
+  isPrivilegedMemberViewer,
 } from "./authz.js";
 import { validateInstanceConfig } from "../services/plugin-config-validator.js";
 import {
@@ -746,6 +747,30 @@ export function pluginRoutes(
     }
   }
 
+  // Host-authoritative viewer for plugin bridge calls (getData/performAction).
+  // Resolved from the request actor — NEVER from caller params — and injected as
+  // `__pcViewer` so a plugin (e.g. LLM-Wiki) can enforce per-user access. isPrivileged
+  // reuses the same owner/admin/instance-admin short-circuit as skill folders.
+  function resolvePluginViewer(
+    req: Request,
+    companyId: string | undefined,
+  ): { userId: string | null; agentId: string | null; isPrivileged: boolean } {
+    const userId = req.actor.type === "board" ? (req.actor.userId ?? null) : null;
+    const agentId = req.actor.type === "agent" ? (req.actor.agentId ?? null) : null;
+    const isPrivileged = companyId ? isPrivilegedMemberViewer(req, companyId, true) : false;
+    return { userId, agentId, isPrivileged };
+  }
+
+  // Strip any caller-supplied __pcViewer (anti-spoof) and set the authoritative one.
+  function injectPluginViewer(
+    rawParams: Record<string, unknown> | undefined,
+    req: Request,
+    companyId: string | undefined,
+  ): Record<string, unknown> {
+    const { __pcViewer: _dropped, ...rest } = (rawParams ?? {}) as Record<string, unknown>;
+    return { ...rest, __pcViewer: resolvePluginViewer(req, companyId) };
+  }
+
   function performActionActorContext(req: Request, companyId: string | undefined): PluginPerformActionActorContext {
     const scopedCompanyId = companyId ?? null;
     if (req.actor.type === "agent") {
@@ -1384,7 +1409,7 @@ export function pluginRoutes(
         {
           key: body.key,
           ...(companyId ? { companyId } : {}),
-          params: body.params ?? {},
+          params: injectPluginViewer(body.params, req, companyId),
           renderEnvironment: body.renderEnvironment ?? null,
         },
       );
@@ -1476,7 +1501,7 @@ export function pluginRoutes(
         "performAction",
         {
           key: body.key,
-          params: actionParamsWithAuthorizedCompanyScope(body.params, companyId),
+          params: injectPluginViewer(actionParamsWithAuthorizedCompanyScope(body.params, companyId), req, companyId),
           actorContext: performActionActorContext(req, companyId),
           renderEnvironment: body.renderEnvironment ?? null,
         },
@@ -1571,7 +1596,7 @@ export function pluginRoutes(
         {
           key,
           ...(companyId ? { companyId } : {}),
-          params: body?.params ?? {},
+          params: injectPluginViewer(body?.params, req, companyId),
           renderEnvironment: body?.renderEnvironment ?? null,
         },
       );
@@ -1660,7 +1685,7 @@ export function pluginRoutes(
         "performAction",
         {
           key,
-          params: actionParamsWithAuthorizedCompanyScope(body?.params, companyId),
+          params: injectPluginViewer(actionParamsWithAuthorizedCompanyScope(body?.params, companyId), req, companyId),
           actorContext: performActionActorContext(req, companyId),
           renderEnvironment: body?.renderEnvironment ?? null,
         },
