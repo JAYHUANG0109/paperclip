@@ -59,10 +59,41 @@ import {
   updateSpace,
   writeTemplate,
   writeWikiPage,
+  resolveSpace,
 } from "./wiki.js";
+import type { WikiSpaceViewer } from "./wiki/access.js";
 
 function stringField(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+/** Parse the host-injected, authoritative viewer (see plugins.ts injectPluginViewer). */
+function viewerFromParams(params: Record<string, unknown>): WikiSpaceViewer | null {
+  const raw = params.__pcViewer;
+  if (!raw || typeof raw !== "object") return null;
+  const v = raw as Record<string, unknown>;
+  return {
+    userId: typeof v.userId === "string" ? v.userId : null,
+    agentId: typeof v.agentId === "string" ? v.agentId : null,
+    isPrivileged: v.isPrivileged === true,
+    teams: [],
+  };
+}
+
+/**
+ * Enforce per-user space visibility for a host bridge call. No-op when no viewer
+ * was injected (agent tools / system/event paths stay trusted). Throws
+ * "Access denied to wiki space …" via resolveSpace when the viewer may not see it.
+ */
+async function guardSpace(ctx: PluginContext, params: Record<string, unknown>): Promise<void> {
+  const viewer = viewerFromParams(params);
+  if (!viewer) return;
+  await resolveSpace(ctx, {
+    companyId: readCompanyIdFromParams(params),
+    wikiId: stringField(params.wikiId),
+    spaceSlug: stringField(params.spaceSlug),
+    viewer,
+  });
 }
 
 function routineKeyField(value: unknown): (typeof WIKI_MAINTENANCE_ROUTINE_KEYS)[number] {
@@ -226,10 +257,12 @@ const plugin = definePlugin({
       return listSpaces(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
+        viewer: viewerFromParams(params),
       });
     });
 
     ctx.data.register("space", async (params) => {
+      await guardSpace(ctx, params);
       return spaceFolderStatus(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -256,6 +289,7 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("update-space", async (params) => {
+      await guardSpace(ctx, params);
       return updateSpace(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -267,6 +301,7 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("bootstrap-space", async (params) => {
+      await guardSpace(ctx, params);
       return bootstrapSpace(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -275,6 +310,7 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("archive-space", async (params) => {
+      await guardSpace(ctx, params);
       return archiveSpace(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -295,6 +331,7 @@ const plugin = definePlugin({
       ) {
         throw new Error("operationType must be ingest, query, lint, file-as-page, index, distill, or backfill");
       }
+      await guardSpace(ctx, params);
       return createOperationIssue(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -307,6 +344,7 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("capture-source", async (params) => {
+      await guardSpace(ctx, params);
       return captureWikiSource(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -321,6 +359,7 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("write-page", async (params) => {
+      await guardSpace(ctx, params);
       return writeWikiPage(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -378,6 +417,7 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("paperclip-ingestion-profile", async (params) => {
+      await guardSpace(ctx, params);
       return getPaperclipIngestionProfile(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -386,6 +426,7 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("paperclip-ingestion-candidates", async (params) => {
+      await guardSpace(ctx, params);
       return listPaperclipIngestionCandidates(ctx, {
         companyId: readCompanyIdFromParams(params),
         wikiId: stringField(params.wikiId),
@@ -831,6 +872,7 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("pages", async (params) => {
+      await guardSpace(ctx, params);
       const companyId = readCompanyIdFromParams(params);
       return listPages(ctx, {
         companyId,
@@ -843,11 +885,13 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("sources", async (params) => {
+      await guardSpace(ctx, params);
       const companyId = readCompanyIdFromParams(params);
       return listSources(ctx, { companyId, wikiId: stringField(params.wikiId), spaceSlug: stringField(params.spaceSlug), limit: typeof params.limit === "number" ? params.limit : null });
     });
 
     ctx.data.register("page-content", async (params) => {
+      await guardSpace(ctx, params);
       const companyId = readCompanyIdFromParams(params);
       const path = stringField(params.path);
       if (!path) throw new Error("path is required");
@@ -861,6 +905,7 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("operations", async (params) => {
+      await guardSpace(ctx, params);
       const companyId = readCompanyIdFromParams(params);
       return listOperations(ctx, {
         companyId,
@@ -873,6 +918,7 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("distillation-overview", async (params) => {
+      await guardSpace(ctx, params);
       const companyId = readCompanyIdFromParams(params);
       return getDistillationOverview(ctx, {
         companyId,
@@ -883,6 +929,7 @@ const plugin = definePlugin({
     });
 
     ctx.data.register("distillation-page-provenance", async (params) => {
+      await guardSpace(ctx, params);
       const companyId = readCompanyIdFromParams(params);
       const pagePath = stringField(params.pagePath);
       if (!pagePath) {
