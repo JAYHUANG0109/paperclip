@@ -18,6 +18,34 @@ export interface ConfigValidationResult {
 }
 
 /**
+ * Relax `type` for `format: "secret-ref"` fields so a bound secret's object
+ * shape is accepted.
+ *
+ * Plugin manifests historically declare secret-ref fields as `type: "string"`
+ * (a raw/pasted value or legacy UUID). The host secret picker now stores a
+ * bound secret as the object `{ type: "secret_ref", secretId, version? }`, so a
+ * strict `type: "string"` check rejects a saved binding ("must be string"). The
+ * `secret-ref` format is only a UI hint; the real secret validation happens in
+ * the secrets handler at resolve time. Accept either shape here.
+ *
+ * Mutates the (already-cloned) schema in place.
+ */
+function relaxSecretRefTypes(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const item of node) relaxSecretRefTypes(item);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+  const obj = node as Record<string, unknown>;
+  if (obj.format === "secret-ref" && (obj.type === "string" || obj.type === undefined)) {
+    obj.type = ["string", "object"];
+  }
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === "object") relaxSecretRefTypes(value);
+  }
+}
+
+/**
  * Validate a config object against a JSON Schema.
  *
  * @param configJson - The configuration values to validate.
@@ -30,7 +58,9 @@ export function validateInstanceConfig(
 ): ConfigValidationResult {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const AjvCtor = (Ajv as any).default ?? Ajv;
-  const ajv = new AjvCtor({ allErrors: true });
+  // allowUnionTypes: secret-ref fields are relaxed to type ["string","object"]
+  // below so a bound secret's object shape validates alongside a raw string.
+  const ajv = new AjvCtor({ allErrors: true, allowUnionTypes: true });
   // ajv-formats v3 default export is a FormatsPlugin object; call it as a plugin.
   const applyFormats = (addFormats as any).default ?? addFormats;
   applyFormats(ajv);
@@ -38,7 +68,11 @@ export function validateInstanceConfig(
   // hold a Paperclip secret UUID rather than a raw value. The format is a UI
   // hint only — UUID validation happens in the secrets handler at resolve time.
   ajv.addFormat("secret-ref", { validate: () => true });
-  const validate = ajv.compile(schema);
+  // Clone so we never mutate the plugin's cached manifest schema, then relax
+  // secret-ref field types to accept a bound secret's object shape.
+  const relaxedSchema = JSON.parse(JSON.stringify(schema));
+  relaxSecretRefTypes(relaxedSchema);
+  const validate = ajv.compile(relaxedSchema);
   const valid = validate(configJson);
 
   if (valid) {
