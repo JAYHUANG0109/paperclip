@@ -9,21 +9,26 @@ description: 四季藝術建立任何一支 AI 代理人的唯一標準流程。
 > （🔴 最高原則 / 界線紅線 / 決策權限三層）與回報線。三段內容**逐字取自下方職務登錄**，
 > 只替換個人層級變數（姓名、校區、直接主管姓名）。不得省略、不得自創權限。
 
-## 一、操作者只需提供 4 項輸入
+## 一、操作者提供的輸入
 
 | 輸入 | 範例 | 用途 |
 |---|---|---|
 | 校區 campus | 市政 / 仁美 / 西屯 / 北屯 / 黎明 / 總部 | 實例化職務、決定 team |
-| 姓名 name | 王小美 | agent 名稱與稱謂 |
-| Email | xiaomei@seasonart.org | `adapterConfig.assignedUserEmail`（登入自動綁定本人） |
+| 姓名 name | 粘紋綺 | agent 名稱與稱謂 |
+| 英文名 enName（選填） | Cherry | 顯示暱稱（`metadata.nickname`） |
+| Email | cherryn@seasonart.org | `adapterConfig.assignedUserEmail`（登入自動綁定本人） |
 | 職務 role | 園長 / 教學主管 / 註冊組員 …（見登錄表） | 決定職掌、三段、回報線 |
+| **員工編號 employeeId** | 52930801 / A0000423 | **僅存 `metadata.employeeId`**（後端/DB 參照鍵）——**不放進名稱、UI 不顯示** |
 
 > 一次可提供多筆（多人／多校）。缺校區時預設「總部」；缺 Email 則先建 agent、稍後補綁。
+> 注意：Paperclip 的 `id` 是系統自動產生的 UUID（不可自訂）；員工編號**只**放在 `metadata.employeeId`（後端參照用），**絕不出現在名稱或任何 UI 可見欄位**。
 
 ## 二、由輸入自動推導的欄位
 
-1. **name**：`{姓名}_{職務}_{校區}`（例：`王小美_園長_市政`）。
-2. **title**：職務全名（＋校區），例「市政校 園長」。
+1. **name**（UI 可見）：`{姓名}_{職務}` —— **不含校區、不含員工編號**（沿用現有慣例，如 `何惠君_人才發展`）。例：`粘紋綺_幼教行政主任`。
+2. **title**：職務名（**不含校區**），例「幼教行政主任」。
+2b. **校區**只放在：**instructions 文字**（「你是…，{校區}校 的…」）與 **`metadata.teams=[校區,組]`（後端分群用）**——UI 名稱/title 不顯示校區。
+2c. **metadata**：`employeeId = <員工編號>`（後端/DB 參照鍵，UI 不顯示、不入名稱）；`nickname = <英文名>`（選填）。
 3. **reportsTo（回報線）**：查 `doc/sa-org-chart.md`（校區優先層級）。實例化到**同校區**：
    組員(L5)→組長/主管(L4)→副園長→園長(L2)→統籌總園長→創辦人。
    - 無副園長的校（**西屯**）：L4 → 園長（兼總園長）→ 創辦人。
@@ -160,7 +165,10 @@ description: 四季藝術建立任何一支 AI 代理人的唯一標準流程。
 
 ## 六、建置檢查清單（每支 agent）
 
-- [ ] name / title / team / reportsTo 依上表推導並實例化到校區
+- [ ] name = `姓名_職務`（**不含校區、不含員工編號**，UI 可見）
+- [ ] 校區只在 instructions 文字 + `metadata.teams=[校區,組]`（title/名稱不含校區）
+- [ ] `metadata.employeeId` 已填（後端參照鍵，UI 不顯示）
+- [ ] team=[校區,組] / reportsTo 依上表推導並實例化到校區
 - [ ] adapterConfig.assignedUserEmail 已填（登入自動綁定）
 - [ ] instructions 三段逐字取自本登錄，僅替換 {變數}
 - [ ] 全體共通底線已包含（創辦人/Jay 除外）
