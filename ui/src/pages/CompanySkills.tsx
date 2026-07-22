@@ -5068,6 +5068,17 @@ export function CompanySkills() {
     const companyId = selectedCompanyId;
     const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|otf|mp4|mov|mp3|wav|zip|gz|tar|xlsx?|docx?|pptx?)$/i;
 
+    // Folder upload → the top-level OS folder name becomes a same-named skill
+    // folder in the store, and every skill created from this drop is filed into
+    // it. Detected from webkitRelativePath (only a directory pick sets it).
+    const folderUploadName = (() => {
+      for (const f of files) {
+        const rp = f.webkitRelativePath;
+        if (rp && rp.includes("/")) return rp.split("/")[0]!.trim();
+      }
+      return null;
+    })();
+
     // `fromArchive`: this file came out of a .skill/.zip (or a folder that has a
     // SKILL.md). Such files are ONLY ever supporting material — a bare .md inside
     // a package is a reference, never its own skill. A bare .md becomes a skill
@@ -5177,6 +5188,22 @@ export function CompanySkills() {
     const failed: { name: string; reason: string }[] = [];
     let firstCreated: Awaited<ReturnType<typeof companySkillsApi.create>> | null = null;
     try {
+      // Option B: find-or-create the same-named skill folder for a folder upload.
+      let autoFolderId: string | null = null;
+      if (folderUploadName) {
+        try {
+          const existing = (await foldersApi.list(companyId, "skill")).folders.find((f) => f.name === folderUploadName);
+          autoFolderId = existing?.id
+            ?? (await foldersApi.create(companyId, {
+              kind: "skill",
+              name: folderUploadName,
+              scope: uploadScope,
+              ...(uploadScope === "team" ? { sharingTeams: uploadTeams } : {}),
+            })).id;
+        } catch {
+          autoFolderId = null; // fall back to category auto-filing if folder create fails
+        }
+      }
       for (const unit of units) {
         const markdown = await readText(unit.mdEntry);
         const toRel = (rel: string) => (unit.prefix && rel.startsWith(unit.prefix) ? rel.slice(unit.prefix.length) : basename(rel));
@@ -5193,8 +5220,11 @@ export function CompanySkills() {
             sharingScope: uploadScope,
             sharingTeams: uploadScope === "team" ? uploadTeams : [],
             equipOnCreate: uploadEquip,
-            categories: uploadCategories,
-            autoCategorize: uploadCategories.length === 0,
+            // Folder upload → file into the auto-created folder; otherwise use the
+            // dropdown categories (or auto-categorize when none chosen).
+            ...(autoFolderId
+              ? { folderId: autoFolderId, categories: [], autoCategorize: false }
+              : { categories: uploadCategories, autoCategorize: uploadCategories.length === 0 }),
             equipAgentIds: uploadScope === "private" ? uploadShareAgentIds : [],
           });
           if (!firstCreated) firstCreated = skill;
@@ -5215,22 +5245,24 @@ export function CompanySkills() {
       }
 
       await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) });
+      if (folderUploadName) await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(companyId, "skill") });
       setImportDialogOpen(false);
+      const folderSuffix = folderUploadName ? t("companySkills.uploadFiledInFolder", { defaultValue: "（已歸入資料夾「{{folder}}」）", folder: folderUploadName }) : "";
 
       if (created.length === 1 && failed.length === 0 && firstCreated) {
         navigate(routeForSkill(firstCreated));
         pushToast({
           tone: "success",
           title: t("companySkills.uploadSuccess", { defaultValue: "Skill uploaded" }),
-          body: t("companySkills.uploadSuccessBody", { defaultValue: "{{name}} is now editable in the Paperclip workspace.", name: created[0]!.name }),
+          body: t("companySkills.uploadSuccessBody", { defaultValue: "{{name}} is now editable in the Paperclip workspace.", name: created[0]!.name }) + folderSuffix,
         });
       } else if (created.length > 0) {
         pushToast({
           tone: failed.length > 0 ? "warn" : "success",
           title: t("companySkills.uploadMultiSuccess", { defaultValue: "{{count}} skills uploaded", count: created.length }),
-          body: failed.length > 0
+          body: (failed.length > 0
             ? t("companySkills.uploadMultiPartial", { defaultValue: "Created: {{ok}}. Skipped {{fail}} (duplicate or error): {{names}}", ok: created.map((c) => c.name).join("、"), fail: failed.length, names: failed.map((f) => f.name).join("、") })
-            : t("companySkills.uploadMultiBody", { defaultValue: "Created: {{names}}", names: created.map((c) => c.name).join("、") }),
+            : t("companySkills.uploadMultiBody", { defaultValue: "Created: {{names}}", names: created.map((c) => c.name).join("、") })) + folderSuffix,
         });
       } else {
         pushToast({
