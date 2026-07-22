@@ -94,6 +94,7 @@ import type {
   IssueAttachment,
   IssueDocument,
 } from "@paperclipai/shared";
+import { inflateRawSync } from "node:zlib";
 import { anyTeamTokenMatches, isUuidLike, normalizeAgentUrlKey, parseFrontmatterMarkdown } from "@paperclipai/shared";
 import { resolvePaperclipInstanceRoot } from "../home-paths.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
@@ -649,6 +650,92 @@ function deriveCanonicalSkillKey(
   }
 
   return `company/${companyId}/${slug}`;
+}
+
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+}
+
+// Turn one Office XML part into readable text: convert paragraph/row closers to
+// newlines, drop all tags, decode entities.
+function xmlPartToText(xml: string, paragraphCloseTags: string[]): string {
+  let s = xml;
+  for (const tag of paragraphCloseTags) s = s.split(tag).join("\n");
+  s = s.replace(/<[^>]+>/g, "");
+  return decodeXmlEntities(s);
+}
+
+// Minimal ZIP reader (no external dep): walk the central directory and inflate
+// each wanted entry with Node's zlib. Handles stored (0) + deflate (8), which
+// is all OOXML uses. Returns { name → utf8 text }.
+function readZipTextEntries(buf: Buffer, want: (name: string) => boolean): Record<string, string> {
+  const out: Record<string, string> = {};
+  const EOCD_SIG = 0x06054b50, CD_SIG = 0x02014b50, LFH_SIG = 0x04034b50;
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0 && i >= buf.length - 22 - 0xffff; i--) {
+    if (buf.readUInt32LE(i) === EOCD_SIG) { eocd = i; break; }
+  }
+  if (eocd < 0) return out;
+  const count = buf.readUInt16LE(eocd + 10);
+  let p = buf.readUInt32LE(eocd + 16);
+  for (let n = 0; n < count; n++) {
+    if (p + 46 > buf.length || buf.readUInt32LE(p) !== CD_SIG) break;
+    const method = buf.readUInt16LE(p + 10);
+    const compSize = buf.readUInt32LE(p + 20);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const extraLen = buf.readUInt16LE(p + 30);
+    const commentLen = buf.readUInt16LE(p + 32);
+    const localOff = buf.readUInt32LE(p + 42);
+    const name = buf.toString("utf8", p + 46, p + 46 + nameLen);
+    p += 46 + nameLen + extraLen + commentLen;
+    if (!want(name) || buf.readUInt32LE(localOff) !== LFH_SIG) continue;
+    const dataStart = localOff + 30 + buf.readUInt16LE(localOff + 26) + buf.readUInt16LE(localOff + 28);
+    const raw = buf.subarray(dataStart, dataStart + compSize);
+    try {
+      out[name] = (method === 0 ? Buffer.from(raw) : inflateRawSync(raw)).toString("utf8");
+    } catch { /* skip a bad entry */ }
+  }
+  return out;
+}
+
+// Extract human-readable text from an OOXML file (.docx/.pptx/.xlsx). These are
+// zip archives of XML, so the text IS recoverable — we surface it in the viewer
+// (and it also means the content is legible, not "PK…" mojibake). Returns null
+// if nothing meaningful comes out (caller falls back to a placeholder).
+function extractOfficeText(bytes: Uint8Array, ext: string): string | null {
+  const files = readZipTextEntries(Buffer.from(bytes), () => true);
+  const partsMatching = (re: RegExp) =>
+    Object.keys(files)
+      .filter((k) => re.test(k))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const read = (k: string) => files[k] ?? "";
+  let out = "";
+  if (ext === "docx") {
+    for (const k of partsMatching(/^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/)) {
+      out += xmlPartToText(read(k), ["</w:p>", "</w:tr>"]) + "\n";
+    }
+  } else if (ext === "pptx") {
+    const slides = partsMatching(/^ppt\/slides\/slide\d+\.xml$/);
+    slides.forEach((k, i) => {
+      out += `\n— 投影片 ${i + 1} —\n` + xmlPartToText(read(k), ["</a:p>"]) + "\n";
+    });
+    for (const k of partsMatching(/^ppt\/notesSlides\/notesSlide\d+\.xml$/)) {
+      out += xmlPartToText(read(k), ["</a:p>"]) + "\n";
+    }
+  } else if (ext === "xlsx") {
+    for (const k of partsMatching(/^xl\/(sharedStrings\.xml|worksheets\/sheet\d+\.xml)$/)) {
+      out += xmlPartToText(read(k), ["</t>", "</row>", "</c>"]) + "\n";
+    }
+  } else {
+    return null;
+  }
+  out = out.split("\n").map((l) => l.replace(/[ \t]+/g, " ").trimEnd()).join("\n")
+    .replace(/\n{3,}/g, "\n\n").trim();
+  return out.length > 0 ? out : null;
 }
 
 function classifyInventoryKind(relativePath: string): CompanySkillFileInventoryEntry["kind"] {
@@ -4106,10 +4193,36 @@ export function companySkillService(db: Db) {
       const absolutePath = (skill.sourceType === "local_path" || skill.sourceType === "catalog")
         ? resolveLocalSkillFilePath(skill, normalizedPath)
         : null;
-      if (absolutePath) {
+      const ext = (normalizedPath.split(".").pop() ?? "").toLowerCase();
+
+      // Office docs (.docx/.pptx/.xlsx) are zip+XML → recover their readable text
+      // so the viewer shows real content instead of a placeholder.
+      if (absolutePath && (ext === "docx" || ext === "pptx" || ext === "xlsx")) {
+        try {
+          const buf = await fs.readFile(absolutePath);
+          byteSize = buf.length;
+          const text = extractOfficeText(new Uint8Array(buf), ext);
+          if (text) {
+            const kb = ` · ${Math.max(1, Math.round(byteSize / 1024))} KB`;
+            return {
+              skillId: skill.id,
+              path: normalizedPath,
+              kind: fileEntry.kind,
+              content:
+                `〔.${ext} 內文擷取${kb}｜原檔為二進位（可下載）；此為擷取出的文字，供閱讀，不可在此編輯〕\n\n${text}`,
+              language: null,
+              markdown: false,
+              editable: false,
+              binary: true,
+              byteSize,
+            };
+          }
+        } catch { /* fall through to placeholder */ }
+      }
+
+      if (byteSize == null && absolutePath) {
         try { byteSize = (await fs.stat(absolutePath)).size; } catch { /* size best-effort */ }
       }
-      const ext = (normalizedPath.split(".").pop() ?? "").toLowerCase();
       const kb = byteSize != null ? ` · ${Math.max(1, Math.round(byteSize / 1024))} KB` : "";
       return {
         skillId: skill.id,
@@ -4117,8 +4230,8 @@ export function companySkillService(db: Db) {
         kind: fileEntry.kind,
         content:
           `〔二進位檔案 · .${ext}${kb}〕\n\n`
-          + `這是二進位檔（例如 .pptx/.docx/.xlsx/圖片/壓縮檔），無法以文字預覽——顯示為亂碼是正常的。檔案已原樣保存，可下載使用。\n\n`
-          + `要讓 agent 讀得懂的內容，請放在 SKILL.md 或 references/*.md（純文字）。.pptx/.docx 這類 Office 檔通常是給「人」看的文件，agent 無法直接讀取其內容。`,
+          + `這是二進位檔（圖片／PDF／壓縮檔等），無法以文字預覽。檔案已原樣保存，可下載使用。\n\n`
+          + `要讓 agent 讀得懂的內容，請放在 SKILL.md 或 references/*.md（純文字）。`,
         language: null,
         markdown: false,
         editable: false,
