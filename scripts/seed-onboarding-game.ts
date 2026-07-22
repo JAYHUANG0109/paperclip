@@ -15,7 +15,7 @@
  *   tsx scripts/seed-onboarding-game.ts --agent <agentId>            # dry-run
  *   tsx scripts/seed-onboarding-game.ts --agent <agentId> --apply
  */
-import { agents, and, createDb, eq, issueRelations, issues, projects } from "../packages/db/src/index.js";
+import { agentMemberships, agents, and, createDb, eq, issueRelations, issues, projectAccessMembers, projects } from "../packages/db/src/index.js";
 import { loadConfig } from "../server/src/config.js";
 
 const APPLY = process.argv.includes("--apply");
@@ -59,21 +59,37 @@ async function main() {
   for (const k of KANS) console.log(`  - [${k.key}] ${k.title}`);
 
   if (!APPLY) {
-    console.log(`\nWould create: 1 project (if absent), 5 關卡 issues, 4 blocker relations, and set metadata.onboarding {stage:1,total:5,status:"in_progress"}.`);
+    console.log(`\nWould create: 1 PRIVATE per-agent project (owner = the agent's user) + access members (owner user + agent), 5 關卡 issues, 4 blocker relations, and set metadata.onboarding {stage:1,total:5,status:"in_progress"}.`);
     console.log("Re-run with --apply to write.");
     await (db as unknown as { $client?: { end?: () => Promise<void> } }).$client?.end?.();
     return;
   }
 
-  // find-or-create the company onboarding project
-  let project = (await db.select({ id: projects.id }).from(projects)
-    .where(and(eq(projects.companyId, agent.companyId), eq(projects.name, PROJECT_NAME))))[0];
-  if (!project) {
-    project = (await db.insert(projects).values({ companyId: agent.companyId, name: PROJECT_NAME }).returning({ id: projects.id }))[0]!;
-    console.log(`created project ${project.id}`);
-  } else {
-    console.log(`reusing project ${project.id}`);
+  // Each user's onboarding is PRIVATE to them: a per-agent project (never shared
+  // by name), visibility='private', owned by the agent's user. Members: the
+  // owning user (admin) + the agent itself (editor, so it can work its own 關卡).
+  // Gated by PAPERCLIP_PROJECT_PRIVACY — nobody else sees another user's 關卡.
+  const ownerUserId = (await db.select({ userId: agentMemberships.userId }).from(agentMemberships)
+    .where(and(
+      eq(agentMemberships.companyId, agent.companyId),
+      eq(agentMemberships.agentId, agent.id),
+      eq(agentMemberships.state, "joined"),
+    )))[0]?.userId ?? null;
+  const project = (await db.insert(projects).values({
+    companyId: agent.companyId,
+    name: PROJECT_NAME,
+    visibility: "private",
+    ownerUserId,
+  }).returning({ id: projects.id }))[0]!;
+  console.log(`created private project ${project.id} (owner user ${ownerUserId ?? "—"})`);
+  const members: { companyId: string; projectId: string; principalType: string; principalId: string; projectRole: string }[] = [
+    { companyId: agent.companyId, projectId: project.id, principalType: "agent", principalId: agent.id, projectRole: "editor" },
+  ];
+  if (ownerUserId) {
+    members.push({ companyId: agent.companyId, projectId: project.id, principalType: "user", principalId: ownerUserId, projectRole: "admin" });
   }
+  await db.insert(projectAccessMembers).values(members);
+  console.log(`granted project access to ${members.length} principal(s)`);
 
   // create the 5 關卡 issues (originKind/originId tag them as onboarding for this agent)
   const created: { key: string; id: string }[] = [];
