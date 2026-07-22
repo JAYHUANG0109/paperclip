@@ -23,11 +23,36 @@ export function agentTeams(agent: Pick<Agent, "metadata">): string[] {
 // original name. Only the DISPLAY label is localized — grouping/filtering still
 // keys off the raw (Chinese) team name, so this is display-only and safe.
 const TEAM_EN: Record<string, string> = {
+  // Cross-campus / legacy top-level groups
+  "領導團隊": "Leadership",
+  "系統自動化": "System Automation",
   "教學組": "Teaching",
   "人才發展": "Talent Development",
-  "領導團隊": "Leadership",
   "資訊部": "IT",
-  "系統自動化": "System Automation",
+  // Campuses (top level) — romanized district names
+  "仁美": "Renmei",
+  "市政": "Shizheng",
+  "西屯": "Xitun",
+  "黎明": "Liming",
+  "北屯": "Beitun",
+  "總部": "Headquarters",
+  // Departments / teams (second level)
+  "幼教學組": "Preschool Teaching",
+  "外師教學組": "Foreign Teachers",
+  "ESL教學組": "ESL Teaching",
+  "註冊組": "Registration",
+  "總務管理組": "General Affairs",
+  "跨校巡輔": "Cross-Campus Support",
+  "園務": "School Leadership",
+  "處長室": "Director's Office",
+  "秘書室": "Secretariat",
+  "數位資訊部": "Digital IT",
+  "人才發展部": "Talent Development",
+  "品牌發展部": "Brand Development",
+  "基金會": "Foundation",
+  "採購工程部": "Procurement & Engineering",
+  "財務部": "Finance",
+  "餐飲部": "Food & Beverage",
 };
 
 /** Display label for a team name under the given language. */
