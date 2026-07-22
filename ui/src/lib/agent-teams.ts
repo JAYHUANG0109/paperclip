@@ -36,7 +36,7 @@ const TEAM_EN: Record<string, string> = {
   "西屯": "Xitun",
   "黎明": "Liming",
   "北屯": "Beitun",
-  "總部": "Headquarters",
+  "總管理處": "General Administration",
   // Departments / teams (second level)
   "幼教學組": "Preschool Teaching",
   "外師教學組": "Foreign Teachers",
@@ -82,7 +82,7 @@ export function listAllTeams(agents: Pick<Agent, "metadata">[]): string[] {
 // The campus (top) level of the team hierarchy. The sidebar nests
 // department › under these; the Virtual Office intentionally ignores the campus
 // level and groups by department only, so it filters these out of its chips.
-export const CAMPUS_TEAMS = new Set(["仁美", "市政", "西屯", "黎明", "北屯", "總部"]);
+export const CAMPUS_TEAMS = new Set(["仁美", "市政", "西屯", "黎明", "北屯", "總管理處"]);
 
 // Campus → its departments (from doc/sa-campus-roster.md). Drives the cascading
 // team-scope picker so you can target a specific campus's department (e.g.
@@ -93,11 +93,11 @@ export const CAMPUS_DEPARTMENTS: Record<string, string[]> = {
   "西屯": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
   "黎明": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
   "北屯": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "總部": ["處長室", "秘書室", "數位資訊部", "人才發展部", "品牌發展部", "基金會", "採購工程部", "財務部", "餐飲部"],
+  "總管理處": ["處長室", "秘書室", "數位資訊部", "人才發展部", "品牌發展部", "基金會", "採購工程部", "財務部", "餐飲部"],
 };
 
 // Ordered campus list for the picker.
-export const CAMPUS_ORDER = ["仁美", "市政", "西屯", "黎明", "北屯", "總部"];
+export const CAMPUS_ORDER = ["仁美", "市政", "西屯", "黎明", "北屯", "總管理處"];
 
 // Teams whose agents are infrastructure / non-user (e.g. 系統自動化 → Reflection
 // Coach, Wiki Maintainer). We always prioritize user-owned teams, so these sort

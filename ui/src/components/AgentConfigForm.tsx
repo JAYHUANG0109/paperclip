@@ -849,7 +849,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               label={t("agentConfig.teams", { defaultValue: "Teams / 團隊" })}
               hint={t("agentConfig.teamsHint", {
                 defaultValue:
-                  "Comma-separated team names. An agent can belong to multiple teams (e.g. 資訊部, 領導與總部).",
+                  "Comma-separated team names. An agent can belong to multiple teams (e.g. 資訊部, 領導與總管理處).",
               })}
             >
               <DraftInput
@@ -882,7 +882,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 }}
                 immediate
                 className={inputClass}
-                placeholder={t("agentConfig.teamsPlaceholder", { defaultValue: "資訊部, 領導與總部" })}
+                placeholder={t("agentConfig.teamsPlaceholder", { defaultValue: "資訊部, 領導與總管理處" })}
               />
             </Field>
             <Field label={t("agentConfig.capabilities")} hint={help.capabilities}>
