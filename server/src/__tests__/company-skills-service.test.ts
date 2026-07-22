@@ -575,6 +575,53 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await expect(svc.getVersion(companyId, skillId, version.id)).resolves.toMatchObject({ id: version.id });
   });
 
+  it("snapshots binary supporting files as base64 without a jsonb NUL-byte crash", async () => {
+    const companyId = randomUUID();
+    const skillId = randomUUID();
+    const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-binary-skill-"));
+    cleanupDirs.add(skillDir);
+    await fs.writeFile(path.join(skillDir, "SKILL.md"), "---\nname: Binary Skill\n---\n\n# Binary Skill\n", "utf8");
+    // Bytes containing a NUL — a raw utf8 read of this would make Postgres jsonb
+    // reject the version insert (the crash that blocked .skill uploads).
+    const assetBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x00, 0x01, 0x02, 0xff, 0x00, 0x7f]);
+    await fs.mkdir(path.join(skillDir, "assets"), { recursive: true });
+    await fs.writeFile(path.join(skillDir, "assets", "logo.png"), assetBytes);
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(companySkills).values({
+      id: skillId,
+      companyId,
+      key: `company/${companyId}/binary-skill`,
+      slug: "binary-skill",
+      name: "Binary Skill",
+      description: "Ships a binary asset.",
+      markdown: "# Binary Skill",
+      sourceType: "local_path",
+      sourceLocator: skillDir,
+      trustLevel: "assets",
+      compatibility: "compatible",
+      fileInventory: [
+        { path: "SKILL.md", kind: "skill" },
+        { path: "assets/logo.png", kind: "asset" },
+      ],
+    });
+
+    const version = await svc.createVersion(companyId, skillId, { label: "v1" }, { type: "user", userId: "board" });
+    const asset = version.fileInventory.find((entry) => entry.path === "assets/logo.png");
+    expect(asset).toMatchObject({ encoding: "base64" });
+    expect(Buffer.from(asset!.content, "base64")).toEqual(assetBytes);
+    // Text files round-trip as plain utf8 (encoding tag omitted — only binaries
+    // carry an explicit "base64" marker, so existing snapshots stay unchanged).
+    const skillMd = version.fileInventory.find((entry) => entry.path === "SKILL.md");
+    expect(skillMd?.encoding).toBeUndefined();
+    expect(skillMd?.content).toContain("# Binary Skill");
+  });
+
   it("tracks stars and skill comments with actor ownership", async () => {
     const companyId = randomUUID();
     const skillId = randomUUID();

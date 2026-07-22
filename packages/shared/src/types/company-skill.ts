@@ -58,6 +58,11 @@ export interface CompanySkillFileInventoryEntry {
 
 export interface CompanySkillVersionFileInventoryEntry extends CompanySkillFileInventoryEntry {
   content: string;
+  // Binary assets (images, PDFs, fonts, office docs shipped inside a .skill)
+  // are stored base64-encoded so their bytes survive a jsonb round-trip — a raw
+  // utf8 read of a binary contains NUL bytes that Postgres jsonb rejects.
+  // Absent/"utf8" means `content` is plain text.
+  encoding?: "utf8" | "base64";
 }
 
 export interface CompanySkill {

@@ -1823,6 +1823,7 @@ function serializeVersionFileInventory(
     path: entry.path,
     kind: entry.kind,
     content: entry.content,
+    ...(entry.encoding === "base64" ? { encoding: "base64" as const } : {}),
   }));
 }
 
@@ -1837,6 +1838,7 @@ function toCompanySkillVersion(row: CompanySkillVersionRow): CompanySkillVersion
           path: String(entry.path ?? ""),
           kind: (String(entry.kind ?? "other") as CompanySkillFileInventoryEntry["kind"]),
           content: String(entry.content ?? ""),
+          ...(entry.encoding === "base64" ? { encoding: "base64" as const } : {}),
         }];
       })
       : [],
@@ -2314,6 +2316,16 @@ export async function findMissingLocalSkillIds(
 
 function resolveManagedSkillsRoot(companyId: string) {
   return path.resolve(resolvePaperclipInstanceRoot(), "skills", companyId);
+}
+
+// Binary supporting assets that must be handled as raw bytes, never as utf8.
+// Reading these as utf8 yields NUL bytes that Postgres jsonb rejects (which
+// crashed skill uploads that shipped an image/pdf/etc. inside a .skill package)
+// and silently corrupts the file when it is later written back to disk.
+const SKILL_BINARY_FILE_EXT = /\.(png|jpe?g|gif|webp|ico|bmp|tiff?|pdf|woff2?|ttf|otf|eot|mp4|mov|webm|mp3|wav|ogg|zip|gz|tar|7z|rar|xlsx?|docx?|pptx?)$/i;
+
+function isBinarySkillFilePath(relativePath: string): boolean {
+  return SKILL_BINARY_FILE_EXT.test(normalizePortablePath(relativePath));
 }
 
 function resolveLocalSkillFilePath(skill: CompanySkill, relativePath: string) {
@@ -3447,13 +3459,32 @@ export function companySkillService(db: Db) {
     skill: CompanySkill,
   ): Promise<CompanySkillVersionFileInventoryEntry[]> {
     const out: CompanySkillVersionFileInventoryEntry[] = [];
+    const isLocal = skill.sourceType === "local_path" || skill.sourceType === "catalog";
     for (const entry of skill.fileInventory) {
+      // Binary assets on disk are snapshotted as base64 so their bytes survive
+      // the jsonb round-trip; a raw utf8 read would carry NUL bytes that
+      // Postgres jsonb rejects (the crash that blocked .skill uploads carrying
+      // an image/pdf/etc.).
+      if (isLocal && isBinarySkillFilePath(entry.path)) {
+        const absolutePath = resolveLocalSkillFilePath(skill, normalizePortablePath(entry.path));
+        const bytes = absolutePath ? await fs.readFile(absolutePath).catch(() => null) : null;
+        if (bytes) {
+          out.push({
+            path: normalizePortablePath(entry.path),
+            kind: entry.kind,
+            content: bytes.toString("base64"),
+            encoding: "base64",
+          });
+          continue;
+        }
+      }
       const detail = await readFile(companyId, skill.id, entry.path);
       if (!detail) continue;
       out.push({
         path: detail.path,
         kind: detail.kind,
         content: detail.content,
+        encoding: "utf8",
       });
     }
     return out;
@@ -3816,6 +3847,33 @@ export function companySkillService(db: Db) {
     await fs.rm(forkDir, { recursive: true, force: true });
   }
 
+  // Copy one inventory file from a source skill's on-disk tree into destDir,
+  // preserving binary bytes (a utf8 round-trip would corrupt images/pdfs/etc.).
+  async function copyInventoryFileToDir(
+    companyId: string,
+    sourceSkill: CompanySkill,
+    entryPath: string,
+    destDir: string,
+  ): Promise<boolean> {
+    const normalizedPath = normalizePortablePath(entryPath);
+    const targetPath = path.resolve(destDir, normalizedPath);
+    const isLocal = sourceSkill.sourceType === "local_path" || sourceSkill.sourceType === "catalog";
+    if (isLocal && isBinarySkillFilePath(normalizedPath)) {
+      const absolutePath = resolveLocalSkillFilePath(sourceSkill, normalizedPath);
+      const bytes = absolutePath ? await fs.readFile(absolutePath).catch(() => null) : null;
+      if (bytes) {
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.writeFile(targetPath, bytes);
+        return true;
+      }
+    }
+    const detail = await readFile(companyId, sourceSkill.id, normalizedPath).catch(() => null);
+    if (!detail) return false;
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, detail.content, "utf8");
+    return true;
+  }
+
   async function forkSkill(
     companyId: string,
     skillId: string,
@@ -3836,11 +3894,7 @@ export function companySkillService(db: Db) {
     await fs.rm(forkDir, { recursive: true, force: true });
     await fs.mkdir(forkDir, { recursive: true });
     for (const entry of source.fileInventory) {
-      const detail = await readFile(companyId, source.id, entry.path);
-      if (!detail) continue;
-      const targetPath = path.resolve(forkDir, detail.path);
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
-      await fs.writeFile(targetPath, detail.content, "utf8");
+      await copyInventoryFileToDir(companyId, source, entry.path, forkDir);
     }
     const skillFilePath = path.join(forkDir, "SKILL.md");
     const markdown = await fs.readFile(skillFilePath, "utf8").catch(() => source.markdown);
@@ -4185,11 +4239,7 @@ export function companySkillService(db: Db) {
 
     if (forkSource) {
       for (const entry of forkSource.fileInventory) {
-        const detail = await readFile(companyId, forkSource.id, entry.path);
-        if (!detail) continue;
-        const targetPath = path.resolve(skillDir, detail.path);
-        await fs.mkdir(path.dirname(targetPath), { recursive: true });
-        await fs.writeFile(targetPath, detail.content, "utf8");
+        await copyInventoryFileToDir(companyId, forkSource, entry.path, skillDir);
       }
     }
 
@@ -5406,13 +5456,25 @@ export function companySkillService(db: Db) {
     await fs.rm(skillDir, { recursive: true, force: true });
     await fs.mkdir(skillDir, { recursive: true });
 
+    const isLocal = skill.sourceType === "local_path" || skill.sourceType === "catalog";
     let wroteSkillFile = false;
     for (const entry of skill.fileInventory) {
       const normalizedPath = normalizePortablePath(entry.path);
+      const targetPath = path.resolve(skillDir, entry.path);
+      // Binary assets must be copied byte-for-byte; a utf8 round-trip corrupts
+      // them (and would strand images/pdfs shipped inside a .skill).
+      if (isLocal && isBinarySkillFilePath(normalizedPath)) {
+        const absolutePath = resolveLocalSkillFilePath(skill, normalizedPath);
+        const bytes = absolutePath ? await fs.readFile(absolutePath).catch(() => null) : null;
+        if (bytes) {
+          await fs.mkdir(path.dirname(targetPath), { recursive: true });
+          await fs.writeFile(targetPath, bytes);
+          continue;
+        }
+      }
       const detail = await readFile(companyId, skill.id, normalizedPath).catch(() => null);
       const content = detail?.content ?? (normalizedPath === "SKILL.md" ? skill.markdown : null);
       if (content === null) continue;
-      const targetPath = path.resolve(skillDir, entry.path);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, content, "utf8");
       if (normalizedPath === "SKILL.md") wroteSkillFile = true;
@@ -5463,12 +5525,12 @@ export function companySkillService(db: Db) {
   }
 
   async function materializedVersionSnapshotMatches(skillDir: string, version: CompanySkillVersion) {
-    const expected = new Map<string, string>();
+    const expected = new Map<string, { content: string; base64: boolean }>();
     let sawSkillFile = false;
     for (const entry of version.fileInventory) {
       const resolved = resolveVersionSnapshotPath(skillDir, entry.path);
       if (!resolved) continue;
-      expected.set(resolved.normalizedPath, entry.content);
+      expected.set(resolved.normalizedPath, { content: entry.content, base64: entry.encoding === "base64" });
       if (resolved.normalizedPath === "SKILL.md") sawSkillFile = true;
     }
     if (!sawSkillFile) {
@@ -5480,8 +5542,10 @@ export function companySkillService(db: Db) {
     for (const relativePath of existingFiles) {
       if (!expected.has(relativePath)) return false;
     }
-    for (const [relativePath, content] of expected.entries()) {
-      const existingContent = await fs.readFile(path.resolve(skillDir, relativePath), "utf8").catch(() => null);
+    for (const [relativePath, { content, base64 }] of expected.entries()) {
+      const existingContent = base64
+        ? await fs.readFile(path.resolve(skillDir, relativePath)).then((buf) => buf.toString("base64")).catch(() => null)
+        : await fs.readFile(path.resolve(skillDir, relativePath), "utf8").catch(() => null);
       if (existingContent !== content) return false;
     }
     return true;
@@ -5502,7 +5566,11 @@ export function companySkillService(db: Db) {
       if (!resolved) continue;
       const { normalizedPath, targetPath } = resolved;
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
-      await fs.writeFile(targetPath, entry.content, "utf8");
+      if (entry.encoding === "base64") {
+        await fs.writeFile(targetPath, Buffer.from(entry.content, "base64"));
+      } else {
+        await fs.writeFile(targetPath, entry.content, "utf8");
+      }
       if (normalizedPath === "SKILL.md") wroteSkillFile = true;
     }
 

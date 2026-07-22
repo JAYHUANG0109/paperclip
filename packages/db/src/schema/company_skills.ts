@@ -71,6 +71,8 @@ export const companySkills = pgTable(
 
 export type CompanySkillVersionFileInventoryEntry = CompanySkillFileInventoryEntry & {
   content: string;
+  // Binary assets are stored base64-encoded (see shared type for rationale).
+  encoding?: "utf8" | "base64";
 };
 
 export const companySkillVersions = pgTable(
