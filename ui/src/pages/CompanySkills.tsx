@@ -5220,10 +5220,12 @@ export function CompanySkills() {
             sharingScope: uploadScope,
             sharingTeams: uploadScope === "team" ? uploadTeams : [],
             equipOnCreate: uploadEquip,
-            // Folder upload → file into the auto-created folder; otherwise use the
-            // dropdown categories (or auto-categorize when none chosen).
+            // Folder upload → file into the auto-created folder AND set the folder
+            // name as the skill's category, so it groups under that folder in
+            // category-based views (agent skills, store) instead of "Uncategorized".
+            // Otherwise use the dropdown categories (or auto-categorize when none chosen).
             ...(autoFolderId
-              ? { folderId: autoFolderId, categories: [], autoCategorize: false }
+              ? { folderId: autoFolderId, categories: folderUploadName ? [folderUploadName] : [], autoCategorize: false }
               : { categories: uploadCategories, autoCategorize: uploadCategories.length === 0 }),
             equipAgentIds: uploadScope === "private" ? uploadShareAgentIds : [],
           });

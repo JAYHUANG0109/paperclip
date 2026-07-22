@@ -54,7 +54,7 @@ import {
   workspaceOperationService,
 } from "../services/index.js";
 import { conflict, forbidden, HttpError, notFound, unprocessable } from "../errors.js";
-import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getAccessibleResource, getActorInfo, getVisibleAgentIds, getJoinedAgentIds, hasCompanyAccess } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getAccessibleResource, getActorInfo, getVisibleAgentIds, getJoinedAgentIds, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
   collectAgentAdapterWorkspaceCommandPaths,
@@ -1958,6 +1958,36 @@ export function agentRoutes(
       adapterType: agent.adapterType,
       config: runtimeSkillConfig,
     });
+
+    // The agent uses restricted (00–10 founder) + private/team company skills it's
+    // equipped with, but a NON-privileged viewer must not SEE them here — mirror
+    // the store's visibility. Founder/Jay (restricted-folder emails) and
+    // owner/admins are exempt. Any board member can read agent configs, so without
+    // this a regular user would see the founder's 00–10 skills via this view.
+    const skillPrivileged = isPrivilegedMemberViewer(req, agent.companyId, true);
+    let seesRestricted = skillPrivileged;
+    if (!seesRestricted && req.actor.type === "board" && req.actor.userId) {
+      const [u] = await db.select({ email: authUsers.email }).from(authUsers).where(eq(authUsers.id, req.actor.userId));
+      // Mirrors RESTRICTED_FOLDER_EMAILS in routes/company-skills.ts (founder + Jay).
+      seesRestricted = new Set(["tang@seasonart.org", "jay20020109@seasonart.org"])
+        .has((u?.email ?? "").trim().toLowerCase());
+    }
+    if (!seesRestricted) {
+      const viewerUserId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+      const [allCompany, visibleCompany] = await Promise.all([
+        companySkills.list(agent.companyId, {}, { isPrivileged: true }),
+        companySkills.list(agent.companyId, {}, { userId: viewerUserId, isPrivileged: false, allowRestrictedFolders: false }),
+      ]);
+      const visibleKeys = new Set(visibleCompany.map((s) => s.key));
+      const hiddenKeys = new Set(allCompany.map((s) => s.key).filter((k) => !visibleKeys.has(k)));
+      if (hiddenKeys.size > 0) {
+        snapshot.entries = snapshot.entries.filter((e) => !hiddenKeys.has(e.key));
+        snapshot.desiredSkills = snapshot.desiredSkills.filter((k) => !hiddenKeys.has(k));
+        if (snapshot.desiredSkillEntries) {
+          snapshot.desiredSkillEntries = snapshot.desiredSkillEntries.filter((e) => !hiddenKeys.has(e.key));
+        }
+      }
+    }
     res.json(snapshot);
   });
 
