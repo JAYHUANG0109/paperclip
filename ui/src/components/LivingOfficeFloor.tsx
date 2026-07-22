@@ -50,7 +50,9 @@ export const FLOORS: FloorDef[] = [
   {
     id: "square",
     label: "Office",
-    image: "/assets/pixelart/Office%20Square.png",
+    // ?v bumped on every map regen so browsers don't serve a stale cached PNG
+    // (the filename is stable, so without this a hard-refresh keeps the old map).
+    image: "/assets/pixelart/Office%20Square.png?v=20260722b",
     natW: 1488,
     natH: 896,
     zones: [
