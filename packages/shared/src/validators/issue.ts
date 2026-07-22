@@ -709,13 +709,29 @@ export const askUserQuestionsQuestionOptionSchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
 });
 
+export const askUserQuestionsFreeTextFieldSchema = z.object({
+  label: z.string().trim().max(120).nullable().optional(),
+  placeholder: z.string().trim().max(200).nullable().optional(),
+  multiline: z.boolean().optional(),
+});
+
 export const askUserQuestionsQuestionSchema = z.object({
   id: z.string().trim().min(1).max(120),
   prompt: z.string().trim().min(1).max(500),
   helpText: z.string().trim().max(1000).nullable().optional(),
   selectionMode: z.enum(["single", "multi"]),
   required: z.boolean().optional(),
-  options: z.array(askUserQuestionsQuestionOptionSchema).min(1).max(10),
+  options: z.array(askUserQuestionsQuestionOptionSchema).max(10),
+  freeTextField: askUserQuestionsFreeTextFieldSchema.nullable().optional(),
+}).superRefine((value, ctx) => {
+  // A question must offer at least one way to answer: options, or a text field.
+  if (value.options.length === 0 && !value.freeTextField) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A question must have at least one option or a freeTextField",
+      path: ["options"],
+    });
+  }
 });
 
 export const askUserQuestionsPayloadSchema = z.object({

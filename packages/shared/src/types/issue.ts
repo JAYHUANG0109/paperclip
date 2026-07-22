@@ -1004,6 +1004,19 @@ export interface AskUserQuestionsQuestionOption {
   description?: string | null;
 }
 
+/**
+ * A first-class free-text field on a question. When present, the card renders
+ * a labeled text box directly (always visible) instead of hiding it behind the
+ * generic "Other" toggle — so a reply is integrated into the card itself. The
+ * typed value is returned in the answer's `otherText`. A question may have this
+ * field and zero options (a pure text-reply step).
+ */
+export interface AskUserQuestionsFreeTextField {
+  label?: string | null;
+  placeholder?: string | null;
+  multiline?: boolean;
+}
+
 export interface AskUserQuestionsQuestion {
   id: string;
   prompt: string;
@@ -1011,6 +1024,7 @@ export interface AskUserQuestionsQuestion {
   selectionMode: "single" | "multi";
   required?: boolean;
   options: AskUserQuestionsQuestionOption[];
+  freeTextField?: AskUserQuestionsFreeTextField | null;
 }
 
 export interface AskUserQuestionsPayload {

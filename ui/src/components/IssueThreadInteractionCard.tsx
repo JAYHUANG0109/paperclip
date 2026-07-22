@@ -911,13 +911,20 @@ function AskUserQuestionsCard({
         .map((answer) => [answer.questionId, answer.otherText ?? ""]),
     ),
   );
-  const [otherActiveQuestions, setOtherActiveQuestions] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
+  const [otherActiveQuestions, setOtherActiveQuestions] = useState<Record<string, boolean>>(() => ({
+    // Questions with a first-class freeTextField are always open (the labeled
+    // box is the primary input), plus any prior answer that carried otherText.
+    ...Object.fromEntries(
+      (interaction.payload.questions ?? [])
+        .filter((question) => question.freeTextField)
+        .map((question) => [question.id, true]),
+    ),
+    ...Object.fromEntries(
       (interaction.result?.answers ?? [])
         .filter((answer) => answer.otherText)
         .map((answer) => [answer.questionId, true]),
     ),
-  );
+  }));
   const [working, setWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -937,14 +944,19 @@ function AskUserQuestionsCard({
           .map((answer) => [answer.questionId, answer.otherText ?? ""]),
       ),
     );
-    setOtherActiveQuestions(
-      Object.fromEntries(
+    setOtherActiveQuestions({
+      ...Object.fromEntries(
+        (interaction.payload.questions ?? [])
+          .filter((question) => question.freeTextField)
+          .map((question) => [question.id, true]),
+      ),
+      ...Object.fromEntries(
         (interaction.result?.answers ?? [])
           .filter((answer) => answer.otherText)
           .map((answer) => [answer.questionId, true]),
       ),
-    );
-  }, [interaction.result?.answers]);
+    });
+  }, [interaction.result?.answers, interaction.payload.questions]);
 
   const questions = interaction.payload.questions;
   const requiredQuestions = questions.filter((question) => question.required);
@@ -1078,34 +1090,68 @@ function AskUserQuestionsCard({
                     />
                   ))}
                 </div>
-                <button
-                  type="button"
-                  id={`${interaction.id}-${question.id}-other`}
-                  aria-expanded={otherActiveQuestions[question.id] === true}
-                  className={cn(
-                    "text-sm font-medium underline underline-offset-4 transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                    otherActiveQuestions[question.id]
-                      ? "text-sky-700 hover:text-sky-800 dark:text-sky-300 dark:hover:text-sky-200"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() =>
-                    toggleOption(question.id, OTHER_ANSWER_ID, question.selectionMode)}
-                >
-                  {t("interaction.other")}
-                </button>
-                {otherActiveQuestions[question.id] ? (
-                  <Textarea
-                    aria-label={t("interaction.otherAnswerFor", { prompt: question.prompt, defaultValue: "Other answer for {{prompt}}" })}
-                    value={draftOtherAnswers[question.id] ?? ""}
-                    onChange={(event) =>
-                      setDraftOtherAnswers((current) => ({
-                        ...current,
-                        [question.id]: event.target.value,
-                      }))}
-                    placeholder={t("interaction.typeYourAnswer", { defaultValue: "Type your answer" })}
-                    className="min-h-24 bg-background text-sm"
-                  />
-                ) : null}
+                {question.freeTextField ? (
+                  // First-class text field: labeled + always visible, integrated
+                  // into the card so a reply doesn't spill into the thread box.
+                  <div className="space-y-1.5">
+                    {question.freeTextField.label ? (
+                      <label
+                        htmlFor={`${interaction.id}-${question.id}-freetext`}
+                        className="text-sm font-medium text-foreground"
+                      >
+                        {question.freeTextField.label}
+                      </label>
+                    ) : null}
+                    <Textarea
+                      id={`${interaction.id}-${question.id}-freetext`}
+                      aria-label={question.freeTextField.label
+                        ?? t("interaction.otherAnswerFor", { prompt: question.prompt, defaultValue: "Answer for {{prompt}}" })}
+                      value={draftOtherAnswers[question.id] ?? ""}
+                      onChange={(event) =>
+                        setDraftOtherAnswers((current) => ({
+                          ...current,
+                          [question.id]: event.target.value,
+                        }))}
+                      placeholder={question.freeTextField.placeholder
+                        ?? t("interaction.typeYourAnswer", { defaultValue: "Type your answer" })}
+                      className={cn(
+                        "bg-background text-sm",
+                        question.freeTextField.multiline === false ? "min-h-10" : "min-h-24",
+                      )}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      id={`${interaction.id}-${question.id}-other`}
+                      aria-expanded={otherActiveQuestions[question.id] === true}
+                      className={cn(
+                        "text-sm font-medium underline underline-offset-4 transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                        otherActiveQuestions[question.id]
+                          ? "text-sky-700 hover:text-sky-800 dark:text-sky-300 dark:hover:text-sky-200"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() =>
+                        toggleOption(question.id, OTHER_ANSWER_ID, question.selectionMode)}
+                    >
+                      {t("interaction.other")}
+                    </button>
+                    {otherActiveQuestions[question.id] ? (
+                      <Textarea
+                        aria-label={t("interaction.otherAnswerFor", { prompt: question.prompt, defaultValue: "Other answer for {{prompt}}" })}
+                        value={draftOtherAnswers[question.id] ?? ""}
+                        onChange={(event) =>
+                          setDraftOtherAnswers((current) => ({
+                            ...current,
+                            [question.id]: event.target.value,
+                          }))}
+                        placeholder={t("interaction.typeYourAnswer", { defaultValue: "Type your answer" })}
+                        className="min-h-24 bg-background text-sm"
+                      />
+                    ) : null}
+                  </>
+                )}
               </div>
             </div>
           ))}

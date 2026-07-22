@@ -27,11 +27,11 @@ function flag(name: string): string | null {
 
 const PROJECT_NAME = "🎓 上手教學｜Onboarding";
 const KANS = [
-  { key: "setup", title: "關卡 1｜設定與連線", desc: "教學（互動卡片）：連接 Asana——建立個人存取權杖與連接器，說明為什麼需要；附「步驟教學＋直接連結」，步驟越少越好。完成條件：連線驗證通過。" },
-  { key: "first-task", title: "關卡 2｜建立你的第一個任務", desc: "教學：如何新增任務、指派給你的 agent、把驗收標準寫清楚。完成條件：建立一個真的任務並指派給你的 agent。" },
-  { key: "collaborate", title: "關卡 3｜與 agent 協作", desc: "教學：互動卡片、審批鈕（核准／請求變更／拒絕）、留言與裁示。完成條件：回應一張 agent 給你的卡片。" },
-  { key: "dashboard", title: "關卡 4｜儀表板與收件匣", desc: "教學：在儀表板找到「待我處理」、通知與狀態，快速掌握你的工作。完成條件：在儀表板找到並開啟一個項目。" },
-  { key: "skills-routines", title: "關卡 5｜技能與例行作業", desc: "教學：技能（skill）是什麼、如何依描述自動觸發；例行作業（routine）排程。完成條件：瀏覽技能庫，或查看一個 routine。" },
+  { key: "setup", title: "關卡 1｜設定與連線", desc: "教學（互動卡片）：到「我的助理 / My Agent」→ 連線，貼上你自己的 Asana 個人存取權杖（Personal Access Token）。完成條件（真實訊號）：Asana 連線一存好，系統自動判定過關。" },
+  { key: "first-task", title: "關卡 2｜建立你的第一個任務", desc: "教學：到「我的助理 / My Agent」頁 → 新增任務 → 指派給你的 agent → 寫清楚驗收（例：整理 Asana 上某專案的任務清單）。完成條件（真實訊號）：真的建立了一個你自己開的任務（非教學關卡）。" },
+  { key: "collaborate", title: "關卡 3｜與 agent 協作", desc: "教學：agent 常需要你拍板。用「卡片內建的文字框」直接回一句話並按『完成本關』。完成條件（真實訊號）：你在卡片裡送出了一段非空回覆。" },
+  { key: "dashboard", title: "關卡 4｜儀表板與收件匣", desc: "教學：到「儀表板 / Dashboard」找「待我處理 / Needs you」，開啟一個項目。完成條件：找到並開啟一個項目後回來確認。" },
+  { key: "skills-routines", title: "關卡 5｜技能與例行作業", desc: "教學：技能（Skills）依情境自動觸發；例行作業（Routines）是排定的固定行程。完成條件：看過一個技能或一個 routine 後回來確認。" },
 ] as const;
 
 async function main() {

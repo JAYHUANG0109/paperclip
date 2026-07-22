@@ -37,6 +37,7 @@ import { logger } from "../middleware/logger.js";
 import { buildAsanaDigestBody, getAsanaTaskComments, getAsanaTaskDetail, postAsanaComment, setAsanaTaskCompleted, setAsanaApprovalStatus, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
 import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
+import { advanceOnboarding } from "../services/onboarding.js";
 import {
   getCalendarEventsForUser,
   createCalendarEventForUser,
@@ -1043,6 +1044,11 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
         readOnly: req.body?.readOnly === true,
         defaultWorkspace: typeof req.body?.defaultWorkspace === "string" ? req.body.defaultWorkspace : null,
       });
+      // Onboarding 關卡 1 (設定與連線) completes on a *real* verified connection,
+      // not a self-attest click. Best-effort + idempotent — never block storage.
+      try {
+        await advanceOnboarding(db, { agentId: req.actor.agentId, key: "setup" });
+      } catch { /* onboarding advance is best-effort */ }
       res.json({ ok: true });
     } catch (e) {
       res.status(400).json({ ok: false, error: (e as Error).message });

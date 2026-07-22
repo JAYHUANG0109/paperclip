@@ -188,6 +188,47 @@ describe("issue thread interaction schemas", () => {
     });
   });
 
+  it("accepts an ask_user_questions text-reply question (freeTextField, zero options)", () => {
+    const parsed = createIssueThreadInteractionSchema.parse({
+      kind: "ask_user_questions",
+      payload: {
+        version: 1,
+        title: "🎮 關卡 3／5：跟我說一句話",
+        submitLabel: "完成本關 ✅",
+        questions: [
+          {
+            id: "reply",
+            prompt: "回我一句話，我就懂怎麼跟你協作了。",
+            selectionMode: "single",
+            required: true,
+            options: [],
+            freeTextField: { label: "回我一句話", placeholder: "在這裡輸入…" },
+          },
+        ],
+      },
+    });
+    expect(parsed).toMatchObject({
+      kind: "ask_user_questions",
+      payload: {
+        submitLabel: "完成本關 ✅",
+        questions: [{ id: "reply", freeTextField: { label: "回我一句話" } }],
+      },
+    });
+  });
+
+  it("rejects a question with neither options nor a freeTextField", () => {
+    expect(() =>
+      createIssueThreadInteractionSchema.parse({
+        kind: "ask_user_questions",
+        payload: {
+          version: 1,
+          questions: [
+            { id: "empty", prompt: "?", selectionMode: "single", options: [] },
+          ],
+        },
+      })).toThrow(/at least one option or a freeTextField/);
+  });
+
   it("rejects unsafe request_confirmation target hrefs", () => {
     const base = {
       kind: "request_confirmation",
