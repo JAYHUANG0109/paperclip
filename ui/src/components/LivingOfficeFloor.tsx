@@ -3,7 +3,7 @@ import { useTranslation } from "@/i18n";
 import type { Agent } from "@paperclipai/shared";
 import type { LiveRunForIssue } from "../api/heartbeats";
 import { OfficeAvatar } from "./OfficeAvatar";
-import { agentTeams, localizeTeamName } from "../lib/agent-teams";
+import { localizeTeamName, officeTeamKey } from "../lib/agent-teams";
 import { resolveGender } from "../lib/office-avatars";
 import { displayAgentName } from "../lib/agent-name";
 import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, characterScale, resolveAgentCharacterId, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
@@ -387,7 +387,7 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen, userZo
   const byTeam = useMemo(() => {
     const map = new Map<string, Agent[]>();
     for (const a of agents) {
-      const key = agentTeams(a)[0] ?? "__ungrouped__";
+      const key = officeTeamKey(a); // department-based (campus ignored), mapped to a room
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(a);
     }

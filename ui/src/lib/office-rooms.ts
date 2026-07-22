@@ -1,5 +1,5 @@
 import type { Agent } from "@paperclipai/shared";
-import { agentTeams } from "./agent-teams";
+import { officeTeamKey } from "./agent-teams";
 
 // Room model shared by the Virtual Office layouts. The desktop pixel floor
 // (LivingOfficeFloor) positions these same rooms on a baked background image;
@@ -42,7 +42,7 @@ export interface RoomWithMembers {
 export function groupAgentsByRoom(agents: Agent[]): RoomWithMembers[] {
   const byTeam = new Map<string, Agent[]>();
   for (const a of agents) {
-    const key = agentTeams(a)[0] ?? "__ungrouped__";
+    const key = officeTeamKey(a); // department-based (campus ignored), mapped to a room
     if (!byTeam.has(key)) byTeam.set(key, []);
     byTeam.get(key)!.push(a);
   }

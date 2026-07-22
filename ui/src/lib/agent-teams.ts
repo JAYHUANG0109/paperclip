@@ -84,6 +84,43 @@ export function listDepartments(agents: Pick<Agent, "metadata">[]): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
+export const OFFICE_UNGROUPED_KEY = "__ungrouped__";
+
+// The Virtual Office floor has a fixed set of baked rooms keyed by the original
+// department names. The org restructure renamed/expanded departments (資訊部 →
+// 數位資訊部, 教學組 → 幼教學組/…), so map each current department onto the room
+// that represents it. Unmapped departments fall through to the floor's spare
+// room. Keep the right-hand values in sync with the room `team` keys in
+// LivingOfficeFloor / office-rooms.
+const DEPARTMENT_ROOM: Record<string, string> = {
+  "資訊部": "資訊部",
+  "數位資訊部": "資訊部",
+  "教學組": "教學組",
+  "幼教學組": "教學組",
+  "外師教學組": "教學組",
+  "ESL教學組": "教學組",
+  "註冊組": "教學組",
+  "總務管理組": "教學組",
+  "跨校巡輔": "教學組",
+  "人才發展": "人才發展",
+  "人才發展部": "人才發展",
+  "領導團隊": "領導團隊",
+  "系統自動化": "系統自動化",
+};
+
+/**
+ * The office room an agent belongs to. The office groups by DEPARTMENT, not
+ * campus, so pick the agent's first non-campus team (its department), then
+ * canonicalize renamed departments onto their baked room. Falls back to the raw
+ * department, then to the ungrouped key.
+ */
+export function officeTeamKey(agent: Pick<Agent, "metadata">): string {
+  const teams = agentTeams(agent);
+  const department = teams.find((t) => !CAMPUS_TEAMS.has(t)) ?? teams[0];
+  if (!department) return OFFICE_UNGROUPED_KEY;
+  return DEPARTMENT_ROOM[department] ?? department;
+}
+
 /** An empty selection means "no filter" (everyone passes). */
 export function agentMatchesTeams(agent: Pick<Agent, "metadata">, selected: string[]): boolean {
   if (selected.length === 0) return true;
