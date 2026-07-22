@@ -116,6 +116,18 @@ import {
   readPortableCatalogProvenance,
 } from "./catalog-provenance.js";
 
+// Postgres text columns reject NUL (0x00). Uploaded/packaged files — e.g. a
+// .skill whose SKILL.md is null-padded — can carry them, which 500s the insert
+// and leaves the skill uncreated. NUL is never meaningful in a skill, so strip
+// it from every string (recursively) before it reaches disk or the DB.
+function stripNul<T>(value: T): T {
+  if (typeof value === "string") {
+    return (value.includes("\u0000") ? value.replace(/\u0000/g, "") : value) as T;
+  }
+  if (Array.isArray(value)) return value.map((v) => stripNul(v)) as T;
+  return value;
+}
+
 type CompanySkillRow = typeof companySkills.$inferSelect;
 type CompanySkillVersionRow = typeof companySkillVersions.$inferSelect;
 type CompanySkillCommentRow = typeof companySkillComments.$inferSelect;
@@ -4254,9 +4266,9 @@ export function companySkillService(db: Db) {
         input.description?.trim() ? input.description.trim() : "Describe what this skill does.",
         "",
       ].join("\n");
-    const markdown = input.markdown?.trim().length
+    const markdown = stripNul(input.markdown?.trim().length
       ? input.markdown
-      : forkSource?.markdown ?? fallbackMarkdown;
+      : forkSource?.markdown ?? fallbackMarkdown);
 
     await fs.writeFile(skillFilePath, markdown, "utf8");
 
@@ -5833,6 +5845,19 @@ export function companySkillService(db: Db) {
         metadata,
         updatedAt: new Date(),
       };
+      // Belt-and-suspenders: strip NUL from every text column before persist so a
+      // null-padded upload can never 500 the insert (Postgres text rejects 0x00).
+      values.key = stripNul(values.key);
+      values.slug = stripNul(values.slug);
+      values.name = stripNul(values.name);
+      values.markdown = stripNul(values.markdown);
+      values.sourceLocator = stripNul(values.sourceLocator);
+      values.categories = stripNul(values.categories);
+      if (values.description != null) values.description = stripNul(values.description);
+      if (values.sourceRef != null) values.sourceRef = stripNul(values.sourceRef);
+      if (values.tagline != null) values.tagline = stripNul(values.tagline);
+      if (values.authorName != null) values.authorName = stripNul(values.authorName);
+      if (values.homepageUrl != null) values.homepageUrl = stripNul(values.homepageUrl);
       if (existing && importedSkillPersistValuesMatchExisting(existing, values)) {
         out.push(existing);
         continue;
