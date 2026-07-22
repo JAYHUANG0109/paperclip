@@ -2,9 +2,12 @@
 // Transparent bg; big furniture (desks 1.6x, chairs 2x). Team rooms are WIDE and
 // fill their cell with desks distributed across the room; decorative + single-agent
 // rooms are drawn small so the team rooms get the space. Tight 1-tile gaps.
+import { resolve } from "node:path";
 import { decode, make, blit, blitScaled, fillRect, encode } from "./pnglib.mjs";
 
-const PACK = "/Users/jayhuang/dev/paperclip/paperclip/Office Tileset";
+// Repo-relative so it survives host migrations (scripts/office-map → repo root).
+const REPO_ROOT = resolve(import.meta.dirname, "../..");
+const PACK = resolve(REPO_ROOT, "Office Tileset");
 const A5 = decode(PACK + "/Office VX Ace/A5 Office Floors & Walls.png");
 // Furniture is blitted from the 48×48 sheet (3× res of the 16×16) and scaled
 // DOWN to the map — crisp, not the blurry upscaled 16×16.
@@ -71,20 +74,24 @@ const GREY_BENCH = { c: 0,  r: 20, w: 2, h: 2 };  // grey bench/table (meeting)
 
 // wide grid, tight 1-tile gaps. Center column is wide for the big team rooms.
 // Widened (agent rooms use more of the horizontal space) → 1488x896.
-const COLX = [1, 23, 74], COLW = [21, 50, 18];
-const ROWY = [1, 22, 43], ROWH = [20, 20, 12];
+// Equal 3×3 grid — every room the same size (九宮格), tight 1-tile gaps.
+const COLX = [1, 32, 63], COLW = [30, 30, 29];
+const ROWY = [1, 20, 39], ROWH = [18, 18, 16];
 const MW = 93, MH = 56;   // 1488x896
 
+// One room per user-agent department (系統自動化 kept as a placeholder for a future
+// team). 跨校巡輔 is folded into the 教學組 room. 創辦人 keeps its own office,
+// unchanged. caps = current headcount (empty desks are fine).
 const ROOMS = [
-  { id:"meeting",  team:null,         name:"會議室",    cell:[0,0], dw:18, dh:14, kind:"meeting" },
-  { id:"teaching", team:"教學組",     name:"教學組",    cell:[1,0], cap:8 },
-  { id:"talent",   team:"人才發展",   name:"人才發展",  cell:[2,0], dw:16, dh:13, cap:1 },
-  { id:"lead",     team:"領導團隊",   name:"領導團隊",  cell:[0,1], cap:4, deskCols:2 },
-  { id:"it",       team:"資訊部",     name:"資訊部",    cell:[1,1], cap:7 },
-  { id:"lounge",   team:null,         name:"休息室",    cell:[2,1], dw:16, dh:12, kind:"lounge" },
-  { id:"pantry",   team:null,         name:"茶水間",    cell:[0,2], dw:18, dh:10, kind:"pantry" },
-  { id:"founder",  team:null,         name:"創辦人辦公室", cell:[1,2], dw:34, dh:11, kind:"founder", soloAgent:"創辦人" },
-  { id:"auto",     team:"系統自動化", name:"系統自動化",cell:[2,2], dw:16, dh:10, cap:1 },
+  { id:"teaching", team:"教學組",     name:"教學組",       cell:[0,0], cap:9 },
+  { id:"it",       team:"數位資訊部", name:"數位資訊部",   cell:[1,0], cap:7 },
+  { id:"esl",      team:"ESL教學組",  name:"ESL教學組",    cell:[2,0], cap:5 },
+  { id:"lead",     team:"領導團隊",   name:"領導團隊",     cell:[0,1], cap:3 },
+  { id:"talent",   team:"人才發展部", name:"人才發展部",   cell:[1,1], cap:2 },
+  { id:"ga",       team:"總務管理組", name:"總務管理組",   cell:[2,1], cap:2 },
+  { id:"brand",    team:"品牌發展部", name:"品牌發展部",   cell:[0,2], cap:1 },
+  { id:"founder",  team:null,         name:"創辦人辦公室", cell:[1,2], kind:"founder", soloAgent:"創辦人" },
+  { id:"auto",     team:"系統自動化", name:"系統自動化",   cell:[2,2], cap:2 },
 ];
 for (const rm of ROOMS) {
   const [c, r] = rm.cell; const cw = COLW[c], ch = ROWH[r], cx = COLX[c], cy = ROWY[r];
@@ -225,8 +232,9 @@ for (const rm of ROOMS) {
 }
 
 encode(map, "preview/office-square.png");
+encode(map, resolve(REPO_ROOT, "ui/public/assets/pixelart/Office Square.png"));
 
-const COLORS = { meeting:"#10B981", lounge:"#EC4899", pantry:"#14B8A6", founder:"#A855F7", auto:"#F97316", teaching:"#8B5CF6", lead:"#F59E0B", talent:"#6366F1", it:"#3B82F6" };
+const COLORS = { founder:"#A855F7", auto:"#F97316", teaching:"#8B5CF6", lead:"#F59E0B", talent:"#6366F1", it:"#3B82F6", esl:"#14B8A6", ga:"#EC4899", brand:"#F43F5E" };
 const pct = (v, tot) => +(v / tot * 100).toFixed(1);
 console.log(`Map ${MW*T}x${MH*T}. Zones:\n`);
 for (const rm of ROOMS) {

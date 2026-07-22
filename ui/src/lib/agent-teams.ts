@@ -143,17 +143,21 @@ export const OFFICE_UNGROUPED_KEY = "__ungrouped__";
 // room. Keep the right-hand values in sync with the room `team` keys in
 // LivingOfficeFloor / office-rooms.
 const DEPARTMENT_ROOM: Record<string, string> = {
-  "資訊部": "資訊部",
-  "數位資訊部": "資訊部",
+  // IT
+  "資訊部": "數位資訊部",
+  "數位資訊部": "數位資訊部",
+  // Teaching room absorbs 幼教學組 + 跨校巡輔 (and legacy/roomless teaching depts)
   "教學組": "教學組",
   "幼教學組": "教學組",
-  "外師教學組": "教學組",
-  "ESL教學組": "教學組",
-  "註冊組": "教學組",
-  "總務管理組": "教學組",
   "跨校巡輔": "教學組",
-  "人才發展": "人才發展",
-  "人才發展部": "人才發展",
+  "外師教學組": "教學組",
+  "註冊組": "教學組",
+  // Own rooms
+  "ESL教學組": "ESL教學組",
+  "總務管理組": "總務管理組",
+  "人才發展": "人才發展部",
+  "人才發展部": "人才發展部",
+  "品牌發展部": "品牌發展部",
   "領導團隊": "領導團隊",
   "系統自動化": "系統自動化",
 };
