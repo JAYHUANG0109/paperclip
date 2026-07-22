@@ -372,6 +372,10 @@ export const companySkillFileDetailSchema = z.object({
 export const companySkillFileUpdateSchema = z.object({
   path: z.string().min(1),
   content: z.string(),
+  // How `content` is encoded. "utf8" (default) writes text; "base64" decodes to
+  // bytes first — used to carry binary supporting files (images, pdfs, fonts)
+  // that ship inside a .skill/.zip package.
+  encoding: z.enum(["utf8", "base64"]).optional(),
 });
 
 export const companySkillFileDeleteSchema = z.object({

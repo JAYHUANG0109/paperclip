@@ -1169,6 +1169,7 @@ export function companySkillRoutes(db: Db) {
     async (req, res) => {
       const companyId = req.params.companyId as string;
       await assertCanCreateCompanySkill(req, companyId);
+      await assertSharingTeamsAllowed(req, companyId, req.body.sharingScope, req.body.sharingTeams);
       const allowRestrictedFolders = await actorAllowsRestrictedFolders(req);
       const result = await svc.createLocalSkill(companyId, req.body, skillActor(req), {
         isPrivileged: isPrivilegedMemberViewer(req, companyId, true),
@@ -1248,6 +1249,7 @@ export function companySkillRoutes(db: Db) {
       const companyId = req.params.companyId as string;
       const skillId = req.params.skillId as string;
       await assertCanMutateCompanySkills(req, companyId, "skills.edit", () => skillPolicyResource({ companyId, skillId }));
+      await assertSharingTeamsAllowed(req, companyId, req.body.sharingScope, req.body.sharingTeams);
       const result = await svc.updateSkill(companyId, skillId, req.body);
 
       const actor = getActorInfo(req);
@@ -1285,6 +1287,7 @@ export function companySkillRoutes(db: Db) {
         String(req.body.path ?? ""),
         String(req.body.content ?? ""),
         skillActor(req),
+        req.body.encoding === "base64" ? "base64" : "utf8",
       );
 
       const actor = getActorInfo(req);
@@ -1611,6 +1614,19 @@ export function companySkillRoutes(db: Db) {
     res.json({ teams: [...teams].sort() });
   });
 
+  // Teams the caller may SHARE a skill/folder to. Everyone gets their own teams;
+  // 資訊部 members and admins/owners get every team (`canShareToAll: true`). The
+  // share-with-team dropdown is populated from this, and the create/update routes
+  // enforce the same set server-side (see assertSharingTeamsAllowed).
+  router.get("/companies/:companyId/shareable-teams", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = shareActorUserId(req);
+    const isPrivileged = isPrivilegedMemberViewer(req, companyId, true);
+    const { teams, canShareToAll } = await svc.getShareableTeams(companyId, userId, isPrivileged);
+    res.json({ teams: [...teams].sort(), canShareToAll });
+  });
+
   // ---- Folder registry (scoped, user-created folders) ----
   router.get("/companies/:companyId/skill-folders", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -1637,6 +1653,7 @@ export function companySkillRoutes(db: Db) {
         res.status(403).json({ error: "That folder name is reserved." });
         return;
       }
+      await assertSharingTeamsAllowed(req, companyId, req.body.scope, req.body.sharingTeams);
       const createdByUserId = req.actor.type === "board" ? req.actor.userId ?? null : null;
       const result = await svc.createSkillFolder(companyId, req.body, createdByUserId);
       const actor = getActorInfo(req);
@@ -1657,6 +1674,37 @@ export function companySkillRoutes(db: Db) {
 
   // Only the folder's creator or a privileged member (owner/admin) may change or
   // remove a folder; the reserved numbered taxonomy stays founder/Jay-only.
+  // Board user → their id; agent → its responsible user; else null. Used to
+  // resolve which teams the caller may share to.
+  function shareActorUserId(req: Request): string | null {
+    if (req.actor.type === "board") return req.actor.userId ?? null;
+    if (req.actor.type === "agent") return req.actor.onBehalfOfUserId ?? null;
+    return null;
+  }
+
+  // Enforce that a team-scoped share only targets teams the caller is allowed to
+  // share to (own teams, or ANY team for 資訊部 members / admins/owners). This is
+  // the real authorization boundary — the UI dropdown is just a convenience.
+  async function assertSharingTeamsAllowed(
+    req: Request,
+    companyId: string,
+    scope: string | null | undefined,
+    sharingTeams: unknown,
+  ): Promise<void> {
+    if (scope !== "team") return;
+    const requested = Array.isArray(sharingTeams)
+      ? sharingTeams.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim())
+      : [];
+    if (requested.length === 0) return;
+    const isPrivileged = isPrivilegedMemberViewer(req, companyId, true);
+    const { teams: allowed, canShareToAll } = await svc.getShareableTeams(companyId, shareActorUserId(req), isPrivileged);
+    if (canShareToAll) return;
+    const foreign = requested.filter((t) => !allowed.has(t));
+    if (foreign.length > 0) {
+      throw forbidden(`You can only share to your own teams. Not permitted: ${foreign.join("、")}`);
+    }
+  }
+
   async function assertCanManageFolder(req: Request, companyId: string, folder: { name: string; createdByUserId: string | null }) {
     const isPrivileged = isPrivilegedMemberViewer(req, companyId, true);
     const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
@@ -1687,6 +1735,7 @@ export function companySkillRoutes(db: Db) {
         res.status(403).json({ error: "That folder name is reserved." });
         return;
       }
+      await assertSharingTeamsAllowed(req, companyId, req.body.scope ?? existing.scope, req.body.sharingTeams);
       const result = await svc.updateSkillFolder(companyId, folderId, req.body);
       const actor = getActorInfo(req);
       await logActivity(db, {

@@ -39,6 +39,28 @@ export function folderRoutes(db: Db) {
     return { userId, isPrivileged, allowRestrictedFolders, teams };
   }
 
+  // Team-scoped folders may only target teams the caller is allowed to share to
+  // (own teams, or ANY team for 資訊部 members / admins/owners). Mirrors the
+  // company-skills routes so the folder tree can't be used to bypass the rule.
+  async function assertSharingTeamsAllowed(req: Request, companyId: string, scope: unknown, sharingTeams: unknown): Promise<void> {
+    if (scope !== "team") return;
+    const requested = Array.isArray(sharingTeams)
+      ? sharingTeams.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim())
+      : [];
+    if (requested.length === 0) return;
+    const isPrivileged = isPrivilegedMemberViewer(req, companyId, true);
+    const userId =
+      req.actor.type === "board" ? req.actor.userId ?? null
+      : req.actor.type === "agent" ? req.actor.onBehalfOfUserId ?? null
+      : null;
+    const { teams: allowed, canShareToAll } = await skillSvc.getShareableTeams(companyId, userId, isPrivileged);
+    if (canShareToAll) return;
+    const foreign = requested.filter((t) => !allowed.has(t));
+    if (foreign.length > 0) {
+      throw forbidden(`You can only share to your own teams. Not permitted: ${foreign.join("、")}`);
+    }
+  }
+
   router.get("/companies/:companyId/folders", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -48,6 +70,7 @@ export function folderRoutes(db: Db) {
   router.post("/companies/:companyId/folders", validate(createFolderSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    await assertSharingTeamsAllowed(req, companyId, req.body.scope, req.body.sharingTeams);
     const createdByUserId = req.actor.type === "board" ? (req.actor.userId ?? null) : null;
     const created = await svc.create(companyId, req.body, { createdByUserId });
     const actor = getActorInfo(req);
@@ -97,6 +120,7 @@ export function folderRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     const folderId = req.params.folderId as string;
     assertCompanyAccess(req, companyId);
+    await assertSharingTeamsAllowed(req, companyId, req.body.scope, req.body.sharingTeams);
     const updated = await svc.update(companyId, folderId, req.body);
     if (!updated) {
       res.status(404).json({ error: "Folder not found" });

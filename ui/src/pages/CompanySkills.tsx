@@ -5099,113 +5099,193 @@ export function CompanySkills() {
     },
   });
 
-  // Feature: upload a skill from local files/folders. Reads SKILL.md + supporting
-  // text files in the browser, creates the skill, then writes the rest via updateFile.
-  // Uses existing endpoints (create + updateFile) — no backend change needed.
+  // Feature: MULTI-skill upload from local files/folders/packages. One drop may
+  // create MANY skills. Detection (all client-side; uses create + updateFile —
+  // no backend change beyond base64 file writes):
+  //   • each SKILL.md anchors a skill (its folder + descendant files);
+  //   • each .skill / .zip is unpacked (recursively — a .zip may bundle several
+  //     .skill/.md), so a bundle yields one skill per contained SKILL.md/.skill;
+  //   • any loose .md not inside a SKILL.md folder is its own single-file skill
+  //     (so 5 .md → 5 skills, and a folder of 4 .md → 4 skills);
+  //   • binary supporting files (images/pdf/fonts) are uploaded as base64.
   async function handleUploadSkillFiles(files: File[]) {
     if (files.length === 0 || !selectedCompanyId) return;
+    const companyId = selectedCompanyId;
+    const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|otf|mp4|mov|mp3|wav|zip|gz|tar|xlsx?|docx?|pptx?)$/i;
 
-    const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|woff2?|ttf|otf|mp4|mov|mp3|wav)$/i;
-    // Normalize the selection into path→reader entries. A single .skill/.zip is a
-    // package we unzip in the browser; otherwise use the raw file(s)/folder.
-    type UploadEntry = { rel: string; read: () => Promise<string>; binary: boolean };
-    let entries: UploadEntry[];
-    const isArchive = files.length === 1 && /\.(skill|zip)$/i.test(files[0]!.name);
-    if (isArchive) {
-      try {
-        const bytes = new Uint8Array(await files[0]!.arrayBuffer());
-        const unzipped = unzipSync(bytes);
-        entries = Object.entries(unzipped)
-          .filter(([p]) => !p.endsWith("/"))
-          .map(([p, data]) => ({ rel: p, read: async () => strFromU8(data), binary: BINARY_EXT.test(p) }));
-      } catch {
-        pushToast({
-          tone: "error",
-          title: t("companySkills.uploadBadArchive", { defaultValue: "Could not read package" }),
-          body: t("companySkills.uploadBadArchiveBody", { defaultValue: "The .skill / .zip file could not be unpacked." }),
-        });
-        return;
+    // `fromArchive`: this file came out of a .skill/.zip (or a folder that has a
+    // SKILL.md). Such files are ONLY ever supporting material — a bare .md inside
+    // a package is a reference, never its own skill. A bare .md becomes a skill
+    // only when directly selected with no SKILL.md governing it (see below).
+    type Entry = { rel: string; bytes: Uint8Array | null; file: File | null; binary: boolean; fromArchive: boolean };
+    const entries: Entry[] = [];
+    const basename = (p: string) => p.split("/").pop() || p;
+    const isSkillMd = (rel: string) => basename(rel).toLowerCase() === "skill.md";
+
+    // Recursively expand a .skill/.zip archive; nested archives get their own root.
+    const expandArchive = (base: string, bytes: Uint8Array) => {
+      const unz = unzipSync(bytes);
+      for (const [p, data] of Object.entries(unz)) {
+        if (p.endsWith("/")) continue;
+        if (/\.(skill|zip)$/i.test(p)) {
+          try { expandArchive(`${base}/${basename(p).replace(/\.(skill|zip)$/i, "")}`, data); }
+          catch { /* skip a corrupt nested archive */ }
+        } else {
+          entries.push({ rel: `${base}/${p}`, bytes: data, file: null, binary: BINARY_EXT.test(p), fromArchive: true });
+        }
       }
-    } else {
-      const relPath = (f: File) => (f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name);
-      entries = files.map((f) => ({ rel: relPath(f), read: () => f.text(), binary: BINARY_EXT.test(relPath(f)) }));
-    }
+    };
 
-    // Locate the SKILL.md (case-insensitive) among the entries.
-    const skillEntry = entries.find((e) => e.rel.toLowerCase().endsWith("skill.md"));
-    if (!skillEntry) {
+    let archiveError = false;
+    for (const f of files) {
+      const rel = f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name;
+      if (/\.(skill|zip)$/i.test(f.name)) {
+        try { expandArchive(f.name.replace(/\.(skill|zip)$/i, ""), new Uint8Array(await f.arrayBuffer())); }
+        catch { archiveError = true; }
+      } else {
+        entries.push({ rel, bytes: null, file: f, binary: BINARY_EXT.test(rel), fromArchive: false });
+      }
+    }
+    if (archiveError && entries.length === 0) {
       pushToast({
         tone: "error",
-        title: t("companySkills.uploadNoSkillMd", { defaultValue: "No SKILL.md found" }),
-        body: t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection (or package) must include a SKILL.md file." }),
+        title: t("companySkills.uploadBadArchive", { defaultValue: "Could not read package" }),
+        body: t("companySkills.uploadBadArchiveBody", { defaultValue: "The .skill / .zip file could not be unpacked." }),
       });
       return;
     }
 
-    // Strip the common top-level folder prefix so paths are relative to the skill root.
-    const skillRootPrefix = (() => {
-      const p = skillEntry.rel;
-      const idx = p.toLowerCase().lastIndexOf("skill.md");
-      return p.slice(0, idx); // e.g. "my-skill/" or ""
-    })();
-    const toSkillRelative = (rel: string) => (rel.startsWith(skillRootPrefix) ? rel.slice(skillRootPrefix.length) : rel);
-    const archiveBaseName = isArchive ? files[0]!.name.replace(/\.(skill|zip)$/i, "") : "";
+    const readText = (e: Entry) => (e.file ? e.file.text() : Promise.resolve(strFromU8(e.bytes!)));
+    const readBase64 = async (e: Entry) => {
+      const u8 = e.bytes ?? new Uint8Array(await e.file!.arrayBuffer());
+      let bin = "";
+      const CHUNK = 0x8000;
+      for (let i = 0; i < u8.length; i += CHUNK) bin += String.fromCharCode(...u8.subarray(i, i + CHUNK));
+      return btoa(bin);
+    };
 
-    setUploading(true);
-    try {
-      const markdown = await skillEntry.read();
-      // Parse YAML frontmatter for name/description/slug (best-effort).
-      const fm = /^---\s*\n([\s\S]*?)\n---/.exec(markdown);
-      const readField = (key: string): string | null => {
-        if (!fm) return null;
-        const m = new RegExp(`^${key}\\s*:\\s*(.+)$`, "m").exec(fm[1]!);
-        return m ? m[1]!.trim().replace(/^["']|["']$/g, "") : null;
-      };
-      const fallbackName = (skillRootPrefix.replace(/\/$/, "") || archiveBaseName || "Uploaded skill").split("/").pop() || "Uploaded skill";
-      const name = readField("name") ?? fallbackName;
-      const description = readField("description");
-
-      const created = await companySkillsApi.create(selectedCompanyId, { name, description, markdown, sharingScope: uploadScope, sharingTeams: uploadScope === "team" ? uploadTeams : [], equipOnCreate: uploadEquip, categories: uploadCategories, autoCategorize: uploadCategories.length === 0, equipAgentIds: uploadScope === "private" ? uploadShareAgentIds : [] });
-
-      // Write every other file (skip SKILL.md itself; skip obviously-binary by extension).
-      const supporting = entries.filter((e) => e !== skillEntry && !toSkillRelative(e.rel).toLowerCase().endsWith("skill.md"));
-      let skipped = 0;
-      for (const e of supporting) {
-        const rel = toSkillRelative(e.rel);
-        if (!rel || rel.startsWith(".")) { skipped++; continue; }
-        if (e.binary) { skipped++; continue; }
-        const content = await e.read();
-        await companySkillsApi.updateFile(selectedCompanyId, created.id, rel, content);
+    // Build skill units. A SKILL.md is the ONLY authoritative skill marker:
+    //   • each SKILL.md anchors a skill; files under its folder attach as supporting;
+    //   • a bare .md is promoted to its own skill ONLY when directly selected
+    //     (not from a package) AND no directly-selected SKILL.md governs the batch
+    //     — the "drop N .md → N skills" convenience;
+    //   • every other file (incl. .md inside a package, or .md alongside a
+    //     SKILL.md) is supporting/ignored, NEVER an accidental skill.
+    const roots = entries
+      .filter((e) => isSkillMd(e.rel))
+      .map((e) => ({ mdEntry: e, prefix: e.rel.slice(0, e.rel.length - basename(e.rel).length), fromArchive: e.fromArchive }))
+      .sort((a, b) => b.prefix.length - a.prefix.length);
+    // A top-level ("" prefix) SKILL.md only claims directly-selected files, never
+    // an archive's contents (those are scoped by their own namespaced prefix).
+    const ownerOf = (e: Entry) => roots.find((r) => (r.prefix === "" ? !e.fromArchive : e.rel.startsWith(r.prefix)));
+    const hasDirectSkillMd = roots.some((r) => !r.fromArchive);
+    const supportingByPrefix = new Map<string, Entry[]>(roots.map((r) => [r.prefix, [] as Entry[]]));
+    const looseMd: Entry[] = [];
+    let skippedMd = 0;
+    for (const e of entries) {
+      if (isSkillMd(e.rel)) continue;
+      const owner = ownerOf(e);
+      if (owner) { supportingByPrefix.get(owner.prefix)!.push(e); continue; }
+      if (e.rel.toLowerCase().endsWith(".md")) {
+        if (!e.fromArchive && !hasDirectSkillMd) looseMd.push(e); // standalone markdown skill
+        else skippedMd++; // a reference .md inside a package / bundle → not a skill
       }
+      // else: orphan non-markdown with no owning skill → ignored.
+    }
 
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId) });
-      setImportDialogOpen(false);
-      navigate(routeForSkill(created));
-      pushToast({
-        tone: "success",
-        title: t("companySkills.uploadSuccess", { defaultValue: "Skill uploaded" }),
-        body: skipped > 0
-          ? t("companySkills.uploadSuccessSkipped", { defaultValue: "{{name}} created. {{count}} binary/dotfile(s) skipped.", name: created.name, count: skipped })
-          : t("companySkills.uploadSuccessBody", { defaultValue: "{{name}} is now editable in the Paperclip workspace.", name: created.name }),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Upload failed.";
-      // The server blocks a re-upload of an already-present skill (same slug)
-      // with a 409. Surface that as a clear "already uploaded" message rather
-      // than the raw slug-conflict text, so people who forgot they'd uploaded
-      // it understand the upload was intentionally blocked (no overwrite).
-      const isDuplicate = /already exists|already used|slug/i.test(message);
+    type Unit = { mdEntry: Entry; prefix: string | null; supporting: Entry[] };
+    const units: Unit[] = [
+      ...roots.map((r) => ({ mdEntry: r.mdEntry, prefix: r.prefix, supporting: supportingByPrefix.get(r.prefix)! })),
+      ...looseMd.map((e) => ({ mdEntry: e, prefix: null, supporting: [] as Entry[] })),
+    ];
+
+    if (units.length === 0) {
       pushToast({
         tone: "error",
-        title: isDuplicate
-          ? t("companySkills.uploadDuplicate", { defaultValue: "Already uploaded" })
-          : t("companySkills.uploadFailed", { defaultValue: "Upload failed" }),
-        body: isDuplicate
-          ? t("companySkills.uploadDuplicateBody", {
-              defaultValue: "A skill with this name is already in the store, so this upload was blocked to avoid a duplicate. Open the existing skill to edit it instead.",
-            })
-          : message,
+        title: t("companySkills.uploadNoSkillMd", { defaultValue: "No skill found" }),
+        body: skippedMd > 0
+          ? t("companySkills.uploadOnlyReferenceMd", { defaultValue: "Found {{count}} .md, but none is a skill — a skill needs a SKILL.md. Loose .md inside a package/bundle are treated as references. Drop bare .md files directly (no SKILL.md) to make each one a skill.", count: skippedMd })
+          : t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection must include at least one SKILL.md, .skill/.zip package, or bare .md file." }),
       });
+      return;
+    }
+
+    const parseField = (markdown: string, key: string): string | null => {
+      const fm = /^---\s*\n([\s\S]*?)\n---/.exec(markdown);
+      if (!fm) return null;
+      const m = new RegExp(`^${key}\\s*:\\s*(.+)$`, "m").exec(fm[1]!);
+      return m ? m[1]!.trim().replace(/^["']|["']$/g, "") : null;
+    };
+
+    setUploading(true);
+    const created: { id: string; name: string }[] = [];
+    const failed: { name: string; reason: string }[] = [];
+    let firstCreated: Awaited<ReturnType<typeof companySkillsApi.create>> | null = null;
+    try {
+      for (const unit of units) {
+        const markdown = await readText(unit.mdEntry);
+        const toRel = (rel: string) => (unit.prefix && rel.startsWith(unit.prefix) ? rel.slice(unit.prefix.length) : basename(rel));
+        const fallbackName =
+          unit.prefix !== null
+            ? (unit.prefix.replace(/\/$/, "").split("/").pop() || "Uploaded skill")
+            : basename(unit.mdEntry.rel).replace(/\.md$/i, "");
+        const name = parseField(markdown, "name") ?? fallbackName;
+        try {
+          const skill = await companySkillsApi.create(companyId, {
+            name,
+            description: parseField(markdown, "description"),
+            markdown,
+            sharingScope: uploadScope,
+            sharingTeams: uploadScope === "team" ? uploadTeams : [],
+            equipOnCreate: uploadEquip,
+            categories: uploadCategories,
+            autoCategorize: uploadCategories.length === 0,
+            equipAgentIds: uploadScope === "private" ? uploadShareAgentIds : [],
+          });
+          if (!firstCreated) firstCreated = skill;
+          // Upload supporting files (skip the SKILL.md itself + dotfiles). Binary
+          // assets go up as base64 so images/pdfs land intact.
+          for (const e of unit.supporting) {
+            const rel = toRel(e.rel);
+            if (!rel || rel.startsWith(".") || rel.toLowerCase() === "skill.md") continue;
+            if (e.binary) await companySkillsApi.updateFile(companyId, skill.id, rel, await readBase64(e), "base64");
+            else await companySkillsApi.updateFile(companyId, skill.id, rel, await readText(e));
+          }
+          created.push({ id: skill.id, name: skill.name });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "failed";
+          const isDup = /already exists|already used|slug/i.test(msg);
+          failed.push({ name, reason: isDup ? "duplicate" : msg });
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) });
+      setImportDialogOpen(false);
+
+      if (created.length === 1 && failed.length === 0 && firstCreated) {
+        navigate(routeForSkill(firstCreated));
+        pushToast({
+          tone: "success",
+          title: t("companySkills.uploadSuccess", { defaultValue: "Skill uploaded" }),
+          body: t("companySkills.uploadSuccessBody", { defaultValue: "{{name}} is now editable in the Paperclip workspace.", name: created[0]!.name }),
+        });
+      } else if (created.length > 0) {
+        pushToast({
+          tone: failed.length > 0 ? "warn" : "success",
+          title: t("companySkills.uploadMultiSuccess", { defaultValue: "{{count}} skills uploaded", count: created.length }),
+          body: failed.length > 0
+            ? t("companySkills.uploadMultiPartial", { defaultValue: "Created: {{ok}}. Skipped {{fail}} (duplicate or error): {{names}}", ok: created.map((c) => c.name).join("、"), fail: failed.length, names: failed.map((f) => f.name).join("、") })
+            : t("companySkills.uploadMultiBody", { defaultValue: "Created: {{names}}", names: created.map((c) => c.name).join("、") }),
+        });
+      } else {
+        pushToast({
+          tone: "error",
+          title: t("companySkills.uploadFailed", { defaultValue: "Upload failed" }),
+          body: failed.some((f) => f.reason === "duplicate")
+            ? t("companySkills.uploadDuplicateBody", { defaultValue: "A skill with this name is already in the store, so this upload was blocked to avoid a duplicate. Open the existing skill to edit it instead." })
+            : (failed[0]?.reason ?? "Upload failed."),
+        });
+      }
     } finally {
       setUploading(false);
       setStagedUpload([]);
@@ -5307,12 +5387,15 @@ export function CompanySkills() {
     queryFn: () => accessApi.getCurrentBoardAccess(),
     enabled: !!selectedCompanyId,
   });
-  const { data: myTeamsData } = useQuery({
-    queryKey: ["my-teams", selectedCompanyId],
-    queryFn: () => companySkillsApi.myTeams(selectedCompanyId!),
+  // Teams offered in the "share with team" picker. 資訊部 members and admins get
+  // every team (canShareToAll); everyone else gets only their own. The server
+  // enforces the same set, so this is a convenience, not the security boundary.
+  const { data: shareableTeamsData } = useQuery({
+    queryKey: ["shareable-teams", selectedCompanyId],
+    queryFn: () => companySkillsApi.shareableTeams(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
-  const availableTeams = myTeamsData?.teams ?? [];
+  const availableTeams = shareableTeamsData?.teams ?? [];
   const canReviewSkills = Boolean(
     boardAccessForReview?.isInstanceAdmin ||
     boardAccessForReview?.memberships?.find(
@@ -6430,30 +6513,39 @@ export function CompanySkills() {
               </div>
               {stagedUpload.length > 0 && (() => {
                 const relOf = (f: File) => (f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name);
-                const isArchive = stagedUpload.length === 1 && /\.(skill|zip)$/i.test(stagedUpload[0]!.name);
-                const skillMd = stagedUpload.find((f) => relOf(f).toLowerCase().endsWith("skill.md"));
-                const valid = isArchive || !!skillMd;
-                const detectedName = isArchive
-                  ? stagedUpload[0]!.name.replace(/\.(skill|zip)$/i, "")
-                  : skillMd
-                    ? (relOf(skillMd).replace(/\/?[^/]*skill\.md$/i, "").split("/").pop() || skillMd.name)
-                    : null;
+                const base = (r: string) => r.split("/").pop() || r;
+                // Best-effort count of skills WITHOUT unpacking archives (that's
+                // async): each SKILL.md folder + each loose .md not inside one.
+                const archives = stagedUpload.filter((f) => /\.(skill|zip)$/i.test(f.name));
+                const skillMds = stagedUpload.filter((f) => base(relOf(f)).toLowerCase() === "skill.md");
+                const prefixes = skillMds.map((f) => { const r = relOf(f); return r.slice(0, r.length - base(r).length); });
+                const looseMds = stagedUpload.filter((f) => {
+                  const r = relOf(f); const b = base(r).toLowerCase();
+                  return b !== "skill.md" && b.endsWith(".md") && !prefixes.some((p) => p === "" || r.startsWith(p));
+                });
+                // A bare .md counts as a skill only when NO SKILL.md is present
+                // (else loose .md are references inside a package/bundle). Archive
+                // contents can't be inspected here, so this is a directly-selected
+                // estimate; the actual upload applies the same rule authoritatively.
+                const estimate = skillMds.length > 0 ? skillMds.length : looseMds.length;
+                const valid = archives.length > 0 || estimate > 0;
                 return (
                   <div className="mt-2.5 rounded-md border border-border p-2.5">
                     {valid ? (
                       <div className="text-xs text-foreground">
-                        {isArchive
-                          ? t("companySkills.uploadStagedPackage", { defaultValue: "Ready to unpack: {{name}}", name: detectedName ?? "—" })
-                          : t("companySkills.uploadStaged", { defaultValue: "Ready to create: {{name}}", name: detectedName ?? "—" })}
-                        {!isArchive && (
-                          <span className="ml-1 text-muted-foreground">
-                            {t("companySkills.uploadStagedFiles", { defaultValue: "({{count}} file(s))", count: stagedUpload.length })}
+                        {estimate > 0 && t("companySkills.uploadStagedCount", { defaultValue: "Will create {{count}} skill(s)", count: estimate })}
+                        {archives.length > 0 && (
+                          <span className={estimate > 0 ? "ml-1 text-muted-foreground" : "text-muted-foreground"}>
+                            {t("companySkills.uploadStagedPackages", { defaultValue: "+ {{count}} package(s) (unpacked on upload)", count: archives.length })}
                           </span>
                         )}
+                        <span className="ml-1 text-muted-foreground">
+                          {t("companySkills.uploadStagedFiles", { defaultValue: "({{count}} file(s))", count: stagedUpload.length })}
+                        </span>
                       </div>
                     ) : (
                       <div className="text-xs text-destructive">
-                        {t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection (or package) must include a SKILL.md file." })}
+                        {t("companySkills.uploadNoSkillMdBody", { defaultValue: "The selection must include at least one SKILL.md, .skill/.zip package, or .md file." })}
                       </div>
                     )}
                     <div className="mt-2 flex items-center justify-end gap-2">

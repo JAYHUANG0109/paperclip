@@ -4295,6 +4295,7 @@ export function companySkillService(db: Db) {
     relativePath: string,
     content: string,
     actor: SkillActor | null = null,
+    encoding: "utf8" | "base64" = "utf8",
   ): Promise<CompanySkillFileDetail> {
     await ensureSkillInventoryCurrent(companyId);
     const skill = await getById(companyId, skillId);
@@ -4309,9 +4310,17 @@ export function companySkillService(db: Db) {
     const absolutePath = resolveLocalSkillFilePath(skill, normalizedPath);
     if (!absolutePath) throw notFound("Skill file not found");
 
+    // SKILL.md is always text; base64 only ever carries a binary supporting file
+    // (image/pdf/font shipped inside a .skill/.zip package). Decode to bytes so
+    // the asset is written intact rather than as mojibake'd UTF-8.
+    const isBase64 = encoding === "base64" && normalizedPath !== "SKILL.md";
     const previousContent = await fs.readFile(absolutePath, "utf8").catch(() => null);
     await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-    await fs.writeFile(absolutePath, content, "utf8");
+    if (isBase64) {
+      await fs.writeFile(absolutePath, Buffer.from(content, "base64"));
+    } else {
+      await fs.writeFile(absolutePath, content, "utf8");
+    }
 
     if (normalizedPath === "SKILL.md") {
       const parsed = parseFrontmatterMarkdown(content);
@@ -6738,6 +6747,10 @@ export function companySkillService(db: Db) {
   // The set of team names a user belongs to: the union of metadata.teams across
   // every agent the user has joined. Used for team-scoped skill visibility and
   // to populate the "share with team" multiselect.
+  // Members of this team (the IT department) may share skills to ANY team, not
+  // just their own — they run cross-team enablement. Overridable per deployment.
+  const CROSS_TEAM_SHARE_TEAM = process.env.PAPERCLIP_CROSS_TEAM_SHARE_TEAM?.trim() || "資訊部";
+
   async function getUserTeams(companyId: string, userId: string): Promise<Set<string>> {
     const joined = await db
       .select({ agentId: agentMemberships.agentId })
@@ -6757,6 +6770,42 @@ export function companySkillService(db: Db) {
       for (const t of teams) if (typeof t === "string" && t.trim()) out.add(t.trim());
     }
     return out;
+  }
+
+  // Every team name that exists anywhere in the company (union of all agents'
+  // metadata teams). The basis for "share to any team".
+  async function getAllCompanyTeams(companyId: string): Promise<Set<string>> {
+    const rows = await db
+      .select({ metadata: agentsTable.metadata })
+      .from(agentsTable)
+      .where(eq(agentsTable.companyId, companyId));
+    const out = new Set<string>();
+    for (const r of rows) {
+      const md = r.metadata as Record<string, unknown> | null;
+      if (!md) continue;
+      const teams = Array.isArray(md.teams) ? md.teams : typeof md.team === "string" ? [md.team] : [];
+      for (const t of teams) if (typeof t === "string" && t.trim()) out.add(t.trim());
+    }
+    return out;
+  }
+
+  // The set of teams a user may SHARE a skill/folder TO. Everyone may target
+  // their OWN teams; members of the IT department (資訊部) and company
+  // admins/owners may target ANY team (they run cross-team enablement).
+  // `canShareToAll` lets the UI offer the full team list and skips the
+  // server-side subset check.
+  async function getShareableTeams(
+    companyId: string,
+    userId: string | null,
+    isPrivileged: boolean,
+  ): Promise<{ teams: Set<string>; canShareToAll: boolean }> {
+    if (isPrivileged) return { teams: await getAllCompanyTeams(companyId), canShareToAll: true };
+    if (!userId) return { teams: new Set<string>(), canShareToAll: false };
+    const own = await getUserTeams(companyId, userId);
+    if (own.has(CROSS_TEAM_SHARE_TEAM)) {
+      return { teams: await getAllCompanyTeams(companyId), canShareToAll: true };
+    }
+    return { teams: own, canShareToAll: false };
   }
 
   // ---- Folder registry (scoped, owned folders) ----
@@ -6912,6 +6961,8 @@ export function companySkillService(db: Db) {
     removeSkillAccessMember,
     visiblePrivateSkillIdsForUser,
     getUserTeams,
+    getAllCompanyTeams,
+    getShareableTeams,
     listFull,
     getById,
     getByKey,

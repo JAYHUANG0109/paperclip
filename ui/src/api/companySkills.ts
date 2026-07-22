@@ -193,10 +193,10 @@ export const companySkillsApi = {
     api.get<CompanySkillFileDetail>(
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/files?path=${encodeURIComponent(relativePath)}`,
     ),
-  updateFile: (companyId: string, skillId: string, path: string, content: string) =>
+  updateFile: (companyId: string, skillId: string, path: string, content: string, encoding?: "utf8" | "base64") =>
     api.patch<CompanySkillFileDetail>(
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/files`,
-      { path, content },
+      encoding ? { path, content, encoding } : { path, content },
     ),
   deleteFile: (companyId: string, skillId: string, payload: CompanySkillFileDeleteRequest) =>
     api.deleteWithBody<CompanySkillFileDeleteResult>(
@@ -246,6 +246,11 @@ export const companySkillsApi = {
     ),
   myTeams: (companyId: string) =>
     api.get<{ teams: string[] }>(`/companies/${encodeURIComponent(companyId)}/my-teams`),
+  // Teams the caller may share to. `canShareToAll` = true for 資訊部 / admins.
+  shareableTeams: (companyId: string) =>
+    api.get<{ teams: string[]; canShareToAll: boolean }>(
+      `/companies/${encodeURIComponent(companyId)}/shareable-teams`,
+    ),
   pendingApprovals: (companyId: string) =>
     api.get<CompanySkill[]>(`/companies/${encodeURIComponent(companyId)}/skills/pending-approvals`),
   approve: (companyId: string, skillId: string) =>
