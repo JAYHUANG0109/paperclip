@@ -66,6 +66,7 @@ import {
   type SkillPolicyDecision,
   type SkillPolicyEvaluationResource,
 } from "@paperclipai/shared";
+import { parseTeamToken, teamTokenMatches } from "@paperclipai/shared";
 
 type SkillTelemetryInput = {
   key: string;
@@ -167,9 +168,14 @@ export function companySkillRoutes(db: Db) {
     }
     const all = await agents.list(companyId);
     if (scope === "team") {
-      const wanted = new Set(teams);
-      if (wanted.size === 0) return [];
-      return all.filter((a) => agentTeamNames(a.metadata).some((t) => wanted.has(t))).map((a) => a.id);
+      if (teams.length === 0) return [];
+      // A token may be a plain team or a scoped 校區／部門 (AND) target.
+      return all
+        .filter((a) => {
+          const agentTeams = new Set(agentTeamNames(a.metadata));
+          return teams.some((token) => teamTokenMatches(token, agentTeams));
+        })
+        .map((a) => a.id);
     }
     // company / public_link → everyone
     return all.map((a) => a.id);
@@ -1699,7 +1705,14 @@ export function companySkillRoutes(db: Db) {
     const isPrivileged = isPrivilegedMemberViewer(req, companyId, true);
     const { teams: allowed, canShareToAll } = await svc.getShareableTeams(companyId, shareActorUserId(req), isPrivileged);
     if (canShareToAll) return;
-    const foreign = requested.filter((t) => !allowed.has(t));
+    // A scoped 校區／部門 token requires BOTH halves to be shareable; a plain
+    // token requires just itself.
+    const foreign = requested.filter((token) => {
+      const parsed = parseTeamToken(token);
+      return parsed.scoped
+        ? !(allowed.has(parsed.campus) && !!parsed.department && allowed.has(parsed.department))
+        : !allowed.has(parsed.campus);
+    });
     if (foreign.length > 0) {
       throw forbidden(`You can only share to your own teams. Not permitted: ${foreign.join("、")}`);
     }

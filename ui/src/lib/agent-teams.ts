@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Agent } from "@paperclipai/shared";
+import { parseTeamToken } from "@paperclipai/shared";
 
 // An agent's team membership, read from metadata. Asana-style multi-team:
 // metadata.teams (string[]) — an agent may belong to several teams. Falls back
@@ -61,6 +62,16 @@ export function localizeTeamName(name: string, lang: string | null | undefined):
   return isEn ? (TEAM_EN[name] ?? name) : name;
 }
 
+/**
+ * Human label for a sharing token (plain or scoped 校區／部門), localized. A
+ * scoped token reads "校區 · 部門"; a plain token is just the localized name.
+ */
+export function formatTeamToken(token: string, lang: string | null | undefined): string {
+  const parsed = parseTeamToken(token);
+  if (!parsed.scoped || !parsed.department) return localizeTeamName(parsed.campus, lang);
+  return `${localizeTeamName(parsed.campus, lang)} · ${localizeTeamName(parsed.department, lang)}`;
+}
+
 /** Unique, sorted list of every team present across the given agents. */
 export function listAllTeams(agents: Pick<Agent, "metadata">[]): string[] {
   const set = new Set<string>();
@@ -72,6 +83,30 @@ export function listAllTeams(agents: Pick<Agent, "metadata">[]): string[] {
 // department › under these; the Virtual Office intentionally ignores the campus
 // level and groups by department only, so it filters these out of its chips.
 export const CAMPUS_TEAMS = new Set(["仁美", "市政", "西屯", "黎明", "北屯", "總部"]);
+
+// Campus → its departments (from doc/sa-campus-roster.md). Drives the cascading
+// team-scope picker so you can target a specific campus's department (e.g.
+// 北屯／幼教學組) even before that team has any agent. Keep in sync with the roster.
+export const CAMPUS_DEPARTMENTS: Record<string, string[]> = {
+  "仁美": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組", "跨校巡輔"],
+  "市政": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "西屯": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "黎明": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "北屯": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "總部": ["處長室", "秘書室", "數位資訊部", "人才發展部", "品牌發展部", "基金會", "採購工程部", "財務部", "餐飲部"],
+};
+
+// Ordered campus list for the picker.
+export const CAMPUS_ORDER = ["仁美", "市政", "西屯", "黎明", "北屯", "總部"];
+
+// Cross-campus groups — not scoped to any campus. Shown in the picker's 跨校/全部 section.
+export const CROSS_CAMPUS_GROUPS = ["領導團隊", "系統自動化"];
+
+// The distinct department names across all campuses — for the "this dept in every
+// campus" (plain department token) options in the 跨校/全部 section.
+export const ALL_DEPARTMENTS = Array.from(
+  new Set(Object.values(CAMPUS_DEPARTMENTS).flat()),
+);
 
 /**
  * Department-level teams only (campus names excluded) — for surfaces that group

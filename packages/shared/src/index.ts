@@ -1,5 +1,13 @@
 export { agentAdapterTypeSchema, optionalAgentAdapterTypeSchema } from "./adapter-type.js";
 export {
+  SCOPED_TEAM_SEPARATOR,
+  parseTeamToken,
+  makeScopedTeamToken,
+  teamTokenMatches,
+  anyTeamTokenMatches,
+  type ParsedTeamToken,
+} from "./team-tokens.js";
+export {
   getAgentOrgChainHealth,
   getAgentWorkEligibility,
   isAgentAssignableToWork,

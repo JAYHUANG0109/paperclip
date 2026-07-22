@@ -94,7 +94,7 @@ import type {
   IssueAttachment,
   IssueDocument,
 } from "@paperclipai/shared";
-import { isUuidLike, normalizeAgentUrlKey, parseFrontmatterMarkdown } from "@paperclipai/shared";
+import { anyTeamTokenMatches, isUuidLike, normalizeAgentUrlKey, parseFrontmatterMarkdown } from "@paperclipai/shared";
 import { resolvePaperclipInstanceRoot } from "../home-paths.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
 import { ghFetch, gitHubApiBase, resolveRawGitHubUrl } from "./github-fetch.js";
@@ -3106,7 +3106,7 @@ export function companySkillService(db: Db) {
       // Team-scoped skills: visible only to the creator or members of a shared team.
       if (skill.sharingScope === "team" && viewer && !viewer.isPrivileged) {
         const isCreator = viewer.userId && skill.createdByUserId === viewer.userId;
-        const sharesTeam = viewerTeams && (skill.sharingTeams ?? []).some((teamName) => viewerTeams.has(teamName));
+        const sharesTeam = !!viewerTeams && anyTeamTokenMatches(skill.sharingTeams ?? [], viewerTeams);
         if (!isCreator && !sharesTeam) return false;
       }
       // Restricted numbered founder folders (00–10) are the founder's private org
@@ -6869,7 +6869,7 @@ export function companySkillService(db: Db) {
         if (row.scope === "company") return true;
         if (row.scope === "private") return isCreator || (!!viewer.userId && (row.sharedUserIds ?? []).includes(viewer.userId));
         // team
-        return isCreator || (!!viewerTeams && (row.sharingTeams ?? []).some((t) => viewerTeams.has(t)));
+        return isCreator || (!!viewerTeams && anyTeamTokenMatches(row.sharingTeams ?? [], viewerTeams));
       })
       .map(toFolder)
       .sort((a, b) => a.name.localeCompare(b.name));

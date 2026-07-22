@@ -8,6 +8,7 @@ import {
   type SkillLang,
 } from "@/lib/skill-i18n";
 import { SkillMembersPanel } from "../components/SkillMembersPanel";
+import { TeamScopePicker } from "../components/TeamScopePicker";
 import { useCallback, useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1865,6 +1866,7 @@ function NewFolderDialog({
   onClose,
   onSubmit,
   availableTeams,
+  canShareToAll,
   memberOptions,
   isPending,
 }: {
@@ -1872,6 +1874,7 @@ function NewFolderDialog({
   onClose: () => void;
   onSubmit: (payload: CompanySkillFolderCreateRequest) => void;
   availableTeams: string[];
+  canShareToAll?: boolean;
   memberOptions: { id: string; label: string }[];
   isPending: boolean;
 }) {
@@ -1920,25 +1923,7 @@ function NewFolderDialog({
             ))}
           </div>
           {scope === "team" && (
-            availableTeams.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("companySkills.noTeams", { defaultValue: "You don't belong to any team yet." })}</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {availableTeams.map((team) => {
-                  const sel = teams.includes(team);
-                  return (
-                    <button
-                      key={team}
-                      type="button"
-                      onClick={() => setTeams((cur) => sel ? cur.filter((x) => x !== team) : [...cur, team])}
-                      className={cn("rounded-full border px-2.5 py-0.5 text-xs", sel ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring")}
-                    >
-                      {team}
-                    </button>
-                  );
-                })}
-              </div>
-            )
+            <TeamScopePicker value={teams} onChange={setTeams} availableTeams={availableTeams} canShareToAll={canShareToAll} />
           )}
           {scope === "private" && (
             <div>
@@ -1977,6 +1962,7 @@ function FolderSettingsDialog({
   onSave,
   onDelete,
   availableTeams,
+  canShareToAll,
   memberOptions,
   isPending,
   isDeleting,
@@ -1987,6 +1973,7 @@ function FolderSettingsDialog({
   onSave: (folderId: string, payload: CompanySkillFolderUpdateRequest) => void;
   onDelete: (folder: CompanySkillFolder) => void;
   availableTeams: string[];
+  canShareToAll?: boolean;
   memberOptions: { id: string; label: string }[];
   isPending: boolean;
   isDeleting: boolean;
@@ -2045,25 +2032,7 @@ function FolderSettingsDialog({
             ))}
           </div>
           {scope === "team" && (
-            availableTeams.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("companySkills.noTeams", { defaultValue: "You don't belong to any team yet." })}</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {availableTeams.map((team) => {
-                  const sel = teams.includes(team);
-                  return (
-                    <button
-                      key={team}
-                      type="button"
-                      onClick={() => setTeams((cur) => sel ? cur.filter((x) => x !== team) : [...cur, team])}
-                      className={cn("rounded-full border px-2.5 py-0.5 text-xs", sel ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring")}
-                    >
-                      {team}
-                    </button>
-                  );
-                })}
-              </div>
-            )
+            <TeamScopePicker value={teams} onChange={setTeams} availableTeams={availableTeams} canShareToAll={canShareToAll} />
           )}
           {scope === "private" && (
             <div>
@@ -2121,6 +2090,7 @@ function NewSkillWizard({
   error,
   onCancel,
   availableTeams,
+  canShareToAll,
   existingCategories = [],
   shareAgents = [],
   onAddFolder,
@@ -2131,6 +2101,7 @@ function NewSkillWizard({
   error: string | null;
   onCancel: () => void;
   availableTeams: string[];
+  canShareToAll?: boolean;
   existingCategories?: string[];
   shareAgents?: { id: string; label: string }[];
   onAddFolder?: () => void;
@@ -2394,28 +2365,12 @@ function NewSkillWizard({
                 <div className="mb-2 text-xs font-medium text-muted-foreground">
                   {t("companySkills.chooseTeams", { defaultValue: "Share with teams" })}
                 </div>
-                {availableTeams.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">{t("companySkills.noTeams", { defaultValue: "You don't belong to any team yet." })}</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {availableTeams.map((team) => {
-                      const selected = draft.sharingTeams.includes(team);
-                      return (
-                        <button
-                          key={team}
-                          type="button"
-                          onClick={() => patchDraft({ sharingTeams: selected ? draft.sharingTeams.filter((x) => x !== team) : [...draft.sharingTeams, team] })}
-                          className={cn(
-                            "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
-                            selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring",
-                          )}
-                        >
-                          {team}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                <TeamScopePicker
+                  value={draft.sharingTeams}
+                  onChange={(next) => patchDraft({ sharingTeams: next })}
+                  availableTeams={availableTeams}
+                  canShareToAll={canShareToAll}
+                />
               </div>
             )}
             {draft.sharingScope === "private" && (
@@ -5396,6 +5351,7 @@ export function CompanySkills() {
     enabled: !!selectedCompanyId,
   });
   const availableTeams = shareableTeamsData?.teams ?? [];
+  const canShareToAllTeams = shareableTeamsData?.canShareToAll ?? false;
   const canReviewSkills = Boolean(
     boardAccessForReview?.isInstanceAdmin ||
     boardAccessForReview?.memberships?.find(
@@ -6323,6 +6279,7 @@ export function CompanySkills() {
           </DialogHeader>
           <NewSkillWizard
             availableTeams={availableTeams}
+            canShareToAll={canShareToAllTeams}
             existingCategories={pickerFolderNames}
             shareAgents={agentShareOptions}
             initialDraft={createDraft}
@@ -6415,28 +6372,12 @@ export function CompanySkills() {
                   <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
                     {t("companySkills.chooseTeams", { defaultValue: "Share with teams" })}
                   </div>
-                  {availableTeams.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground">{t("companySkills.noTeams", { defaultValue: "You don't belong to any team yet." })}</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {availableTeams.map((team) => {
-                        const selected = uploadTeams.includes(team);
-                        return (
-                          <button
-                            key={team}
-                            type="button"
-                            onClick={() => setUploadTeams((cur) => selected ? cur.filter((x) => x !== team) : [...cur, team])}
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
-                              selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-ring",
-                            )}
-                          >
-                            {team}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <TeamScopePicker
+                    value={uploadTeams}
+                    onChange={setUploadTeams}
+                    availableTeams={availableTeams}
+                    canShareToAll={canShareToAllTeams}
+                  />
                 </div>
               )}
               {uploadScope === "private" && (
@@ -6591,6 +6532,7 @@ export function CompanySkills() {
         onClose={() => setNewFolderDialogOpen(false)}
         onSubmit={(payload) => createCategoryFolder.mutate(payload)}
         availableTeams={availableTeams}
+        canShareToAll={canShareToAllTeams}
         memberOptions={memberOptions}
         isPending={createCategoryFolder.isPending}
       />
@@ -6601,6 +6543,7 @@ export function CompanySkills() {
         onSave={(folderId, payload) => updateCategoryFolder.mutate({ folderId, payload })}
         onDelete={(folder) => deleteCategoryFolder.mutate(folder.id)}
         availableTeams={availableTeams}
+        canShareToAll={canShareToAllTeams}
         memberOptions={memberOptions}
         isPending={updateCategoryFolder.isPending}
         isDeleting={deleteCategoryFolder.isPending}
@@ -6625,6 +6568,7 @@ export function CompanySkills() {
         pending={createFolder.isPending || updateFolder.isPending}
         memberOptions={memberOptions}
         availableTeams={availableTeams}
+        canShareToAll={canShareToAllTeams}
         onOpenChange={(open) => {
           setFolderDialogOpen(open);
           if (!open) setFolderDialogParentId(null);
@@ -6692,6 +6636,7 @@ export function CompanySkills() {
                 <NewSkillWizard
                   initialDraft={studioDraft}
                   availableTeams={availableTeams}
+                  canShareToAll={canShareToAllTeams}
                   onCreate={(payload) => createSkill.mutate(payload)}
                   isPending={createSkill.isPending}
                   error={createError}

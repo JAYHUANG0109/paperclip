@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { FolderKind, FolderListItem, FolderListResult, FolderScope } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
+import { TeamScopePicker } from "@/components/TeamScopePicker";
 import {
   Dialog,
   DialogContent,
@@ -623,6 +624,7 @@ export function FolderFormDialog({
   pending = false,
   memberOptions = [],
   availableTeams = [],
+  canShareToAll = false,
 }: {
   open: boolean;
   kind: FolderKind;
@@ -634,6 +636,8 @@ export function FolderFormDialog({
   memberOptions?: { id: string; label: string }[];
   /** Team names selectable when scope = team. */
   availableTeams?: string[];
+  /** When true, offer the full campus×department catalog (privileged sharer). */
+  canShareToAll?: boolean;
 }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState<string | null>(FOLDER_COLORS[0] ?? null);
@@ -748,21 +752,15 @@ export function FolderFormDialog({
               ))}
             </div>
           </div>
-          {scope === "team" && availableTeams.length > 0 ? (
+          {scope === "team" ? (
             <div className="space-y-1.5">
               <div className="text-sm font-medium">Teams with access</div>
-              <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border border-border p-2">
-                {availableTeams.map((team) => (
-                  <label key={team} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={sharingTeams.includes(team)}
-                      onChange={() => setSharingTeams((cur) => toggle(cur, team))}
-                    />
-                    <span className="truncate">{team}</span>
-                  </label>
-                ))}
-              </div>
+              <TeamScopePicker
+                value={sharingTeams}
+                onChange={setSharingTeams}
+                availableTeams={availableTeams}
+                canShareToAll={canShareToAll}
+              />
             </div>
           ) : null}
           {scope === "private" && memberOptions.length > 0 ? (
