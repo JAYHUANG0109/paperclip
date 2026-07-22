@@ -476,6 +476,10 @@ export interface CompanySkillFileDetail {
   language: string | null;
   markdown: boolean;
   editable: boolean;
+  /** True for binary files (Office docs, images, archives…) — content is a
+   *  human-readable placeholder, not the raw bytes, so it isn't shown as mojibake. */
+  binary?: boolean;
+  byteSize?: number;
 }
 
 export interface CompanySkillFileUpdateRequest {

@@ -1793,7 +1793,9 @@ function normalizeCategoryList(values: unknown): string[] {
 
 function normalizeStoreText(value: unknown, maxLength = 500) {
   const text = asString(value);
-  return text ? text.slice(0, maxLength) : null;
+  // Strip NUL centrally — Postgres text columns reject 0x00, so any store-text
+  // field (description/tagline/author/…) is safe no matter what was uploaded.
+  return text ? stripNul(text).slice(0, maxLength) : null;
 }
 
 function readStringList(value: unknown): string[] {
@@ -4095,6 +4097,36 @@ export function companySkillService(db: Db) {
     }
 
     const source = deriveSkillSourceInfo(skill);
+
+    // Binary files (Office docs, images, archives…) are stored intact but must
+    // never be UTF-8-decoded — that turns them into mojibake ("PK…"). Return a
+    // human-readable placeholder + a binary flag instead of the raw bytes.
+    if (isBinarySkillFilePath(normalizedPath)) {
+      let byteSize: number | undefined;
+      const absolutePath = (skill.sourceType === "local_path" || skill.sourceType === "catalog")
+        ? resolveLocalSkillFilePath(skill, normalizedPath)
+        : null;
+      if (absolutePath) {
+        try { byteSize = (await fs.stat(absolutePath)).size; } catch { /* size best-effort */ }
+      }
+      const ext = (normalizedPath.split(".").pop() ?? "").toLowerCase();
+      const kb = byteSize != null ? ` · ${Math.max(1, Math.round(byteSize / 1024))} KB` : "";
+      return {
+        skillId: skill.id,
+        path: normalizedPath,
+        kind: fileEntry.kind,
+        content:
+          `〔二進位檔案 · .${ext}${kb}〕\n\n`
+          + `這是二進位檔（例如 .pptx/.docx/.xlsx/圖片/壓縮檔），無法以文字預覽——顯示為亂碼是正常的。檔案已原樣保存，可下載使用。\n\n`
+          + `要讓 agent 讀得懂的內容，請放在 SKILL.md 或 references/*.md（純文字）。.pptx/.docx 這類 Office 檔通常是給「人」看的文件，agent 無法直接讀取其內容。`,
+        language: null,
+        markdown: false,
+        editable: false,
+        binary: true,
+        byteSize,
+      };
+    }
+
     let content = "";
 
     if (skill.sourceType === "local_path" || skill.sourceType === "catalog") {
@@ -4381,6 +4413,10 @@ export function companySkillService(db: Db) {
     if (isBase64) {
       await fs.writeFile(absolutePath, Buffer.from(content, "base64"));
     } else {
+      // Text write → strip NUL so it can't corrupt the file or 500 the DB
+      // markdown update (Postgres text rejects 0x00). Reassigned so the DB
+      // update + version snapshot below use the sanitized content too.
+      content = stripNul(content);
       await fs.writeFile(absolutePath, content, "utf8");
     }
 
