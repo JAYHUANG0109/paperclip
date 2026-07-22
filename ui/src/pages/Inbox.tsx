@@ -9,7 +9,7 @@ import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { dashboardApi } from "../api/dashboard";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
-import { issuesApi, type PendingInteractionInboxItem } from "../api/issues";
+import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -105,7 +105,6 @@ import {
   UserPlus,
   Search,
   ListTree,
-  ClipboardCheck,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { PageTabBar } from "../components/PageTabBar";
@@ -682,100 +681,6 @@ function JoinRequestInboxRow({
   );
 }
 
-/**
- * A pinned "Needs your decision" section at the top of the inbox: pending
- * thread interactions awaiting THIS user's response. request_confirmation gets
- * inline Approve / Reject (resolved without leaving the inbox); richer kinds
- * (questions / checkbox / suggest) link out to the task where their form lives.
- * Self-contained (own query + mutations) so it never disturbs the aggregated
- * inbox list.
- */
-function PendingDecisionsSection({ companyId }: { companyId: string }) {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const { data: items = [] } = useQuery({
-    queryKey: queryKeys.issues.pendingInteractions(companyId),
-    queryFn: () => issuesApi.pendingInteractions(companyId),
-    enabled: !!companyId,
-  });
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.issues.pendingInteractions(companyId) });
-  };
-  const accept = useMutation({
-    mutationFn: (it: PendingInteractionInboxItem) => issuesApi.acceptInteraction(it.issueId, it.interactionId),
-    onSettled: () => { setBusyId(null); invalidate(); },
-  });
-  const reject = useMutation({
-    mutationFn: (it: PendingInteractionInboxItem) => issuesApi.rejectInteraction(it.issueId, it.interactionId),
-    onSettled: () => { setBusyId(null); invalidate(); },
-  });
-  if (items.length === 0) return null;
-  return (
-    <div className="rounded-lg border border-border">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">{t("inbox.needsYourDecision", { defaultValue: "Needs your decision" })}</span>
-        <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
-      </div>
-      <div>
-        {items.map((it) => {
-          const canDecide = it.kind === "request_confirmation";
-          const busy = busyId === it.interactionId;
-          return (
-            <div
-              key={it.interactionId}
-              className="group flex items-start gap-2 border-b border-border px-3 py-2.5 last:border-b-0 sm:items-center"
-            >
-              <Link
-                to={`/issues/${it.identifier ?? it.issueId}`}
-                className="flex min-w-0 flex-1 items-start gap-2 no-underline text-inherit transition-colors hover:bg-accent/50"
-              >
-                <span className="mt-0.5 shrink-0 rounded-md bg-muted p-1.5 sm:mt-0">
-                  <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 text-sm font-medium sm:truncate sm:line-clamp-none">
-                    {it.title || it.issueTitle}
-                  </span>
-                  <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                    {it.identifier ? <span>{it.identifier}</span> : null}
-                    <span>{t("inbox.updatedAgo", { time: timeAgo(it.createdAt) })}</span>
-                    {!canDecide ? (
-                      <span>{t("inbox.opensToRespond", { defaultValue: "Open to respond" })}</span>
-                    ) : null}
-                  </span>
-                </span>
-              </Link>
-              {canDecide ? (
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button
-                    size="sm"
-                    className="h-8 bg-green-700 px-3 text-white hover:bg-green-600"
-                    disabled={busy}
-                    onClick={() => { setBusyId(it.interactionId); accept.mutate(it); }}
-                  >
-                    {t("common.approve")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-8 px-3"
-                    disabled={busy}
-                    onClick={() => { setBusyId(it.interactionId); reject.mutate(it); }}
-                  >
-                    {t("common.reject")}
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function Inbox() {
   const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
@@ -1250,7 +1155,9 @@ export function Inbox() {
     () =>
       getInboxWorkItems({
         issues: tab === "all" && !showTouchedCategory ? [] : issuesToRender,
-        approvals: tab === "all" && !showApprovalsCategory ? [] : approvalsToRender,
+        // Approvals are decisions → shown in the 待決議 tab (attention feed), not
+        // the inbox, so they don't live in two places.
+        approvals: [],
         failedRuns: failedRunsForTab,
         joinRequests: joinRequestsForTab,
       }),
@@ -2160,7 +2067,8 @@ export function Inbox() {
   const showGeneralIssueToolbarControls = tab !== "blocked";
   return (
     <div className="space-y-6">
-      {selectedCompanyId && <PendingDecisionsSection companyId={selectedCompanyId} />}
+      {/* Decisions (pending interactions + approvals) live in the 待決議 tab, not
+          the inbox — the attention feed already surfaces them there. */}
       {selectedCompanyId && <NotificationsInboxSection companyId={selectedCompanyId} />}
       <div className="space-y-2">
         {/* Search — full-width row on mobile, inline on desktop */}

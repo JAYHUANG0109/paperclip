@@ -30,7 +30,7 @@ const KANS = [
   { key: "setup", title: "關卡 1｜設定與連線", desc: "教學（互動卡片）：到「我的助理 / My Agent」→ 連線，貼上你自己的 Asana 個人存取權杖（Personal Access Token）。完成條件（真實訊號）：Asana 連線一存好，系統自動判定過關。" },
   { key: "first-task", title: "關卡 2｜建立你的第一個任務", desc: "教學：到「我的助理 / My Agent」頁 → 新增任務 → 指派給你的 agent → 寫清楚驗收（例：整理 Asana 上某專案的任務清單）。完成條件（真實訊號）：真的建立了一個你自己開的任務（非教學關卡）。" },
   { key: "collaborate", title: "關卡 3｜與 agent 協作", desc: "教學：agent 常需要你拍板。用「卡片內建的文字框」直接回一句話並按『完成本關』。完成條件（真實訊號）：你在卡片裡送出了一段非空回覆。" },
-  { key: "dashboard", title: "關卡 4｜儀表板與收件匣", desc: "教學：到「儀表板 / Dashboard」找「待我處理 / Needs you」，開啟一個項目。完成條件：找到並開啟一個項目後回來確認。" },
+  { key: "dashboard", title: "關卡 4｜儀表板：我的任務・我的行程・待決議", desc: "教學：到「儀表板 / Dashboard」看「我的任務（Asana）」與「我的行程」；在『我的行程』設定填入你的名字比對（中文全名/英文名/暱稱，逗號分隔）並儲存，讓 Google 日曆活動正確載入；需要你拍板的事都在左側「待決議」。完成條件：走過儀表板三塊、存好名字比對、並在待決議處理一項。" },
   { key: "skills-routines", title: "關卡 5｜技能與例行作業", desc: "教學：技能（Skills）依情境自動觸發；例行作業（Routines）是排定的固定行程。完成條件：看過一個技能或一個 routine 後回來確認。" },
 ] as const;
 
