@@ -1082,6 +1082,11 @@ export function NewIssueDialog() {
       status,
       priority: priority || "medium",
       workMode,
+      // A human explicitly clicking "Create Task" means it — don't collapse it
+      // into a recent open task that happens to share a title (e.g. a reused
+      // template title like "建立新代理"). Double-submit is already guarded by the
+      // disabled-while-pending button; idempotency keys are unaffected.
+      allowDuplicate: true,
       ...(selectedAssigneeAgentId ? { assigneeAgentId: selectedAssigneeAgentId } : {}),
       ...(selectedAssigneeUserId ? { assigneeUserId: selectedAssigneeUserId } : {}),
       ...(newIssueDefaults.parentId ? { parentId: newIssueDefaults.parentId } : {}),
