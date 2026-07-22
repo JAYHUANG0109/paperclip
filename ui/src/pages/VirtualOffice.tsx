@@ -17,7 +17,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { displayAgentName } from "../lib/agent-name";
 import { TeamFilterBar } from "../components/TeamFilterBar";
 import { ViewSwitchButton } from "../components/ViewSwitchButton";
-import { agentMatchesTeams, agentTeams, listAllTeams, useAgentTeamFilter } from "../lib/agent-teams";
+import { agentMatchesTeams, agentTeams, listDepartments, useAgentTeamFilter } from "../lib/agent-teams";
 import { sortAgentsByAccessLevel } from "../lib/agent-order";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { agentUrl } from "../lib/utils";
@@ -118,7 +118,9 @@ export function VirtualOffice() {
   const { selected: teamFilter, toggle: toggleTeam, clear: clearTeams } = useAgentTeamFilter(selectedCompanyId);
   const workingAgentIds = useMemo(() => new Set((liveRuns ?? []).map((r) => r.agentId)), [liveRuns]);
   const allAgents = useMemo(() => (agents ?? []).filter((a) => a.status !== "terminated"), [agents]);
-  const allTeams = useMemo(() => listAllTeams(allAgents), [allAgents]);
+  // The office groups by department only (no campus level) — so campus names are
+  // excluded from the filter chips; department chips still match their agents.
+  const allTeams = useMemo(() => listDepartments(allAgents), [allAgents]);
   // Avatars are filtered by the shared team selection (same one the Agents page
   // uses), so switching between the two views keeps the same filter applied.
   // Ordering (top-left → bottom-right):

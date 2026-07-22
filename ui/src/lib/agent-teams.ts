@@ -68,6 +68,22 @@ export function listAllTeams(agents: Pick<Agent, "metadata">[]): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
+// The campus (top) level of the team hierarchy. The sidebar nests
+// department › under these; the Virtual Office intentionally ignores the campus
+// level and groups by department only, so it filters these out of its chips.
+export const CAMPUS_TEAMS = new Set(["仁美", "市政", "西屯", "黎明", "北屯", "總部"]);
+
+/**
+ * Department-level teams only (campus names excluded) — for surfaces that group
+ * by department rather than campus, e.g. the Virtual Office. Cross-campus groups
+ * like 領導團隊 / 系統自動化 are departments here (not campuses), so they stay.
+ */
+export function listDepartments(agents: Pick<Agent, "metadata">[]): string[] {
+  const set = new Set<string>();
+  for (const a of agents) for (const t of agentTeams(a)) if (!CAMPUS_TEAMS.has(t)) set.add(t);
+  return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
 /** An empty selection means "no filter" (everyone passes). */
 export function agentMatchesTeams(agent: Pick<Agent, "metadata">, selected: string[]): boolean {
   if (selected.length === 0) return true;
