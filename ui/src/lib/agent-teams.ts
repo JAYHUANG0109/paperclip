@@ -76,7 +76,7 @@ export function formatTeamToken(token: string, lang: string | null | undefined):
 export function listAllTeams(agents: Pick<Agent, "metadata">[]): string[] {
   const set = new Set<string>();
   for (const a of agents) for (const t of agentTeams(a)) set.add(t);
-  return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return Array.from(set).sort(compareTeams);
 }
 
 // The campus (top) level of the team hierarchy. The sidebar nests
@@ -99,6 +99,21 @@ export const CAMPUS_DEPARTMENTS: Record<string, string[]> = {
 // Ordered campus list for the picker.
 export const CAMPUS_ORDER = ["仁美", "市政", "西屯", "黎明", "北屯", "總部"];
 
+// Teams whose agents are infrastructure / non-user (e.g. 系統自動化 → Reflection
+// Coach, Wiki Maintainer). We always prioritize user-owned teams, so these sort
+// LAST wherever teams are listed or grouped.
+export const DEPRIORITIZED_TEAMS = new Set(["系統自動化"]);
+
+/** 0 for normal (user) teams, 1 for infrastructure teams → infra sorts last. */
+export function teamPriorityRank(name: string): number {
+  return DEPRIORITIZED_TEAMS.has(name) ? 1 : 0;
+}
+
+function compareTeams(a: string, b: string): number {
+  return teamPriorityRank(a) - teamPriorityRank(b)
+    || a.localeCompare(b, undefined, { sensitivity: "base" });
+}
+
 // Cross-campus groups — not scoped to any campus. Shown in the picker's 跨校/全部 section.
 export const CROSS_CAMPUS_GROUPS = ["領導團隊", "系統自動化"];
 
@@ -116,7 +131,7 @@ export const ALL_DEPARTMENTS = Array.from(
 export function listDepartments(agents: Pick<Agent, "metadata">[]): string[] {
   const set = new Set<string>();
   for (const a of agents) for (const t of agentTeams(a)) if (!CAMPUS_TEAMS.has(t)) set.add(t);
-  return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return Array.from(set).sort(compareTeams);
 }
 
 export const OFFICE_UNGROUPED_KEY = "__ungrouped__";
