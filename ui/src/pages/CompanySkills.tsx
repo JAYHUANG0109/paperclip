@@ -5084,7 +5084,7 @@ export function CompanySkills() {
     // path. Archive contents get the folder that held the .skill; a package is
     // opaque, so its internal layout is only for supporting-file paths, never for
     // store folders. Non-archive files derive their folder from `rel` (container null).
-    type Entry = { rel: string; bytes: Uint8Array | null; file: File | null; binary: boolean; fromArchive: boolean; container: string | null };
+    type Entry = { rel: string; bytes: Uint8Array | null; file: File | null; binary: boolean; fromArchive: boolean; container: string | null; lastModified: number };
     const entries: Entry[] = [];
     const isSkillMd = (rel: string) => basename(rel).toLowerCase() === "skill.md";
 
@@ -5093,16 +5093,16 @@ export function CompanySkills() {
     // SKILL.md from claiming sibling files in the same OS folder as its supporting
     // material (which would swallow other skills). The skill still files into
     // `container` — the real OS folder that held the .skill.
-    const expandArchive = (ns: string, container: string, bytes: Uint8Array) => {
+    const expandArchive = (ns: string, container: string, bytes: Uint8Array, lastModified: number) => {
       const unz = unzipSync(bytes);
       let nested = 0;
       for (const [p, data] of Object.entries(unz)) {
         if (p.endsWith("/")) continue;
         if (/\.(skill|zip)$/i.test(p)) {
-          try { expandArchive(`${ns}/n${nested += 1}`, container, data); }
+          try { expandArchive(`${ns}/n${nested += 1}`, container, data, lastModified); }
           catch { /* skip a corrupt nested archive */ }
         } else {
-          entries.push({ rel: joinPath(ns, p), bytes: data, file: null, binary: BINARY_EXT.test(p), fromArchive: true, container });
+          entries.push({ rel: joinPath(ns, p), bytes: data, file: null, binary: BINARY_EXT.test(p), fromArchive: true, container, lastModified });
         }
       }
     };
@@ -5112,10 +5112,10 @@ export function CompanySkills() {
     for (const f of files) {
       const rel = f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name;
       if (/\.(skill|zip)$/i.test(f.name)) {
-        try { expandArchive(` a${archiveIndex += 1}`, dirOf(rel), new Uint8Array(await f.arrayBuffer())); }
+        try { expandArchive(` a${archiveIndex += 1}`, dirOf(rel), new Uint8Array(await f.arrayBuffer()), f.lastModified); }
         catch { archiveError = true; }
       } else {
-        entries.push({ rel, bytes: null, file: f, binary: BINARY_EXT.test(rel), fromArchive: false, container: null });
+        entries.push({ rel, bytes: null, file: f, binary: BINARY_EXT.test(rel), fromArchive: false, container: null, lastModified: f.lastModified });
       }
     }
     if (archiveError && entries.length === 0) {
@@ -5198,6 +5198,7 @@ export function CompanySkills() {
     const createdFolderNames = new Set<string>();
     let prunedFileCount = 0; // stray files removed from re-matched skills
     let prunedFolderCount = 0; // empty leftover folders removed from the uploaded tree
+    let mergedVersionCount = 0; // files that resolved to the same skill (kept newest)
     const touchedSkillIds = new Set<string>(); // created + matched, for scope-equip
     try {
       // Mirror the uploaded directory tree into nested store folders, lazily and
@@ -5299,20 +5300,39 @@ export function CompanySkills() {
         return pruned;
       };
 
+      // Pre-pass: collapse units that resolve to the SAME skill name — e.g. a
+      // .skill package AND a newer loose "_SKILL.md" of it — so they count as ONE
+      // skill and the most-recently-modified source wins (a v3 markdown beats an
+      // older packaged copy). The rest are reported as merged, not separate.
+      type Planned = { unit: Unit; markdown: string; name: string };
+      const planned: Planned[] = [];
       for (const unit of units) {
         const markdown = await readText(unit.mdEntry);
+        const dirPath = unit.mdEntry.container != null ? unit.mdEntry.container : dirOf(unit.mdEntry.rel);
+        const leaf = dirPath.split("/").filter(Boolean).pop() ?? null;
+        const fallbackName =
+          unit.mdEntry.container != null
+            ? (leaf || "Uploaded skill")
+            : unit.prefix !== null
+              ? (unit.prefix.replace(/\/$/, "").split("/").pop() || "Uploaded skill")
+              : basename(unit.mdEntry.rel).replace(/\.md$/i, "");
+        planned.push({ unit, markdown, name: parseField(markdown, "name") ?? fallbackName });
+      }
+      const bestByName = new Map<string, Planned>();
+      for (const p of planned) {
+        const key = nfcKey(p.name);
+        const cur = bestByName.get(key);
+        if (!cur) { bestByName.set(key, p); continue; }
+        mergedVersionCount += 1;
+        if (p.unit.mdEntry.lastModified > cur.unit.mdEntry.lastModified) bestByName.set(key, p);
+      }
+
+      for (const { unit, markdown, name } of bestByName.values()) {
         const toRel = (rel: string) => (unit.prefix && rel.startsWith(unit.prefix) ? rel.slice(unit.prefix.length) : basename(rel));
         // Archive skills file into their `container` (the OS folder that held the
         // .skill); everything else mirrors the directory of its own file.
         const dirPath = unit.mdEntry.container != null ? unit.mdEntry.container : dirOf(unit.mdEntry.rel);
         const leafName = dirPath.split("/").filter(Boolean).pop() ?? null;
-        const fallbackName =
-          unit.mdEntry.container != null
-            ? (leafName || "Uploaded skill")
-            : unit.prefix !== null
-              ? (unit.prefix.replace(/\/$/, "").split("/").pop() || "Uploaded skill")
-              : basename(unit.mdEntry.rel).replace(/\.md$/i, "");
-        const name = parseField(markdown, "name") ?? fallbackName;
         const targetFolderId = await ensureFolderPath(dirPath);
         // Set the mirrored folder's name as the skill's category so it groups
         // under that folder in category-based views (agent skills) too.
@@ -5460,6 +5480,9 @@ export function CompanySkills() {
           : "")
         + (prunedFolderCount > 0
           ? t("companySkills.uploadPrunedFolders", { defaultValue: "（移除 {{count}} 個空的殘留資料夾）", count: prunedFolderCount })
+          : "")
+        + (mergedVersionCount > 0
+          ? t("companySkills.uploadMergedVersions", { defaultValue: "（{{count}} 個檔案為同一技能，已採用最新版本）", count: mergedVersionCount })
           : "")
         + equipSuffix;
 
