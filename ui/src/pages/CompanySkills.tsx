@@ -5107,18 +5107,18 @@ export function CompanySkills() {
       }
     };
 
-    let archiveError = false;
+    const failedArchives: string[] = []; // .skill/.zip packages we couldn't unpack
     let archiveIndex = 0;
     for (const f of files) {
       const rel = f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name;
       if (/\.(skill|zip)$/i.test(f.name)) {
         try { expandArchive(` a${archiveIndex += 1}`, dirOf(rel), new Uint8Array(await f.arrayBuffer()), f.lastModified); }
-        catch { archiveError = true; }
+        catch { failedArchives.push(basename(f.name)); }
       } else {
         entries.push({ rel, bytes: null, file: f, binary: BINARY_EXT.test(rel), fromArchive: false, container: null, lastModified: f.lastModified });
       }
     }
-    if (archiveError && entries.length === 0) {
+    if (failedArchives.length > 0 && entries.length === 0) {
       pushToast({
         tone: "error",
         title: t("companySkills.uploadBadArchive", { defaultValue: "Could not read package" }),
@@ -5150,7 +5150,6 @@ export function CompanySkills() {
     // A top-level ("" prefix) SKILL.md only claims directly-selected files, never
     // an archive's contents (those are scoped by their own namespaced prefix).
     const ownerOf = (e: Entry) => roots.find((r) => (r.prefix === "" ? !e.fromArchive : e.rel.startsWith(r.prefix)));
-    const hasDirectSkillMd = roots.some((r) => !r.fromArchive);
     const supportingByPrefix = new Map<string, Entry[]>(roots.map((r) => [r.prefix, [] as Entry[]]));
     const looseMd: Entry[] = [];
     let skippedMd = 0;
@@ -5159,8 +5158,12 @@ export function CompanySkills() {
       const owner = ownerOf(e);
       if (owner) { supportingByPrefix.get(owner.prefix)!.push(e); continue; }
       if (e.rel.toLowerCase().endsWith(".md")) {
-        if (!e.fromArchive && !hasDirectSkillMd) looseMd.push(e); // standalone markdown skill
-        else skippedMd++; // a reference .md inside a package / bundle → not a skill
+        // A non-archive .md that no SKILL.md governs (per-directory, via ownerOf)
+        // is its own standalone skill. This is decided PER FOLDER — a SKILL.md in
+        // one subfolder must NOT demote loose .md in a sibling subfolder (e.g.
+        // "proposal-book1-self-check_SKILL.md") to a mere reference.
+        if (!e.fromArchive) looseMd.push(e);
+        else skippedMd++; // a reference .md INSIDE a package/bundle → not a skill
       }
       // else: orphan non-markdown with no owning skill → ignored.
     }
@@ -5503,6 +5506,12 @@ export function CompanySkills() {
           : "")
         + (mergedVersionCount > 0
           ? t("companySkills.uploadMergedVersions", { defaultValue: "（{{count}} 個檔案為同一技能，已採用最新版本）", count: mergedVersionCount })
+          : "")
+        + (failedArchives.length > 0
+          ? t("companySkills.uploadFailedArchives", { defaultValue: "（⚠️ {{count}} 個套件無法解壓：{{names}}）", count: failedArchives.length, names: failedArchives.join("、") })
+          : "")
+        + (skippedMd > 0
+          ? t("companySkills.uploadSkippedRefs", { defaultValue: "（{{count}} 個 .md 為套件內參考檔，未建立技能）", count: skippedMd })
           : "")
         + equipSuffix;
 
