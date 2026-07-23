@@ -5197,6 +5197,7 @@ export function CompanySkills() {
     let firstCreated: Awaited<ReturnType<typeof companySkillsApi.create>> | null = null;
     const createdFolderNames = new Set<string>();
     let prunedFileCount = 0; // stray files removed from re-matched skills
+    let prunedFolderCount = 0; // empty leftover folders removed from the uploaded tree
     try {
       // Mirror the uploaded directory tree into nested store folders, lazily and
       // memoized by full path. Returns the LEAF folder id for a dir path
@@ -5365,8 +5366,58 @@ export function CompanySkills() {
         }
       }
 
+      // Self-heal: prune EMPTY leftover folders inside the uploaded tree — e.g. a
+      // folder an earlier buggy import created from a package's internal directory
+      // (a skill and a same-named empty folder ending up side by side). Strictly
+      // scoped: only deletes folders that (a) sit under a folder THIS upload used,
+      // (b) hold no skills, and (c) have no child folders — never a folder we
+      // created/used, an occupied folder, or anything outside the uploaded tree.
+      // Iterated so a chain of nested empties collapses bottom-up.
+      const wantedFolderIds = new Set<string>();
+      for (const id of folderIdByPath.values()) if (id) wantedFolderIds.add(id);
+      if (wantedFolderIds.size > 0) {
+        try {
+          const [freshFolders, freshSkills] = await Promise.all([
+            foldersApi.list(companyId, "skill").then((r) => r.folders),
+            companySkillsApi.list(companyId, {}),
+          ]);
+          const occupied = new Set(freshSkills.map((s) => s.folderId).filter(Boolean) as string[]);
+          const byId = new Map(freshFolders.map((f) => [f.id, f] as const));
+          const childCount = new Map<string, number>();
+          for (const f of freshFolders) {
+            const p = f.parentId ?? null;
+            if (p) childCount.set(p, (childCount.get(p) ?? 0) + 1);
+          }
+          const insideUploadedTree = (folder: { parentId: string | null }) => {
+            let cur = folder.parentId ?? null;
+            while (cur) {
+              if (wantedFolderIds.has(cur)) return true;
+              cur = byId.get(cur)?.parentId ?? null;
+            }
+            return false;
+          };
+          let removedAny = true;
+          while (removedAny) {
+            removedAny = false;
+            for (const folder of [...byId.values()]) {
+              if (wantedFolderIds.has(folder.id) || occupied.has(folder.id)) continue;
+              if ((childCount.get(folder.id) ?? 0) > 0) continue; // not a leaf
+              if (!insideUploadedTree(folder)) continue;
+              try {
+                await foldersApi.delete(companyId, folder.id);
+                prunedFolderCount += 1;
+                removedAny = true;
+                byId.delete(folder.id);
+                const p = folder.parentId ?? null;
+                if (p) childCount.set(p, (childCount.get(p) ?? 1) - 1);
+              } catch { /* leave a folder we couldn't remove */ }
+            }
+          }
+        } catch { /* folder prune is best-effort */ }
+      }
+
       await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) });
-      if (createdFolderNames.size > 0 || refiled.length > 0 || prunedFileCount > 0) {
+      if (createdFolderNames.size > 0 || refiled.length > 0 || prunedFileCount > 0 || prunedFolderCount > 0) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(companyId, "skill") });
       }
       setImportDialogOpen(false);
@@ -5375,6 +5426,9 @@ export function CompanySkills() {
         : "")
         + (prunedFileCount > 0
           ? t("companySkills.uploadPruned", { defaultValue: "（清除 {{count}} 個誤附檔案）", count: prunedFileCount })
+          : "")
+        + (prunedFolderCount > 0
+          ? t("companySkills.uploadPrunedFolders", { defaultValue: "（移除 {{count}} 個空的殘留資料夾）", count: prunedFolderCount })
           : "");
 
       if (created.length === 1 && refiled.length === 0 && failed.length === 0 && skipped.length === 0 && firstCreated) {
