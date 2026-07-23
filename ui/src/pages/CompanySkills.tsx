@@ -5196,6 +5196,7 @@ export function CompanySkills() {
     const failed: { name: string; reason: string }[] = [];
     let firstCreated: Awaited<ReturnType<typeof companySkillsApi.create>> | null = null;
     const createdFolderNames = new Set<string>();
+    let prunedFileCount = 0; // stray files removed from re-matched skills
     try {
       // Mirror the uploaded directory tree into nested store folders, lazily and
       // memoized by full path. Returns the LEAF folder id for a dir path
@@ -5271,6 +5272,31 @@ export function CompanySkills() {
         return false;
       };
 
+      // Reconcile a matched skill's files to the uploaded package: re-upload the
+      // unit's supporting files and prune anything else (except SKILL.md and
+      // dotfiles). This repairs skills that an earlier buggy import wrongly
+      // stapled sibling files onto. Returns the number of files pruned.
+      const reconcileFiles = async (skillId: string, currentFiles: { path: string }[], supporting: Entry[], toRel: (rel: string) => string) => {
+        const desired = new Set<string>(["SKILL.md"]);
+        for (const e of supporting) {
+          const rel = toRel(e.rel);
+          if (!rel || rel.startsWith(".") || rel.toLowerCase() === "skill.md") continue;
+          desired.add(rel);
+          try {
+            if (e.binary) await companySkillsApi.updateFile(companyId, skillId, rel, await readBase64(e), "base64");
+            else await companySkillsApi.updateFile(companyId, skillId, rel, await readText(e));
+          } catch { /* leave the existing copy in place if the write fails */ }
+        }
+        let pruned = 0;
+        for (const file of currentFiles) {
+          const p = file.path;
+          if (!p || p.toLowerCase() === "skill.md" || basename(p).startsWith(".") || desired.has(p)) continue;
+          try { await companySkillsApi.deleteFile(companyId, skillId, { path: p, target: "file" }); pruned += 1; }
+          catch { /* ignore a file we couldn't remove */ }
+        }
+        return pruned;
+      };
+
       for (const unit of units) {
         const markdown = await readText(unit.mdEntry);
         const toRel = (rel: string) => (unit.prefix && rel.startsWith(unit.prefix) ? rel.slice(unit.prefix.length) : basename(rel));
@@ -5292,7 +5318,9 @@ export function CompanySkills() {
         try {
           const existing = existingByName.get(nfcKey(name));
           if (existing) {
-            if (await refileExisting(existing, targetFolderId, categories)) refiled.push({ id: existing.id, name });
+            const moved = await refileExisting(existing, targetFolderId, categories);
+            prunedFileCount += await reconcileFiles(existing.id, existing.fileInventory ?? [], unit.supporting, toRel);
+            if (moved) refiled.push({ id: existing.id, name });
             else skipped.push({ name });
             continue;
           }
@@ -5327,7 +5355,9 @@ export function CompanySkills() {
           const isDup = /already exists|already used|slug/i.test(msg);
           const existing = isDup ? existingByName.get(nfcKey(name)) : undefined;
           if (existing) {
-            if (await refileExisting(existing, targetFolderId, categories)) refiled.push({ id: existing.id, name });
+            const moved = await refileExisting(existing, targetFolderId, categories);
+            prunedFileCount += await reconcileFiles(existing.id, existing.fileInventory ?? [], unit.supporting, toRel);
+            if (moved) refiled.push({ id: existing.id, name });
             else skipped.push({ name });
           } else {
             failed.push({ name, reason: isDup ? "duplicate" : msg });
@@ -5336,13 +5366,16 @@ export function CompanySkills() {
       }
 
       await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) });
-      if (createdFolderNames.size > 0 || refiled.length > 0) {
+      if (createdFolderNames.size > 0 || refiled.length > 0 || prunedFileCount > 0) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(companyId, "skill") });
       }
       setImportDialogOpen(false);
-      const folderSuffix = createdFolderNames.size > 0
+      const folderSuffix = (createdFolderNames.size > 0
         ? t("companySkills.uploadFiledInFolders", { defaultValue: "（已建立 {{count}} 個資料夾並歸檔）", count: createdFolderNames.size })
-        : "";
+        : "")
+        + (prunedFileCount > 0
+          ? t("companySkills.uploadPruned", { defaultValue: "（清除 {{count}} 個誤附檔案）", count: prunedFileCount })
+          : "");
 
       if (created.length === 1 && refiled.length === 0 && failed.length === 0 && skipped.length === 0 && firstCreated) {
         navigate(routeForSkill(firstCreated));
