@@ -5198,6 +5198,7 @@ export function CompanySkills() {
     const createdFolderNames = new Set<string>();
     let prunedFileCount = 0; // stray files removed from re-matched skills
     let prunedFolderCount = 0; // empty leftover folders removed from the uploaded tree
+    const touchedSkillIds = new Set<string>(); // created + matched, for scope-equip
     try {
       // Mirror the uploaded directory tree into nested store folders, lazily and
       // memoized by full path. Returns the LEAF folder id for a dir path
@@ -5321,6 +5322,7 @@ export function CompanySkills() {
           if (existing) {
             const moved = await refileExisting(existing, targetFolderId, categories);
             prunedFileCount += await reconcileFiles(existing.id, existing.fileInventory ?? [], unit.supporting, toRel);
+            touchedSkillIds.add(existing.id);
             if (moved) refiled.push({ id: existing.id, name });
             else skipped.push({ name });
             continue;
@@ -5347,6 +5349,7 @@ export function CompanySkills() {
             else await companySkillsApi.updateFile(companyId, skill.id, rel, await readText(e));
           }
           created.push({ id: skill.id, name: skill.name });
+          touchedSkillIds.add(skill.id);
           rememberExisting(skill as unknown as CompanySkillListItem);
         } catch (err) {
           const msg = err instanceof Error ? err.message : "failed";
@@ -5358,6 +5361,7 @@ export function CompanySkills() {
           if (existing) {
             const moved = await refileExisting(existing, targetFolderId, categories);
             prunedFileCount += await reconcileFiles(existing.id, existing.fileInventory ?? [], unit.supporting, toRel);
+            touchedSkillIds.add(existing.id);
             if (moved) refiled.push({ id: existing.id, name });
             else skipped.push({ name });
           } else {
@@ -5416,11 +5420,38 @@ export function CompanySkills() {
         } catch { /* folder prune is best-effort */ }
       }
 
+      // Equip the skills to their sharing scope's agents — for EVERY touched
+      // skill, created or matched. Equip otherwise only runs at create time, so
+      // re-uploading (which matches existing skills) or sharing to a team never
+      // reached the team's agents. Idempotent server-side. `agentCount` is the
+      // resolved scope size (same for all skills sharing the same teams), so we
+      // take the max to report "how many agents this share reaches".
+      let equippedAgentCount = 0;
+      let equipScopeChecked = false;
+      if (uploadScope !== "private" && touchedSkillIds.size > 0) {
+        for (const id of touchedSkillIds) {
+          try {
+            const r = await companySkillsApi.equipScope(companyId, id);
+            equippedAgentCount = Math.max(equippedAgentCount, r.agentCount);
+            equipScopeChecked = true;
+          } catch { /* best-effort per skill */ }
+        }
+      }
+
       await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) });
       if (createdFolderNames.size > 0 || refiled.length > 0 || prunedFileCount > 0 || prunedFolderCount > 0) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(companyId, "skill") });
       }
       setImportDialogOpen(false);
+      // Team share that matched NO agents → the team tag on those agents doesn't
+      // match the folder's team. Surface it loudly so it isn't a silent no-op.
+      const equipSuffix = uploadScope === "team" && equipScopeChecked
+        ? (equippedAgentCount > 0
+          ? t("companySkills.uploadEquippedTeam", { defaultValue: "（已裝備給 {{count}} 位團隊代理，下次執行時生效）", count: equippedAgentCount })
+          : t("companySkills.uploadEquippedNone", { defaultValue: "（⚠️ 沒有符合所選團隊的代理，請確認團隊標籤）" }))
+        : uploadScope === "company" && equippedAgentCount > 0
+          ? t("companySkills.uploadEquippedCompany", { defaultValue: "（已裝備給 {{count}} 位代理，下次執行時生效）", count: equippedAgentCount })
+          : "";
       const folderSuffix = (createdFolderNames.size > 0
         ? t("companySkills.uploadFiledInFolders", { defaultValue: "（已建立 {{count}} 個資料夾並歸檔）", count: createdFolderNames.size })
         : "")
@@ -5429,7 +5460,8 @@ export function CompanySkills() {
           : "")
         + (prunedFolderCount > 0
           ? t("companySkills.uploadPrunedFolders", { defaultValue: "（移除 {{count}} 個空的殘留資料夾）", count: prunedFolderCount })
-          : "");
+          : "")
+        + equipSuffix;
 
       if (created.length === 1 && refiled.length === 0 && failed.length === 0 && skipped.length === 0 && firstCreated) {
         navigate(routeForSkill(firstCreated));

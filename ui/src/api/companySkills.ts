@@ -267,6 +267,12 @@ export const companySkillsApi = {
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/install-update`,
       {},
     ),
+  // Equip a skill to every agent in its current sharing scope (idempotent).
+  equipScope: (companyId: string, skillId: string) =>
+    api.post<{ scope: string; agentCount: number }>(
+      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/equip-scope`,
+      {},
+    ),
   delete: (companyId: string, skillId: string, opts?: { force?: boolean }) =>
     api.delete<CompanySkill>(
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}${opts?.force ? "?force=true" : ""}`,

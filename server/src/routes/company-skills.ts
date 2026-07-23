@@ -51,7 +51,7 @@ import {
   readPaperclipSkillSyncPreference,
   writePaperclipSkillSyncPreference,
 } from "@paperclipai/adapter-utils/server-utils";
-import { badRequest, forbidden, HttpError, unauthorized } from "../errors.js";
+import { badRequest, forbidden, HttpError, notFound, unauthorized } from "../errors.js";
 import { assertAuthenticated, assertCompanyAccess, getActorInfo, isPrivilegedMemberViewer } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
 import {
@@ -1245,6 +1245,32 @@ export function companySkillRoutes(db: Db) {
       }
 
       res.status(201).json(result);
+    },
+  );
+
+  // Equip a skill to every agent in its CURRENT sharing scope (company → all;
+  // team → agents whose team matches sharingTeams; private → creator's agents).
+  // Idempotent (skips already-equipped). Needed because equip otherwise only
+  // runs at create time — so re-uploading or changing a skill's team share never
+  // reached the team's agents. Returns how many agents the scope resolves to.
+  router.post(
+    "/companies/:companyId/skills/:skillId/equip-scope",
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const skillId = req.params.skillId as string;
+      await assertCanMutateCompanySkills(req, companyId, "skills.edit", () => skillPolicyResource({ companyId, skillId }));
+      const skill = await svc.getById(companyId, skillId);
+      if (!skill) throw notFound("Skill not found");
+      const actor = getActorInfo(req);
+      const targets = await resolveEquipTargets(
+        companyId,
+        skill.sharingScope ?? "company",
+        skill.sharingTeams ?? [],
+        actor.actorType === "user" ? actor.actorId : null,
+        actor.agentId ?? null,
+      );
+      await equipSkillToAgents(companyId, skill.key, targets, actor.agentId ?? null);
+      res.json({ scope: skill.sharingScope ?? "company", agentCount: targets.length });
     },
   );
 
