@@ -8,6 +8,7 @@ import {
   type AgentPermissionUpdate,
 } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
+import { foldersApi } from "../api/folders";
 import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -2737,6 +2738,7 @@ export function AgentSkillsTab({
     readOnly: boolean;
     adapterEntry: AgentSkillEntry | null;
     categories: string[];
+    folderId: string | null;
   };
 
   const { t, i18n } = useTranslation();
@@ -2758,6 +2760,14 @@ export function AgentSkillsTab({
   const { data: companySkills } = useQuery({
     queryKey: queryKeys.companySkills.list(companyId ?? ""),
     queryFn: () => companySkillsApi.list(companyId!),
+    enabled: Boolean(companyId),
+  });
+
+  // Skill folder tree — so this agent's skills nest under the same OS-like
+  // hierarchy as the store (parent folder → subfolders), not a flat category list.
+  const { data: skillFolders } = useQuery({
+    queryKey: queryKeys.folders.list(companyId ?? "", "skill"),
+    queryFn: () => foldersApi.list(companyId!, "skill"),
     enabled: Boolean(companyId),
   });
 
@@ -2844,6 +2854,7 @@ export function AgentSkillsTab({
           readOnly: false,
           adapterEntry: adapterEntryByKey.get(skill.key) ?? null,
           categories: skill.categories ?? [],
+          folderId: skill.folderId ?? null,
         })),
     [adapterEntryByKey, companySkills],
   );
@@ -2865,6 +2876,7 @@ export function AgentSkillsTab({
             readOnly: false,
             adapterEntry: entry,
             categories: companySkill?.categories ?? [],
+            folderId: companySkill?.folderId ?? null,
           };
         }),
     [companySkillByKey, skillSnapshot],
@@ -2885,6 +2897,7 @@ export function AgentSkillsTab({
           readOnly: true,
           adapterEntry: entry,
           categories: [],
+          folderId: null,
         })),
     [companySkillKeys, skillSnapshot],
   );
@@ -3078,17 +3091,84 @@ export function AgentSkillsTab({
               );
             };
 
-            // Group the equipped/optional skills into collapsible category
-            // "folders" so a large library (100+) is navigable instead of one
-            // flat scroll. Category slugs sort naturally (00-…, 01-…); an
-            // uncategorized bucket sinks to the bottom.
-            const optionalByCategory = new Map<string, SkillRow[]>();
-            for (const row of optionalSkillRows) {
-              const cat = row.categories[0] ?? "__uncategorized__";
-              if (!optionalByCategory.has(cat)) optionalByCategory.set(cat, []);
-              optionalByCategory.get(cat)!.push(row);
+            // Nest the equipped/optional skills under the SAME folder tree as the
+            // store (parent folder → subfolders), so the agent view mirrors the
+            // OS-like hierarchy instead of a flat category list. Skills whose
+            // folder isn't in the visible tree (e.g. a restricted 00–10 folder the
+            // viewer can't see) fall back to a flat category bucket; anything with
+            // no folder/category sinks to "Uncategorized" at the bottom. Generic:
+            // works for any folder that has nested subfolders.
+            const foldersList = skillFolders?.folders ?? [];
+            const folderById = new Map(foldersList.map((f) => [f.id, f] as const));
+            const childFoldersByParent = new Map<string | null, typeof foldersList>();
+            for (const f of foldersList) {
+              const parent = f.parentId ?? null;
+              const list = childFoldersByParent.get(parent) ?? [];
+              list.push(f);
+              childFoldersByParent.set(parent, list);
             }
-            const sortedCategories = Array.from(optionalByCategory.keys()).sort((a, b) =>
+            const sortFolders = (list: typeof foldersList) =>
+              [...list].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name));
+
+            const directRowsByFolder = new Map<string, SkillRow[]>();
+            const flatByCategory = new Map<string, SkillRow[]>(); // skills with no visible folder
+            for (const row of optionalSkillRows) {
+              if (row.folderId && folderById.has(row.folderId)) {
+                const list = directRowsByFolder.get(row.folderId) ?? [];
+                list.push(row);
+                directRowsByFolder.set(row.folderId, list);
+              } else {
+                const cat = row.categories[0] ?? "__uncategorized__";
+                const list = flatByCategory.get(cat) ?? [];
+                list.push(row);
+                flatByCategory.set(cat, list);
+              }
+            }
+
+            // Subtree skill count (direct + descendants); memoized and cycle-safe.
+            const subtreeCountCache = new Map<string, number>();
+            const subtreeCount = (folderId: string, seen = new Set<string>()): number => {
+              const cached = subtreeCountCache.get(folderId);
+              if (cached !== undefined) return cached;
+              if (seen.has(folderId)) return 0;
+              seen.add(folderId);
+              let n = directRowsByFolder.get(folderId)?.length ?? 0;
+              for (const child of childFoldersByParent.get(folderId) ?? []) n += subtreeCount(child.id, seen);
+              subtreeCountCache.set(folderId, n);
+              return n;
+            };
+
+            const renderFolderNode = (folder: (typeof foldersList)[number], depth: number): React.ReactNode => {
+              const count = subtreeCount(folder.id);
+              if (count === 0) return null; // prune empty branches
+              const direct = directRowsByFolder.get(folder.id) ?? [];
+              const children = sortFolders(childFoldersByParent.get(folder.id) ?? []).filter((c) => subtreeCount(c.id) > 0);
+              return (
+                <details key={folder.id} className="overflow-hidden rounded-xl border border-border">
+                  <summary
+                    className="flex cursor-pointer select-none items-center justify-between gap-2 bg-muted/40 py-2 pr-3 text-sm font-medium hover:bg-muted/60"
+                    style={{ paddingLeft: `${0.75 + depth * 0.85}rem` }}
+                  >
+                    <span className="truncate">{folder.name}</span>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{count}</span>
+                  </summary>
+                  <div className="border-t border-border">
+                    {direct.map(renderSkillRow)}
+                    {children.length > 0 ? (
+                      <div className="space-y-2 p-2">{children.map((c) => renderFolderNode(c, depth + 1))}</div>
+                    ) : null}
+                  </div>
+                </details>
+              );
+            };
+
+            const rootFolders = sortFolders(
+              foldersList.filter((f) => {
+                const parent = f.parentId ?? null;
+                return (parent === null || !folderById.has(parent)) && subtreeCount(f.id) > 0;
+              }),
+            );
+            const sortedFlatCategories = Array.from(flatByCategory.keys()).sort((a, b) =>
               a === b ? 0 : a === "__uncategorized__" ? 1 : b === "__uncategorized__" ? -1 : a.localeCompare(b),
             );
 
@@ -3106,14 +3186,15 @@ export function AgentSkillsTab({
               <>
                 {optionalSkillRows.length > 0 && (
                   <section className="space-y-2">
-                    {sortedCategories.map((cat) => {
-                      const rows = optionalByCategory.get(cat)!;
+                    {rootFolders.map((f) => renderFolderNode(f, 0))}
+                    {sortedFlatCategories.map((cat) => {
+                      const rows = flatByCategory.get(cat)!;
                       const label =
                         cat === "__uncategorized__"
                           ? t("agentDetail.skills.uncategorized", { defaultValue: "Uncategorized" })
                           : localizeCategory(cat, skillLang);
                       return (
-                        <details key={cat} className="overflow-hidden rounded-xl border border-border">
+                        <details key={`cat:${cat}`} className="overflow-hidden rounded-xl border border-border">
                           <summary className="flex cursor-pointer select-none items-center justify-between gap-2 bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted/60">
                             <span className="truncate">{label}</span>
                             <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
