@@ -1,0 +1,11 @@
+-- Folders sort by (position, name). Historically `position` was assigned in
+-- CREATION order (an auto-increment), so the folder list came out in the order
+-- folders happened to be made — e.g. an "Onboarding" folder stranded in the
+-- middle of unrelated folders. There is no drag-to-reorder UI, so those
+-- positions were incidental, not intentional.
+--
+-- Equalize all folder positions to 0 so the secondary `name` sort takes over:
+-- folders now list ALPHABETICALLY by default (numbered "00 …"–"10 …" naturally
+-- stay first). New folders default to position 0 too. `position` remains an
+-- honored override if a manual-reorder feature ever sets distinct values.
+UPDATE folders SET position = 0;

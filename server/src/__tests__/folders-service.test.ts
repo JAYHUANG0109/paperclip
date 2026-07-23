@@ -80,6 +80,26 @@ describeEmbeddedPostgres("folder service", () => {
     return skill!;
   }
 
+  it("lists folders alphabetically by default (not creation order)", async () => {
+    const companyId = await seedCompany();
+    const svc = folderService(db);
+    // Create in deliberately non-alphabetical order.
+    await svc.create(companyId, { kind: "skill", name: "Zebra" });
+    await svc.create(companyId, { kind: "skill", name: "Apple" });
+    await svc.create(companyId, { kind: "skill", name: "Onboarding" });
+    await svc.create(companyId, { kind: "skill", name: "Mango" });
+
+    const listed = await svc.list(companyId, "skill");
+    expect(listed.folders.map((f) => f.name)).toEqual(["Apple", "Mango", "Onboarding", "Zebra"]);
+
+    // An explicit position still wins (manual placement is honored): push Apple
+    // to a high position and it sorts LAST despite being alphabetically first.
+    const apple = listed.folders.find((f) => f.name === "Apple")!;
+    await svc.moveFolder(companyId, apple.id, { position: 10 });
+    const reordered = await svc.list(companyId, "skill");
+    expect(reordered.folders.map((f) => f.name)).toEqual(["Mango", "Onboarding", "Zebra", "Apple"]);
+  });
+
   it("creates, updates, reorders, and lists routine folders with counts", async () => {
     const companyId = await seedCompany();
     const svc = folderService(db);

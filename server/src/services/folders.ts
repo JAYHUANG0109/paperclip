@@ -319,7 +319,10 @@ export function folderService(db: Db, mutationLockHeld = false) {
       slug = await uniqueSiblingSlug(companyId, parentId, slug, name, input.kind);
     }
     await assertNoSlugConflict(companyId, input.kind, parentId, slug);
-    const position = input.position ?? await nextPosition(companyId, input.kind, parentId);
+    // Default to position 0 so folders list ALPHABETICALLY by name (the sort is
+    // position, then name). Creation order is no longer baked into position; a
+    // caller that explicitly passes a position still gets manual placement.
+    const position = input.position ?? 0;
     const scope = input.scope ?? "company";
     const { sharingTeams, sharedUserIds } = normalizeSharing(scope, input.sharingTeams, input.sharedUserIds);
     let row: FolderRow;
