@@ -240,6 +240,26 @@ describeEmbeddedPostgres("folder service", () => {
       .rejects.toMatchObject({ status: 409 });
   });
 
+  it("edits an auto-disambiguated folder without re-deriving/colliding its slug", async () => {
+    const companyId = await seedCompany();
+    const svc = folderService(db);
+    const first = await svc.create(companyId, { kind: "skill", name: "簡報製作技能" });
+    const second = await svc.create(companyId, { kind: "skill", name: "有效輔導 教練式培力" });
+    expect(first.slug).toBe("folder");
+    expect(second.slug).not.toBe("folder"); // auto-disambiguated at create
+
+    // Color edit that echoes the UNCHANGED name must keep the disambiguated slug
+    // and NOT collide with `first` (which owns the base "folder" slug). This is
+    // the bug: re-deriving "folder" from the name would 409.
+    await expect(svc.update(companyId, second.id, { name: "有效輔導 教練式培力", color: "green" }))
+      .resolves.toMatchObject({ id: second.id, color: "green", slug: second.slug });
+
+    // A genuine rename whose derived slug would collide auto-disambiguates.
+    const renamed = await svc.update(companyId, second.id, { name: "另一個中文名" });
+    expect(renamed?.slug).not.toBe("folder");
+    expect(renamed?.slug).not.toBe(first.slug);
+  });
+
   it("creates stable personal roots and protects bundled folders", async () => {
     const companyId = await seedCompany();
     const svc = folderService(db);

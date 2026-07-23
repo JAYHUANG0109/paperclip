@@ -677,14 +677,14 @@ export function FolderFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit folder" : "Create folder"}</DialogTitle>
           <DialogDescription>
             {kind === "routine" ? "Organize routines in this company." : "Organize installed company skills."}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="folder-name">Name</label>
             <Input

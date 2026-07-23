@@ -356,11 +356,26 @@ export function folderService(db: Db, mutationLockHeld = false) {
     if (!existing) return null;
     await assertMutableFolder(companyId, existing);
     const name = patch.name === undefined ? existing.name : normalizeName(patch.name);
-    const slug = patch.slug ?? (patch.name === undefined ? existing.slug : normalizeFolderSlug(name));
+    // Only re-derive the slug when the NAME actually changed. The edit dialog
+    // echoes the unchanged name back on a color/scope edit; re-deriving would
+    // recompute the BASE slug (e.g. "folder") which differs from a folder whose
+    // stored slug was auto-disambiguated at create time (e.g. "folder-2"), and
+    // then collide with the sibling that owns the base slug — failing an edit
+    // that never touched the name. Keep the existing slug in that case.
+    const nameChanged = patch.name !== undefined && name !== existing.name;
+    let slug = patch.slug ?? (nameChanged ? normalizeFolderSlug(name) : existing.slug);
     if (isReservedRootSlug(existing.kind, existing.parentId, slug)) {
       throw forbidden("Reserved skill folders are system-managed");
     }
-    await assertNoSlugConflict(companyId, existing.kind, existing.parentId, slug, existing.id);
+    // Validate only when the slug is actually changing. A pinned slug conflicts
+    // loudly; a derived new slug auto-disambiguates like create.
+    if (slug !== existing.slug) {
+      if (patch.slug != null) {
+        await assertNoSlugConflict(companyId, existing.kind, existing.parentId, slug, existing.id);
+      } else {
+        slug = await uniqueSiblingSlug(companyId, existing.parentId, slug, name, existing.kind);
+      }
+    }
     const scope = patch.scope ?? existing.scope;
     // When scope changes (or its sharing lists are edited) re-normalize both
     // lists against the effective scope so a private folder never keeps stale
