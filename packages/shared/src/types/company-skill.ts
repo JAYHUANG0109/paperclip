@@ -303,6 +303,7 @@ export interface CompanySkillUpdateRequest {
   homepageUrl?: string | null;
   categories?: string[];
   sharingScope?: CompanySkillSharingScope;
+  sharingTeams?: string[];
 }
 
 export interface CompanySkillUpdateStatus {

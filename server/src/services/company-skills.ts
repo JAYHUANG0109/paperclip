@@ -4340,6 +4340,18 @@ export function companySkillService(db: Db) {
       values.sharingScope = sharingScope;
       values.publicShareToken = null;
     }
+    // Persist team sharing. Applies when scope becomes/stays "team"; any move to a
+    // non-team scope clears the team list so it never keeps stale teams. Without
+    // this, re-sharing a skill to a different team via update was silently a no-op.
+    const effectiveScope = sharingScope ?? normalizeSharingScope(skill.sharingScope);
+    if (Object.prototype.hasOwnProperty.call(input, "sharingTeams") || sharingScope) {
+      const requestedTeams = Object.prototype.hasOwnProperty.call(input, "sharingTeams")
+        ? (input.sharingTeams ?? [])
+        : (skill.sharingTeams ?? []);
+      values.sharingTeams = effectiveScope === "team"
+        ? Array.from(new Set(requestedTeams.filter((t) => typeof t === "string" && t.trim()).map((t) => t.trim()))).slice(0, 50)
+        : [];
+    }
 
     const row = await db
       .update(companySkills)

@@ -5342,6 +5342,18 @@ export function CompanySkills() {
           if (existing) {
             const moved = await refileExisting(existing, targetFolderId, categories);
             prunedFileCount += await reconcileFiles(existing.id, existing.fileInventory ?? [], unit.supporting, toRel);
+            // Apply the SELECTED team/private sharing to matched skills too, so a
+            // whole folder shares as a collective (all skills → same teams). Only
+            // for explicit team/private picks — a default "company" re-upload must
+            // NOT silently wipe a skill's existing team/private sharing.
+            if (uploadScope === "team" || uploadScope === "private") {
+              try {
+                await companySkillsApi.update(companyId, existing.id, {
+                  sharingScope: uploadScope,
+                  sharingTeams: uploadScope === "team" ? uploadTeams : [],
+                });
+              } catch { /* equip-scope still runs against whatever sharing sticks */ }
+            }
             touchedSkillIds.add(existing.id);
             if (moved) refiled.push({ id: existing.id, name });
             else skipped.push({ name });
@@ -5381,6 +5393,14 @@ export function CompanySkills() {
           if (existing) {
             const moved = await refileExisting(existing, targetFolderId, categories);
             prunedFileCount += await reconcileFiles(existing.id, existing.fileInventory ?? [], unit.supporting, toRel);
+            if (uploadScope === "team" || uploadScope === "private") {
+              try {
+                await companySkillsApi.update(companyId, existing.id, {
+                  sharingScope: uploadScope,
+                  sharingTeams: uploadScope === "team" ? uploadTeams : [],
+                });
+              } catch { /* equip-scope still runs against whatever sharing sticks */ }
+            }
             touchedSkillIds.add(existing.id);
             if (moved) refiled.push({ id: existing.id, name });
             else skipped.push({ name });

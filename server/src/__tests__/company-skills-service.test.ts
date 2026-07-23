@@ -728,6 +728,33 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
   });
 
+  it("updates team sharing (sharingTeams), and clears it when scope leaves team", async () => {
+    const companyId = randomUUID();
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    const skill = await svc.createLocalSkill(companyId, {
+      name: "Team Shared Skill",
+      sharingScope: "team",
+      sharingTeams: ["ESL"],
+    });
+    expect(skill.sharingTeams).toEqual(["ESL"]);
+
+    // Re-share to a different team must actually persist (was a silent no-op).
+    const reteamed = await svc.updateSkill(companyId, skill.id, { sharingTeams: ["ESL", "領導團隊"] });
+    expect(reteamed.sharingScope).toBe("team");
+    expect(new Set(reteamed.sharingTeams)).toEqual(new Set(["ESL", "領導團隊"]));
+
+    // Moving to a non-team scope clears the team list so no stale teams linger.
+    const privated = await svc.updateSkill(companyId, skill.id, { sharingScope: "private" });
+    expect(privated.sharingScope).toBe("private");
+    expect(privated.sharingTeams).toEqual([]);
+  });
+
   it("updates categories, allows spaces, and reflects them in list filters and counts", async () => {
     const companyId = randomUUID();
     await db.insert(companies).values({

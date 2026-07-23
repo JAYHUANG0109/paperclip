@@ -209,6 +209,7 @@ export const companySkillUpdateSchema = z.object({
   homepageUrl: z.string().nullable().optional(),
   categories: z.array(z.string().min(1)).optional(),
   sharingScope: companySkillSharingScopeSchema.optional(),
+  sharingTeams: z.array(z.string().min(1)).optional(),
 }).default({});
 
 export const companySkillUpdateStatusSchema = z.object({
