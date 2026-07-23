@@ -2942,6 +2942,39 @@ export function AgentSkillsTab({
         ) : null}
       </div>
 
+      {/* Equip vs Share — clarify that ticking equips to THIS agent (and runs),
+          independent of the skill's sharing scope. Text only, no behavior change. */}
+      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+        <span>
+          {t("agentDetail.skills.equipHint", {
+            defaultValue: "勾選＝把技能裝到「這個代理」，立即生效、只影響這個代理。與「分享範圍」無關。",
+          })}
+        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("agentDetail.skills.equipVsShareLabel", { defaultValue: "Equip vs Share" })}
+              className="mt-0.5 shrink-0 text-muted-foreground/70 transition-colors hover:text-foreground"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs space-y-1.5 text-xs leading-5">
+            <p>
+              {t("agentDetail.skills.equipTip", {
+                defaultValue: "裝備（勾選）：這個代理會載入並使用這支技能。",
+              })}
+            </p>
+            <p>
+              {t("agentDetail.skills.shareTip", {
+                defaultValue: "分享範圍（在技能庫設定）：決定誰在技能庫看得到、以及上傳時自動裝備給哪些代理——不會限制已裝上的代理使用。",
+              })}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+
       {skillSnapshot?.warnings.length ? (
         <div className="space-y-1 rounded-xl border border-amber-300/60 bg-amber-50/60 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200">
           {skillSnapshot.warnings.map((warning) => (
