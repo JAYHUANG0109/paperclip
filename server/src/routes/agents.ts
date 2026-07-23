@@ -61,6 +61,7 @@ import {
 } from "./workspace-command-authz.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import { environmentService } from "../services/environments.js";
+import { seedOnboardingForAgent } from "../services/onboarding.js";
 import { notificationService } from "../services/notifications.js";
 import { resolveEnvironmentExecutionTarget } from "../services/environment-execution-target.js";
 import { environmentRuntimeService } from "../services/environment-runtime.js";
@@ -2968,6 +2969,16 @@ export function agentRoutes(
     });
     const agent = await materializeDefaultInstructionsBundleForNewAgent(createdAgent, instructionsBundle);
 
+    // Seed onboarding 關卡 for an immediately-active hire (approval-gated hires are
+    // seeded when created directly). Best-effort + idempotent.
+    if (!requiresApproval) {
+      try {
+        await seedOnboardingForAgent(db, { companyId, agentId: agent.id });
+      } catch (err) {
+        console.warn(`[agents] onboarding seed failed for hired agent ${agent.id}:`, err);
+      }
+    }
+
     let approval: Awaited<ReturnType<typeof approvalsSvc.getById>> | null = null;
     const actor = getActorInfo(req);
 
@@ -3215,6 +3226,16 @@ export function agentRoutes(
         },
         actor.actorType === "user" ? actor.actorId : null,
       );
+    }
+
+    // Every newly-created (user-owned) agent gets the 「🎓 上手教學」 onboarding
+    // 關卡 to work on immediately. Best-effort + idempotent — never blocks create;
+    // skips built-in/system/owner-less agents.
+    try {
+      const seeded = await seedOnboardingForAgent(db, { companyId, agentId: agent.id });
+      if (seeded.seeded) console.log(`[agents] seeded onboarding for new agent ${agent.id} (project ${seeded.projectId})`);
+    } catch (err) {
+      console.warn(`[agents] onboarding seed failed for new agent ${agent.id}:`, err);
     }
 
     res.status(201).json(agent);
