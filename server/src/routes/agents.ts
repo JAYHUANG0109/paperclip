@@ -3119,11 +3119,33 @@ export function agentRoutes(
         rawCreateAdapterConfig,
       ),
     );
+    // Auto-equip: a new agent inherits every skill shared to its team(s) plus all
+    // company-wide ("Public") skills (never founder-restricted or private ones).
+    // Merged into the explicitly-requested set so the role→skill matrix is
+    // self-maintaining — sharing to a team before the agent exists still lands.
+    const createMetadata = (createInput.metadata && typeof createInput.metadata === "object")
+      ? (createInput.metadata as Record<string, unknown>)
+      : {};
+    const newAgentTeams = Array.isArray(createMetadata.teams)
+      ? createMetadata.teams.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+      : typeof createMetadata.team === "string" && createMetadata.team.trim().length > 0
+        ? [createMetadata.team.trim()]
+        : [];
+    let autoEquipKeys: string[] = [];
+    try {
+      autoEquipKeys = await companySkills.autoEquipSkillKeysForTeams(companyId, newAgentTeams);
+    } catch (err) {
+      console.warn(`[agents] auto-equip resolve failed for new agent in ${companyId}:`, err);
+    }
+    const mergedDesiredSkills = [
+      ...(Array.isArray(requestedDesiredSkills) ? requestedDesiredSkills : []),
+      ...autoEquipKeys,
+    ];
     const desiredSkillAssignment = await resolveDesiredSkillAssignment(
       companyId,
       createInput.adapterType,
       requestedAdapterConfig,
-      normalizeDesiredSkillSelections(Array.isArray(requestedDesiredSkills) ? requestedDesiredSkills : undefined),
+      normalizeDesiredSkillSelections(mergedDesiredSkills),
     );
     const normalizedAdapterConfig = await normalizeMediatedAdapterConfigForPersistence({
       companyId,
@@ -3670,6 +3692,42 @@ export function agentRoutes(
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
       return;
+    }
+
+    // Team-change auto-equip: if this update ADDED the agent to team(s), equip
+    // the skills shared to those new teams (company-wide skills are handled at
+    // create, so they're excluded here to avoid flooding on every edit).
+    // Best-effort — never blocks the update.
+    try {
+      const teamsOf = (meta: unknown): Set<string> => {
+        const md = (meta && typeof meta === "object") ? (meta as Record<string, unknown>) : {};
+        const arr = Array.isArray(md.teams) ? md.teams : typeof md.team === "string" ? [md.team] : [];
+        return new Set(arr.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim()));
+      };
+      const before = teamsOf(existing.metadata);
+      const addedTeams = [...teamsOf(agent.metadata)].filter((t) => !before.has(t));
+      if (addedTeams.length > 0) {
+        const keys = await companySkills.autoEquipSkillKeysForTeams(agent.companyId, addedTeams, { includeCompanyWide: false });
+        const config = (agent.adapterConfig ?? {}) as Record<string, unknown>;
+        const pref = readPaperclipSkillSyncPreference(config);
+        const have = new Set(pref.desiredSkillEntries.map((e) => e.key));
+        const toAdd = keys.filter((k) => !have.has(k));
+        if (toAdd.length > 0) {
+          const nextConfig = writePaperclipSkillSyncPreference(config, [
+            ...pref.desiredSkillEntries,
+            ...toAdd.map((k) => ({ key: k, versionId: null })),
+          ]);
+          await svc.update(agent.id, { adapterConfig: nextConfig }, {
+            recordRevision: {
+              createdByAgentId: actor.agentId,
+              createdByUserId: actor.actorType === "user" ? actor.actorId : null,
+              source: "team-change-auto-equip",
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[agents] team-change auto-equip failed for ${id}:`, err);
     }
 
     await logActivity(db, {

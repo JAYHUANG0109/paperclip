@@ -7202,8 +7202,45 @@ export function companySkillService(db: Db) {
     return new Set<string>([...owned.map((r) => r.id), ...member.map((r) => r.id)]);
   }
 
+  // Skill keys a NEWLY-created (or newly-teamed) agent should be equipped with:
+  //   • every TEAM-scoped skill whose sharingTeams matches one of the agent's teams
+  //   • every COMPANY-scoped ("Public") skill
+  // Always excludes: private skills, pending/rejected skills, and anything in a
+  // restricted numbered founder folder (00–10) — those never auto-equip.
+  async function autoEquipSkillKeysForTeams(
+    companyId: string,
+    teams: string[],
+    opts: { includeCompanyWide?: boolean } = {},
+  ): Promise<string[]> {
+    const includeCompanyWide = opts.includeCompanyWide ?? true;
+    const teamSet = new Set(teams.map((t) => t.trim()).filter(Boolean));
+    const rows = await db
+      .select({
+        key: companySkills.key,
+        sharingScope: companySkills.sharingScope,
+        sharingTeams: companySkills.sharingTeams,
+        categories: companySkills.categories,
+        approvalStatus: companySkills.approvalStatus,
+      })
+      .from(companySkills)
+      .where(eq(companySkills.companyId, companyId));
+    const keys: string[] = [];
+    for (const row of rows) {
+      if (row.approvalStatus === "pending" || row.approvalStatus === "rejected") continue;
+      if ((row.categories ?? []).some((c) => isRestrictedFolderName(c))) continue; // founder-only
+      const scope = normalizeSharingScope(row.sharingScope);
+      if (scope === "company") {
+        if (includeCompanyWide) keys.push(row.key);
+      } else if (scope === "team" && teamSet.size > 0 && anyTeamTokenMatches(row.sharingTeams ?? [], teamSet)) {
+        keys.push(row.key);
+      }
+    }
+    return Array.from(new Set(keys));
+  }
+
   return {
     list,
+    autoEquipSkillKeysForTeams,
     agentSkillCounts,
     listSkillAccessMembers,
     setApprovalStatus,
