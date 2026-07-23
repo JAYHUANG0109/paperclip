@@ -5068,25 +5068,32 @@ export function CompanySkills() {
     const companyId = selectedCompanyId;
     const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|otf|mp4|mov|mp3|wav|zip|gz|tar|xlsx?|docx?|pptx?)$/i;
 
-    // Folder upload → the top-level OS folder name becomes a same-named skill
-    // folder in the store, and every skill created from this drop is filed into
-    // it. Detected from webkitRelativePath (only a directory pick sets it).
-    const folderUploadName = (() => {
-      for (const f of files) {
-        const rp = f.webkitRelativePath;
-        if (rp && rp.includes("/")) return rp.split("/")[0]!.trim();
-      }
-      return null;
-    })();
+    // Directory-aware import. A folder pick sets webkitRelativePath, e.g.
+    // "Top/sub/SKILL.md"; we mirror that WHOLE tree into nested store folders and
+    // file each skill into the folder that mirrors its source directory. Plain
+    // (non-folder) multi-file picks have no "/" in their paths and stay unfiled.
+    const basename = (p: string) => p.split("/").pop() || p;
+    const dirOf = (p: string) => p.slice(0, p.length - basename(p).length).replace(/\/$/, "");
+    const joinPath = (a: string, b: string) => (a ? `${a}/${b}` : b);
 
-    // `fromArchive`: this file came out of a .skill/.zip (or a folder that has a
-    // SKILL.md). Such files are ONLY ever supporting material — a bare .md inside
-    // a package is a reference, never its own skill. A bare .md becomes a skill
-    // only when directly selected with no SKILL.md governing it (see below).
+    // `fromArchive`: this file came out of a .skill/.zip package. Such files are
+    // ONLY ever supporting material — a bare .md inside a package is a reference,
+    // never its own skill. A bare .md becomes a skill only when directly selected
+    // with no SKILL.md governing it (see below).
     type Entry = { rel: string; bytes: Uint8Array | null; file: File | null; binary: boolean; fromArchive: boolean };
     const entries: Entry[] = [];
-    const basename = (p: string) => p.split("/").pop() || p;
     const isSkillMd = (rel: string) => basename(rel).toLowerCase() === "skill.md";
+
+    // Archives expand INTO the OS directory that held them, so their skills file
+    // into that folder (not a phantom one). When a single directory holds MORE
+    // than one archive, namespace each by its filename to avoid path collisions.
+    const archiveDirCounts = new Map<string, number>();
+    for (const f of files) {
+      if (!/\.(skill|zip)$/i.test(f.name)) continue;
+      const rel = f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name;
+      const dir = dirOf(rel);
+      archiveDirCounts.set(dir, (archiveDirCounts.get(dir) ?? 0) + 1);
+    }
 
     // Recursively expand a .skill/.zip archive; nested archives get their own root.
     const expandArchive = (base: string, bytes: Uint8Array) => {
@@ -5094,10 +5101,10 @@ export function CompanySkills() {
       for (const [p, data] of Object.entries(unz)) {
         if (p.endsWith("/")) continue;
         if (/\.(skill|zip)$/i.test(p)) {
-          try { expandArchive(`${base}/${basename(p).replace(/\.(skill|zip)$/i, "")}`, data); }
+          try { expandArchive(joinPath(base, basename(p).replace(/\.(skill|zip)$/i, "")), data); }
           catch { /* skip a corrupt nested archive */ }
         } else {
-          entries.push({ rel: `${base}/${p}`, bytes: data, file: null, binary: BINARY_EXT.test(p), fromArchive: true });
+          entries.push({ rel: joinPath(base, p), bytes: data, file: null, binary: BINARY_EXT.test(p), fromArchive: true });
         }
       }
     };
@@ -5106,7 +5113,10 @@ export function CompanySkills() {
     for (const f of files) {
       const rel = f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name;
       if (/\.(skill|zip)$/i.test(f.name)) {
-        try { expandArchive(f.name.replace(/\.(skill|zip)$/i, ""), new Uint8Array(await f.arrayBuffer())); }
+        const dir = dirOf(rel);
+        const nameNoExt = basename(f.name).replace(/\.(skill|zip)$/i, "");
+        const base = (archiveDirCounts.get(dir) ?? 0) > 1 ? joinPath(dir, nameNoExt) : dir;
+        try { expandArchive(base, new Uint8Array(await f.arrayBuffer())); }
         catch { archiveError = true; }
       } else {
         entries.push({ rel, bytes: null, file: f, binary: BINARY_EXT.test(rel), fromArchive: false });
@@ -5185,34 +5195,95 @@ export function CompanySkills() {
 
     setUploading(true);
     const created: { id: string; name: string }[] = [];
+    const refiled: { id: string; name: string }[] = []; // existing skills moved into their mirrored folder
+    const skipped: { name: string }[] = []; // already present, already in the right place
     const failed: { name: string; reason: string }[] = [];
     let firstCreated: Awaited<ReturnType<typeof companySkillsApi.create>> | null = null;
+    const createdFolderNames = new Set<string>();
     try {
-      // Option B: find-or-create the same-named skill folder for a folder upload.
-      let autoFolderId: string | null = null;
-      if (folderUploadName) {
-        try {
-          const existing = (await foldersApi.list(companyId, "skill")).folders.find((f) => f.name === folderUploadName);
-          autoFolderId = existing?.id
-            ?? (await foldersApi.create(companyId, {
-              kind: "skill",
-              name: folderUploadName,
-              scope: uploadScope,
-              ...(uploadScope === "team" ? { sharingTeams: uploadTeams } : {}),
-            })).id;
-        } catch {
-          autoFolderId = null; // fall back to category auto-filing if folder create fails
+      // Mirror the uploaded directory tree into nested store folders, lazily and
+      // memoized by full path. Returns the LEAF folder id for a dir path
+      // ("Top/sub/sub2"), or null when there is no directory structure.
+      const folderIdByPath = new Map<string, string | null>([["", null]]);
+      type KnownFolder = { id: string; name: string; parentId: string | null };
+      let knownFolders: KnownFolder[] = [];
+      try {
+        knownFolders = (await foldersApi.list(companyId, "skill")).folders
+          .map((f) => ({ id: f.id, name: f.name, parentId: f.parentId ?? null }));
+      } catch { knownFolders = []; }
+      const ensureFolderPath = async (dirPath: string): Promise<string | null> => {
+        if (folderIdByPath.has(dirPath)) return folderIdByPath.get(dirPath)!;
+        const segments = dirPath.split("/").filter(Boolean);
+        let parentId: string | null = null;
+        let accum = "";
+        for (const segment of segments) {
+          accum = accum ? `${accum}/${segment}` : segment;
+          const cached = folderIdByPath.get(accum);
+          if (cached !== undefined) { parentId = cached; continue; }
+          const match = knownFolders.find((f) => (f.parentId ?? null) === parentId && f.name === segment);
+          let folderId: string | null;
+          if (match) {
+            folderId = match.id;
+          } else {
+            try {
+              const folder = await foldersApi.create(companyId, {
+                kind: "skill",
+                name: segment,
+                parentId,
+                scope: uploadScope,
+                ...(uploadScope === "team" ? { sharingTeams: uploadTeams } : {}),
+              });
+              folderId = folder.id;
+              knownFolders.push({ id: folder.id, name: folder.name, parentId: folder.parentId ?? null });
+              createdFolderNames.add(segment);
+            } catch {
+              folderId = parentId; // folder create failed → fall back to parent (or unfiled)
+            }
+          }
+          folderIdByPath.set(accum, folderId);
+          parentId = folderId;
         }
-      }
+        return parentId;
+      };
+
+      // Snapshot existing skills once so a re-upload of the same folder MOVES
+      // already-imported skills into their mirrored folder instead of skipping
+      // them as duplicates (repairs an earlier scattered import).
+      const existingByName = new Map<string, CompanySkillListItem>();
+      try {
+        for (const s of await companySkillsApi.list(companyId, {})) {
+          if (s.name) existingByName.set(s.name.trim(), s);
+        }
+      } catch { /* no existing snapshot — treat everything as new */ }
+
       for (const unit of units) {
         const markdown = await readText(unit.mdEntry);
         const toRel = (rel: string) => (unit.prefix && rel.startsWith(unit.prefix) ? rel.slice(unit.prefix.length) : basename(rel));
+        const dirPath = dirOf(unit.mdEntry.rel);
+        const leafName = dirPath.split("/").filter(Boolean).pop() ?? null;
         const fallbackName =
           unit.prefix !== null
             ? (unit.prefix.replace(/\/$/, "").split("/").pop() || "Uploaded skill")
             : basename(unit.mdEntry.rel).replace(/\.md$/i, "");
         const name = parseField(markdown, "name") ?? fallbackName;
+        const targetFolderId = await ensureFolderPath(dirPath);
+        // Set the mirrored folder's name as the skill's category so it groups
+        // under that folder in category-based views (agent skills) too.
+        const categories = leafName ? [leafName] : [];
         try {
+          const existing = existingByName.get(name.trim());
+          if (existing) {
+            if (targetFolderId && existing.folderId !== targetFolderId) {
+              await foldersApi.moveItem(companyId, { kind: "skill", itemId: existing.id, folderId: targetFolderId });
+              if (categories.length) {
+                try { await companySkillsApi.update(companyId, existing.id, { categories }); } catch { /* folder move already succeeded */ }
+              }
+              refiled.push({ id: existing.id, name });
+            } else {
+              skipped.push({ name }); // duplicate with nowhere better to file it
+            }
+            continue;
+          }
           const skill = await companySkillsApi.create(companyId, {
             name,
             description: parseField(markdown, "description"),
@@ -5220,12 +5291,8 @@ export function CompanySkills() {
             sharingScope: uploadScope,
             sharingTeams: uploadScope === "team" ? uploadTeams : [],
             equipOnCreate: uploadEquip,
-            // Folder upload → file into the auto-created folder AND set the folder
-            // name as the skill's category, so it groups under that folder in
-            // category-based views (agent skills, store) instead of "Uncategorized".
-            // Otherwise use the dropdown categories (or auto-categorize when none chosen).
-            ...(autoFolderId
-              ? { folderId: autoFolderId, categories: folderUploadName ? [folderUploadName] : [], autoCategorize: false }
+            ...(targetFolderId
+              ? { folderId: targetFolderId, categories, autoCategorize: false }
               : { categories: uploadCategories, autoCategorize: uploadCategories.length === 0 }),
             equipAgentIds: uploadScope === "private" ? uploadShareAgentIds : [],
           });
@@ -5239,6 +5306,7 @@ export function CompanySkills() {
             else await companySkillsApi.updateFile(companyId, skill.id, rel, await readText(e));
           }
           created.push({ id: skill.id, name: skill.name });
+          existingByName.set(name.trim(), skill as unknown as CompanySkillListItem);
         } catch (err) {
           const msg = err instanceof Error ? err.message : "failed";
           const isDup = /already exists|already used|slug/i.test(msg);
@@ -5247,32 +5315,43 @@ export function CompanySkills() {
       }
 
       await queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) });
-      if (folderUploadName) await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(companyId, "skill") });
+      if (createdFolderNames.size > 0 || refiled.length > 0) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(companyId, "skill") });
+      }
       setImportDialogOpen(false);
-      const folderSuffix = folderUploadName ? t("companySkills.uploadFiledInFolder", { defaultValue: "（已歸入資料夾「{{folder}}」）", folder: folderUploadName }) : "";
+      const folderSuffix = createdFolderNames.size > 0
+        ? t("companySkills.uploadFiledInFolders", { defaultValue: "（已建立 {{count}} 個資料夾並歸檔）", count: createdFolderNames.size })
+        : "";
+      const refiledSuffix = refiled.length > 0
+        ? t("companySkills.uploadRefiled", { defaultValue: "（重新歸檔 {{count}} 個既有技能）", count: refiled.length })
+        : "";
 
-      if (created.length === 1 && failed.length === 0 && firstCreated) {
+      if (created.length === 1 && refiled.length === 0 && failed.length === 0 && skipped.length === 0 && firstCreated) {
         navigate(routeForSkill(firstCreated));
         pushToast({
           tone: "success",
           title: t("companySkills.uploadSuccess", { defaultValue: "Skill uploaded" }),
           body: t("companySkills.uploadSuccessBody", { defaultValue: "{{name}} is now editable in the Paperclip workspace.", name: created[0]!.name }) + folderSuffix,
         });
-      } else if (created.length > 0) {
+      } else if (created.length > 0 || refiled.length > 0) {
         pushToast({
           tone: failed.length > 0 ? "warn" : "success",
           title: t("companySkills.uploadMultiSuccess", { defaultValue: "{{count}} skills uploaded", count: created.length }),
           body: (failed.length > 0
-            ? t("companySkills.uploadMultiPartial", { defaultValue: "Created: {{ok}}. Skipped {{fail}} (duplicate or error): {{names}}", ok: created.map((c) => c.name).join("、"), fail: failed.length, names: failed.map((f) => f.name).join("、") })
-            : t("companySkills.uploadMultiBody", { defaultValue: "Created: {{names}}", names: created.map((c) => c.name).join("、") })) + folderSuffix,
+            ? t("companySkills.uploadMultiPartial", { defaultValue: "Created: {{ok}}. Skipped {{fail}} (duplicate or error): {{names}}", ok: created.map((c) => c.name).join("、") || "0", fail: failed.length, names: failed.map((f) => f.name).join("、") })
+            : t("companySkills.uploadMultiBody", { defaultValue: "Created: {{names}}", names: created.map((c) => c.name).join("、") || "—" })) + folderSuffix + refiledSuffix,
         });
       } else {
         pushToast({
-          tone: "error",
-          title: t("companySkills.uploadFailed", { defaultValue: "Upload failed" }),
-          body: failed.some((f) => f.reason === "duplicate")
-            ? t("companySkills.uploadDuplicateBody", { defaultValue: "A skill with this name is already in the store, so this upload was blocked to avoid a duplicate. Open the existing skill to edit it instead." })
-            : (failed[0]?.reason ?? "Upload failed."),
+          tone: failed.length > 0 ? "error" : "success",
+          title: failed.length > 0
+            ? t("companySkills.uploadFailed", { defaultValue: "Upload failed" })
+            : t("companySkills.uploadAlreadyFiled", { defaultValue: "Already in the store" }),
+          body: failed.length > 0
+            ? (failed.some((f) => f.reason === "duplicate")
+              ? t("companySkills.uploadDuplicateBody", { defaultValue: "A skill with this name is already in the store, so this upload was blocked to avoid a duplicate. Open the existing skill to edit it instead." })
+              : (failed[0]?.reason ?? "Upload failed."))
+            : t("companySkills.uploadAllSkippedBody", { defaultValue: "All {{count}} skill(s) are already in the store and already correctly filed.", count: skipped.length }),
         });
       }
     } finally {

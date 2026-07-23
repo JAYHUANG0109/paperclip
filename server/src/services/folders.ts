@@ -306,9 +306,17 @@ export function folderService(db: Db, mutationLockHeld = false) {
       throw unprocessable(`Folder depth cannot exceed ${MAX_FOLDER_DEPTH}`);
     }
     const name = normalizeName(input.name);
-    const slug = input.slug ?? normalizeFolderSlug(name);
+    let slug = input.slug ?? normalizeFolderSlug(name);
     if (isReservedRootSlug(input.kind, parentId, slug)) {
       throw forbidden("Reserved skill folders are system-managed");
+    }
+    // When the caller lets us derive the slug, auto-disambiguate on collision
+    // rather than failing. All-CJK/emoji names all normalize to the same
+    // fallback slug ("folder"), so a second such sibling would otherwise 409 on
+    // the (parent, slug) unique index — which upload callers swallow, silently
+    // dropping the folder. An explicitly pinned slug still conflicts loudly.
+    if (input.slug == null) {
+      slug = await uniqueSiblingSlug(companyId, parentId, slug, name, input.kind);
     }
     await assertNoSlugConflict(companyId, input.kind, parentId, slug);
     const position = input.position ?? await nextPosition(companyId, input.kind, parentId);
@@ -508,13 +516,13 @@ export function folderService(db: Db, mutationLockHeld = false) {
     return { kind: input.kind, itemId: row.id, folderId: row.folderId ?? null };
   }
 
-  async function uniqueSiblingSlug(companyId: string, parentId: string | null, baseSlug: string, stableSuffix: string) {
+  async function uniqueSiblingSlug(companyId: string, parentId: string | null, baseSlug: string, stableSuffix: string, kind: FolderKind = "skill") {
     const siblingSlugs = new Set(await db
       .select({ slug: folders.slug })
       .from(folders)
       .where(and(
         eq(folders.companyId, companyId),
-        eq(folders.kind, "skill"),
+        eq(folders.kind, kind),
         parentId === null ? sql`${folders.parentId} is null` : eq(folders.parentId, parentId),
       ))
       .then((rows) => rows.map((row) => row.slug)));

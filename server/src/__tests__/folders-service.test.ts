@@ -220,6 +220,26 @@ describeEmbeddedPostgres("folder service", () => {
     })).rejects.toMatchObject({ status: 422, message: "A folder cannot be moved into its own subtree" });
   });
 
+  it("auto-disambiguates derived slugs when names collapse to the same slug", async () => {
+    const companyId = await seedCompany();
+    const svc = folderService(db);
+    // All-CJK / emoji names strip to nothing and fall back to the "folder" slug.
+    // Two such siblings must both create (the second gets a unique slug) rather
+    // than 409 — this is what broke folder upload for Chinese-named folders.
+    const first = await svc.create(companyId, { kind: "skill", name: "共用 選裝｜簡報製作技能" });
+    const second = await svc.create(companyId, { kind: "skill", name: "🏷️共用 🏷️必裝｜有效輔導 教練式培力" });
+    expect(first.slug).toBe("folder");
+    expect(second.slug).not.toBe(first.slug);
+    expect(second.slug.startsWith("folder")).toBe(true);
+
+    const listed = await svc.list(companyId, "skill");
+    expect(listed.folders.filter((f) => f.name === "共用 選裝｜簡報製作技能" || f.name === "🏷️共用 🏷️必裝｜有效輔導 教練式培力")).toHaveLength(2);
+
+    // An explicitly-pinned slug still conflicts loudly (no silent renaming).
+    await expect(svc.create(companyId, { kind: "skill", name: "Explicit", slug: "folder" }))
+      .rejects.toMatchObject({ status: 409 });
+  });
+
   it("creates stable personal roots and protects bundled folders", async () => {
     const companyId = await seedCompany();
     const svc = folderService(db);
