@@ -5544,7 +5544,10 @@ export function CompanySkills() {
             ? (failed.some((f) => f.reason === "duplicate")
               ? t("companySkills.uploadDuplicateBody", { defaultValue: "A skill with this name is already in the store, so this upload was blocked to avoid a duplicate. Open the existing skill to edit it instead." })
               : (failed[0]?.reason ?? "Upload failed."))
-            : t("companySkills.uploadAllSkippedBody", { defaultValue: "All {{count}} skill(s) are already in the store and already correctly filed.", count: skipped.length }),
+            // Append folderSuffix so merged-duplicate / failed-package / skipped
+            // notes still surface even when every skill was already filed — so a
+            // "missing" skill that was really merged from another folder is explained.
+            : t("companySkills.uploadAllSkippedBody", { defaultValue: "All {{count}} skill(s) are already in the store and already correctly filed.", count: skipped.length }) + folderSuffix,
         });
       }
     } finally {
