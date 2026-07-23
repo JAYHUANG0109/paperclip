@@ -862,6 +862,26 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     })).rejects.toMatchObject({ status: 404, message: "Skill folder not found" });
   });
 
+  it("auto-disambiguates derived slugs so distinct names that collapse to the same slug both import", async () => {
+    const companyId = randomUUID();
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    // Two different all-CJK names whose only ASCII remnant is the same date both
+    // reduce to slug "20260321" — the second used to silently fail to import.
+    const first = await svc.createLocalSkill(companyId, { name: "雅雅_教學主管工作月份盤點與交接規劃_20260321" });
+    const second = await svc.createLocalSkill(companyId, { name: "雅雅工作盤點清單_20260321" });
+    expect(first.slug).toBe("20260321");
+    expect(second.slug).toBe("20260321-2");
+
+    // An explicitly-pinned slug still conflicts loudly (no silent renaming).
+    await expect(svc.createLocalSkill(companyId, { name: "Pinned", slug: "20260321" }))
+      .rejects.toMatchObject({ status: 409 });
+  });
+
   it("resolves detail by unique skill slug for Studio deep links", async () => {
     const companyId = randomUUID();
     await db.insert(companies).values({

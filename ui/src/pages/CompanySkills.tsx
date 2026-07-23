@@ -5247,14 +5247,33 @@ export function CompanySkills() {
       };
 
       // Snapshot existing skills once so a re-upload of the same folder MOVES
-      // already-imported skills into their mirrored folder instead of skipping
-      // them as duplicates (repairs an earlier scattered import).
+      // already-imported skills into their mirrored folder instead of leaving
+      // them scattered (repairs an earlier flat import). Identity is the NAME,
+      // not the slug: distinct CJK filenames can collapse to the same slug
+      // (e.g. two "…_20260321" names both slug to "20260321"), so slug-matching
+      // would false-match them. Names are NFC-normalized because macOS hands us
+      // decomposed-Unicode filenames that must compare equal to the stored form.
+      const nfcKey = (value: string) => value.normalize("NFC").trim();
       const existingByName = new Map<string, CompanySkillListItem>();
+      const rememberExisting = (s: CompanySkillListItem) => {
+        if (s.name) existingByName.set(nfcKey(s.name), s);
+      };
       try {
-        for (const s of await companySkillsApi.list(companyId, {})) {
-          if (s.name) existingByName.set(s.name.trim(), s);
-        }
+        for (const s of await companySkillsApi.list(companyId, {})) rememberExisting(s);
       } catch { /* no existing snapshot — treat everything as new */ }
+
+      // Move an already-present skill into its mirrored folder; returns true if it
+      // was moved, false if there was nowhere better to file it.
+      const refileExisting = async (existing: CompanySkillListItem, targetFolderId: string | null, categories: string[]) => {
+        if (targetFolderId && existing.folderId !== targetFolderId) {
+          await foldersApi.moveItem(companyId, { kind: "skill", itemId: existing.id, folderId: targetFolderId });
+          if (categories.length) {
+            try { await companySkillsApi.update(companyId, existing.id, { categories }); } catch { /* folder move already succeeded */ }
+          }
+          return true;
+        }
+        return false;
+      };
 
       for (const unit of units) {
         const markdown = await readText(unit.mdEntry);
@@ -5271,17 +5290,10 @@ export function CompanySkills() {
         // under that folder in category-based views (agent skills) too.
         const categories = leafName ? [leafName] : [];
         try {
-          const existing = existingByName.get(name.trim());
+          const existing = existingByName.get(nfcKey(name));
           if (existing) {
-            if (targetFolderId && existing.folderId !== targetFolderId) {
-              await foldersApi.moveItem(companyId, { kind: "skill", itemId: existing.id, folderId: targetFolderId });
-              if (categories.length) {
-                try { await companySkillsApi.update(companyId, existing.id, { categories }); } catch { /* folder move already succeeded */ }
-              }
-              refiled.push({ id: existing.id, name });
-            } else {
-              skipped.push({ name }); // duplicate with nowhere better to file it
-            }
+            if (await refileExisting(existing, targetFolderId, categories)) refiled.push({ id: existing.id, name });
+            else skipped.push({ name });
             continue;
           }
           const skill = await companySkillsApi.create(companyId, {
@@ -5306,11 +5318,20 @@ export function CompanySkills() {
             else await companySkillsApi.updateFile(companyId, skill.id, rel, await readText(e));
           }
           created.push({ id: skill.id, name: skill.name });
-          existingByName.set(name.trim(), skill as unknown as CompanySkillListItem);
+          rememberExisting(skill as unknown as CompanySkillListItem);
         } catch (err) {
           const msg = err instanceof Error ? err.message : "failed";
+          // With the server auto-disambiguating derived slugs, a create only
+          // 409s when the name genuinely matches an existing skill our pre-match
+          // missed — so re-file it by name rather than reporting a failure.
           const isDup = /already exists|already used|slug/i.test(msg);
-          failed.push({ name, reason: isDup ? "duplicate" : msg });
+          const existing = isDup ? existingByName.get(nfcKey(name)) : undefined;
+          if (existing) {
+            if (await refileExisting(existing, targetFolderId, categories)) refiled.push({ id: existing.id, name });
+            else skipped.push({ name });
+          } else {
+            failed.push({ name, reason: isDup ? "duplicate" : msg });
+          }
         }
       }
 
@@ -5322,9 +5343,6 @@ export function CompanySkills() {
       const folderSuffix = createdFolderNames.size > 0
         ? t("companySkills.uploadFiledInFolders", { defaultValue: "（已建立 {{count}} 個資料夾並歸檔）", count: createdFolderNames.size })
         : "";
-      const refiledSuffix = refiled.length > 0
-        ? t("companySkills.uploadRefiled", { defaultValue: "（重新歸檔 {{count}} 個既有技能）", count: refiled.length })
-        : "";
 
       if (created.length === 1 && refiled.length === 0 && failed.length === 0 && skipped.length === 0 && firstCreated) {
         navigate(routeForSkill(firstCreated));
@@ -5334,12 +5352,16 @@ export function CompanySkills() {
           body: t("companySkills.uploadSuccessBody", { defaultValue: "{{name}} is now editable in the Paperclip workspace.", name: created[0]!.name }) + folderSuffix,
         });
       } else if (created.length > 0 || refiled.length > 0) {
+        // Summarize every bucket so it's obvious what happened to each skill.
+        const parts: string[] = [];
+        if (created.length > 0) parts.push(t("companySkills.uploadPartCreated", { defaultValue: "新增 {{count}}：{{names}}", count: created.length, names: created.map((c) => c.name).join("、") }));
+        if (refiled.length > 0) parts.push(t("companySkills.uploadPartRefiled", { defaultValue: "歸檔 {{count}}：{{names}}", count: refiled.length, names: refiled.map((c) => c.name).join("、") }));
+        if (skipped.length > 0) parts.push(t("companySkills.uploadPartSkipped", { defaultValue: "已在正確位置 {{count}}", count: skipped.length }));
+        if (failed.length > 0) parts.push(t("companySkills.uploadPartFailed", { defaultValue: "失敗 {{count}}：{{names}}", count: failed.length, names: failed.map((f) => f.name).join("、") }));
         pushToast({
           tone: failed.length > 0 ? "warn" : "success",
-          title: t("companySkills.uploadMultiSuccess", { defaultValue: "{{count}} skills uploaded", count: created.length }),
-          body: (failed.length > 0
-            ? t("companySkills.uploadMultiPartial", { defaultValue: "Created: {{ok}}. Skipped {{fail}} (duplicate or error): {{names}}", ok: created.map((c) => c.name).join("、") || "0", fail: failed.length, names: failed.map((f) => f.name).join("、") })
-            : t("companySkills.uploadMultiBody", { defaultValue: "Created: {{names}}", names: created.map((c) => c.name).join("、") || "—" })) + folderSuffix + refiledSuffix,
+          title: t("companySkills.uploadMultiDone", { defaultValue: "{{count}} 個技能已就緒", count: created.length + refiled.length }),
+          body: parts.join("；") + folderSuffix,
         });
       } else {
         pushToast({

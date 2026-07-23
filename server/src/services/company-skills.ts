@@ -4373,11 +4373,25 @@ export function companySkillService(db: Db) {
     options: { isPrivileged?: boolean; allowRestrictedFolders?: boolean } = {},
   ): Promise<CompanySkill> {
     if (input.folderId) await folderSvc.validateSkillFolder(companyId, input.folderId);
-    const slug = normalizeSkillSlug(input.slug ?? input.name) ?? "skill";
-    const key = `company/${companyId}/${slug}`;
+    let slug = normalizeSkillSlug(input.slug ?? input.name) ?? "skill";
+    let key = `company/${companyId}/${slug}`;
     const existing = await getByKey(companyId, key);
     if (existing) {
-      throw conflict(`A company skill with slug "${slug}" already exists.`);
+      // A caller-pinned slug conflicts loudly. But a DERIVED slug (from the name)
+      // must auto-disambiguate: names that reduce to the same ASCII remnant —
+      // e.g. two all-CJK filenames that both collapse to a shared date/number
+      // like "20260321" — would otherwise make the second skill silently fail to
+      // import. Suffix until unique so distinct skills coexist.
+      if (input.slug != null) {
+        throw conflict(`A company skill with slug "${slug}" already exists.`);
+      }
+      const baseSlug = slug;
+      let counter = 2;
+      do {
+        slug = `${baseSlug}-${counter}`;
+        key = `company/${companyId}/${slug}`;
+        counter += 1;
+      } while (await getByKey(companyId, key));
     }
 
     const forkSource = input.forkedFromSkillId
