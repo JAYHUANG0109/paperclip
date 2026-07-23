@@ -5080,46 +5080,42 @@ export function CompanySkills() {
     // ONLY ever supporting material — a bare .md inside a package is a reference,
     // never its own skill. A bare .md becomes a skill only when directly selected
     // with no SKILL.md governing it (see below).
-    type Entry = { rel: string; bytes: Uint8Array | null; file: File | null; binary: boolean; fromArchive: boolean };
+    // `container`: the OS folder a skill should file into, OVERRIDING the rel-based
+    // path. Archive contents get the folder that held the .skill; a package is
+    // opaque, so its internal layout is only for supporting-file paths, never for
+    // store folders. Non-archive files derive their folder from `rel` (container null).
+    type Entry = { rel: string; bytes: Uint8Array | null; file: File | null; binary: boolean; fromArchive: boolean; container: string | null };
     const entries: Entry[] = [];
     const isSkillMd = (rel: string) => basename(rel).toLowerCase() === "skill.md";
 
-    // Archives expand INTO the OS directory that held them, so their skills file
-    // into that folder (not a phantom one). When a single directory holds MORE
-    // than one archive, namespace each by its filename to avoid path collisions.
-    const archiveDirCounts = new Map<string, number>();
-    for (const f of files) {
-      if (!/\.(skill|zip)$/i.test(f.name)) continue;
-      const rel = f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name;
-      const dir = dirOf(rel);
-      archiveDirCounts.set(dir, (archiveDirCounts.get(dir) ?? 0) + 1);
-    }
-
-    // Recursively expand a .skill/.zip archive; nested archives get their own root.
-    const expandArchive = (base: string, bytes: Uint8Array) => {
+    // Each archive expands into its OWN private namespace (" a<n>/…") that can
+    // never collide with real files. This is what stops a package's internal
+    // SKILL.md from claiming sibling files in the same OS folder as its supporting
+    // material (which would swallow other skills). The skill still files into
+    // `container` — the real OS folder that held the .skill.
+    const expandArchive = (ns: string, container: string, bytes: Uint8Array) => {
       const unz = unzipSync(bytes);
+      let nested = 0;
       for (const [p, data] of Object.entries(unz)) {
         if (p.endsWith("/")) continue;
         if (/\.(skill|zip)$/i.test(p)) {
-          try { expandArchive(joinPath(base, basename(p).replace(/\.(skill|zip)$/i, "")), data); }
+          try { expandArchive(`${ns}/n${nested += 1}`, container, data); }
           catch { /* skip a corrupt nested archive */ }
         } else {
-          entries.push({ rel: joinPath(base, p), bytes: data, file: null, binary: BINARY_EXT.test(p), fromArchive: true });
+          entries.push({ rel: joinPath(ns, p), bytes: data, file: null, binary: BINARY_EXT.test(p), fromArchive: true, container });
         }
       }
     };
 
     let archiveError = false;
+    let archiveIndex = 0;
     for (const f of files) {
       const rel = f.webkitRelativePath && f.webkitRelativePath.length > 0 ? f.webkitRelativePath : f.name;
       if (/\.(skill|zip)$/i.test(f.name)) {
-        const dir = dirOf(rel);
-        const nameNoExt = basename(f.name).replace(/\.(skill|zip)$/i, "");
-        const base = (archiveDirCounts.get(dir) ?? 0) > 1 ? joinPath(dir, nameNoExt) : dir;
-        try { expandArchive(base, new Uint8Array(await f.arrayBuffer())); }
+        try { expandArchive(` a${archiveIndex += 1}`, dirOf(rel), new Uint8Array(await f.arrayBuffer())); }
         catch { archiveError = true; }
       } else {
-        entries.push({ rel, bytes: null, file: f, binary: BINARY_EXT.test(rel), fromArchive: false });
+        entries.push({ rel, bytes: null, file: f, binary: BINARY_EXT.test(rel), fromArchive: false, container: null });
       }
     }
     if (archiveError && entries.length === 0) {
@@ -5278,12 +5274,16 @@ export function CompanySkills() {
       for (const unit of units) {
         const markdown = await readText(unit.mdEntry);
         const toRel = (rel: string) => (unit.prefix && rel.startsWith(unit.prefix) ? rel.slice(unit.prefix.length) : basename(rel));
-        const dirPath = dirOf(unit.mdEntry.rel);
+        // Archive skills file into their `container` (the OS folder that held the
+        // .skill); everything else mirrors the directory of its own file.
+        const dirPath = unit.mdEntry.container != null ? unit.mdEntry.container : dirOf(unit.mdEntry.rel);
         const leafName = dirPath.split("/").filter(Boolean).pop() ?? null;
         const fallbackName =
-          unit.prefix !== null
-            ? (unit.prefix.replace(/\/$/, "").split("/").pop() || "Uploaded skill")
-            : basename(unit.mdEntry.rel).replace(/\.md$/i, "");
+          unit.mdEntry.container != null
+            ? (leafName || "Uploaded skill")
+            : unit.prefix !== null
+              ? (unit.prefix.replace(/\/$/, "").split("/").pop() || "Uploaded skill")
+              : basename(unit.mdEntry.rel).replace(/\.md$/i, "");
         const name = parseField(markdown, "name") ?? fallbackName;
         const targetFolderId = await ensureFolderPath(dirPath);
         // Set the mirrored folder's name as the skill's category so it groups
