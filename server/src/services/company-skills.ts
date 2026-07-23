@@ -3316,6 +3316,18 @@ export function companySkillService(db: Db) {
     return bestScore >= 4 ? best : null;
   }
 
+  // Find-or-create a skill folder by exact name; returns its id (or null on error).
+  async function ensureSkillFolderByName(companyId: string, name: string): Promise<string | null> {
+    try {
+      const existing = (await folderSvc.list(companyId, "skill")).folders.find((f) => f.name === name);
+      if (existing) return existing.id;
+      const created = await folderSvc.create(companyId, { kind: "skill", name, scope: "company" });
+      return created.id;
+    } catch {
+      return null;
+    }
+  }
+
   async function listFull(companyId: string): Promise<CompanySkill[]> {
     await ensureSkillInventoryCurrent(companyId);
     const rows = await db
@@ -4485,6 +4497,20 @@ export function companySkillService(db: Db) {
       const auto = await pickAutoCategory(companyId, { name: created.name, description: created.description, markdown }, allowRestrictedFolders);
       if (auto) resolvedCategories = [auto];
     }
+    // Auto-FILE into a folder (not just tag) so nothing lands in Unfiled: an
+    // explicit folderId always wins; else file into the resolved category's
+    // folder (created if missing); else — only when auto-categorizing — a
+    // catch-all folder ("代理自動產出" for agent-authored, otherwise
+    // "自動歸檔（待整理）") the user can reorganize.
+    let resolvedFolderId = input.folderId ?? null;
+    if (!resolvedFolderId && !forkSource) {
+      const cat = (resolvedCategories ?? []).find((c) => allowRestrictedFolders || !isRestrictedFolderName(c)) ?? null;
+      if (cat) {
+        resolvedFolderId = await ensureSkillFolderByName(companyId, cat);
+      } else if (input.autoCategorize !== false) {
+        resolvedFolderId = await ensureSkillFolderByName(companyId, actor?.type === "agent" ? "代理自動產出" : "自動歸檔（待整理）");
+      }
+    }
     const row = await db
       .update(companySkills)
       .set({
@@ -4494,7 +4520,7 @@ export function companySkillService(db: Db) {
         authorName: normalizeStoreText(input.authorName, 200) ?? forkSource?.authorName ?? created.authorName,
         homepageUrl: normalizeStoreText(input.homepageUrl, 2000) ?? forkSource?.homepageUrl ?? created.homepageUrl,
         categories: resolvedCategories,
-        folderId: input.folderId ?? null,
+        folderId: resolvedFolderId,
         sharingScope,
         createdByUserId: actor?.type === "user" ? actor.userId ?? null : null,
         minutesPerUse: Math.max(0, Math.min(100000, Math.round(input.minutesPerUse ?? 0))),

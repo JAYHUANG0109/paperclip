@@ -695,6 +695,39 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
   });
 
+  it("auto-files skills into a folder instead of leaving them Unfiled", async () => {
+    const companyId = randomUUID();
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    const folderSvc = folderService(db);
+
+    // No folder, no category, nothing to match → catch-all folder (never Unfiled).
+    const looseSkill = await svc.createLocalSkill(
+      companyId,
+      { name: "class-status-report", description: "彙整各班班級燈號並產出週報" },
+      { type: "user", userId: randomUUID() },
+      { isPrivileged: true },
+    );
+    expect(looseSkill.folderId).toBeTruthy();
+    const foldersA = (await folderSvc.list(companyId, "skill")).folders;
+    expect(foldersA.find((f) => f.id === looseSkill.folderId)?.name).toBe("自動歸檔（待整理）");
+
+    // A chosen category files into that category's folder (created on demand).
+    const catSkill = await svc.createLocalSkill(
+      companyId,
+      { name: "fee-billing", categories: ["部門管理工具"] },
+      { type: "user", userId: randomUUID() },
+      { isPrivileged: true },
+    );
+    expect(catSkill.folderId).toBeTruthy();
+    const foldersB = (await folderSvc.list(companyId, "skill")).folders;
+    expect(foldersB.find((f) => f.id === catSkill.folderId)?.name).toBe("部門管理工具");
+  });
+
   it("updates private/company sharing scope and rejects public link publishing", async () => {
     const companyId = randomUUID();
     await db.insert(companies).values({
