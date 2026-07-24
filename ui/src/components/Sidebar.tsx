@@ -38,6 +38,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { agentsApi } from "../api/agents";
+import { accessApi } from "../api/access";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,18 @@ export function Sidebar() {
   // is a new surface, hidden entirely while the flag is off (same no-flash
   // pattern as showWorkspacesLink above).
   const conferenceRoomChatEnabled = experimentalSettings?.enableConferenceRoomChat === true;
+
+  // Admin-only nav trimming: hide low-priority pages (Leaderboard, Bounties,
+  // Goals, Wiki) from NON-admins so operators/viewers aren't overwhelmed. The
+  // features/routes stay live — only the sidebar buttons are hidden. Same admin
+  // definition as the Chat section: instance admins + company owners/admins
+  // (i.e. 創辦人 / Jay / 惠君). Not a security boundary — purely nav declutter.
+  const { data: boardAccess } = useQuery({
+    queryKey: queryKeys.access.currentBoardAccess,
+    queryFn: () => accessApi.getCurrentBoardAccess(),
+  });
+  const membershipRole = boardAccess?.memberships?.find((m) => m.companyId === selectedCompanyId)?.membershipRole;
+  const isAdminViewer = Boolean(boardAccess?.isInstanceAdmin) || membershipRole === "owner" || membershipRole === "admin";
 
   const pluginContext = {
     companyId: selectedCompanyId,
@@ -201,11 +214,11 @@ export function Sidebar() {
         <SidebarSection label={t("nav.work", { defaultValue: "Work" })}>
           <SidebarNavItem to="/issues" label={t("nav.issues", { defaultValue: "Tasks" })} icon={CircleDot} />
           <SidebarNavItem to="/calendar" label={t("nav.calendar", { defaultValue: "Calendar" })} icon={CalendarDays} />
-          {SHOW_LEADERBOARD && <SidebarNavItem to="/leaderboard" label={t("nav.leaderboard", { defaultValue: "Leaderboard" })} icon={Trophy} />}
-          {SHOW_BOUNTIES && <SidebarNavItem to="/bounties" label={t("nav.bounties", { defaultValue: "Bounties" })} icon={Lightbulb} />}
+          {SHOW_LEADERBOARD && isAdminViewer && <SidebarNavItem to="/leaderboard" label={t("nav.leaderboard", { defaultValue: "Leaderboard" })} icon={Trophy} />}
+          {SHOW_BOUNTIES && isAdminViewer && <SidebarNavItem to="/bounties" label={t("nav.bounties", { defaultValue: "Bounties" })} icon={Lightbulb} />}
           <SidebarNavItem to="/office" label={t("nav.office", { defaultValue: "Virtual Office" })} icon={Building2} />
           <SidebarNavItem to="/routines" label={t("nav.routines", { defaultValue: "Routines" })} icon={Repeat} />
-          <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />
+          {isAdminViewer && <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />}
           <SidebarNavItem to="/artifacts" label={t("nav.artifacts", { defaultValue: "Artifacts" })} icon={Package} />
           <SidebarNavItem to="/skills" label={t("nav.skills", { defaultValue: "Skills" })} icon={Boxes} />
           {showWorkspacesLink ? (
@@ -214,13 +227,18 @@ export function Sidebar() {
           {streamlined ? (
             <SidebarNavItem to="/projects" label={t("nav.projects", { defaultValue: "Projects" })} icon={FolderOpen} />
           ) : null}
-          <PluginSlotOutlet
-            slotTypes={["sidebar"]}
-            context={pluginContext}
-            className="flex flex-col gap-0.5"
-            itemClassName="text-[13px] font-medium"
-            missingBehavior="placeholder"
-          />
+          {/* Plugin sidebar items (currently the LLM Wiki "Wiki" button) — hidden
+              from non-admins for now to declutter. Admins still see it; the plugin
+              and its pages stay installed/live. */}
+          {isAdminViewer && (
+            <PluginSlotOutlet
+              slotTypes={["sidebar"]}
+              context={pluginContext}
+              className="flex flex-col gap-0.5"
+              itemClassName="text-[13px] font-medium"
+              missingBehavior="placeholder"
+            />
+          )}
           <PluginLauncherOutlet
             placementZones={["sidebar"]}
             context={pluginContext}
