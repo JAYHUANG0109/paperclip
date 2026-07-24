@@ -6,6 +6,7 @@ import { accessApi } from "../api/access";
 import { projectsApi } from "../api/projects";
 import { agentsApi } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
+import { projectMembersApi } from "../api/project-members";
 import { goalsApi } from "../api/goals";
 import { assetsApi } from "../api/assets";
 import { buildMarkdownMentionOptions } from "../lib/company-members";
@@ -69,6 +70,9 @@ export function NewProjectDialog() {
   const [visibility, setVisibility] = useState<"company" | "team" | "private">("company");
   const [team, setTeam] = useState<string | null>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
+  // Private-scope: extra principals granted access (none = just the creator).
+  const [sharedPrincipals, setSharedPrincipals] = useState<Array<{ type: "user" | "agent"; id: string; label: string }>>([]);
+  const [shareOpen, setShareOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
 
   const { data: shareableTeams } = useQuery({
@@ -126,6 +130,7 @@ export function NewProjectDialog() {
     setWorkspaceError(null);
     setVisibility("company");
     setTeam(null);
+    setSharedPrincipals([]);
   }
 
   const isAbsolutePath = (value: string) => value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
@@ -185,6 +190,13 @@ export function NewProjectDialog() {
         ...(goalIds.length > 0 ? { goalIds } : {}),
         ...(targetDate ? { targetDate } : {}),
       });
+
+      // Private scope: grant the picked users/agents access (owner already implicit).
+      if (visibility === "private" && sharedPrincipals.length > 0) {
+        await Promise.all(sharedPrincipals.map((p) =>
+          projectMembersApi.add(created.id, { principalType: p.type, principalId: p.id, projectRole: "editor" }).catch(() => null),
+        ));
+      }
 
       if (localPath || repoUrl) {
         const workspacePayload: Record<string, unknown> = {
@@ -417,6 +429,48 @@ export function NewProjectDialog() {
               </div>
             </PopoverContent>
           </Popover>
+
+          {/* Private scope: pick users/agents to also grant access (none = just you). */}
+          {visibility === "private" && (
+            <Popover open={shareOpen} onOpenChange={setShareOpen}>
+              <PopoverTrigger asChild>
+                <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
+                  {sharedPrincipals.length > 0
+                    ? t("newProject.sharedWithCount", { defaultValue: "分享給 {{count}} 人", count: sharedPrincipals.length })
+                    : t("newProject.shareWith", { defaultValue: "分享給…（預設只有你）" })}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-1" align="start">
+                <div className="max-h-56 overflow-y-auto">
+                  <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.people", { defaultValue: "成員" })}</div>
+                  {(companyMembers?.users ?? []).map((u) => {
+                    const id = u.user?.id ?? u.principalId;
+                    const on = sharedPrincipals.some((p) => p.type === "user" && p.id === id);
+                    const label = u.user?.name ?? u.user?.email ?? id;
+                    return (
+                      <button key={`u:${id}`} className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", on && "bg-accent")}
+                        onClick={() => setSharedPrincipals((cur) => on ? cur.filter((p) => !(p.type === "user" && p.id === id)) : [...cur, { type: "user", id, label }])}>
+                        <input type="checkbox" checked={on} readOnly className="pointer-events-none" />
+                        <span className="truncate">{label}</span>
+                      </button>
+                    );
+                  })}
+                  <div className="mt-1 border-t border-border px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.agents", { defaultValue: "代理人" })}</div>
+                  {(agents ?? []).map((a) => {
+                    const id = a.id;
+                    const on = sharedPrincipals.some((p) => p.type === "agent" && p.id === id);
+                    return (
+                      <button key={`a:${id}`} className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", on && "bg-accent")}
+                        onClick={() => setSharedPrincipals((cur) => on ? cur.filter((p) => !(p.type === "agent" && p.id === id)) : [...cur, { type: "agent", id, label: a.name }])}>
+                        <input type="checkbox" checked={on} readOnly className="pointer-events-none" />
+                        <span className="truncate">{a.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
 
           {selectedGoals.map((goal) => (
             <span
