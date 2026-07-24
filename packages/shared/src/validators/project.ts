@@ -106,9 +106,10 @@ const projectFields = {
   status: z.enum(PROJECT_STATUSES).optional().default("backlog"),
   leadAgentId: z.string().uuid().optional().nullable(),
   ownerUserId: z.string().optional().nullable(),
-  // company = all members; team = members of `team` (+ shared); private = owner + access-members.
+  // company = all members; team = members of `teams` (+ shared); private = owner + access-members.
   visibility: z.enum(["company", "team", "private"]).optional(),
   team: z.string().optional().nullable(),
+  teams: z.array(z.string()).optional().nullable(),
   targetDate: z.string().optional().nullable(),
   color: z.string().optional().nullable(),
   icon: z.enum(PROJECT_ICON_NAMES).optional().nullable(),

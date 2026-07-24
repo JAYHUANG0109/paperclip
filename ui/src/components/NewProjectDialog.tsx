@@ -68,7 +68,7 @@ export function NewProjectDialog() {
   const [goalOpen, setGoalOpen] = useState(false);
   // Access scope: company (all), team (a chosen team), private (owner + shared).
   const [visibility, setVisibility] = useState<"company" | "team" | "private">("company");
-  const [team, setTeam] = useState<string | null>(null);
+  const [teams, setTeams] = useState<string[]>([]);
   const [scopeOpen, setScopeOpen] = useState(false);
   // Private-scope: extra principals granted access (none = just the creator).
   const [sharedPrincipals, setSharedPrincipals] = useState<Array<{ type: "user" | "agent"; id: string; label: string }>>([]);
@@ -129,7 +129,7 @@ export function NewProjectDialog() {
     setWorkspaceRepoUrl("");
     setWorkspaceError(null);
     setVisibility("company");
-    setTeam(null);
+    setTeams([]);
     setSharedPrincipals([]);
   }
 
@@ -180,13 +180,15 @@ export function NewProjectDialog() {
     setWorkspaceError(null);
 
     try {
+      // A team scope with no teams picked would be inaccessible — fall back to company.
+      const effectiveVisibility = visibility === "team" && teams.length === 0 ? "company" : visibility;
       const created = await createProject.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
         status,
         // No color is sent — new projects persist color = null (neutral gray). See PAP-68.
-        visibility,
-        ...(visibility === "team" && team ? { team } : {}),
+        visibility: effectiveVisibility,
+        ...(effectiveVisibility === "team" ? { teams, team: teams[0] } : {}),
         ...(goalIds.length > 0 ? { goalIds } : {}),
         ...(targetDate ? { targetDate } : {}),
       });
@@ -389,7 +391,7 @@ export function NewProjectDialog() {
             <PopoverTrigger asChild>
               <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
                 {visibility === "team"
-                  ? t("newProject.scopeTeamWith", { defaultValue: "團隊：{{team}}", team: team ?? "—" })
+                  ? t("newProject.scopeTeamWith", { defaultValue: "團隊：{{team}}", team: teams.length > 0 ? teams.join("、") : "—" })
                   : visibility === "private"
                     ? t("projects.scopePersonal", { defaultValue: "個人專案" })
                     : t("projects.scopeCompany", { defaultValue: "公司專案" })}
@@ -398,33 +400,40 @@ export function NewProjectDialog() {
             <PopoverContent className="w-56 p-1" align="start">
               <button
                 className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", visibility === "company" && "bg-accent")}
-                onClick={() => { setVisibility("company"); setTeam(null); setScopeOpen(false); }}
+                onClick={() => { setVisibility("company"); setTeams([]); setScopeOpen(false); }}
               >
                 {t("projects.scopeCompany", { defaultValue: "公司專案" })}
                 <span className="ml-auto text-[11px] text-muted-foreground">{t("newProject.scopeCompanyHint", { defaultValue: "全公司可見" })}</span>
               </button>
               <button
                 className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", visibility === "private" && "bg-accent")}
-                onClick={() => { setVisibility("private"); setTeam(null); setScopeOpen(false); }}
+                onClick={() => { setVisibility("private"); setTeams([]); setScopeOpen(false); }}
               >
                 {t("projects.scopePersonal", { defaultValue: "個人專案" })}
                 <span className="ml-auto text-[11px] text-muted-foreground">{t("newProject.scopePrivateHint", { defaultValue: "只有你與受邀者" })}</span>
               </button>
               <div className="my-1 border-t border-border" />
-              <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.scopeTeamPick", { defaultValue: "團隊專案（選一個團隊）" })}</div>
+              <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.scopeTeamPick", { defaultValue: "團隊專案（可選多個團隊）" })}</div>
               <div className="max-h-40 overflow-y-auto">
                 {(shareableTeams?.teams ?? []).length === 0 ? (
                   <div className="px-2 py-1.5 text-[11px] text-muted-foreground">{t("newProject.noTeams", { defaultValue: "沒有可分享的團隊" })}</div>
                 ) : (
-                  (shareableTeams?.teams ?? []).map((tm) => (
-                    <button
-                      key={tm}
-                      className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", visibility === "team" && team === tm && "bg-accent")}
-                      onClick={() => { setVisibility("team"); setTeam(tm); setScopeOpen(false); }}
-                    >
-                      <span className="truncate">{tm}</span>
-                    </button>
-                  ))
+                  (shareableTeams?.teams ?? []).map((tm) => {
+                    const on = teams.includes(tm);
+                    return (
+                      <button
+                        key={tm}
+                        className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", on && "bg-accent")}
+                        onClick={() => {
+                          setVisibility("team");
+                          setTeams((cur) => cur.includes(tm) ? cur.filter((x) => x !== tm) : [...cur, tm]);
+                        }}
+                      >
+                        <input type="checkbox" checked={on} readOnly className="pointer-events-none" />
+                        <span className="truncate">{tm}</span>
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </PopoverContent>

@@ -229,10 +229,15 @@ export function Projects() {
                         className={state === "left" ? "group text-foreground/55" : "group"}
                         trailing={
                           <div className="flex items-center gap-3">
-                            {project.visibility === "team" && project.team ? (
-                              <span className="hidden max-w-[10rem] truncate rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground sm:inline" title={project.team}>
-                                {project.team}
-                              </span>
+                            {project.visibility === "team" && (project.teams?.length || project.team) ? (
+                              (() => {
+                                const label = project.teams?.length ? project.teams.join("、") : project.team!;
+                                return (
+                                  <span className="hidden max-w-[10rem] truncate rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground sm:inline" title={label}>
+                                    {label}
+                                  </span>
+                                );
+                              })()
                             ) : project.visibility === "private" ? (
                               <span className="hidden rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground sm:inline">
                                 {t("projects.scopePrivateTag", { defaultValue: "私人" })}

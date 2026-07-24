@@ -3310,9 +3310,9 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
     queryFn: () => projectsApi.list(companyId),
   });
   const projectMeta = useMemo(() => {
-    const m = new Map<string, { name: string; visibility: string; team: string | null; urlKey?: string | null }>();
+    const m = new Map<string, { name: string; visibility: string; team: string | null; teams: string[] | null; urlKey?: string | null }>();
     for (const p of projects ?? []) {
-      m.set(p.id, { name: p.name, visibility: p.visibility ?? "company", team: p.team ?? null, urlKey: (p as { urlKey?: string | null }).urlKey ?? null });
+      m.set(p.id, { name: p.name, visibility: p.visibility ?? "company", team: p.team ?? null, teams: p.teams ?? null, urlKey: (p as { urlKey?: string | null }).urlKey ?? null });
     }
     return m;
   }, [projects]);
@@ -3356,8 +3356,8 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
         <summary className="flex cursor-pointer select-none items-center justify-between gap-2 bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted/60">
           <span className="flex min-w-0 items-center gap-2">
             <Link to={projectUrl({ id: projectId, urlKey: meta?.urlKey, name })} className="truncate no-underline hover:underline">{name}</Link>
-            {meta?.visibility === "team" && meta.team ? (
-              <span className="shrink-0 truncate rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground">{meta.team}</span>
+            {meta?.visibility === "team" && (meta.teams?.length || meta.team) ? (
+              <span className="shrink-0 truncate rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground">{meta.teams?.length ? meta.teams.join("、") : meta.team}</span>
             ) : meta?.visibility === "private" ? (
               <span className="shrink-0 rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground">{t("projects.scopePrivateTag", { defaultValue: "私人" })}</span>
             ) : null}

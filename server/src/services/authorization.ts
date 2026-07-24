@@ -625,7 +625,7 @@ export function authorizationService(db: Db) {
 
   async function getProjectVisibility(projectId: string, companyId: string) {
     return db
-      .select({ visibility: projects.visibility, ownerUserId: projects.ownerUserId, team: projects.team })
+      .select({ visibility: projects.visibility, ownerUserId: projects.ownerUserId, team: projects.team, teams: projects.teams })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
       .then((rows) => rows[0] ?? null);
@@ -697,10 +697,14 @@ export function authorizationService(db: Db) {
     } else if (actor.type === "agent" && actor.agentId) {
       if (await isProjectMember(projectId, "agent", actor.agentId)) return true; // explicit member
     }
-    // Team visibility: allow anyone whose team matches the project's team label.
-    if (proj.visibility === "team" && proj.team) {
-      const teams = await resolveActorTeams(companyId, actor);
-      if (teams.size > 0 && anyTeamTokenMatches([proj.team], teams)) return true;
+    // Team visibility: allow anyone whose team matches ANY of the project's teams
+    // (multi-team). Falls back to the legacy single `team` label.
+    if (proj.visibility === "team") {
+      const projectTeams = (proj.teams && proj.teams.length > 0) ? proj.teams : (proj.team ? [proj.team] : []);
+      if (projectTeams.length > 0) {
+        const teams = await resolveActorTeams(companyId, actor);
+        if (teams.size > 0 && anyTeamTokenMatches(projectTeams, teams)) return true;
+      }
     }
     return false;
   }

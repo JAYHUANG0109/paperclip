@@ -1938,6 +1938,63 @@ describeEmbeddedPostgres("authorization service", () => {
     } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
   });
 
+  it("Phase5 (flag ON): multi-team project visible to a member of ANY listed team", async () => {
+    process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
+    try {
+      const company = await createCompany(db, "P5_MultiTeam");
+      // teams array wins over the legacy single `team` label.
+      const project = await db.insert(projects).values({
+        companyId: company.id,
+        name: "Multi-Team Project",
+        issuePrefix: randomUUID().slice(0, 6).toUpperCase(),
+        visibility: "team",
+        team: "數位資訊部",
+        teams: ["數位資訊部", "幼教學組"],
+      }).returning().then((r) => r[0]!);
+
+      // Member of the SECOND team → still allowed (any-of match).
+      const inUser = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: inUser,
+        status: "active", membershipRole: "operator",
+      });
+      const inAgent = await db.insert(agents).values({
+        companyId: company.id, name: `In ${randomUUID()}`, role: "engineer",
+        adapterType: "process", adapterConfig: {}, runtimeConfig: {},
+        metadata: { teams: ["幼教學組"] },
+      }).returning().then((r) => r[0]!);
+      await db.insert(agentMemberships).values({ companyId: company.id, agentId: inAgent.id, userId: inUser, state: "joined" });
+
+      // Member of a team NOT in the list → denied.
+      const outUser = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: outUser,
+        status: "active", membershipRole: "operator",
+      });
+      const outAgent = await db.insert(agents).values({
+        companyId: company.id, name: `Out ${randomUUID()}`, role: "engineer",
+        adapterType: "process", adapterConfig: {}, runtimeConfig: {},
+        metadata: { teams: ["行政組"] },
+      }).returning().then((r) => r[0]!);
+      await db.insert(agentMemberships).values({ companyId: company.id, agentId: outAgent.id, userId: outUser, state: "joined" });
+
+      const authz = authorizationService(db);
+      const yes = await authz.decide({
+        actor: { type: "board", userId: inUser, source: "session" },
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      });
+      expect(yes).toMatchObject({ allowed: true });
+
+      const no = await authz.decide({
+        actor: { type: "board", userId: outUser, source: "session" },
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      });
+      expect(no).toMatchObject({ allowed: false, reason: "deny_scope" });
+    } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
+  });
+
   it("Phase5 (flag ON): company-wide project (visibility=company) unaffected — member can read", async () => {
     process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
     try {

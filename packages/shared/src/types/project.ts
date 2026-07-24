@@ -90,6 +90,7 @@ export interface Project {
   ownerUserId?: string | null;
   visibility?: "company" | "team" | "private";
   team?: string | null;
+  teams?: string[] | null;
   targetDate: string | null;
   color: string | null;
   icon: string | null;

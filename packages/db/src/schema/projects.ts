@@ -21,6 +21,8 @@ export const projects = pgTable(
     visibility: text("visibility").notNull().default("company"),
     // Phase 2: group projects by team (free-text department label, like agent metadata.teams).
     team: text("team"),
+    // Team scope may target multiple teams; `team` kept for back-compat/display.
+    teams: jsonb("teams").$type<string[]>(),
     targetDate: date("target_date"),
     color: text("color"),
     icon: text("icon"),
