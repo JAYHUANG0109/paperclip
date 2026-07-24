@@ -23,7 +23,7 @@ import {
 } from "../hooks/useResourceMemberships";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowUpDown, Check, Hexagon, Plus } from "lucide-react";
+import { ArrowUpDown, Check, ChevronRight, Hexagon, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 type ProjectSortField = "name" | "updated" | "created" | "targetDate";
@@ -199,13 +199,16 @@ export function Projects() {
             if (sectionProjects.length === 0) return null;
 
             return (
-              <section key={label} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-medium">{label}</h2>
+              <details key={label} className="group space-y-2">
+                <summary className="flex cursor-pointer select-none items-center justify-between rounded-md px-1 py-1 hover:bg-accent/40">
+                  <span className="flex items-center gap-1.5">
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                    <h2 className="text-sm font-medium">{label}</h2>
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     {t("projects.projectCount", { count: sectionProjects.length })}
                   </span>
-                </div>
+                </summary>
                 <Card className="block py-0 overflow-hidden divide-y divide-border">
                   {sectionProjects.map((project) => {
                     const state = resourceMembershipState(membershipsQuery.data, "project", project.id);
@@ -288,7 +291,7 @@ export function Projects() {
                     );
                   })}
                 </Card>
-              </section>
+              </details>
             );
           })}
         </div>

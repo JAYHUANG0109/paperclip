@@ -853,6 +853,8 @@ export function AgentDetail() {
           ? "configuration"
           : activeView === "skills"
             ? "skills"
+            : activeView === "projects"
+              ? "projects"
             : activeView === "tools"
               ? "tools"
               : activeView === "runs"
@@ -3402,10 +3404,14 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
         [t("projects.scopePersonal", { defaultValue: "個人專案" }), sections.personal],
       ] as const).map(([label, ids]) =>
         ids.length === 0 ? null : (
-          <section key={label} className="space-y-2">
-            <h2 className="text-sm font-medium text-muted-foreground">{label}</h2>
+          <details key={label} className="group space-y-2">
+            <summary className="flex cursor-pointer select-none items-center gap-1.5 rounded-md px-1 py-1 hover:bg-muted/40">
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+              <h2 className="text-sm font-medium text-muted-foreground">{label}</h2>
+              <span className="ml-auto text-xs text-muted-foreground">{ids.length}</span>
+            </summary>
             <div className="space-y-2">{ids.map(renderProject)}</div>
-          </section>
+          </details>
         ),
       )}
       {byProject.unfiled.length > 0 && (
