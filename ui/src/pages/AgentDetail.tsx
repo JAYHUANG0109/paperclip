@@ -9,6 +9,7 @@ import {
 } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
+import { projectsApi } from "../api/projects";
 import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -49,7 +50,7 @@ import { SourceResolvedFoldCallout } from "../components/SourceResolvedFoldCallo
 import { SourceResolvedFoldBadge } from "../components/SourceResolvedFoldBadge";
 import { readSourceResolvedWatchdogFold } from "../lib/source-resolved-watchdog-fold";
 import { buildSameOriginWebSocketUrl } from "../lib/websocket-url";
-import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd } from "../lib/utils";
+import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd, projectUrl } from "../lib/utils";
 import { cn } from "../lib/utils";
 import { describeRunRetryState } from "../lib/runRetryState";
 import { buildDuplicateAgentPayload, duplicateAgentName, type DuplicateInstructionsBundle } from "../lib/duplicate-agent-payload";
@@ -289,12 +290,13 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "tools" | "runs" | "budget";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "projects" | "tools" | "runs" | "budget";
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "instructions" || value === "prompts") return "instructions";
   if (value === "configure" || value === "configuration") return "configuration";
   if (value === "skills") return "skills";
+  if (value === "projects") return "projects";
   if (value === "tools") return "tools";
   if (value === "budget") return "budget";
   if (value === "runs") return value;
@@ -718,7 +720,9 @@ export function AgentDetail() {
   const [dismissedLeftAgentIds, setDismissedLeftAgentIds] = useState<Set<string>>(() => new Set());
   const [moreOpen, setMoreOpen] = useState(false);
   const activeView = urlRunId ? "runs" as AgentDetailView : parseAgentDetailView(urlTab ?? null);
-  const needsDashboardData = activeView === "dashboard";
+  // Dashboard AND the Projects tab both need the agent's issues (the Projects tab
+  // groups them by project); keep the shared queries enabled for both views.
+  const needsDashboardData = activeView === "dashboard" || activeView === "projects";
   const needsRunData = activeView === "runs" || Boolean(urlRunId);
   const shouldLoadHeartbeats = needsDashboardData || needsRunData;
   const [configDirty, setConfigDirty] = useState(false);
@@ -1233,6 +1237,7 @@ export function AgentDetail() {
               { value: "dashboard", label: t("agentDetail.tab.dashboard") },
               { value: "instructions", label: t("agentDetail.tab.instructions") },
               { value: "skills", label: t("agentDetail.tab.skills") },
+              { value: "projects", label: t("agentDetail.tab.projects", { defaultValue: "專案" }) },
               { value: "configuration", label: t("agentDetail.tab.configuration") },
               { value: "tools", label: t("agentDetail.tab.tools", { defaultValue: "Tools" }) },
               { value: "runs", label: t("agentDetail.tab.runs") },
@@ -1350,6 +1355,20 @@ export function AgentDetail() {
         <AgentSkillsTab
           agent={agent}
           companyId={resolvedCompanyId ?? undefined}
+        />
+      )}
+
+      {activeView === "projects" && resolvedCompanyId && (
+        <AgentProjectsTab
+          companyId={resolvedCompanyId}
+          issues={(allIssues ?? []).map((i) => ({
+            id: i.id,
+            title: i.title,
+            status: i.status,
+            projectId: i.projectId ?? null,
+            project: i.project ? { id: i.project.id, name: i.project.name } : null,
+            identifier: i.identifier,
+          }))}
         />
       )}
 
@@ -3273,6 +3292,144 @@ export function AgentSkillsTab({
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+/* ---- Projects Tab ---- */
+
+type AgentProjectsIssue = {
+  id: string;
+  title: string;
+  status: string;
+  projectId: string | null;
+  project: { id: string; name: string } | null;
+  identifier?: string | null;
+};
+
+/** Per-agent 專案 tab: the agent's tasks grouped by the project they're filed in,
+ *  split into 公司 / 團隊 / 個人 scope sections (with team/私人 tags) plus an
+ *  Unfiled bucket. The projects list is viewer-access-filtered server-side, so a
+ *  non-admin only sees scopes they may access; admins see all. */
+function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: AgentProjectsIssue[] }) {
+  const { t } = useTranslation();
+  const { data: projects } = useQuery({
+    queryKey: queryKeys.projects.list(companyId),
+    queryFn: () => projectsApi.list(companyId),
+  });
+  const projectMeta = useMemo(() => {
+    const m = new Map<string, { name: string; visibility: string; team: string | null; urlKey?: string | null }>();
+    for (const p of projects ?? []) {
+      m.set(p.id, { name: p.name, visibility: p.visibility ?? "company", team: p.team ?? null, urlKey: (p as { urlKey?: string | null }).urlKey ?? null });
+    }
+    return m;
+  }, [projects]);
+
+  // Group the agent's issues by project.
+  const byProject = useMemo(() => {
+    const groups = new Map<string, AgentProjectsIssue[]>();
+    const unfiled: AgentProjectsIssue[] = [];
+    for (const iss of issues) {
+      if (!iss.projectId) { unfiled.push(iss); continue; }
+      const list = groups.get(iss.projectId) ?? [];
+      list.push(iss);
+      groups.set(iss.projectId, list);
+    }
+    return { groups, unfiled };
+  }, [issues]);
+
+  // Split projects into scope sections.
+  const sections = useMemo(() => {
+    const company: string[] = [], team: string[] = [], personal: string[] = [];
+    for (const projectId of byProject.groups.keys()) {
+      const v = projectMeta.get(projectId)?.visibility ?? "company";
+      if (v === "private") personal.push(projectId);
+      else if (v === "team") team.push(projectId);
+      else company.push(projectId);
+    }
+    const byName = (a: string, b: string) =>
+      (projectMeta.get(a)?.name ?? "").localeCompare(projectMeta.get(b)?.name ?? "");
+    return { company: company.sort(byName), team: team.sort(byName), personal: personal.sort(byName) };
+  }, [byProject.groups, projectMeta]);
+
+  const totalTasks = issues.length;
+
+  const renderProject = (projectId: string) => {
+    const meta = projectMeta.get(projectId);
+    const tasks = byProject.groups.get(projectId) ?? [];
+    const fallbackName = tasks[0]?.project?.name ?? t("agentDetail.projects.unknownProject", { defaultValue: "專案" });
+    const name = meta?.name ?? fallbackName;
+    return (
+      <details key={projectId} className="overflow-hidden rounded-xl border border-border" open>
+        <summary className="flex cursor-pointer select-none items-center justify-between gap-2 bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted/60">
+          <span className="flex min-w-0 items-center gap-2">
+            <Link to={projectUrl({ id: projectId, urlKey: meta?.urlKey, name })} className="truncate no-underline hover:underline">{name}</Link>
+            {meta?.visibility === "team" && meta.team ? (
+              <span className="shrink-0 truncate rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground">{meta.team}</span>
+            ) : meta?.visibility === "private" ? (
+              <span className="shrink-0 rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground">{t("projects.scopePrivateTag", { defaultValue: "私人" })}</span>
+            ) : null}
+          </span>
+          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{tasks.length}</span>
+        </summary>
+        <div className="divide-y divide-border border-t border-border">
+          {tasks.map((iss) => (
+            <Link key={iss.id} to={`/issues/${iss.id}`} className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-foreground no-underline hover:bg-muted/40">
+              <span className="min-w-0 truncate">{iss.title}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{iss.status}</span>
+            </Link>
+          ))}
+        </div>
+      </details>
+    );
+  };
+
+  if (totalTasks === 0) {
+    return (
+      <div className="max-w-4xl">
+        <div className="rounded-xl border border-border px-4 py-8 text-center text-sm text-muted-foreground">
+          {t("agentDetail.projects.empty", { defaultValue: "這位代理人目前沒有任務。任務被指派後，會依所屬專案分組顯示在這裡。" })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl space-y-6">
+      {([
+        [t("projects.scopeCompany", { defaultValue: "公司專案" }), sections.company],
+        [t("projects.scopeTeam", { defaultValue: "團隊專案" }), sections.team],
+        [t("projects.scopePersonal", { defaultValue: "個人專案" }), sections.personal],
+      ] as const).map(([label, ids]) =>
+        ids.length === 0 ? null : (
+          <section key={label} className="space-y-2">
+            <h2 className="text-sm font-medium text-muted-foreground">{label}</h2>
+            <div className="space-y-2">{ids.map(renderProject)}</div>
+          </section>
+        ),
+      )}
+      {byProject.unfiled.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-muted-foreground">{t("agentDetail.projects.unfiled", { defaultValue: "未歸專案" })}</h2>
+          <details className="overflow-hidden rounded-xl border border-border">
+            <summary className="flex cursor-pointer select-none items-center justify-between gap-2 bg-muted/40 px-3 py-2 text-sm font-medium hover:bg-muted/60">
+              <span>{t("agentDetail.projects.unfiled", { defaultValue: "未歸專案" })}</span>
+              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{byProject.unfiled.length}</span>
+            </summary>
+            <div className="divide-y divide-border border-t border-border">
+              {byProject.unfiled.map((iss) => (
+                <Link key={iss.id} to={`/issues/${iss.id}`} className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-foreground no-underline hover:bg-muted/40">
+                  <span className="min-w-0 truncate">{iss.title}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{iss.status}</span>
+                </Link>
+              ))}
+            </div>
+          </details>
+        </section>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {t("agentDetail.projects.addHint", { defaultValue: "要把任務歸到專案：開任務 →「專案」欄位選擇，或在「新增任務」時指定專案。" })}
+      </p>
     </div>
   );
 }
