@@ -50,6 +50,15 @@ import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
 import { useTranslation } from "@/i18n";
 import { SHOW_LEADERBOARD, SHOW_BOUNTIES } from "@/lib/feature-flags";
 
+// The three full-access people who still see the decluttered nav items
+// (Leaderboard / Bounties / Goals / Wiki): 創辦人(tang) / Jay / 惠君(betty1).
+// Nav-only allowlist — not a security control.
+const NAV_ADMIN_EMAILS = new Set([
+  "tang@seasonart.org",
+  "jay20020109@seasonart.org",
+  "betty1@seasonart.org",
+]);
+
 export function Sidebar() {
   const { t } = useTranslation();
   const { openNewIssue } = useDialogActions();
@@ -92,16 +101,17 @@ export function Sidebar() {
   const conferenceRoomChatEnabled = experimentalSettings?.enableConferenceRoomChat === true;
 
   // Admin-only nav trimming: hide low-priority pages (Leaderboard, Bounties,
-  // Goals, Wiki) from NON-admins so operators/viewers aren't overwhelmed. The
-  // features/routes stay live — only the sidebar buttons are hidden. Same admin
-  // definition as the Chat section: instance admins + company owners/admins
-  // (i.e. 創辦人 / Jay / 惠君). Not a security boundary — purely nav declutter.
+  // Goals, Wiki) from everyone EXCEPT the three full-access people, so the rest
+  // aren't overwhelmed. Pinned to an explicit email allowlist (創辦人 / Jay /
+  // 惠君) — mirrors RESTRICTED_FOLDER_EMAILS server-side — so it's exactly these
+  // three regardless of role drift. Features/routes stay live; nav-only, not a
+  // security boundary.
   const { data: boardAccess } = useQuery({
     queryKey: queryKeys.access.currentBoardAccess,
     queryFn: () => accessApi.getCurrentBoardAccess(),
   });
-  const membershipRole = boardAccess?.memberships?.find((m) => m.companyId === selectedCompanyId)?.membershipRole;
-  const isAdminViewer = Boolean(boardAccess?.isInstanceAdmin) || membershipRole === "owner" || membershipRole === "admin";
+  const viewerEmail = (boardAccess?.user?.email ?? "").trim().toLowerCase();
+  const isAdminViewer = NAV_ADMIN_EMAILS.has(viewerEmail);
 
   const pluginContext = {
     companyId: selectedCompanyId,
