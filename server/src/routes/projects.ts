@@ -158,6 +158,11 @@ export function projectRoutes(db: Db) {
     };
 
     const { workspace, ...projectData } = req.body as CreateProjectPayload;
+    // Stamp the creating user as the project owner when they didn't specify one,
+    // so private/team projects resolve for their creator (the authz owner check).
+    if (req.actor.type === "board" && req.actor.userId && !projectData.ownerUserId) {
+      projectData.ownerUserId = req.actor.userId;
+    }
     await assertProjectEnvironmentSelection(
       companyId,
       readProjectPolicyEnvironmentId(projectData.executionWorkspacePolicy),
