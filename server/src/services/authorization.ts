@@ -22,7 +22,7 @@ import type {
   SkillTestAgentKeyScope,
   TaskBridgeAgentKeyScope,
 } from "@paperclipai/shared";
-import { LOW_TRUST_REVIEW_PRESET, extractAgentMentionIds, type LowTrustBoundary } from "@paperclipai/shared";
+import { LOW_TRUST_REVIEW_PRESET, extractAgentMentionIds, anyTeamTokenMatches, type LowTrustBoundary } from "@paperclipai/shared";
 import {
   LOW_TRUST_ISSUE_ANCESTRY_MAX_DEPTH,
   isIssueWithinLowTrustBoundary,
@@ -625,10 +625,39 @@ export function authorizationService(db: Db) {
 
   async function getProjectVisibility(projectId: string, companyId: string) {
     return db
-      .select({ visibility: projects.visibility, ownerUserId: projects.ownerUserId })
+      .select({ visibility: projects.visibility, ownerUserId: projects.ownerUserId, team: projects.team })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
       .then((rows) => rows[0] ?? null);
+  }
+
+  // The team labels an actor belongs to (from agent metadata.teams): for an agent
+  // actor, its own teams; for a board/user actor, the union across the agents they
+  // have joined. Basis for `team`-visibility project access.
+  async function resolveActorTeams(companyId: string, actor: AuthorizationActor): Promise<Set<string>> {
+    const out = new Set<string>();
+    const collect = (metadata: unknown) => {
+      const md = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>) : {};
+      const arr = Array.isArray(md.teams) ? md.teams : typeof md.team === "string" ? [md.team] : [];
+      for (const t of arr) if (typeof t === "string" && t.trim()) out.add(t.trim());
+    };
+    if (actor.type === "agent" && actor.agentId) {
+      const row = await db.select({ metadata: agents.metadata }).from(agents)
+        .where(and(eq(agents.id, actor.agentId), eq(agents.companyId, companyId)))
+        .then((rows) => rows[0] ?? null);
+      if (row) collect(row.metadata);
+    } else if (actor.type === "board" && actor.userId) {
+      const rows = await db.select({ metadata: agents.metadata })
+        .from(agents)
+        .innerJoin(agentMemberships, eq(agentMemberships.agentId, agents.id))
+        .where(and(
+          eq(agentMemberships.companyId, companyId),
+          eq(agentMemberships.userId, actor.userId),
+          eq(agentMemberships.state, "joined"),
+        ));
+      for (const r of rows) collect(r.metadata);
+    }
+    return out;
   }
 
   async function isProjectMember(projectId: string, principalType: "user" | "agent", principalId: string) {
@@ -645,7 +674,10 @@ export function authorizationService(db: Db) {
       .then((rows) => rows.length > 0);
   }
 
-  // Returns true=allow, false=deny, null=not a private project (fall through).
+  // Returns true=allow, false=deny, null=not a scoped project (fall through).
+  // Covers BOTH `private` (owner + explicit members) and `team` (owner + explicit
+  // members + anyone whose team matches the project's team). `company` and legacy
+  // visibilities fall through (null) to the normal company-wide decision.
   async function decidePrivateProjectRead(
     action: string,
     companyId: string,
@@ -655,20 +687,20 @@ export function authorizationService(db: Db) {
   ): Promise<boolean | null> {
     if (!projectPrivacyEnabled() || !projectId) return null;
     const proj = await getProjectVisibility(projectId, companyId);
-    if (!proj || proj.visibility !== "private") return null;
-    // Owners/admins and instance admins always see private projects.
+    if (!proj || (proj.visibility !== "private" && proj.visibility !== "team")) return null;
+    // Owners/admins and instance admins always see scoped projects.
     if (isPrivilegedCompanyRole(membershipRole)) return true;
     if (actor.type === "board") {
       if (actor.source === "local_implicit" || actor.isInstanceAdmin) return true;
-      // Project owner
-      if (actor.userId && proj.ownerUserId === actor.userId) return true;
-      // Explicit project member (user principal)
-      if (actor.userId && await isProjectMember(projectId, "user", actor.userId)) return true;
-      return false;
+      if (actor.userId && proj.ownerUserId === actor.userId) return true; // owner
+      if (actor.userId && await isProjectMember(projectId, "user", actor.userId)) return true; // explicit member
+    } else if (actor.type === "agent" && actor.agentId) {
+      if (await isProjectMember(projectId, "agent", actor.agentId)) return true; // explicit member
     }
-    if (actor.type === "agent" && actor.agentId) {
-      // Agent principal as explicit project member
-      if (await isProjectMember(projectId, "agent", actor.agentId)) return true;
+    // Team visibility: allow anyone whose team matches the project's team label.
+    if (proj.visibility === "team" && proj.team) {
+      const teams = await resolveActorTeams(companyId, actor);
+      if (teams.size > 0 && anyTeamTokenMatches([proj.team], teams)) return true;
     }
     return false;
   }
