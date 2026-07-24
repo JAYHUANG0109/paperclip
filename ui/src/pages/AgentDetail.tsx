@@ -39,6 +39,7 @@ import { agentStatusDot, agentStatusDotDefault } from "../lib/status-colors";
 import { MarkdownBody } from "../components/MarkdownBody";
 import { CopyText } from "../components/CopyText";
 import { EntityRow } from "../components/EntityRow";
+import { TaskRowMenu } from "../components/TaskRowMenu";
 import { MembershipAction } from "../components/MembershipAction";
 import { Identity } from "../components/Identity";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -794,12 +795,6 @@ export function AgentDetail() {
       if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
-  const togglePin = useMutation({
-    mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) => issuesApi.update(id, { pinned }),
-    onSuccess: () => queryClient.invalidateQueries({
-      queryKey: [...queryKeys.issues.list(resolvedCompanyId!), "participant-agent", resolvedAgentId ?? "__none__"],
-    }),
-  });
   const reportsToAgent = (allAgents ?? []).find((a) => a.id === agent?.reportsTo);
   const directReports = (allAgents ?? []).filter((a) => a.reportsTo === agent?.id && a.status !== "terminated");
   const agentBudgetSummary = useMemo(() => {
@@ -1322,7 +1317,10 @@ export function AgentDetail() {
           agent={agent}
           runs={heartbeats ?? []}
           assignedIssues={assignedIssues}
-          onTogglePin={(id, pinned) => togglePin.mutate({ id, pinned })}
+          companyId={resolvedCompanyId ?? ""}
+          onTaskChanged={() => queryClient.invalidateQueries({
+            queryKey: [...queryKeys.issues.list(resolvedCompanyId!), "participant-agent", resolvedAgentId ?? "__none__"],
+          })}
           runtimeState={runtimeState}
           agentId={agent.id}
           agentRouteId={canonicalAgentRef}
@@ -1511,15 +1509,17 @@ function AgentOverview({
   agent,
   runs,
   assignedIssues,
-  onTogglePin,
+  companyId,
+  onTaskChanged,
   runtimeState,
   agentId,
   agentRouteId,
 }: {
   agent: AgentDetailRecord;
   runs: HeartbeatRun[];
-  assignedIssues: { id: string; title: string; status: string; priority: string; identifier?: string | null; createdAt: Date; pinned?: boolean }[];
-  onTogglePin: (id: string, pinned: boolean) => void;
+  assignedIssues: { id: string; title: string; status: string; priority: string; identifier?: string | null; createdAt: Date; pinned?: boolean; projectId?: string | null }[];
+  companyId: string;
+  onTaskChanged: () => void;
   runtimeState?: AgentRuntimeState;
   agentId: string;
   agentRouteId: string;
@@ -1548,24 +1548,14 @@ function AgentOverview({
             {assignedIssues.slice(0, 10).map((issue) => (
               <EntityRow
                 key={issue.id}
+                className="group"
                 identifier={issue.identifier ?? issue.id.slice(0, 8)}
                 title={issue.title}
                 to={`/issues/${issue.identifier ?? issue.id}`}
                 trailing={
                   <span className="flex items-center gap-2">
                     <StatusBadge status={issue.status} />
-                    <button
-                      type="button"
-                      aria-label={issue.pinned ? t("agentDetail.unpinTask", { defaultValue: "Unpin task" }) : t("agentDetail.pinTask", { defaultValue: "Pin task" })}
-                      title={issue.pinned ? t("agentDetail.unpinTask", { defaultValue: "Unpin task" }) : t("agentDetail.pinTask", { defaultValue: "Pin task" })}
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTogglePin(issue.id, !issue.pinned); }}
-                      className={cn(
-                        "flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-accent",
-                        issue.pinned ? "text-primary" : "text-muted-foreground/50 hover:text-foreground",
-                      )}
-                    >
-                      <Pin className={cn("h-3.5 w-3.5", issue.pinned && "fill-current")} />
-                    </button>
+                    <TaskRowMenu companyId={companyId} issue={issue} onChanged={onTaskChanged} />
                   </span>
                 }
               />
