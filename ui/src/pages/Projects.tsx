@@ -104,20 +104,22 @@ export function Projects() {
     () => sortProjects(projects, sortField, sortDir),
     [projects, sortDir, sortField],
   );
+  // Group by ACCESS SCOPE: 公司 (company/legacy) / 團隊 (team) / 個人 (private).
+  // The server already access-filters the list per viewer, so a non-admin only
+  // receives projects they may see; admins receive all three scopes.
   const groupedProjects = useMemo(() => {
     const groups = {
-      mine: [] as typeof sortedProjects,
-      other: [] as typeof sortedProjects,
+      company: [] as typeof sortedProjects,
+      team: [] as typeof sortedProjects,
+      personal: [] as typeof sortedProjects,
     };
-
     for (const project of sortedProjects) {
-      const state = resourceMembershipState(membershipsQuery.data, "project", project.id);
-      if (state === "left") groups.other.push(project);
-      else groups.mine.push(project);
+      if (project.visibility === "private") groups.personal.push(project);
+      else if (project.visibility === "team") groups.team.push(project);
+      else groups.company.push(project);
     }
-
     return groups;
-  }, [membershipsQuery.data, sortedProjects]);
+  }, [sortedProjects]);
   const sortLabel = PROJECT_SORT_OPTIONS.find((option) => option.field === sortField)?.labelKey ?? "projects.sort.name";
 
   if (!selectedCompanyId) {
@@ -190,8 +192,9 @@ export function Projects() {
       {projects.length > 0 && (
         <div className="space-y-6">
           {([
-            [t("projects.myProjects"), groupedProjects.mine],
-            [t("projects.otherProjects"), groupedProjects.other],
+            [t("projects.scopeCompany", { defaultValue: "公司專案" }), groupedProjects.company],
+            [t("projects.scopeTeam", { defaultValue: "團隊專案" }), groupedProjects.team],
+            [t("projects.scopePersonal", { defaultValue: "個人專案" }), groupedProjects.personal],
           ] as const).map(([label, sectionProjects]) => {
             if (sectionProjects.length === 0) return null;
 
@@ -223,6 +226,15 @@ export function Projects() {
                         className={state === "left" ? "group text-foreground/55" : "group"}
                         trailing={
                           <div className="flex items-center gap-3">
+                            {project.visibility === "team" && project.team ? (
+                              <span className="hidden max-w-[10rem] truncate rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground sm:inline" title={project.team}>
+                                {project.team}
+                              </span>
+                            ) : project.visibility === "private" ? (
+                              <span className="hidden rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground sm:inline">
+                                {t("projects.scopePrivateTag", { defaultValue: "私人" })}
+                              </span>
+                            ) : null}
                             <span
                               className="hidden text-xs text-muted-foreground tabular-nums sm:inline"
                               title={`${formatNumber(project.taskCount ?? 0)} task${(project.taskCount ?? 0) === 1 ? "" : "s"}`}

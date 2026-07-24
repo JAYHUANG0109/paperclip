@@ -88,7 +88,7 @@ export interface Project {
   status: ProjectStatus;
   leadAgentId: string | null;
   ownerUserId?: string | null;
-  visibility?: "company" | "private";
+  visibility?: "company" | "team" | "private";
   team?: string | null;
   targetDate: string | null;
   color: string | null;
