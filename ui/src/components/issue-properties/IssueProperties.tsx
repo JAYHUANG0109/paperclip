@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useTranslation } from "@/i18n";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { issueStatusText } from "@/lib/status-colors";
 import { Link } from "@/lib/router";
@@ -161,6 +162,7 @@ export function IssueProperties({
     label: string;
     track?: () => void;
   } | null>(null);
+  const { t } = useTranslation();
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   const [blockedByOpen, setBlockedByOpen] = useState(false);
@@ -1629,6 +1631,30 @@ export function IssueProperties({
     recentProjectIds,
   );
 
+  // Scope-grouped project picker: 公司 / 團隊 / 個人 sections (categorized), with a
+  // "No project" option on top. Search filters across all groups.
+  const selectProjectOption = (project: (typeof orderedProjects)[number]) => {
+    const defaultMode = defaultExecutionWorkspaceModeForProject(project);
+    trackRecentProject(project.id);
+    onUpdate({
+      projectId: project.id,
+      projectWorkspaceId: defaultProjectWorkspaceIdForProject(project),
+      executionWorkspaceId: null,
+      executionWorkspacePreference: defaultMode,
+      executionWorkspaceSettings: project.executionWorkspacePolicy?.enabled ? { mode: defaultMode } : null,
+    });
+    setProjectOpen(false);
+  };
+  const clearProjectOption = () => {
+    onUpdate({ projectId: null, projectWorkspaceId: null, executionWorkspaceId: null, executionWorkspacePreference: null, executionWorkspaceSettings: null });
+    setProjectOpen(false);
+  };
+  const projectMatchesSearch = (name: string) => !projectSearch.trim() || name.toLowerCase().includes(projectSearch.toLowerCase());
+  const projectScopeGroups = [
+    { label: t("projects.scopeCompany", { defaultValue: "公司專案" }), items: orderedProjects.filter((p) => (p.visibility ?? "company") === "company" && projectMatchesSearch(p.name)) },
+    { label: t("projects.scopeTeam", { defaultValue: "團隊專案" }), items: orderedProjects.filter((p) => p.visibility === "team" && projectMatchesSearch(p.name)) },
+    { label: t("projects.scopePersonal", { defaultValue: "個人專案" }), items: orderedProjects.filter((p) => p.visibility === "private" && projectMatchesSearch(p.name)) },
+  ];
   const projectContent = (
     <>
       <input
@@ -1638,54 +1664,33 @@ export function IssueProperties({
         onChange={(e) => setProjectSearch(e.target.value)}
         autoFocus={!inline}
       />
-      <div className="max-h-48 overflow-y-auto overscroll-contain">
-        {projectPickerOptions
-          .filter((option) => {
-            if (!projectSearch.trim()) return true;
-            const q = projectSearch.toLowerCase();
-            return option.name.toLowerCase().includes(q);
-          })
-          .map((option) => (
-            <button
-              key={option.id || "__none__"}
-              className={cn(
-                "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
-                option.id === (issue.projectId ?? "") && "bg-accent",
-              )}
-              onClick={() => {
-                if (option.kind === "project") {
-                  const defaultMode = defaultExecutionWorkspaceModeForProject(option.project);
-                  trackRecentProject(option.project.id);
-                  onUpdate({
-                    projectId: option.project.id,
-                    projectWorkspaceId: defaultProjectWorkspaceIdForProject(option.project),
-                    executionWorkspaceId: null,
-                    executionWorkspacePreference: defaultMode,
-                    executionWorkspaceSettings: option.project.executionWorkspacePolicy?.enabled
-                      ? { mode: defaultMode }
-                      : null,
-                  });
-                } else {
-                  onUpdate({
-                    projectId: null,
-                    projectWorkspaceId: null,
-                    executionWorkspaceId: null,
-                    executionWorkspacePreference: null,
-                    executionWorkspaceSettings: null,
-                  });
-                }
-                setProjectOpen(false);
-              }}
-            >
-              {option.kind === "project" ? (
-                <span
-                  className="shrink-0 h-3 w-3 rounded-sm"
-                  style={{ backgroundColor: option.color ?? "var(--project-seed)" }}
-                />
-              ) : null}
-              {option.name}
-            </button>
-          ))}
+      <div className="max-h-56 overflow-y-auto overscroll-contain">
+        <button
+          className={cn("flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap", !issue.projectId && "bg-accent")}
+          onClick={clearProjectOption}
+        >
+          {t("issueProperties.noProject", { defaultValue: "無專案" })}
+        </button>
+        {projectScopeGroups.map((group) =>
+          group.items.length === 0 ? null : (
+            <div key={group.label}>
+              <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{group.label}</div>
+              {group.items.map((project) => (
+                <button
+                  key={project.id}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
+                    project.id === issue.projectId && "bg-accent",
+                  )}
+                  onClick={() => selectProjectOption(project)}
+                >
+                  <span className="shrink-0 h-3 w-3 rounded-sm" style={{ backgroundColor: project.color ?? "var(--project-seed)" }} />
+                  <span className="truncate">{project.name}</span>
+                </button>
+              ))}
+            </div>
+          ),
+        )}
       </div>
     </>
   );
