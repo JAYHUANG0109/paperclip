@@ -12,6 +12,9 @@ export const projects = pgTable(
     goalId: uuid("goal_id").references(() => goals.id),
     name: text("name").notNull(),
     description: text("description"),
+    // Phase 3: per-project instructions an agent reads when working a task in this
+    // project (surfaced via the issue heartbeat-context payload).
+    instructions: text("instructions"),
     status: text("status").notNull().default("backlog"),
     leadAgentId: uuid("lead_agent_id").references(() => agents.id),
     // Phase 5: human project owner + visibility. visibility 'company' = all members

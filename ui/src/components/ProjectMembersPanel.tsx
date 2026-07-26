@@ -4,10 +4,18 @@ import { useTranslation } from "@/i18n";
 import { projectMembersApi, type ProjectMemberRole } from "../api/project-members";
 import { agentsApi } from "../api/agents";
 import { accessApi, type CompanyUserDirectoryEntry } from "../api/access";
+import { companySkillsApi } from "../api/companySkills";
 import { queryKeys } from "../lib/queryKeys";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Users, ChevronDown, X, Plus, Lock, Globe } from "lucide-react";
 import { cn } from "../lib/utils";
+
+export type ProjectVisibility = "company" | "team" | "private";
+export interface ProjectScopePatch {
+  visibility?: ProjectVisibility;
+  teams?: string[];
+  team?: string | null;
+}
 
 const ROLE_LABELS: Record<ProjectMemberRole, string> = {
   admin: "管理員 Admin",
@@ -29,14 +37,28 @@ interface Props {
   /** Whether the viewer can manage members (owner/admin only) */
   canManage: boolean;
   /** Current project visibility */
-  visibility: "company" | "private";
-  onVisibilityChange: (v: "company" | "private") => void;
+  visibility: ProjectVisibility;
+  /** Team labels a team-scoped project targets (multi-team). */
+  teams?: string[] | null;
+  /** Legacy single team label (fallback). */
+  team?: string | null;
+  /** The project owner (user principalId) — always retains access to private projects. */
+  ownerUserId?: string | null;
+  onScopeChange: (patch: ProjectScopePatch) => void;
 }
 
-export function ProjectMembersPanel({ projectId, companyId, canManage, visibility, onVisibilityChange }: Props) {
+export function ProjectMembersPanel({ projectId, companyId, canManage, visibility, teams, team, ownerUserId, onScopeChange }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const key = ["project-members", projectId];
+  const effectiveTeams = useMemo(() => (teams && teams.length > 0 ? teams : team ? [team] : []), [teams, team]);
+  const [scopeOpen, setScopeOpen] = useState(false);
+
+  const { data: shareableTeams } = useQuery({
+    queryKey: ["shareable-teams", companyId],
+    queryFn: () => companySkillsApi.shareableTeams(companyId),
+    enabled: !!companyId && canManage,
+  });
 
   const { data: members } = useQuery({
     queryKey: key,
@@ -97,28 +119,77 @@ export function ProjectMembersPanel({ projectId, companyId, canManage, visibilit
 
   return (
     <div className="rounded-lg border border-border p-4 space-y-4">
-      {/* Visibility toggle */}
+      {/* Scope selector: 公司 / 團隊 / 私人 */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5">
-          {visibility === "private" ? <Lock className="h-4 w-4 text-muted-foreground" /> : <Globe className="h-4 w-4 text-muted-foreground" />}
-          <span className="text-sm font-medium">
+        <div className="flex min-w-0 items-center gap-1.5">
+          {visibility === "private" ? <Lock className="h-4 w-4 text-muted-foreground" /> : visibility === "team" ? <Users className="h-4 w-4 text-muted-foreground" /> : <Globe className="h-4 w-4 text-muted-foreground" />}
+          <span className="truncate text-sm font-medium">
             {visibility === "private"
               ? t("projectMembers.private", { defaultValue: "私密專案 Private" })
-              : t("projectMembers.company", { defaultValue: "全公司可見 Company" })}
+              : visibility === "team"
+                ? t("projectMembers.team", { defaultValue: "團隊專案：{{teams}}", teams: effectiveTeams.length > 0 ? effectiveTeams.join("、") : "—" })
+                : t("projectMembers.company", { defaultValue: "全公司可見 Company" })}
           </span>
         </div>
         {canManage && (
-          <button
-            type="button"
-            onClick={() => onVisibilityChange(visibility === "private" ? "company" : "private")}
-            className="ml-auto text-[12px] text-muted-foreground hover:text-foreground rounded border border-border px-2 py-0.5 transition-colors"
-          >
-            {visibility === "private"
-              ? t("projectMembers.makePublic", { defaultValue: "改為全公司" })
-              : t("projectMembers.makePrivate", { defaultValue: "改為私密" })}
-          </button>
+          <Popover open={scopeOpen} onOpenChange={setScopeOpen}>
+            <PopoverTrigger asChild>
+              <button type="button" className="ml-auto shrink-0 rounded border border-border px-2 py-0.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground">
+                {t("projectMembers.changeScope", { defaultValue: "變更範圍" })}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-60 p-1" align="end">
+              <button
+                className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", visibility === "company" && "bg-accent")}
+                onClick={() => { onScopeChange({ visibility: "company", teams: [], team: null }); setScopeOpen(false); }}
+              >
+                <Globe className="h-3.5 w-3.5" />{t("projects.scopeCompany", { defaultValue: "公司專案" })}
+                <span className="ml-auto text-[11px] text-muted-foreground">{t("newProject.scopeCompanyHint", { defaultValue: "全公司可見" })}</span>
+              </button>
+              <button
+                className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", visibility === "private" && "bg-accent")}
+                onClick={() => { onScopeChange({ visibility: "private", teams: [], team: null }); setScopeOpen(false); }}
+              >
+                <Lock className="h-3.5 w-3.5" />{t("projects.scopePersonal", { defaultValue: "個人專案" })}
+                <span className="ml-auto text-[11px] text-muted-foreground">{t("newProject.scopePrivateHint", { defaultValue: "只有你與受邀者" })}</span>
+              </button>
+              <div className="my-1 border-t border-border" />
+              <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.scopeTeamPick", { defaultValue: "團隊專案（可選多個團隊）" })}</div>
+              <div className="max-h-40 overflow-y-auto overscroll-contain" onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}>
+                {(shareableTeams?.teams ?? []).length === 0 ? (
+                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground">{t("newProject.noTeams", { defaultValue: "沒有可分享的團隊" })}</div>
+                ) : (
+                  (shareableTeams?.teams ?? []).map((tm) => {
+                    const on = effectiveTeams.includes(tm);
+                    return (
+                      <button
+                        key={tm}
+                        className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", on && "bg-accent")}
+                        onClick={() => {
+                          const next = on ? effectiveTeams.filter((x) => x !== tm) : [...effectiveTeams, tm];
+                          onScopeChange({ visibility: next.length > 0 ? "team" : "company", teams: next, team: next[0] ?? null });
+                        }}
+                      >
+                        <input type="checkbox" checked={on} readOnly className="pointer-events-none" />
+                        <span className="truncate">{tm}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
       </div>
+
+      {/* Team tags */}
+      {visibility === "team" && effectiveTeams.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {effectiveTeams.map((tm) => (
+            <span key={tm} className="rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground">{tm}</span>
+          ))}
+        </div>
+      )}
 
       {/* Members list */}
       <div>
@@ -130,11 +201,21 @@ export function ProjectMembersPanel({ projectId, companyId, canManage, visibilit
           <span className="ml-1 text-[12px] text-muted-foreground">({members?.length ?? 0})</span>
         </div>
 
+        {/* Owner — always retains access on private projects. */}
+        {ownerUserId && visibility !== "company" && (
+          <div className="mb-1 flex items-center gap-2 rounded px-2 py-1">
+            <span className="flex-1 truncate text-[13px]">{userById.get(ownerUserId)?.name ?? userById.get(ownerUserId)?.email ?? ownerUserId.slice(0, 8)}</span>
+            <span className="rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground">{t("projectMembers.owner", { defaultValue: "負責人" })}</span>
+          </div>
+        )}
+
         {members?.length === 0 && (
           <p className="text-[13px] text-muted-foreground">
             {visibility === "company"
               ? t("projectMembers.everyoneAccess", { defaultValue: "全公司成員均可存取" })
-              : t("projectMembers.noMembers", { defaultValue: "尚無明確成員。私密專案僅負責人可存取。" })}
+              : visibility === "team"
+                ? t("projectMembers.teamAccess", { defaultValue: "所屬團隊成員均可存取；可另外加入個別成員。" })
+                : t("projectMembers.noMembers", { defaultValue: "尚無其他成員。私密專案僅負責人與受邀者可存取。" })}
           </p>
         )}
 
@@ -164,8 +245,8 @@ export function ProjectMembersPanel({ projectId, companyId, canManage, visibilit
           ))}
         </div>
 
-        {/* Add member */}
-        {canManage && (
+        {/* Add member — meaningful only when access is not company-wide. */}
+        {canManage && visibility !== "company" && (
           <Popover open={addOpen} onOpenChange={setAddOpen}>
             <PopoverTrigger asChild>
               <button

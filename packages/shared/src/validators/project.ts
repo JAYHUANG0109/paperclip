@@ -103,6 +103,7 @@ const projectFields = {
   goalIds: z.array(z.string().uuid()).optional(),
   name: z.string().min(1),
   description: z.string().optional().nullable(),
+  instructions: z.string().optional().nullable(),
   status: z.enum(PROJECT_STATUSES).optional().default("backlog"),
   leadAgentId: z.string().uuid().optional().nullable(),
   ownerUserId: z.string().optional().nullable(),

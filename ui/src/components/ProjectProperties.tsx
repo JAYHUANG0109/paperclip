@@ -47,6 +47,7 @@ export type ProjectFieldSaveState = "idle" | "saving" | "saved" | "error";
 export type ProjectConfigFieldKey =
   | "name"
   | "description"
+  | "instructions"
   | "status"
   | "goals"
   | "env"
@@ -547,6 +548,27 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
           ) : (
             <p className="text-sm text-muted-foreground">
               {project.description?.trim() || t("projectProperties.noDescription")}
+            </p>
+          )}
+        </PropertyRow>
+        <PropertyRow
+          label={<FieldLabel label={t("projectProperties.field.instructions", { defaultValue: "專案指示" })} state={fieldState("instructions")} />}
+          alignStart
+          valueClassName="space-y-0.5"
+        >
+          {onUpdate || onFieldUpdate ? (
+            <InlineEditor
+              value={project.instructions ?? ""}
+              onSave={(instructions) => commitField("instructions", { instructions })}
+              nullable
+              as="p"
+              className="text-sm text-muted-foreground"
+              placeholder={t("projectProperties.instructionsPlaceholder", { defaultValue: "代理人處理此專案任務時應遵循的指示（會在任務情境中提供給代理人）…" })}
+              multiline
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {project.instructions?.trim() || t("projectProperties.noInstructions", { defaultValue: "尚無專案指示" })}
             </p>
           )}
         </PropertyRow>

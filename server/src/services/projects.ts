@@ -362,7 +362,7 @@ async function attachListMetrics(
 
   const projectIds = rows.map((r) => r.id);
 
-  const [taskCountRows, budgetRows] = await Promise.all([
+  const [taskCountRows, budgetRows, accessMemberRows] = await Promise.all([
     db
       .select({
         projectId: issues.projectId,
@@ -387,6 +387,14 @@ async function attachListMetrics(
           inArray(budgetPolicies.scopeId, projectIds),
         ),
       ),
+    db
+      .select({
+        projectId: projectAccessMembers.projectId,
+        principalType: projectAccessMembers.principalType,
+        principalId: projectAccessMembers.principalId,
+      })
+      .from(projectAccessMembers)
+      .where(inArray(projectAccessMembers.projectId, projectIds)),
   ]);
 
   const { taskCountByProjectId, budgetByProjectId } = buildProjectListMetricMaps(
@@ -394,10 +402,18 @@ async function attachListMetrics(
     budgetRows,
   );
 
+  const accessByProjectId = new Map<string, Array<{ principalType: "user" | "agent"; principalId: string }>>();
+  for (const row of accessMemberRows) {
+    const list = accessByProjectId.get(row.projectId) ?? [];
+    list.push({ principalType: row.principalType as "user" | "agent", principalId: row.principalId });
+    accessByProjectId.set(row.projectId, list);
+  }
+
   return rows.map((row) => ({
     ...row,
     taskCount: taskCountByProjectId.get(row.id) ?? 0,
     budget: budgetByProjectId.get(row.id) ?? null,
+    accessMembers: accessByProjectId.get(row.id) ?? [],
   }));
 }
 

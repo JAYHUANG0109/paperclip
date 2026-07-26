@@ -3506,6 +3506,13 @@ export function issueRoutes(
   }
 
   async function actorCanReadCompanyScope(req: Request, companyId: string) {
+    // Phase 2: when project privacy is enabled, agents must NOT take the company-scope
+    // fast path for bulk issue reads — they go through per-issue filtering so team/
+    // private project scoping applies. Board admins keep the fast path (they should see
+    // everything). Inert unless the flag is on, so no perf change by default.
+    if (req.actor.type === "agent" && process.env.PAPERCLIP_PROJECT_PRIVACY === "true") {
+      return false;
+    }
     const decision = await access.decide({
       actor: req.actor,
       action: "company_scope:read",
@@ -5366,6 +5373,8 @@ export function issueRoutes(
             name: project.name,
             status: project.status,
             targetDate: project.targetDate,
+            // Phase 3: per-project instructions the agent should follow for tasks here.
+            instructions: project.instructions ?? null,
           }
         : null,
       goal: goal

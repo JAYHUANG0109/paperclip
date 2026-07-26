@@ -274,6 +274,20 @@ export function IssueProperties({
     },
   });
 
+  // Inline "create new project" from the task's project picker. Creates a
+  // company-scoped project (adjust scope later on the project page) and assigns
+  // this task to it immediately.
+  const createProjectInline = useMutation({
+    mutationFn: (name: string) => projectsApi.create(companyId!, { name, visibility: "company" }),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(companyId!) });
+      trackRecentProject(created.id);
+      onUpdate({ projectId: created.id });
+      setProjectSearch("");
+      setProjectOpen(false);
+    },
+  });
+
   const unarchiveFromInbox = useMutation({
     mutationFn: () => issuesApi.unarchiveFromInbox(issue.id),
     onMutate: () => {
@@ -1690,6 +1704,20 @@ export function IssueProperties({
               ))}
             </div>
           ),
+        )}
+        {projectSearch.trim() && (
+          <button
+            className="mt-1 flex w-full items-center gap-2 rounded border-t border-border px-2 py-1.5 text-xs text-primary hover:bg-accent/50 whitespace-nowrap disabled:opacity-60"
+            onClick={() => createProjectInline.mutate(projectSearch.trim())}
+            disabled={createProjectInline.isPending}
+          >
+            <Plus className="h-3 w-3 shrink-0" />
+            <span className="truncate">
+              {createProjectInline.isPending
+                ? t("common.creating", { defaultValue: "建立中…" })
+                : t("issueProperties.createProjectNamed", { defaultValue: "建立新專案「{{name}}」", name: projectSearch.trim() })}
+            </span>
+          </button>
         )}
       </div>
     </>

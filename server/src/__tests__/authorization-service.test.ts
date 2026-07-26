@@ -1995,6 +1995,93 @@ describeEmbeddedPostgres("authorization service", () => {
     } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
   });
 
+  it("Phase2 (flag ON): agent NOT in a team project's team is denied issue:read; assignee agent keeps access", async () => {
+    process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
+    try {
+      const company = await createCompany(db, "P2_AgentTeamScope");
+      const project = await db.insert(projects).values({
+        companyId: company.id,
+        name: "Team Project (agent)",
+        issuePrefix: randomUUID().slice(0, 6).toUpperCase(),
+        visibility: "team",
+        teams: ["數位資訊部"],
+      }).returning().then((r) => r[0]!);
+
+      const inAgent = await db.insert(agents).values({
+        companyId: company.id, name: `In ${randomUUID()}`, role: "engineer", status: "active",
+        adapterType: "process", adapterConfig: {}, runtimeConfig: {},
+        metadata: { teams: ["數位資訊部"] },
+      }).returning().then((r) => r[0]!);
+      const outAgent = await db.insert(agents).values({
+        companyId: company.id, name: `Out ${randomUUID()}`, role: "engineer", status: "active",
+        adapterType: "process", adapterConfig: {}, runtimeConfig: {},
+        metadata: { teams: ["幼教學組"] },
+      }).returning().then((r) => r[0]!);
+      for (const a of [inAgent, outAgent]) {
+        await db.insert(companyMemberships).values({
+          companyId: company.id, principalType: "agent", principalId: a.id,
+          status: "active", membershipRole: "member",
+        });
+      }
+
+      const authz = authorizationService(db);
+      const issueResource = (assigneeAgentId: string | null) => ({
+        type: "issue" as const, companyId: company.id, issueId: randomUUID(),
+        projectId: project.id, assigneeAgentId,
+      });
+
+      // Out-of-team agent, not assigned → denied.
+      const denied = await authz.decide({
+        actor: { type: "agent", agentId: outAgent.id, companyId: company.id, source: "agent_key" },
+        action: "issue:read",
+        resource: issueResource(null),
+      });
+      expect(denied).toMatchObject({ allowed: false, reason: "deny_scope" });
+
+      // In-team agent → allowed.
+      const allowedTeam = await authz.decide({
+        actor: { type: "agent", agentId: inAgent.id, companyId: company.id, source: "agent_key" },
+        action: "issue:read",
+        resource: issueResource(null),
+      });
+      expect(allowedTeam).toMatchObject({ allowed: true });
+
+      // Out-of-team agent but ASSIGNED to the issue → keeps access.
+      const allowedAssignee = await authz.decide({
+        actor: { type: "agent", agentId: outAgent.id, companyId: company.id, source: "agent_key" },
+        action: "issue:read",
+        resource: issueResource(outAgent.id),
+      });
+      expect(allowedAssignee).toMatchObject({ allowed: true });
+    } finally { delete process.env.PAPERCLIP_PROJECT_PRIVACY; }
+  });
+
+  it("Phase2 (flag OFF, default): agent keeps company-wide issue:read regardless of project scope", async () => {
+    const company = await createCompany(db, "P2_AgentFlagOff");
+    const project = await db.insert(projects).values({
+      companyId: company.id,
+      name: "Team Project (flag off)",
+      issuePrefix: randomUUID().slice(0, 6).toUpperCase(),
+      visibility: "team",
+      teams: ["數位資訊部"],
+    }).returning().then((r) => r[0]!);
+    const outAgent = await db.insert(agents).values({
+      companyId: company.id, name: `Out ${randomUUID()}`, role: "engineer", status: "active",
+      adapterType: "process", adapterConfig: {}, runtimeConfig: {},
+      metadata: { teams: ["幼教學組"] },
+    }).returning().then((r) => r[0]!);
+    await db.insert(companyMemberships).values({
+      companyId: company.id, principalType: "agent", principalId: outAgent.id,
+      status: "active", membershipRole: "member",
+    });
+    const decision = await authorizationService(db).decide({
+      actor: { type: "agent", agentId: outAgent.id, companyId: company.id, source: "agent_key" },
+      action: "issue:read",
+      resource: { type: "issue", companyId: company.id, issueId: randomUUID(), projectId: project.id, assigneeAgentId: null },
+    });
+    expect(decision).toMatchObject({ allowed: true, reason: "allow_company_agent" });
+  });
+
   it("Phase5 (flag ON): company-wide project (visibility=company) unaffected — member can read", async () => {
     process.env.PAPERCLIP_PROJECT_PRIVACY = "true";
     try {

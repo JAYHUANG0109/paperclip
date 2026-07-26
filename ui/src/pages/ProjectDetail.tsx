@@ -909,8 +909,11 @@ export function ProjectDetail() {
               projectId={project.id}
               companyId={resolvedCompanyId}
               canManage={isPrivilegedViewer}
-              visibility={(project.visibility as "company" | "private") ?? "company"}
-              onVisibilityChange={(v) => updateProject.mutate({ visibility: v })}
+              visibility={project.visibility ?? "company"}
+              teams={project.teams}
+              team={project.team}
+              ownerUserId={project.ownerUserId}
+              onScopeChange={(patch) => updateProject.mutate(patch as Record<string, unknown>)}
             />
           )}
         </div>

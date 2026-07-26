@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "@/i18n";
 import type { Project } from "@paperclipai/shared";
 import { projectsApi } from "../api/projects";
+import { accessApi } from "../api/access";
+import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -96,6 +98,37 @@ export function Projects() {
   });
   const membershipsQuery = useResourceMemberships(selectedCompanyId);
   const membershipMutation = useResourceMembershipMutation(selectedCompanyId);
+
+  // Resolve owner/shared-member display names for private-project access tags.
+  const hasPrivate = useMemo(() => (allProjects ?? []).some((p) => p.visibility === "private"), [allProjects]);
+  const { data: userDirectory } = useQuery({
+    queryKey: queryKeys.access.companyUserDirectory(selectedCompanyId!),
+    queryFn: () => accessApi.listUserDirectory(selectedCompanyId!),
+    enabled: !!selectedCompanyId && hasPrivate,
+  });
+  const { data: agentsList } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId && hasPrivate,
+  });
+  const userNameById = useMemo(
+    () => new Map((userDirectory?.users ?? []).map((e) => [e.principalId, e.user?.name ?? e.user?.email ?? e.principalId.slice(0, 8)])),
+    [userDirectory],
+  );
+  const agentNameById = useMemo(
+    () => new Map((agentsList ?? []).map((a) => [a.id, a.name])),
+    [agentsList],
+  );
+  const privateAccessLabels = (project: Project): string[] => {
+    const labels: string[] = [];
+    if (project.ownerUserId) labels.push(userNameById.get(project.ownerUserId) ?? project.ownerUserId.slice(0, 8));
+    for (const m of project.accessMembers ?? []) {
+      const label = m.principalType === "agent" ? agentNameById.get(m.principalId) : userNameById.get(m.principalId);
+      if (label && !labels.includes(label)) labels.push(label);
+    }
+    return labels;
+  };
+
   const projects = useMemo(
     () => (allProjects ?? []).filter((p) => !p.archivedAt),
     [allProjects],
@@ -239,9 +272,21 @@ export function Projects() {
                                 );
                               })()
                             ) : project.visibility === "private" ? (
-                              <span className="hidden rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground sm:inline">
-                                {t("projects.scopePrivateTag", { defaultValue: "私人" })}
-                              </span>
+                              (() => {
+                                const labels = privateAccessLabels(project);
+                                const shown = labels.slice(0, 2);
+                                const extra = labels.length - shown.length;
+                                const full = labels.length > 0
+                                  ? `${t("projects.scopePrivateTag", { defaultValue: "私人" })} · ${labels.join("、")}`
+                                  : t("projects.scopePrivateTag", { defaultValue: "私人" });
+                                return (
+                                  <span className="hidden max-w-[16rem] truncate rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground sm:inline" title={full}>
+                                    {t("projects.scopePrivateTag", { defaultValue: "私人" })}
+                                    {shown.length > 0 ? ` · ${shown.join("、")}` : ""}
+                                    {extra > 0 ? ` +${extra}` : ""}
+                                  </span>
+                                );
+                              })()
                             ) : null}
                             <span
                               className="hidden text-xs text-muted-foreground tabular-nums sm:inline"

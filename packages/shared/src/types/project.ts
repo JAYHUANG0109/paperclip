@@ -85,6 +85,8 @@ export interface Project {
   goals: ProjectGoalRef[];
   name: string;
   description: string | null;
+  /** Phase 3: per-project instructions an agent reads when working a task here. */
+  instructions?: string | null;
   status: ProjectStatus;
   leadAgentId: string | null;
   ownerUserId?: string | null;
@@ -107,6 +109,12 @@ export interface Project {
    * endpoint (IA Phase 4 — PAP-60); omitted on single-project payloads.
    */
   taskCount?: number;
+  /**
+   * Compact list of explicitly-granted access principals (project_access_members),
+   * populated by the projects list endpoint for private/team projects so the UI can
+   * show who has access. Names are resolved client-side. Omitted on single payloads.
+   */
+  accessMembers?: Array<{ principalType: "user" | "agent"; principalId: string }>;
   /**
    * Active budget for the project, when set. Populated by the projects list
    * endpoint (IA Phase 4 — PAP-60); omitted on single-project payloads.

@@ -3305,6 +3305,7 @@ type AgentProjectsIssue = {
  *  non-admin only sees scopes they may access; admins see all. */
 function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: AgentProjectsIssue[] }) {
   const { t } = useTranslation();
+  const { openNewProject } = useDialogActions();
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(companyId),
     queryFn: () => projectsApi.list(companyId),
@@ -3376,9 +3377,20 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
     );
   };
 
+  const header = (
+    <div className="flex items-center justify-between">
+      <h2 className="text-sm font-medium text-muted-foreground">{t("agentDetail.tab.projects", { defaultValue: "專案" })}</h2>
+      <Button size="sm" variant="outline" onClick={openNewProject}>
+        <Plus className="mr-1 h-3.5 w-3.5" />
+        {t("projects.newProject", { defaultValue: "新增專案" })}
+      </Button>
+    </div>
+  );
+
   if (totalTasks === 0) {
     return (
-      <div className="max-w-4xl">
+      <div className="max-w-4xl space-y-4">
+        {header}
         <div className="rounded-xl border border-border px-4 py-8 text-center text-sm text-muted-foreground">
           {t("agentDetail.projects.empty", { defaultValue: "這位代理人目前沒有任務。任務被指派後，會依所屬專案分組顯示在這裡。" })}
         </div>
@@ -3388,6 +3400,7 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
 
   return (
     <div className="max-w-4xl space-y-6">
+      {header}
       {([
         [t("projects.scopeCompany", { defaultValue: "公司專案" }), sections.company],
         [t("projects.scopeTeam", { defaultValue: "團隊專案" }), sections.team],

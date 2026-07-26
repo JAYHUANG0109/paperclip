@@ -414,7 +414,10 @@ export function NewProjectDialog() {
               </button>
               <div className="my-1 border-t border-border" />
               <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.scopeTeamPick", { defaultValue: "團隊專案（可選多個團隊）" })}</div>
-              <div className="max-h-40 overflow-y-auto">
+              <div
+                className="max-h-40 overflow-y-auto overscroll-contain"
+                onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}
+              >
                 {(shareableTeams?.teams ?? []).length === 0 ? (
                   <div className="px-2 py-1.5 text-[11px] text-muted-foreground">{t("newProject.noTeams", { defaultValue: "沒有可分享的團隊" })}</div>
                 ) : (
@@ -450,7 +453,10 @@ export function NewProjectDialog() {
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-1" align="start">
-                <div className="max-h-56 overflow-y-auto">
+                <div
+                  className="max-h-56 overflow-y-auto overscroll-contain"
+                  onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}
+                >
                   <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.people", { defaultValue: "成員" })}</div>
                   {(companyMembers?.users ?? []).map((u) => {
                     const id = u.user?.id ?? u.principalId;

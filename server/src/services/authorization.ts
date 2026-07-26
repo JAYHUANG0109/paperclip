@@ -2110,6 +2110,54 @@ export function authorizationService(db: Db) {
       });
     }
 
+    // Phase 2: agent task/project scoping (flag-gated, mirrors the board gate).
+    // An agent's access to a scoped (team/private) project — and to issues in it —
+    // follows the same rules as humans: explicit project membership, team match, or
+    // (for issues) being the assignee / mention-granted. Inert unless the flag is on.
+    if (
+      (input.action === "issue:read" || input.action === "project:read") &&
+      projectPrivacyEnabled()
+    ) {
+      const resourceIssue = input.resource.type === "issue" ? input.resource : null;
+      const isAssignee = !!resourceIssue?.assigneeAgentId && resourceIssue.assigneeAgentId === actorAgentId;
+      if (!isAssignee) {
+        const projectId =
+          input.resource.type === "project"
+            ? input.resource.projectId ?? null
+            : resourceIssue
+              ? resourceIssue.projectId ?? null
+              : null;
+        const privacyDecision = await decidePrivateProjectRead(
+          input.action,
+          companyId,
+          projectId,
+          input.actor,
+          undefined,
+        );
+        if (privacyDecision === false) {
+          if (
+            input.action === "issue:read" &&
+            resourceIssue?.issueId &&
+            (await agentHasMentionGrantOnIssue({
+              action: input.action,
+              companyId,
+              issueId: resourceIssue.issueId,
+              issueAssigneeAgentId: resourceIssue.assigneeAgentId ?? null,
+              actorAgentId,
+            }))
+          ) {
+            return allowIssueMentionGrant(input.action);
+          }
+          return deny({
+            action: input.action,
+            reason: "deny_scope",
+            explanation: "Project is scoped (team/private): agent is not in scope.",
+          });
+        }
+        // true (explicit member / team match) or null (not scoped) → fall through.
+      }
+    }
+
     if (
       input.action === "agent:read" ||
       input.action === "company_scope:read" ||
@@ -2173,6 +2221,24 @@ export function authorizationService(db: Db) {
         });
       }
       if (!resource?.assigneeAgentId) {
+        // Phase 2: an unassigned issue in a scoped (team/private) project may only be
+        // acted on by agents in that project's scope. Inert unless the flag is on.
+        if (projectPrivacyEnabled()) {
+          const scoped = await decidePrivateProjectRead(
+            "issue:read",
+            companyId,
+            resource?.projectId ?? null,
+            input.actor,
+            undefined,
+          );
+          if (scoped === false) {
+            return deny({
+              action: input.action,
+              reason: "deny_scope",
+              explanation: "Issue's project is scoped (team/private): agent is not in scope.",
+            });
+          }
+        }
         return allow({
           action: input.action,
           reason: "allow_company_agent",
