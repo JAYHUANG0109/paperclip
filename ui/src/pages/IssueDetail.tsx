@@ -68,6 +68,7 @@ import { InlineEditor } from "../components/InlineEditor";
 import { IssueChatThread, type IssueChatComposerHandle } from "../components/IssueChatThread";
 import { IssueContinuationHandoff } from "../components/IssueContinuationHandoff";
 import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
+import { IssueOutputSection } from "../components/issue-output/IssueOutputSection";
 import { IssueSiblingNavigation } from "../components/IssueSiblingNavigation";
 import { IssuesList } from "../components/IssuesList";
 import { AgentIcon } from "../components/AgentIconPicker";
@@ -150,6 +151,7 @@ import {
   type FeedbackVote,
   type Issue,
   type IssueAttachment,
+  type IssueWorkProduct,
   type IssueComment,
   type IssueWorkMode,
   type IssueThreadInteraction,
@@ -1353,6 +1355,16 @@ export function IssueDetail() {
     queryFn: () => issuesApi.listAttachments(issueId!),
     enabled: !!issueId,
     placeholderData: keepPreviousDataForSameQueryTail<IssueAttachment[]>(issueId ?? "pending"),
+  });
+
+  // Attachment-backed artifact work products surface as first-class "Output"
+  // cards (preview + Download) so a deliverable an agent produced is visible and
+  // retrievable right on the task — not buried, and never left only on disk.
+  const { data: workProducts } = useQuery({
+    queryKey: queryKeys.issues.workProducts(issueId!),
+    queryFn: () => issuesApi.listWorkProducts(issueId!),
+    enabled: !!issueId,
+    placeholderData: keepPreviousDataForSameQueryTail<IssueWorkProduct[]>(issueId ?? "pending"),
   });
 
   const { data: liveRunCount = 0 } = useQuery<LiveRunForIssue[], Error, number>({
@@ -3730,6 +3742,8 @@ export function IssueDetail() {
           </Button>
         </div>
       )}
+
+      <IssueOutputSection workProducts={workProducts} />
 
       <IssueDocumentsSection
         issue={issue}
