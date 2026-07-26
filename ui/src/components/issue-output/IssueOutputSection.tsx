@@ -9,6 +9,7 @@ interface IssueOutputSectionProps {
   workProducts: IssueWorkProduct[] | null | undefined;
   /** Optional resolver for the artifact creator's display name. */
   resolveCreatorName?: (item: IssueOutputItem) => string | null;
+  viewerUserId?: string | null;
 }
 
 /**
@@ -20,7 +21,7 @@ interface IssueOutputSectionProps {
  * omitted entirely when the issue has produced no outputs — we never show a
  * permanent empty card.
  */
-export function IssueOutputSection({ workProducts, resolveCreatorName }: IssueOutputSectionProps) {
+export function IssueOutputSection({ workProducts, resolveCreatorName, viewerUserId }: IssueOutputSectionProps) {
   const { t } = useTranslation();
   const { primary, rest, count } = getIssueOutputs(workProducts);
 
@@ -39,7 +40,7 @@ export function IssueOutputSection({ workProducts, resolveCreatorName }: IssueOu
       {/* Stable anchor target so company Artifacts cards can deep-link to a
           specific work product inside its issue context (PAP-10359). */}
       <div id={`work-product-${primary.id}`} className="scroll-mt-20">
-        <OutputPrimaryCard item={primary} creatorName={creatorFor(primary)} />
+        <OutputPrimaryCard item={primary} creatorName={creatorFor(primary)} viewerUserId={viewerUserId} />
       </div>
 
       {rest.length > 0 && (
@@ -47,7 +48,7 @@ export function IssueOutputSection({ workProducts, resolveCreatorName }: IssueOu
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("issueOutput.alsoProduced", { defaultValue: "Also produced" })}</p>
           {rest.map((item) => (
             <div key={item.id} id={`work-product-${item.id}`} className="scroll-mt-20">
-              <OutputRow item={item} creatorName={creatorFor(item)} />
+              <OutputRow item={item} creatorName={creatorFor(item)} viewerUserId={viewerUserId} />
             </div>
           ))}
         </div>

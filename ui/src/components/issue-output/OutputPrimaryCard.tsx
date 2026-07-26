@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 interface OutputPrimaryCardProps {
   item: IssueOutputItem;
   creatorName?: string | null;
+  viewerUserId?: string | null;
 }
 
 /**
@@ -23,7 +24,7 @@ interface OutputPrimaryCardProps {
  * over a metadata strip with Open + Download actions. The layout stacks on
  * mobile and uses a single horizontal meta row on desktop.
  */
-export function OutputPrimaryCard({ item, creatorName }: OutputPrimaryCardProps) {
+export function OutputPrimaryCard({ item, creatorName, viewerUserId }: OutputPrimaryCardProps) {
   const meta = item.metadata;
   const filename = outputFilename(item);
   const contentType = meta?.contentType;
@@ -83,7 +84,7 @@ export function OutputPrimaryCard({ item, creatorName }: OutputPrimaryCardProps)
                 Open
               </a>
             </Button>
-            {meta.driveWebViewLink ? (
+            {meta.driveWebViewLink && meta.driveUserId && meta.driveUserId === viewerUserId ? (
               <Button asChild variant="outline" size="sm" className="max-md:flex-1" title="Open in your Google Drive">
                 <a href={meta.driveWebViewLink} target="_blank" rel="noreferrer">
                   <Cloud className="h-4 w-4" />

@@ -3743,7 +3743,7 @@ export function IssueDetail() {
         </div>
       )}
 
-      <IssueOutputSection workProducts={workProducts} />
+      <IssueOutputSection workProducts={workProducts} viewerUserId={currentUserId} />
 
       <IssueDocumentsSection
         issue={issue}

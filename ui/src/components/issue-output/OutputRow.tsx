@@ -9,10 +9,11 @@ import { Card } from "@/components/ui/card";
 interface OutputRowProps {
   item: IssueOutputItem;
   creatorName?: string | null;
+  viewerUserId?: string | null;
 }
 
 /** Compact row for a non-primary output ("ALSO PRODUCED"). */
-export function OutputRow({ item, creatorName }: OutputRowProps) {
+export function OutputRow({ item, creatorName, viewerUserId }: OutputRowProps) {
   const { t } = useTranslation();
   const filename = outputFilename(item);
   const meta = item.metadata;
@@ -43,7 +44,7 @@ export function OutputRow({ item, creatorName }: OutputRowProps) {
       </div>
       {meta ? (
         <div className="flex shrink-0 items-center gap-1">
-          {meta.driveWebViewLink ? (
+          {meta.driveWebViewLink && meta.driveUserId && meta.driveUserId === viewerUserId ? (
             <Button asChild variant="ghost" size="icon-sm" title={t("issueOutput.openInDrive", { defaultValue: "在你的 Google Drive 開啟" })}>
               <a href={meta.driveWebViewLink} target="_blank" rel="noreferrer" aria-label={t("issueOutput.openInDrive", { defaultValue: "在你的 Google Drive 開啟" })}>
                 <Cloud className="h-4 w-4" />
