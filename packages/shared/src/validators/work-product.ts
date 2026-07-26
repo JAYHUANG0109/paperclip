@@ -42,6 +42,8 @@ export const attachmentArtifactWorkProductMetadataSchema = z.object({
   openPath: z.string().min(1),
   downloadPath: z.string().min(1),
   originalFilename: z.string().optional().nullable(),
+  driveWebViewLink: z.string().url().optional().nullable(),
+  driveUserId: z.string().optional().nullable(),
 }).superRefine((value, ctx) => {
   const contentPath = attachmentContentPath(value.attachmentId);
   if (value.contentPath !== contentPath) {

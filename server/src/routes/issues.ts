@@ -10748,17 +10748,30 @@ export function issueRoutes(
       actor.agentId && req.actor.type === "agent"
         ? (req.actor.onBehalfOfUserId ?? null)
         : null;
+    let driveWebViewLink: string | null = null;
+    let driveDelivered = false;
     if (driveTargetUserId) {
-      void deliverOutputToUserDrive(db, driveTargetUserId, {
-        filename: originalFilename || "output",
-        contentType,
-        bytes: file.buffer,
-      }).catch(() => {
+      try {
+        const driveResult = await deliverOutputToUserDrive(db, driveTargetUserId, {
+          filename: originalFilename || "output",
+          contentType,
+          bytes: file.buffer,
+        });
+        if (driveResult.delivered) {
+          driveDelivered = true;
+          driveWebViewLink = driveResult.webViewLink ?? null;
+        }
+      } catch {
         /* best-effort; never blocks the attachment response */
-      });
+      }
     }
 
-    res.status(201).json(withContentPath(attachment));
+    res.status(201).json({
+      ...withContentPath(attachment),
+      driveDelivered,
+      driveWebViewLink,
+      driveUserId: driveTargetUserId,
+    });
   });
 
   router.get("/attachments/:attachmentId/content", async (req, res, next) => {

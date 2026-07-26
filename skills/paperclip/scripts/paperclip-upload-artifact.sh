@@ -298,6 +298,8 @@ if [[ "$create_work_product" == "1" ]]; then
   open_path="$(jq -r '.openPath // .contentPath // empty' <<<"$attachment")"
   download_path="$(jq -r '.downloadPath // (if .contentPath then (.contentPath + "?download=1") else "" end)' <<<"$attachment")"
   original_filename="$(jq -r '.originalFilename // empty' <<<"$attachment")"
+  drive_web_view_link="$(jq -r '.driveWebViewLink // empty' <<<"$attachment")"
+  drive_user_id="$(jq -r '.driveUserId // empty' <<<"$attachment")"
 
   if [[ -z "$attachment_id" || -z "$content_path" || -z "$download_path" ]]; then
     printf 'Upload response did not include attachment path metadata.\n' >&2
@@ -318,6 +320,8 @@ if [[ "$create_work_product" == "1" ]]; then
       --arg openPath "$open_path" \
       --arg downloadPath "$download_path" \
       --arg originalFilename "$original_filename" \
+      --arg driveWebViewLink "$drive_web_view_link" \
+      --arg driveUserId "$drive_user_id" \
       --argjson isPrimary "$is_primary_json" \
       '{
         type: "artifact",
@@ -336,7 +340,9 @@ if [[ "$create_work_product" == "1" ]]; then
           contentPath: $contentPath,
           openPath: $openPath,
           downloadPath: $downloadPath,
-          originalFilename: (if $originalFilename == "" then null else $originalFilename end)
+          originalFilename: (if $originalFilename == "" then null else $originalFilename end),
+          driveWebViewLink: (if $driveWebViewLink == "" then null else $driveWebViewLink end),
+          driveUserId: (if $driveUserId == "" then null else $driveUserId end)
         }
       }'
   )"

@@ -1,4 +1,4 @@
-import { Download, ExternalLink } from "lucide-react";
+import { Cloud, Download, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn, relativeTime } from "@/lib/utils";
@@ -83,6 +83,14 @@ export function OutputPrimaryCard({ item, creatorName }: OutputPrimaryCardProps)
                 Open
               </a>
             </Button>
+            {meta.driveWebViewLink ? (
+              <Button asChild variant="outline" size="sm" className="max-md:flex-1" title="Open in your Google Drive">
+                <a href={meta.driveWebViewLink} target="_blank" rel="noreferrer">
+                  <Cloud className="h-4 w-4" />
+                  Drive
+                </a>
+              </Button>
+            ) : null}
             <Button asChild size="sm" className="max-md:flex-1">
               <a href={meta.downloadPath} aria-label={`Download ${filename}`}>
                 <Download className="h-4 w-4" />

@@ -1,4 +1,4 @@
-import { Download, ExternalLink } from "lucide-react";
+import { Cloud, Download, ExternalLink } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { cn, relativeTime } from "@/lib/utils";
@@ -43,6 +43,13 @@ export function OutputRow({ item, creatorName }: OutputRowProps) {
       </div>
       {meta ? (
         <div className="flex shrink-0 items-center gap-1">
+          {meta.driveWebViewLink ? (
+            <Button asChild variant="ghost" size="icon-sm" title={t("issueOutput.openInDrive", { defaultValue: "在你的 Google Drive 開啟" })}>
+              <a href={meta.driveWebViewLink} target="_blank" rel="noreferrer" aria-label={t("issueOutput.openInDrive", { defaultValue: "在你的 Google Drive 開啟" })}>
+                <Cloud className="h-4 w-4" />
+              </a>
+            </Button>
+          ) : null}
           <Button asChild variant="ghost" size="icon-sm" title={t("common.openInNewTab", { defaultValue: "Open in new tab" })}>
             <a href={meta.openPath} target="_blank" rel="noreferrer" aria-label={t("issueOutput.openFile", { filename, defaultValue: "Open {{filename}}" })}>
               <ExternalLink className="h-4 w-4" />
