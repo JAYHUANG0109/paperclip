@@ -1361,6 +1361,8 @@ export function AgentDetail() {
       {activeView === "projects" && resolvedCompanyId && (
         <AgentProjectsTab
           companyId={resolvedCompanyId}
+          agentId={agent.id}
+          agentName={agent.name}
           issues={(allIssues ?? []).map((i) => ({
             id: i.id,
             title: i.title,
@@ -3303,7 +3305,7 @@ type AgentProjectsIssue = {
  *  split into 公司 / 團隊 / 個人 scope sections (with team/私人 tags) plus an
  *  Unfiled bucket. The projects list is viewer-access-filtered server-side, so a
  *  non-admin only sees scopes they may access; admins see all. */
-function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: AgentProjectsIssue[] }) {
+function AgentProjectsTab({ companyId, agentId, agentName, issues }: { companyId: string; agentId: string; agentName: string; issues: AgentProjectsIssue[] }) {
   const { t } = useTranslation();
   const { openNewProject } = useDialogActions();
   const { data: projects } = useQuery({
@@ -3317,6 +3319,12 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
     }
     return m;
   }, [projects]);
+  // Projects this agent leads — surfaced on the tab even when they have no tasks yet
+  // (e.g. just created from this tab's "新增專案" button).
+  const ledProjectIds = useMemo(
+    () => (projects ?? []).filter((p) => p.leadAgentId === agentId && !p.archivedAt).map((p) => p.id),
+    [projects, agentId],
+  );
 
   // Group the agent's issues by project.
   const byProject = useMemo(() => {
@@ -3331,10 +3339,14 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
     return { groups, unfiled };
   }, [issues]);
 
-  // Split projects into scope sections.
+  // Split projects into scope sections. Includes projects with the agent's tasks
+  // PLUS projects the agent leads (so freshly-created, empty ones still appear).
   const sections = useMemo(() => {
     const company: string[] = [], team: string[] = [], personal: string[] = [];
-    for (const projectId of byProject.groups.keys()) {
+    const seen = new Set<string>();
+    for (const projectId of [...byProject.groups.keys(), ...ledProjectIds]) {
+      if (seen.has(projectId)) continue;
+      seen.add(projectId);
       const v = projectMeta.get(projectId)?.visibility ?? "company";
       if (v === "private") personal.push(projectId);
       else if (v === "team") team.push(projectId);
@@ -3343,9 +3355,9 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
     const byName = (a: string, b: string) =>
       (projectMeta.get(a)?.name ?? "").localeCompare(projectMeta.get(b)?.name ?? "");
     return { company: company.sort(byName), team: team.sort(byName), personal: personal.sort(byName) };
-  }, [byProject.groups, projectMeta]);
+  }, [byProject.groups, ledProjectIds, projectMeta]);
 
-  const totalTasks = issues.length;
+  const hasAnything = issues.length > 0 || sections.company.length > 0 || sections.team.length > 0 || sections.personal.length > 0;
 
   const renderProject = (projectId: string) => {
     const meta = projectMeta.get(projectId);
@@ -3380,14 +3392,14 @@ function AgentProjectsTab({ companyId, issues }: { companyId: string; issues: Ag
   const header = (
     <div className="flex items-center justify-between">
       <h2 className="text-sm font-medium text-muted-foreground">{t("agentDetail.tab.projects", { defaultValue: "專案" })}</h2>
-      <Button size="sm" variant="outline" onClick={openNewProject}>
+      <Button size="sm" variant="outline" onClick={() => openNewProject({ leadAgentId: agentId, leadAgentName: agentName })}>
         <Plus className="mr-1 h-3.5 w-3.5" />
         {t("projects.newProject", { defaultValue: "新增專案" })}
       </Button>
     </div>
   );
 
-  if (totalTasks === 0) {
+  if (!hasAnything) {
     return (
       <div className="max-w-4xl space-y-4">
         {header}

@@ -51,7 +51,7 @@ const projectStatuses = [
 
 export function NewProjectDialog() {
   const { t } = useTranslation();
-  const { newProjectOpen, closeNewProject } = useDialog();
+  const { newProjectOpen, newProjectDefaults, closeNewProject } = useDialog();
   const { selectedCompanyId, selectedCompany } = useCompany();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
@@ -189,6 +189,9 @@ export function NewProjectDialog() {
         // No color is sent — new projects persist color = null (neutral gray). See PAP-68.
         visibility: effectiveVisibility,
         ...(effectiveVisibility === "team" ? { teams, team: teams[0] } : {}),
+        // Opened from an agent's 專案 tab → make that agent the lead so the project
+        // shows on its tab even before it has any tasks.
+        ...(newProjectDefaults.leadAgentId ? { leadAgentId: newProjectDefaults.leadAgentId } : {}),
         ...(goalIds.length > 0 ? { goalIds } : {}),
         ...(targetDate ? { targetDate } : {}),
       });
@@ -255,6 +258,14 @@ export function NewProjectDialog() {
             )}
             <span className="text-muted-foreground/60">&rsaquo;</span>
             <span>{t("newProject.title")}</span>
+            {newProjectDefaults.leadAgentName && (
+              <>
+                <span className="text-muted-foreground/60">&rsaquo;</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                  {t("newProject.leadAgentHint", { defaultValue: "負責：{{name}}", name: newProjectDefaults.leadAgentName })}
+                </span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Button
