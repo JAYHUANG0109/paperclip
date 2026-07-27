@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import type { Db } from "@paperclipai/db";
-import { agentMemberships, agents, authUsers } from "@paperclipai/db";
-import { and, eq } from "drizzle-orm";
+import { agentApiKeys, agentMemberships, agents, authUsers } from "@paperclipai/db";
+import { and, eq, isNull } from "drizzle-orm";
 import { forbidden, HttpError, unauthorized } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { responsibleUserAuthzShadowMode } from "../services/authorization.js";
@@ -182,6 +182,29 @@ export async function getJoinedAgentIds(
 }
 
 /**
+ * Agents a user OWNS: those whose (non-revoked) agent API key names them as the
+ * responsible user. This is the human the agent runs on behalf of, so they must
+ * always be able to see and assign to it.
+ */
+export async function getOwnedAgentIds(
+  db: Db,
+  companyId: string,
+  userId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ agentId: agentApiKeys.agentId })
+    .from(agentApiKeys)
+    .where(
+      and(
+        eq(agentApiKeys.companyId, companyId),
+        eq(agentApiKeys.responsibleUserId, userId),
+        isNull(agentApiKeys.revokedAt),
+      ),
+    );
+  return rows.map((row) => row.agentId);
+}
+
+/**
  * The set of agent ids a user may SEE under restricted-visibility mode:
  * every agent they have joined, PLUS all agents that report (transitively) to
  * a joined agent. This is the hierarchical "a manager sees their reports'
@@ -198,7 +221,12 @@ export async function getVisibleAgentIds(
   userId: string,
 ): Promise<Set<string>> {
   const joined = await getJoinedAgentIds(db, companyId, userId);
-  const visible = new Set(joined);
+  const owned = await getOwnedAgentIds(db, companyId, userId);
+  // Seed = agents you joined PLUS agents you own (you are their responsible
+  // user). A user must always be able to see and assign to their OWN agent,
+  // even under restricted visibility and even if no join row exists — otherwise
+  // a non-privileged member can't hand their own assistant any work.
+  const visible = new Set([...joined, ...owned]);
   if (visible.size === 0) return visible;
 
   const rows = await db

@@ -14,7 +14,7 @@ import { agentsApi } from "../api/agents";
 import { accessApi } from "../api/access";
 import { authApi } from "../api/auth";
 import { assetsApi } from "../api/assets";
-import { buildCompanyUserInlineOptions, buildMarkdownMentionOptions, isAgentTaskTarget } from "../lib/company-members";
+import { buildMarkdownMentionOptions, isAgentTaskTarget } from "../lib/company-members";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
@@ -24,7 +24,6 @@ import { isIssueWorkMode, nextWorkMode, workModeMetaFor, workModeMetaList } from
 import { useToastActions } from "../context/ToastContext";
 import {
   assigneeValueFromSelection,
-  currentUserAssigneeOption,
   parseAssigneeValue,
 } from "../lib/assignees";
 import {
@@ -1226,11 +1225,15 @@ export function NewIssueDialog() {
     [recentAssigneeIds],
   );
   const recentProjectIds = useMemo(() => getRecentProjectIds(), [newIssueOpen]);
+  // Assignee options are AGENTS ONLY — one identity per person: you pick the
+  // person's agent, the agent does the work, and the owner (issue
+  // responsibleUserId) is kept in the loop. We intentionally do NOT list plain
+  // users: a task assigned to a person never gets picked up by a heartbeat, and
+  // showing a same-named person entry next to the agent only lured people into
+  // selecting the non-executing one and getting bounced back.
   const assigneeOptions = useMemo<InlineEntityOption[]>(
-    () => [
-      ...currentUserAssigneeOption(currentUserId),
-      ...buildCompanyUserInlineOptions(companyMembers?.users, { excludeUserIds: [currentUserId] }),
-      ...sortAgentsByRecency(
+    () =>
+      sortAgentsByRecency(
         (agents ?? []).filter(isAgentTaskTarget),
         recentAssigneeIds,
       ).map((agent) => ({
@@ -1238,8 +1241,7 @@ export function NewIssueDialog() {
         label: agent.name,
         searchText: `${agent.name} ${agent.role} ${agent.title ?? ""}`,
       })),
-    ],
-    [agents, companyMembers?.users, currentUserId, recentAssigneeIds],
+    [agents, recentAssigneeIds],
   );
   const watchdogAgentOptions = useMemo<InlineEntityOption[]>(
     () =>
@@ -1528,7 +1530,7 @@ export function NewIssueDialog() {
                 <span className="basis-full text-xs text-destructive">
                   {t("newIssue.agentAssigneeRequired", {
                     defaultValue:
-                      "請指派給一位代理人 — AI 才會自動執行；指派給真人或留空，任務不會被處理。",
+                      "請選擇一位代理人來執行此任務 — 留空的話任務不會被處理。指派後，該代理人負責的人也會收到通知。",
                   })}
                 </span>
               ) : null}

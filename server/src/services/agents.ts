@@ -5,6 +5,7 @@ import {
   agents,
   agentConfigRevisions,
   agentApiKeys,
+  agentMemberships,
   agentRuntimeState,
   agentTaskSessions,
   agentWakeupRequests,
@@ -961,6 +962,23 @@ export function agentService(db: Db) {
         })
         .returning()
         .then((rows) => rows[0]);
+
+      // Auto-join the responsible user to their own agent, so under restricted
+      // visibility they can always see and assign to it (and it never lands in
+      // the "I can't find my own agent" gap). Idempotent.
+      if (created.responsibleUserId) {
+        await db
+          .insert(agentMemberships)
+          .values({
+            companyId: existing.companyId,
+            agentId: id,
+            userId: created.responsibleUserId,
+            state: "joined",
+          })
+          .onConflictDoNothing({
+            target: [agentMemberships.companyId, agentMemberships.userId, agentMemberships.agentId],
+          });
+      }
 
       return {
         id: created.id,
