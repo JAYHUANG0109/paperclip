@@ -1,10 +1,15 @@
 export { agentAdapterTypeSchema, optionalAgentAdapterTypeSchema } from "./adapter-type.js";
 export {
   SCOPED_TEAM_SEPARATOR,
+  CANONICAL_CAMPUSES,
+  ALLOWED_NON_CAMPUS_TOP_TEAMS,
   parseTeamToken,
   makeScopedTeamToken,
   teamTokenMatches,
   anyTeamTokenMatches,
+  isCanonicalCampus,
+  normalizeCampusToken,
+  isAllowedTopTeam,
   type ParsedTeamToken,
 } from "./team-tokens.js";
 export {

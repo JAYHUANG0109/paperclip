@@ -13,6 +13,43 @@
 
 export const SCOPED_TEAM_SEPARATOR = "／";
 
+// The six real campuses — the canonical top level of the team hierarchy
+// (`metadata.teams[0]`). Keep in sync with doc/sa-org-chart.md and the UI's
+// CAMPUS_TEAMS (ui/src/lib/agent-teams.ts).
+export const CANONICAL_CAMPUSES = ["仁美", "市政", "西屯", "黎明", "北屯", "總管理處"] as const;
+
+// Non-campus values legitimately allowed as `teams[0]`: leadership roots
+// (創辦人 / 園長 etc.) and infrastructure/system agents. These are the only
+// top-team values that don't require a campus or a manager.
+export const ALLOWED_NON_CAMPUS_TOP_TEAMS = ["領導團隊", "系統自動化"] as const;
+
+const CANONICAL_CAMPUS_SET: ReadonlySet<string> = new Set(CANONICAL_CAMPUSES);
+
+/** True if `s` is one of the six real campuses. */
+export function isCanonicalCampus(s: string): boolean {
+  return CANONICAL_CAMPUS_SET.has(s);
+}
+
+/**
+ * Normalize a campus token: trim, and drop a trailing "校" when the base is a
+ * real campus (e.g. "北屯校" → "北屯", "西屯校" → "西屯"). Anything else is
+ * returned trimmed but otherwise untouched, so department tokens and unknown
+ * values pass through unchanged.
+ */
+export function normalizeCampusToken(raw: string): string {
+  const t = (raw ?? "").trim();
+  if (t.length > 1 && t.endsWith("校")) {
+    const base = t.slice(0, -1);
+    if (CANONICAL_CAMPUS_SET.has(base)) return base;
+  }
+  return t;
+}
+
+/** True if `top` is a valid `teams[0]`: a real campus or an allowed root/infra team. */
+export function isAllowedTopTeam(top: string): boolean {
+  return CANONICAL_CAMPUS_SET.has(top) || (ALLOWED_NON_CAMPUS_TOP_TEAMS as readonly string[]).includes(top);
+}
+
 export interface ParsedTeamToken {
   scoped: boolean;
   campus: string;

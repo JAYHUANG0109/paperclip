@@ -28,6 +28,10 @@ import {
   updateAgentSchema,
   supportedEnvironmentDriversForAdapter,
   LOW_TRUST_REVIEW_PRESET,
+  CANONICAL_CAMPUSES,
+  isAllowedTopTeam,
+  isCanonicalCampus,
+  normalizeCampusToken,
 } from "@paperclipai/shared";
 import {
   resolvePaperclipInstanceRootForAdapter,
@@ -1106,6 +1110,40 @@ export function agentRoutes(
       values.push(input.sourceIssueId);
     }
     return Array.from(new Set(values));
+  }
+
+  // Org-placement guardrail for new agents (Seasonarts single-tenant). Prevents
+  // "stranded" agents that don't follow the 組織表: normalizes a campus typo like
+  // "北屯校" → "北屯" (so the sidebar folder + team-scoped skill access resolve),
+  // rejects an unknown campus in metadata.teams[0], and requires a manager
+  // (reportsTo) for any campus agent. Mutates body.metadata.teams in place so the
+  // normalized value flows into auto-equip + persistence. No-op when no teams are
+  // provided (e.g. the UI form) and for leadership/system roots + built-in agents.
+  function enforceOrgPlacement(body: { metadata?: unknown; reportsTo?: unknown }): void {
+    const md = asRecord(body.metadata);
+    if (!md || !Array.isArray(md.teams)) return;
+    const teams = md.teams.filter((t): t is string => typeof t === "string");
+    if (teams.length === 0) return;
+
+    const top = normalizeCampusToken(teams[0]!);
+    teams[0] = top; // auto-fix e.g. "北屯校" → "北屯"
+    md.teams = teams;
+
+    if (!isAllowedTopTeam(top)) {
+      throw unprocessable(
+        `metadata.teams[0]（校區）「${teams[0]}」無效。請使用有效校區（${CANONICAL_CAMPUSES.join("、")}）或 領導團隊／系統自動化。`,
+        { code: "invalid_campus", field: "metadata.teams[0]", value: teams[0] },
+      );
+    }
+
+    const isBuiltIn = md.paperclipBuiltInAgent === true;
+    const hasManager = typeof body.reportsTo === "string" && body.reportsTo.trim().length > 0;
+    if (isCanonicalCampus(top) && !isBuiltIn && !hasManager) {
+      throw unprocessable(
+        `新代理人屬校區「${top}」，必須設定 reportsTo（直屬主管），依 組織表（doc/sa-org-chart.md）。`,
+        { code: "missing_manager", field: "reportsTo", campus: top },
+      );
+    }
   }
 
   function asRecord(value: unknown): Record<string, unknown> | null {
@@ -2907,6 +2945,7 @@ export function agentRoutes(
       sourceIssueIds: _sourceIssueIds,
       ...hireInput
     } = req.body;
+    enforceOrgPlacement(hireInput);
     hireInput.adapterType = assertKnownAdapterType(hireInput.adapterType);
     const rawHireAdapterConfig = (hireInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertNoNewAgentLegacyPromptTemplate(
@@ -3112,6 +3151,7 @@ export function agentRoutes(
       instructionsBundle,
       ...createInput
     } = req.body;
+    enforceOrgPlacement(createInput);
     createInput.adapterType = assertKnownAdapterType(createInput.adapterType);
     const rawCreateAdapterConfig = (createInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertNoNewAgentLegacyPromptTemplate(

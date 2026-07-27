@@ -1,5 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { anyTeamTokenMatches, makeScopedTeamToken, parseTeamToken, teamTokenMatches } from "./team-tokens.js";
+import {
+  anyTeamTokenMatches,
+  isAllowedTopTeam,
+  isCanonicalCampus,
+  makeScopedTeamToken,
+  normalizeCampusToken,
+  parseTeamToken,
+  teamTokenMatches,
+} from "./team-tokens.js";
+
+describe("campus normalization + validation (org-placement guardrail)", () => {
+  it("strips a trailing 校 only when the base is a real campus", () => {
+    expect(normalizeCampusToken("北屯校")).toBe("北屯"); // the observed stranding typo
+    expect(normalizeCampusToken("西屯校")).toBe("西屯");
+    expect(normalizeCampusToken("  北屯校 ")).toBe("北屯"); // trims first
+    expect(normalizeCampusToken("北屯")).toBe("北屯"); // already canonical
+    expect(normalizeCampusToken("分校")).toBe("分校"); // base "分" not a campus → untouched
+    expect(normalizeCampusToken("校")).toBe("校"); // too short → untouched
+  });
+
+  it("recognizes the six real campuses", () => {
+    for (const c of ["仁美", "市政", "西屯", "黎明", "北屯", "總管理處"]) {
+      expect(isCanonicalCampus(c)).toBe(true);
+    }
+    expect(isCanonicalCampus("北屯校")).toBe(false);
+    expect(isCanonicalCampus("領導團隊")).toBe(false);
+  });
+
+  it("allows campuses + leadership/system as top team, rejects others", () => {
+    expect(isAllowedTopTeam("西屯")).toBe(true);
+    expect(isAllowedTopTeam("領導團隊")).toBe(true);
+    expect(isAllowedTopTeam("系統自動化")).toBe(true);
+    expect(isAllowedTopTeam("北屯校")).toBe(false); // must be normalized first
+    expect(isAllowedTopTeam("幼教學組")).toBe(false); // a department is not a valid top
+  });
+});
 
 describe("team tokens", () => {
   it("parses plain vs scoped tokens", () => {
