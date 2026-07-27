@@ -6,6 +6,7 @@ import { OfficeAvatar } from "./OfficeAvatar";
 import { localizeTeamName, officeTeamKey } from "../lib/agent-teams";
 import { resolveGender } from "../lib/office-avatars";
 import { displayAgentName } from "../lib/agent-name";
+import { computeWorkstations, FURN } from "../lib/officeLayout";
 import { CATALOG_MANIFEST_URL, CATALOG_BY_ID, bustCache, characterScale, resolveAgentCharacterId, type CatalogManifest, type SpriteSet } from "../lib/office-sprite-catalog";
 
 // ── Floor / zone definitions ───────────────────────────────────────────────
@@ -52,7 +53,9 @@ export const FLOORS: FloorDef[] = [
     label: "Office",
     // ?v bumped on every map regen so browsers don't serve a stale cached PNG
     // (the filename is stable, so without this a hard-refresh keeps the old map).
-    image: "/assets/pixelart/Office%20Square.png?v=20260722b",
+    // BARE shell — team desks/chairs/keyboards are drawn per-agent at runtime
+    // (see computeWorkstations + DeskFurniture) so furniture scales with headcount.
+    image: "/assets/pixelart/Office%20Square%20Bare.png?v=20260727a",
     natW: 1488,
     natH: 896,
     zones: [
@@ -151,6 +154,42 @@ function DeskMonitor({ x, y, size, status, offsetFactor = 0.9 }: { x: number; y:
       boxShadow: working ? `0 0 ${size*0.28}px ${screen}` : "none",
       animation: working ? "office-agent-ring-pulse 1.8s ease-in-out infinite" : "none",
     }} />
+  );
+}
+
+// ── Per-agent workstation: chair + desk + keyboard sprites drawn at each seat ─
+// (the physical desk is no longer baked into the background; it's rendered here
+// per agent so it scales with headcount). Sizes are native map px * room scale.
+const OFFICE_SPRITE = {
+  desk: "/assets/pixelart/office/desk.png",
+  chair: "/assets/pixelart/office/chair.png",
+  keyboard: "/assets/pixelart/office/keyboard.png",
+};
+// `x`,`y` are the seat position in the CONTAINER's % coords (map % on desktop,
+// room-local % on mobile). `scale` is the room's furniture scale; `pxScale` maps
+// native map px → the container's px (1 on desktop where the parent is already
+// transform:scale'd; cardWidth/roomPxW on mobile).
+export function DeskFurniture({ x, y, scale, pxScale = 1 }: { x: number; y: number; scale: number; pxScale?: number }) {
+  const s = scale * pxScale;
+  const deskH = FURN.deskH * s, chairH = FURN.chairH * s, kbH = FURN.kbH * s;
+  // Offsets above the seat (seat = chair centre-ish). Desk sits above the chair;
+  // keyboard on the desk's front edge; chair peeks just below the seat.
+  const deskAbove = deskH * 0.5 + chairH * 0.35;
+  const kbAbove = chairH * 0.35 + kbH * 0.6;
+  const chairBelow = chairH * 0.15;
+  const spr = (url: string, w: number, h: number, above: number, z: number) => (
+    <img src={bustCache(url)} alt="" draggable={false} style={{
+      position: "absolute", left: `${x}%`, top: `calc(${y}% - ${above}px)`,
+      transform: "translate(-50%, -50%)", width: w, height: h,
+      imageRendering: "pixelated", pointerEvents: "none", zIndex: z,
+    }} />
+  );
+  return (
+    <>
+      {spr(OFFICE_SPRITE.chair, FURN.chairW * s, chairH, -chairBelow, 2)}
+      {spr(OFFICE_SPRITE.desk, FURN.deskW * s, deskH, deskAbove, 3)}
+      {spr(OFFICE_SPRITE.keyboard, FURN.kbW * s, kbH, kbAbove, 4)}
+    </>
   );
 }
 
@@ -446,33 +485,33 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen, userZo
   // Pin layout: each agent sits at a generated desk SEAT. Overflow beyond the
   // seats falls into a tidy grid in the lower half of the room. Size is fixed.
   const { pins, labelSize } = useMemo(() => {
-    const out: { agent: Agent; x: number; y: number; size: number; solo: boolean; floor: { fx: number; fy: number; fw: number; fh: number } }[] = [];
+    const out: { agent: Agent; x: number; y: number; size: number; solo: boolean; furnished: boolean; scale: number; floor: { fx: number; fy: number; fw: number; fh: number } }[] = [];
     for (const za of floorZones) {
       const { zone, members } = za;
       if (members.length === 0) continue;
-      const solo = !!zone.soloAgent;   // founder's own office
-      const seats = zone.seats ?? [];
+      const solo = !!zone.soloAgent;   // founder's own office (desk baked into bg)
       // Full room interior — used to clamp wandering so an agent never leaves its
-      // own room. Wandering itself stays within a small radius of each desk (below).
+      // own room.
       const floor = { fx: zone.x + 2, fy: zone.y + 3, fw: zone.w - 4, fh: zone.h - 5 };
-      // Overflow (more members than seats) tiles into the lower half of the room.
-      const lower = { lx: zone.x + 2, ly: zone.y + zone.h * 0.55, lw: zone.w - 4 };
-      const overflow = members.length - seats.length;
-      const cols = Math.max(1, Math.min(overflow, Math.floor(lower.lw / 7)));
 
+      if (solo) {
+        // Founder keeps the single baked desk seat from the bare map.
+        const seat = (zone.seats ?? [])[0] ?? { x: zone.x + zone.w / 2, y: zone.y + zone.h * 0.7 };
+        members.slice(0, 1).forEach((agent) => {
+          out.push({ agent, x: seat.x, y: seat.y, size: AGENT_SIZE, solo: true, furnished: false, scale: 1, floor });
+        });
+        continue;
+      }
+      // Team rooms: one procedurally-drawn workstation per agent, grid fills the
+      // room and shrinks as headcount grows (so furniture always matches count).
+      const stations = computeWorkstations(zone, members.length, mapW, mapH);
       members.forEach((agent, i) => {
-        let x: number, y: number;
-        if (i < seats.length) { x = seats[i]!.x; y = seats[i]!.y; }
-        else {
-          const j = i - seats.length, c = j % cols, r = Math.floor(j / cols);
-          x = lower.lx + (c + 0.5) * (lower.lw / cols);
-          y = lower.ly + (r + 0.5) * 6;
-        }
-        out.push({ agent, x, y, size: AGENT_SIZE, solo, floor });
+        const s = stations[i]!;
+        out.push({ agent, x: s.x, y: s.y, size: AGENT_SIZE * s.scale, solo: false, furnished: true, scale: s.scale, floor });
       });
     }
     return { pins: out, labelSize: AGENT_SIZE };
-  }, [floorZones]);
+  }, [floorZones, mapW, mapH]);
 
   // ── Wandering engine ──────────────────────────────────────────────────────
   // Agents mostly sit at their desk (facing south). Occasionally one strolls to
@@ -601,6 +640,11 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen, userZo
                 count={za.members.length}
                 workingCount={za.members.filter(a => workingIds.has(a.id)).length} />
             ))}
+            {/* Per-agent furniture (chair/desk/keyboard) — drawn at each seat so it
+                scales with headcount. Founder keeps its baked desk (furnished=false). */}
+            {pins.map((pin) => pin.furnished
+              ? <DeskFurniture key={`furn-${pin.agent.id}`} x={pin.x} y={pin.y} scale={pin.scale} />
+              : null)}
             {/* Desk monitors — fixed at each agent's home desk, screen tinted by that
                 agent's status (green working / red attention / amber paused / grey idle). */}
             {pins.map((pin) => {

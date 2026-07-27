@@ -4,7 +4,8 @@ import { useTranslation } from "@/i18n";
 import { OfficeAvatar } from "./OfficeAvatar";
 import { displayAgentName } from "../lib/agent-name";
 import { agentTeams, localizeTeamName } from "../lib/agent-teams";
-import { FLOORS, AGENT_SIZE, type Zone } from "./LivingOfficeFloor";
+import { FLOORS, AGENT_SIZE, DeskFurniture, type Zone } from "./LivingOfficeFloor";
+import { computeWorkstations } from "../lib/officeLayout";
 import { bustCache } from "../lib/office-sprite-catalog";
 import { cn } from "../lib/utils";
 
@@ -50,19 +51,19 @@ function assignRooms(agents: Agent[]): RoomAssignment[] {
 }
 
 // Desk seats for a room, in map-% (mirrors LivingOfficeFloor's pin layout):
-// agent i sits at seats[i]; overflow tiles into the lower half of the room.
-function seatPositions(zone: Zone, members: Agent[]): { agent: Agent; x: number; y: number }[] {
-  const seats = zone.seats ?? [];
-  const lower = { lx: zone.x + 2, ly: zone.y + zone.h * 0.55, lw: zone.w - 4 };
-  const overflow = Math.max(1, members.length - seats.length);
-  const cols = Math.max(1, Math.min(overflow, Math.floor(lower.lw / 7)));
-  return members.map((agent, i) => {
-    if (i < seats.length) return { agent, x: seats[i]!.x, y: seats[i]!.y };
-    const j = i - seats.length;
-    const c = j % cols;
-    const r = Math.floor(j / cols);
-    return { agent, x: lower.lx + (c + 0.5) * (lower.lw / cols), y: lower.ly + (r + 0.5) * 6 };
-  });
+// solo (founder) keeps its baked seat; team rooms get one procedurally-drawn
+// workstation per agent (grid scales with headcount). `furnished` = draw a
+// runtime desk/chair/keyboard (false for the founder's baked desk).
+function seatPositions(
+  zone: Zone,
+  members: Agent[],
+): { agent: Agent; x: number; y: number; scale: number; furnished: boolean }[] {
+  if (zone.soloAgent) {
+    const seat = (zone.seats ?? [])[0] ?? { x: zone.x + zone.w / 2, y: zone.y + zone.h * 0.7 };
+    return members.slice(0, 1).map((agent) => ({ agent, x: seat.x, y: seat.y, scale: 1, furnished: false }));
+  }
+  const stations = computeWorkstations(zone, members.length, FLOOR.natW, FLOOR.natH);
+  return members.map((agent, i) => ({ agent, x: stations[i]!.x, y: stations[i]!.y, scale: stations[i]!.scale, furnished: true }));
 }
 
 export function MobileOfficeRooms({
@@ -183,6 +184,17 @@ function RoomScene({
             maxHeight: "none",
           }}
         />
+        {/* Per-agent furniture (chair/desk/keyboard), drawn behind the avatars.
+            pxScale maps native map px → this card's px (same as agentPx). */}
+        {seats.map(({ agent, x, y, scale: fScale, furnished }) => furnished ? (
+          <DeskFurniture
+            key={`furn-${agent.id}`}
+            x={((x - zone.x) / zone.w) * 100}
+            y={((y - zone.y) / zone.h) * 100}
+            scale={fScale}
+            pxScale={scale}
+          />
+        ) : null)}
         {seats.map(({ agent, x, y }) => {
           const lx = ((x - zone.x) / zone.w) * 100;
           const ly = ((y - zone.y) / zone.h) * 100;

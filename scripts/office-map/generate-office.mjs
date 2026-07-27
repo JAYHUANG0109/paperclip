@@ -3,7 +3,15 @@
 // fill their cell with desks distributed across the room; decorative + single-agent
 // rooms are drawn small so the team rooms get the space. Tight 1-tile gaps.
 import { resolve } from "node:path";
+import { mkdirSync } from "node:fs";
 import { decode, make, blit, blitScaled, fillRect, encode } from "./pnglib.mjs";
+
+// BARE=1 → emit "Office Square Bare.png" with NO per-agent team desks/chairs/
+// keyboards (walls, floor, clocks, paintings, and the founder/pantry/meeting
+// furnishings stay). The frontend draws team furniture procedurally per agent on
+// top of this, so it scales with headcount. Always also exports the individual
+// furniture sprites the frontend needs.
+const BARE = process.env.BARE === "1";
 
 // Repo-relative so it survives host migrations (scripts/office-map → repo root).
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
@@ -124,20 +132,22 @@ function furnishTeam(rm) {
   const usableW = w - 3, usableH = h - 3.5;
   const cellW = usableW / cols, cellH = usableH / rows;
   const list = []; let n = 0;
-  for (let r = 0; r < rows; r++) {
-    const inRow = Math.min(cols, cap - r * cols);
-    const off = (cols - inRow) / 2;             // center a short last row
-    for (let c = 0; c < inRow; c++, n++) {
-      const centerX = x + 1.5 + (c + off + 0.5) * cellW;
-      const rowTop = y + 2 + r * cellH;
-      objS(DESK.c, DESK.r, DESK.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
-      // Keyboard centred (mouse to the right), nudged a touch east + south so the
-      // keys sit under the monitor and the mouse is beside them.
-      const kW = (KEYBOARD_PX.sw/TS)*KB_F;
-      objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2 + 0.4, rowTop + 0.7, KB_F);
-      const chairX = centerX - cW/2, chairY = rowTop + dH;
-      chairBlit(CHAIR, chairX, chairY);
-      list.push(seatPct(chairX + cW/2, chairY + cH/2));
+  if (!BARE) {
+    for (let r = 0; r < rows; r++) {
+      const inRow = Math.min(cols, cap - r * cols);
+      const off = (cols - inRow) / 2;             // center a short last row
+      for (let c = 0; c < inRow; c++, n++) {
+        const centerX = x + 1.5 + (c + off + 0.5) * cellW;
+        const rowTop = y + 2 + r * cellH;
+        objS(DESK.c, DESK.r, DESK.w, DESK.h, centerX - dW/2, rowTop, DESK_F);
+        // Keyboard centred (mouse to the right), nudged a touch east + south so the
+        // keys sit under the monitor and the mouse is beside them.
+        const kW = (KEYBOARD_PX.sw/TS)*KB_F;
+        objPx(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, centerX - kW/2 + 0.4, rowTop + 0.7, KB_F);
+        const chairX = centerX - cW/2, chairY = rowTop + dH;
+        chairBlit(CHAIR, chairX, chairY);
+        list.push(seatPct(chairX + cW/2, chairY + cH/2));
+      }
     }
   }
   seats[id] = list;
@@ -231,8 +241,29 @@ for (const rm of ROOMS) {
   else furnishTeam(rm);
 }
 
-encode(map, "preview/office-square.png");
-encode(map, resolve(REPO_ROOT, "ui/public/assets/pixelart/Office Square.png"));
+if (BARE) {
+  encode(map, "preview/office-square-bare.png");
+  encode(map, resolve(REPO_ROOT, "ui/public/assets/pixelart/Office Square Bare.png"));
+} else {
+  encode(map, "preview/office-square.png");
+  encode(map, resolve(REPO_ROOT, "ui/public/assets/pixelart/Office Square.png"));
+}
+
+// Export the individual furniture sprites the frontend draws per agent (native
+// tileset resolution; the browser scales them pixelated). One source of truth for
+// the sprite art — same regions furnishTeam() blits from the 48× sheet.
+{
+  const outDir = resolve(REPO_ROOT, "ui/public/assets/pixelart/office");
+  mkdirSync(outDir, { recursive: true });
+  const exportSprite = (sx, sy, sw, sh, name) => {
+    const s = make(sw, sh);
+    blit(s, M, sx, sy, sw, sh, 0, 0);
+    encode(s, resolve(outDir, name));
+  };
+  exportSprite(DESK.c * TS, DESK.r * TS, DESK.w * TS, DESK.h * TS, "desk.png");        // 144x96
+  exportSprite(CHAIR.c * TS, CHAIR.r * TS, TS, Math.round(CHAIR_LEGS * TS), "chair.png"); // 48x58 (incl. legs)
+  exportSprite(KEYBOARD_PX.sx, KEYBOARD_PX.sy, KEYBOARD_PX.sw, KEYBOARD_PX.sh, "keyboard.png"); // 78x14
+}
 
 const COLORS = { founder:"#A855F7", auto:"#F97316", teaching:"#8B5CF6", lead:"#F59E0B", talent:"#6366F1", it:"#3B82F6", esl:"#14B8A6", ga:"#EC4899", brand:"#F43F5E" };
 const pct = (v, tot) => +(v / tot * 100).toFixed(1);
