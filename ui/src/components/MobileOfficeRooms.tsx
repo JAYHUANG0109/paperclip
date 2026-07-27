@@ -4,7 +4,7 @@ import { useTranslation } from "@/i18n";
 import { OfficeAvatar } from "./OfficeAvatar";
 import { displayAgentName } from "../lib/agent-name";
 import { agentTeams, localizeTeamName } from "../lib/agent-teams";
-import { FLOORS, AGENT_SIZE, DeskFurniture, type Zone } from "./LivingOfficeFloor";
+import { FLOORS, AGENT_SIZE, AVATAR_FIT, DeskFurniture, type Zone } from "./LivingOfficeFloor";
 import { computeWorkstations } from "../lib/officeLayout";
 import { bustCache } from "../lib/office-sprite-catalog";
 import { cn } from "../lib/utils";
@@ -57,13 +57,14 @@ function assignRooms(agents: Agent[]): RoomAssignment[] {
 function seatPositions(
   zone: Zone,
   members: Agent[],
-): { agent: Agent; x: number; y: number; scale: number; furnished: boolean }[] {
+): { agent: Agent; x: number; y: number; scale: number; cellW: number; furnished: boolean }[] {
   if (zone.soloAgent) {
     const seat = (zone.seats ?? [])[0] ?? { x: zone.x + zone.w / 2, y: zone.y + zone.h * 0.7 };
-    return members.slice(0, 1).map((agent) => ({ agent, x: seat.x, y: seat.y, scale: 1, furnished: false }));
+    // cellW big enough that the founder avatar caps at full AGENT_SIZE.
+    return members.slice(0, 1).map((agent) => ({ agent, x: seat.x, y: seat.y, scale: 1, cellW: AGENT_SIZE / AVATAR_FIT, furnished: false }));
   }
   const stations = computeWorkstations(zone, members.length, FLOOR.natW, FLOOR.natH);
-  return members.map((agent, i) => ({ agent, x: stations[i]!.x, y: stations[i]!.y, scale: stations[i]!.scale, furnished: true }));
+  return members.map((agent, i) => ({ agent, x: stations[i]!.x, y: stations[i]!.y, scale: stations[i]!.scale, cellW: stations[i]!.cellW, furnished: true }));
 }
 
 export function MobileOfficeRooms({
@@ -141,7 +142,10 @@ function RoomScene({
   // card width (uniform with the desktop floor's map-px AGENT_SIZE).
   const roomPxW = (zone.w / 100) * FLOOR.natW;
   const scale = cardWidth > 0 ? cardWidth / roomPxW : 0;
-  const agentPx = Math.max(30, Math.round(AGENT_SIZE * scale));
+  // Fit the avatar to its grid cell (native px) so crowded rooms shrink agents,
+  // then scale to the card. Sparse rooms cap at AGENT_SIZE.
+  const avatarNative = Math.min(AGENT_SIZE, (seats[0]?.cellW ?? AGENT_SIZE / AVATAR_FIT) * AVATAR_FIT);
+  const agentPx = Math.max(24, Math.round(avatarNative * scale));
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">

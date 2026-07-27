@@ -81,6 +81,11 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 // (maxWidth:none on the img), SPRITE_SCALE=1 keeps that same visible size while
 // per-character scale (male 1.3×) finally takes effect.
 export const AGENT_SIZE = 84;
+// Fraction of a grid cell's width used to size an agent avatar. The sprite is
+// drawn ~1.3–1.4× its `size`, so 0.6 keeps the visible character within its cell
+// (≈20% gap) — crowded rooms shrink agents so they all fit; sparse rooms cap at
+// AGENT_SIZE so a near-empty room doesn't get cartoonishly large avatars.
+export const AVATAR_FIT = 0.6;
 const SPRITE_SCALE = 1.1;    // scaled up ~1.1× to match the furniture
 
 // 8-way facing from a screen-space velocity (y points down → south).
@@ -507,7 +512,8 @@ export function LivingOfficeFloor({ agents, workingIds, liveRuns, onOpen, userZo
       const stations = computeWorkstations(zone, members.length, mapW, mapH);
       members.forEach((agent, i) => {
         const s = stations[i]!;
-        out.push({ agent, x: s.x, y: s.y, size: AGENT_SIZE * s.scale, solo: false, furnished: true, scale: s.scale, floor });
+        const size = Math.min(AGENT_SIZE, s.cellW * AVATAR_FIT);
+        out.push({ agent, x: s.x, y: s.y, size, solo: false, furnished: true, scale: s.scale, floor });
       });
     }
     return { pins: out, labelSize: AGENT_SIZE };

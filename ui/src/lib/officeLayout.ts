@@ -19,7 +19,9 @@ export interface OfficeZoneRect {
 export interface Workstation {
   x: number;      // seat centre X, % of map width
   y: number;      // seat centre Y, % of map height
-  scale: number;  // furniture/avatar scale for this room (1 = nominal)
+  scale: number;  // furniture scale for this room (1 = nominal)
+  cellW: number;  // grid cell width in native map px (used to fit the avatar so
+                  // crowded rooms shrink agents but sparse rooms keep them full-size)
 }
 
 // Nominal furniture footprints in native map px (mirrors generate-office.mjs:
@@ -91,6 +93,7 @@ export function computeWorkstations(
       x: +((cellCx / mapW) * 100).toFixed(3),
       y: +((seatY / mapH) * 100).toFixed(3),
       scale: +scale.toFixed(3),
+      cellW: +cellW.toFixed(2),
     });
   }
   return out;
