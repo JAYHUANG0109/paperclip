@@ -13,6 +13,7 @@ import { instanceSettingsApi } from "../../api/instanceSettings";
 import { issuesApi } from "../../api/issues";
 import { projectsApi } from "../../api/projects";
 import { useCompany } from "../../context/CompanyContext";
+import { useDialogActions } from "../../context/DialogContext";
 import { queryKeys } from "../../lib/queryKeys";
 import { buildCompanyUserInlineOptions, buildCompanyUserLabelMap, buildCompanyUserProfileMap, isAgentTaskTarget } from "../../lib/company-members";
 import { ISSUE_OVERRIDE_ADAPTER_TYPES, type IssueModelLane } from "../../lib/issue-assignee-overrides";
@@ -145,6 +146,7 @@ export function IssueProperties({
   onRetryExternalObjects,
 }: IssuePropertiesProps) {
   const { selectedCompanyId } = useCompany();
+  const { openNewProject } = useDialogActions();
   const queryClient = useQueryClient();
   const companyId = issue.companyId ?? selectedCompanyId;
   const { data: experimentalSettings } = useQuery({
@@ -1705,20 +1707,30 @@ export function IssueProperties({
             </div>
           ),
         )}
-        {projectSearch.trim() && (
-          <button
-            className="mt-1 flex w-full items-center gap-2 rounded border-t border-border px-2 py-1.5 text-xs text-primary hover:bg-accent/50 whitespace-nowrap disabled:opacity-60"
-            onClick={() => createProjectInline.mutate(projectSearch.trim())}
-            disabled={createProjectInline.isPending}
-          >
-            <Plus className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              {createProjectInline.isPending
-                ? t("common.creating", { defaultValue: "建立中…" })
-                : t("issueProperties.createProjectNamed", { defaultValue: "建立新專案「{{name}}」", name: projectSearch.trim() })}
-            </span>
-          </button>
-        )}
+        {/* Always-visible create action. Typed a name → inline-create + assign this
+            task to it. Empty → open the full project dialog (scope, teams, etc.). */}
+        <button
+          className="mt-1 flex w-full items-center gap-2 rounded border-t border-border px-2 py-1.5 text-xs text-primary hover:bg-accent/50 whitespace-nowrap disabled:opacity-60"
+          onClick={() => {
+            const name = projectSearch.trim();
+            if (name) {
+              createProjectInline.mutate(name);
+            } else {
+              setProjectOpen(false);
+              openNewProject();
+            }
+          }}
+          disabled={createProjectInline.isPending}
+        >
+          <Plus className="h-3 w-3 shrink-0" />
+          <span className="truncate">
+            {createProjectInline.isPending
+              ? t("common.creating", { defaultValue: "建立中…" })
+              : projectSearch.trim()
+                ? t("issueProperties.createProjectNamed", { defaultValue: "建立新專案「{{name}}」", name: projectSearch.trim() })
+                : t("issueProperties.createProject", { defaultValue: "建立新專案…" })}
+          </span>
+        </button>
       </div>
     </>
   );
