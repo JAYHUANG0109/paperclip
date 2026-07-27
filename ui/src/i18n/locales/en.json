@@ -1,4 +1,15 @@
 {
+  "onboardingGame": {
+    "title": "Getting started",
+    "progress": "{{done}}/{{total}} done",
+    "goToAgent": "Go to My Agent",
+    "goToSkills": "Go to Skills",
+    "goToDashboard": "View dashboard sections below",
+    "save": "Save",
+    "asanaPlaceholder": "Paste your Asana Personal Access Token",
+    "asanaHelp": "Create a token at app.asana.com → My apps",
+    "asanaError": "Could not save your Asana token. Check it and try again."
+  },
   "app": {
     "noCompanies": {
       "title": "Create your first company",

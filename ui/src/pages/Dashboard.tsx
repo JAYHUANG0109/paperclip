@@ -16,6 +16,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { MetricCard } from "../components/MetricCard";
 import { AsanaTasksSection } from "../components/AsanaTasksSection";
 import { MyScheduleSection } from "../components/MyScheduleSection";
+import { OnboardingChecklist } from "../components/OnboardingChecklist";
 import { FounderDigestSection } from "../components/FounderDigestSection";
 import { TaskSummaryCard } from "../components/TaskSummaryCard";
 import { EmptyState } from "../components/EmptyState";
@@ -263,6 +264,13 @@ export function Dashboard() {
           </button>
         </div>
       )}
+
+      {/* Getting-started (上手教學) — the caller's own 5-step onboarding. Auto-shows
+          the moment their agent is seeded (on first login) and auto-hides once
+          every step is cleared; renders nothing otherwise. Step 1 carries the
+          user-facing Asana token form. Sits at the very top so a new user lands
+          straight on it. */}
+      <OnboardingChecklist companyId={selectedCompanyId!} />
 
       {/* Founder daily console (創辦人每日行事曆) — 4 priority blocks + founder
           status bar. Founder-only (Jay + 創辦人); renders nothing for everyone

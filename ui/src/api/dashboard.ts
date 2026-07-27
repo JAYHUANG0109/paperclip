@@ -103,6 +103,22 @@ export interface FounderConsolesResponse {
   consoles: DailyConsole[];
 }
 
+export interface OnboardingStepView {
+  key: string;
+  title: string;
+  desc: string;
+  done: boolean;
+  current: boolean;
+}
+
+export interface OnboardingView {
+  available: boolean;
+  stage?: number;
+  total?: number;
+  status?: "in_progress" | "done";
+  steps?: OnboardingStepView[];
+}
+
 export interface GoogleCalendarEventDto {
   id: string;
   calendarId: string;
@@ -170,6 +186,12 @@ export const dashboardApi = {
     api.get<CalendarAliasesResponse>(`/companies/${companyId}/google-calendar/aliases`),
   saveCalendarAliases: (companyId: string, aliases: string[]) =>
     api.put<CalendarAliasesResponse>(`/companies/${companyId}/google-calendar/aliases`, { aliases }),
+  // The logged-in user's 5-step onboarding (their own agent), for the dashboard checklist.
+  onboarding: (companyId: string) =>
+    api.get<OnboardingView>(`/companies/${companyId}/onboarding/me`),
+  // User-facing Asana connect (關卡 1): store the caller's own Personal Access Token.
+  connectAsana: (companyId: string, token: string) =>
+    api.post<{ ok: boolean; error?: string }>(`/companies/${companyId}/connections/asana/me`, { token }),
   asanaDigest: (companyId: string) => api.get<AsanaDigest>(`/companies/${companyId}/asana-digest/me`),
   completeAsanaTask: (companyId: string, gid: string, completed: boolean) =>
     api.post<{ ok: boolean; confirmed: boolean; digest: AsanaDigest | null }>(

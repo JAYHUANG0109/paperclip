@@ -37,7 +37,7 @@ import { logger } from "../middleware/logger.js";
 import { buildAsanaDigestBody, getAsanaTaskComments, getAsanaTaskDetail, postAsanaComment, setAsanaTaskCompleted, setAsanaApprovalStatus, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
 import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
-import { advanceOnboarding } from "../services/onboarding.js";
+import { advanceOnboarding, getOnboardingForAgent } from "../services/onboarding.js";
 import {
   getCalendarEventsForUser,
   createCalendarEventForUser,
@@ -1026,6 +1026,63 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
       });
     }
     res.json({ ok: true, digest });
+  });
+
+  // The 5-step onboarding (關卡) for the logged-in user's OWN agent, shaped for
+  // the dashboard checklist. Self-scoped: board user → their own agent; agent
+  // actor → its responsible user's agent (same resolution as the calendar/Asana
+  // /me routes). `{ available:false }` when the caller has no seeded agent.
+  router.get("/companies/:companyId/onboarding/me", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId =
+      req.actor.type === "board"
+        ? req.actor.userId ?? null
+        : req.actor.type === "agent"
+          ? req.actor.onBehalfOfUserId ?? null
+          : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.json({ available: false });
+      return;
+    }
+    const view = await getOnboardingForAgent(db, agentId);
+    res.json(view ?? { available: false });
+  });
+
+  // User-facing Asana connect (關卡 1): the human pastes their OWN Personal
+  // Access Token in the dashboard onboarding checklist. Resolves the caller's own
+  // agent and stores it via the SAME canonical path the agent-actor endpoint uses
+  // (writes the connection file + wires ASANA_TOKEN_PATH + mirrors the per-user
+  // secret), then advances 關卡 1. The agent-only endpoint below stays as-is.
+  router.post("/companies/:companyId/connections/asana/me", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    if (!userId) {
+      res.status(403).json({ error: "Sign in to connect your Asana token." });
+      return;
+    }
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account yet." });
+      return;
+    }
+    const token = typeof req.body?.token === "string" ? req.body.token : "";
+    try {
+      await storeAsanaTokenForAgent(db, companyId, agentId, token, {
+        readOnly: req.body?.readOnly === true,
+        defaultWorkspace: typeof req.body?.defaultWorkspace === "string" ? req.body.defaultWorkspace : null,
+      });
+      try {
+        await advanceOnboarding(db, { agentId, key: "setup" });
+      } catch { /* onboarding advance is best-effort */ }
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: (e as Error).message });
+    }
   });
 
   // The agent stores its OWN Asana token here, the moment a user provides it —

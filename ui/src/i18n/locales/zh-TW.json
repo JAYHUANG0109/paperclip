@@ -1,4 +1,15 @@
 {
+  "onboardingGame": {
+    "title": "上手教學",
+    "progress": "{{done}}/{{total}} 完成",
+    "goToAgent": "前往我的助理",
+    "goToSkills": "前往技能",
+    "goToDashboard": "查看下方儀表板區塊",
+    "save": "儲存",
+    "asanaPlaceholder": "貼上你的 Asana 個人存取權杖",
+    "asanaHelp": "到 app.asana.com →「我的應用程式」建立權杖",
+    "asanaError": "無法儲存你的 Asana 權杖，請確認後再試一次。"
+  },
   "app": {
     "noCompanies": {
       "title": "建立您的第一家公司",

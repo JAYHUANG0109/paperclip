@@ -117,6 +117,63 @@ export async function advanceOnboarding(
   return { advanced: true, completed: allDone };
 }
 
+/** One 關卡 as the dashboard checklist needs it: the catalog title/desc plus
+ *  whether this user has cleared it and whether it's the current (next) step. */
+export interface OnboardingStepView {
+  key: string;
+  title: string;
+  desc: string;
+  done: boolean;
+  current: boolean;
+}
+
+/** Serialized onboarding for the logged-in user's own agent, shaped for the UI.
+ *  `available:false` means the caller has no seeded agent (nothing to show). */
+export interface OnboardingView {
+  available: boolean;
+  stage: number;
+  total: number;
+  status: "in_progress" | "done";
+  steps: OnboardingStepView[];
+}
+
+/**
+ * Read ONE agent's onboarding state and merge it with the 關卡 catalog into the
+ * checklist shape the dashboard renders. Self-scoped: the caller resolves which
+ * agent (their own) before calling. Returns null when the agent isn't seeded
+ * (built-in/system/owner-less agents, or provisioning hasn't run yet) — the
+ * route maps that to `{ available:false }`.
+ */
+export async function getOnboardingForAgent(
+  db: Db,
+  agentId: string,
+): Promise<OnboardingView | null> {
+  const agent = (await db
+    .select({ metadata: agents.metadata })
+    .from(agents)
+    .where(eq(agents.id, agentId)))[0];
+  if (!agent) return null;
+  const state = readOnboarding(agent.metadata);
+  if (!state) return null;
+
+  const completed = new Set(state.completedKeys);
+  const firstOpen = ONBOARDING_KANS.find((k) => !completed.has(k.key))?.key ?? null;
+  const steps: OnboardingStepView[] = ONBOARDING_KANS.map((k) => ({
+    key: k.key,
+    title: k.title,
+    desc: k.desc,
+    done: completed.has(k.key),
+    current: k.key === firstOpen,
+  }));
+  return {
+    available: true,
+    stage: state.stage,
+    total: state.total,
+    status: state.status,
+    steps,
+  };
+}
+
 export const ONBOARDING_PROJECT_NAME = "🎓 上手教學｜Onboarding";
 export const ONBOARDING_SKILL_SLUG = "onboarding-game-guide";
 
