@@ -180,7 +180,9 @@ export function DeskFurniture({ x, y, scale, pxScale = 1 }: { x: number; y: numb
   // Offsets above the seat (seat = chair centre-ish). Desk sits above the chair;
   // keyboard on the desk's front edge; chair peeks just below the seat.
   const deskAbove = deskH * 0.5 + chairH * 0.35;
-  const kbAbove = chairH * 0.35 + kbH * 0.6;
+  // Keyboard/mouse sit ON the desktop — ~⅓ down the desk (front of the tabletop),
+  // NOT down at the seat. deskAbove − ~0.15·deskH lands it on the desk's front edge.
+  const kbAbove = deskH * 0.35 + chairH * 0.35;
   const chairBelow = chairH * 0.15;
   const spr = (url: string, w: number, h: number, above: number, z: number) => (
     <img src={bustCache(url)} alt="" draggable={false} style={{
