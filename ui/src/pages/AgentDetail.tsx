@@ -101,6 +101,7 @@ import {
 } from "../lib/live-log-buffer";
 import {
   isUuidLike,
+  anyTeamTokenMatches,
   type Agent,
   type AgentInstructionsBundle,
   type AgentInstructionsFileSummary,
@@ -1363,6 +1364,11 @@ export function AgentDetail() {
           companyId={resolvedCompanyId}
           agentId={agent.id}
           agentName={agent.name}
+          agentTeams={(() => {
+            const md = agent.metadata as Record<string, unknown> | null;
+            const raw = Array.isArray(md?.teams) ? md!.teams : typeof md?.team === "string" ? [md.team] : [];
+            return (raw as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+          })()}
           issues={(allIssues ?? []).map((i) => ({
             id: i.id,
             title: i.title,
@@ -3305,7 +3311,7 @@ type AgentProjectsIssue = {
  *  split into 公司 / 團隊 / 個人 scope sections (with team/私人 tags) plus an
  *  Unfiled bucket. The projects list is viewer-access-filtered server-side, so a
  *  non-admin only sees scopes they may access; admins see all. */
-function AgentProjectsTab({ companyId, agentId, agentName, issues }: { companyId: string; agentId: string; agentName: string; issues: AgentProjectsIssue[] }) {
+function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }: { companyId: string; agentId: string; agentName: string; agentTeams: string[]; issues: AgentProjectsIssue[] }) {
   const { t } = useTranslation();
   const { openNewProject } = useDialogActions();
   const { data: projects } = useQuery({
@@ -3325,6 +3331,15 @@ function AgentProjectsTab({ companyId, agentId, agentName, issues }: { companyId
     () => (projects ?? []).filter((p) => p.leadAgentId === agentId && !p.archivedAt).map((p) => p.id),
     [projects, agentId],
   );
+  // Team-scoped projects that match THIS agent's team(s) — so every agent sees a
+  // 團隊專案 section for its department's projects, even with no tasks in them.
+  const teamProjectIds = useMemo(() => {
+    if (agentTeams.length === 0) return [] as string[];
+    return (projects ?? [])
+      .filter((p) => p.visibility === "team" && !p.archivedAt)
+      .filter((p) => anyTeamTokenMatches(p.teams?.length ? p.teams : p.team ? [p.team] : [], agentTeams))
+      .map((p) => p.id);
+  }, [projects, agentTeams]);
 
   // Group the agent's issues by project.
   const byProject = useMemo(() => {
@@ -3344,7 +3359,7 @@ function AgentProjectsTab({ companyId, agentId, agentName, issues }: { companyId
   const sections = useMemo(() => {
     const company: string[] = [], team: string[] = [], personal: string[] = [];
     const seen = new Set<string>();
-    for (const projectId of [...byProject.groups.keys(), ...ledProjectIds]) {
+    for (const projectId of [...byProject.groups.keys(), ...ledProjectIds, ...teamProjectIds]) {
       if (seen.has(projectId)) continue;
       seen.add(projectId);
       const v = projectMeta.get(projectId)?.visibility ?? "company";
@@ -3355,7 +3370,7 @@ function AgentProjectsTab({ companyId, agentId, agentName, issues }: { companyId
     const byName = (a: string, b: string) =>
       (projectMeta.get(a)?.name ?? "").localeCompare(projectMeta.get(b)?.name ?? "");
     return { company: company.sort(byName), team: team.sort(byName), personal: personal.sort(byName) };
-  }, [byProject.groups, ledProjectIds, projectMeta]);
+  }, [byProject.groups, ledProjectIds, teamProjectIds, projectMeta]);
 
   const hasAnything = issues.length > 0 || sections.company.length > 0 || sections.team.length > 0 || sections.personal.length > 0;
 
