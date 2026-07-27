@@ -553,6 +553,13 @@ export interface CreateConfigValues {
   command: string;
   args: string;
   extraArgs: string;
+  /**
+   * Account-rotation pool: pre-authenticated Claude credential dirs (one per
+   * account = one separate quota pool), newline/comma/semicolon separated.
+   * When set, subscription runs rotate to the next under-threshold account
+   * hands-off instead of the browser account-switch flow. See claude-local
+   * adapter `selectHealthyClaudeAccountDir`.
+   */
   claudeAccountConfigDirs?: string;
   envVars: string;
   envBindings: Record<string, unknown>;

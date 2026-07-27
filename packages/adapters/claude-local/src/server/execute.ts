@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -104,6 +105,89 @@ let claudeQuotaProbeInFlight: {
   task: Promise<ProviderQuotaResult>;
 } | null = null;
 let claudeHostAccountSwitchInFlight: Promise<RunProcessResult> | null = null;
+// Sticky pointer into the account-rotation pool: which credential dir the last
+// run settled on. We start each rotation probe here so we stay on one account
+// until it crosses the quota threshold, then advance — instead of re-probing
+// the whole pool every heartbeat.
+let activeClaudeAccountDir: string | null = null;
+
+/**
+ * Parse the configured account-rotation pool (`config.claudeAccountConfigDirs`)
+ * into an ordered, de-duplicated list of absolute credential directories. Each
+ * dir is a separately pre-authenticated Claude account (its own subscription
+ * pool). Accepts newline / comma / semicolon separated paths, and expands a
+ * leading `~`.
+ */
+export function parseClaudeAccountConfigDirs(raw: unknown): string[] {
+  if (typeof raw !== "string") return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const partRaw of raw.split(/[\n,;]+/)) {
+    const part = partRaw.trim();
+    if (!part) continue;
+    const expanded = part === "~" || part.startsWith("~/") || part.startsWith("~\\")
+      ? path.join(os.homedir(), part.slice(1).replace(/^[/\\]+/, ""))
+      : part;
+    const resolved = path.resolve(expanded);
+    if (!seen.has(resolved)) {
+      seen.add(resolved);
+      out.push(resolved);
+    }
+  }
+  return out;
+}
+
+export interface ClaudeAccountSelection {
+  dir: string;
+  usedPercent: number | null;
+  rotated: boolean;
+  exhausted: boolean;
+}
+
+/**
+ * Pick which pre-authenticated Claude account to run on, quota-aware and
+ * hands-off. Starts at `activeDir` (sticky) and walks the pool, wrapping, so a
+ * reset account earlier in the pool becomes reusable. Returns the first account
+ * under `thresholdPercent`; if none are known-healthy it prefers an account
+ * whose quota couldn't be read over a known-full one; if every account is
+ * known to be at/over the threshold it sticks with the start account and marks
+ * `exhausted` so the caller can warn. Pure except for the injected probe — unit
+ * tested in execute.account-rotation.test.ts.
+ */
+export async function selectHealthyClaudeAccountDir(input: {
+  pool: string[];
+  thresholdPercent: number;
+  activeDir: string | null;
+  probeUsedPercent: (dir: string) => Promise<number | null>;
+}): Promise<ClaudeAccountSelection | null> {
+  const { pool, thresholdPercent, activeDir, probeUsedPercent } = input;
+  if (pool.length === 0) return null;
+  const activeIdx = activeDir ? pool.indexOf(activeDir) : -1;
+  const startIdx = activeIdx >= 0 ? activeIdx : 0;
+  let firstUnknown: string | null = null;
+  for (let i = 0; i < pool.length; i++) {
+    const dir = pool[(startIdx + i) % pool.length]!;
+    let used: number | null = null;
+    try {
+      used = await probeUsedPercent(dir);
+    } catch {
+      used = null;
+    }
+    if (used == null) {
+      if (firstUnknown == null) firstUnknown = dir;
+      continue;
+    }
+    if (used < thresholdPercent) {
+      return { dir, usedPercent: used, rotated: dir !== activeDir, exhausted: false };
+    }
+  }
+  if (firstUnknown != null) {
+    return { dir: firstUnknown, usedPercent: null, rotated: firstUnknown !== activeDir, exhausted: false };
+  }
+  const stick = pool[startIdx]!;
+  return { dir: stick, usedPercent: null, rotated: false, exhausted: true };
+}
+
 const executeClaudeAcp = createClaudeAcpExecutor();
 
 interface ClaudeExecutionInput {
@@ -618,6 +702,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   );
   const billingType = resolveClaudeBillingType(effectiveEnv);
   let accountSwitchedForQuota = false;
+  let runClaudeConfigDir: string | null = null;
   const quotaSwitchThresholdPercent = resolveClaudeQuotaSwitchThreshold(config);
   const autoSwitchAccountOnQuota = asBoolean(config.autoSwitchAccountOnQuota, true);
   if (
@@ -625,6 +710,49 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     !executionTargetIsRemote &&
     billingType === "subscription"
   ) {
+    const accountRotationPool = parseClaudeAccountConfigDirs(config.claudeAccountConfigDirs);
+    if (accountRotationPool.length > 0) {
+      // Pre-authenticated account pool → rotate transparently when the active
+      // account crosses the quota threshold. No browser prompt, no human at the
+      // runner needed: we just point CLAUDE_CONFIG_DIR at the next healthy
+      // account for this run.
+      try {
+        const selection = await selectHealthyClaudeAccountDir({
+          pool: accountRotationPool,
+          thresholdPercent: quotaSwitchThresholdPercent,
+          activeDir: activeClaudeAccountDir,
+          probeUsedPercent: async (dir) => {
+            const probe = await getSharedClaudeQuota({ ...effectiveEnv, CLAUDE_CONFIG_DIR: dir });
+            return probe.ok ? maxQuotaUsedPercent(probe.windows) : null;
+          },
+        });
+        if (selection) {
+          runClaudeConfigDir = selection.dir;
+          activeClaudeAccountDir = selection.dir;
+          env.CLAUDE_CONFIG_DIR = selection.dir;
+          loggedEnv = { ...loggedEnv, CLAUDE_CONFIG_DIR: selection.dir };
+          if (selection.exhausted) {
+            await onLog(
+              "stderr",
+              `[paperclip] All ${accountRotationPool.length} Claude accounts in the rotation pool are at/over ${quotaSwitchThresholdPercent}% usage; continuing on ${selection.dir} (expect rate limiting until a quota window resets).\n`,
+            );
+          } else if (selection.rotated) {
+            // Force a fresh session: the prior session belongs to the old account.
+            accountSwitchedForQuota = true;
+            await onLog(
+              "stdout",
+              `[paperclip] Rotated Claude account to ${selection.dir}${selection.usedPercent != null ? ` (${selection.usedPercent}% used)` : ""} because the prior account crossed the ${quotaSwitchThresholdPercent}% quota threshold. Starting this heartbeat with a fresh session.\n`,
+            );
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await onLog(
+          "stderr",
+          `[paperclip] Claude account rotation check failed: ${message}. Continuing with the current account.\n`,
+        );
+      }
+    } else {
     let quotaSwitchStarted = false;
     try {
       const quota = await getSharedClaudeQuota(effectiveEnv);
@@ -751,6 +879,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `[paperclip] Could not check Claude quota before this heartbeat: ${message}. Continuing with the current account.\n`,
       );
     }
+    }
   }
   const claudeSkillEntries = await readPaperclipRuntimeSkillEntries(config, __moduleDir);
   const desiredSkillNames = new Set(resolveClaudeDesiredSkillNames(config, claudeSkillEntries));
@@ -796,7 +925,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     servers: runtimeMcpServers,
   });
   const localMcpConfigDir = path.dirname(localMcpConfigPath);
-  const sharedClaudeConfigDir = resolveSharedClaudeConfigDir(process.env);
+  // Honor an account-rotation selection so the sandbox grants rw to the chosen
+  // account's config dir (+ its sibling .claude.json / home) and the child runs
+  // on that account. Falls back to the shared/default dir when no pool is set.
+  const sharedClaudeConfigDir = runClaudeConfigDir ?? resolveSharedClaudeConfigDir(process.env);
   const networkScope = parseLocalProcessNetworkScope(config.networkScope);
   const filesystemScope = parseLocalProcessFilesystemScope(config.filesystemScope);
   const localProcessSandbox: LocalProcessSandboxOptions | null =
