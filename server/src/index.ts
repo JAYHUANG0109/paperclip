@@ -665,7 +665,7 @@ export async function startServer(): Promise<StartedServer> {
     }
   };
   const pluginWorkerManager = createPluginWorkerManager();
-  const app = await createApp(db as any, {
+  const { app, toolGateway } = await createApp(db as any, {
     uiMode,
     serverPort: listenPort,
     storageService,
@@ -850,7 +850,7 @@ export async function startServer(): Promise<StartedServer> {
   };
 
   if (config.heartbeatSchedulerEnabled) {
-    const heartbeat = heartbeatService(db as any, { pluginWorkerManager });
+    const heartbeat = heartbeatService(db as any, { pluginWorkerManager, toolGateway });
     drainHeartbeatRunsForShutdown = heartbeat.drainRunningRunsForShutdown;
     prepareHotRestartShutdown = heartbeat.prepareHotRestartShutdown;
     const environmentCustomImages = environmentCustomImageService(db as any, { pluginWorkerManager });

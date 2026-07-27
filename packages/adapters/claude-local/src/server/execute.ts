@@ -111,6 +111,34 @@ let claudeHostAccountSwitchInFlight: Promise<RunProcessResult> | null = null;
 // the whole pool every heartbeat.
 let activeClaudeAccountDir: string | null = null;
 
+// Reactive quota tracking. On this host, Claude credentials live in the macOS
+// Keychain (no per-dir token file) and there is no non-interactive `claude
+// usage` command, so the proactive CLI `/usage` scrape is unreliable (it hangs /
+// times out) — it cannot tell whether an account is over quota. Instead we learn
+// each account's state from the GROUND TRUTH: when a real run returns a
+// provider-quota / rate-limit error we mark that credential dir as cooling down
+// until its quota window resets, and rotation skips cooling accounts. Map value
+// is the epoch-ms the dir becomes usable again.
+const claudeAccountCooldownUntil = new Map<string, number>();
+const CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS = 60 * 60 * 1000; // 1h fallback when no reset time is known
+
+export function claudeAccountIsCoolingDown(dir: string, now: number): boolean {
+  const until = claudeAccountCooldownUntil.get(dir);
+  if (until == null) return false;
+  if (until <= now) {
+    claudeAccountCooldownUntil.delete(dir);
+    return false;
+  }
+  return true;
+}
+
+/** Mark a credential dir as quota-limited until `until` (epoch ms). */
+export function markClaudeAccountCoolingDown(dir: string, until: number): void {
+  const existing = claudeAccountCooldownUntil.get(dir);
+  // Keep the latest (furthest-out) reset we know about.
+  if (existing == null || until > existing) claudeAccountCooldownUntil.set(dir, until);
+}
+
 /**
  * Parse the configured account-rotation pool (`config.claudeAccountConfigDirs`)
  * into an ordered, de-duplicated list of absolute credential directories. Each
@@ -717,14 +745,17 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       // runner needed: we just point CLAUDE_CONFIG_DIR at the next healthy
       // account for this run.
       try {
+        const nowMs = Date.now();
         const selection = await selectHealthyClaudeAccountDir({
           pool: accountRotationPool,
           thresholdPercent: quotaSwitchThresholdPercent,
           activeDir: activeClaudeAccountDir,
-          probeUsedPercent: async (dir) => {
-            const probe = await getSharedClaudeQuota({ ...effectiveEnv, CLAUDE_CONFIG_DIR: dir });
-            return probe.ok ? maxQuotaUsedPercent(probe.windows) : null;
-          },
+          // Reactive, not proactive: a dir counts as "over threshold" only while
+          // it is cooling down from a real provider-quota error (see the
+          // post-run handler that calls markClaudeAccountCoolingDown). This
+          // avoids the unreliable interactive `/usage` scrape entirely.
+          probeUsedPercent: async (dir) =>
+            claudeAccountIsCoolingDown(dir, nowMs) ? 100 : 0,
         });
         if (selection) {
           runClaudeConfigDir = selection.dir;
@@ -732,10 +763,50 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           env.CLAUDE_CONFIG_DIR = selection.dir;
           loggedEnv = { ...loggedEnv, CLAUDE_CONFIG_DIR: selection.dir };
           if (selection.exhausted) {
+            // Every pooled account is cooling down from a quota error and none
+            // has reset yet. We can't silently make progress — open a browser
+            // login so a human can add/refresh a fresh account, and return a
+            // typed errorCode so the server notifies the responsible people over
+            // Google Chat. The in-flight singleton inside
+            // runHostClaudeAccountSwitch stops concurrent heartbeats from each
+            // opening their own login prompt.
             await onLog(
               "stderr",
-              `[paperclip] All ${accountRotationPool.length} Claude accounts in the rotation pool are at/over ${quotaSwitchThresholdPercent}% usage; continuing on ${selection.dir} (expect rate limiting until a quota window resets).\n`,
+              `[paperclip] All ${accountRotationPool.length} Claude accounts in the rotation pool are quota-limited; opening a browser login so a fresh account can be added.\n`,
             );
+            const switchTimeoutSec = Math.max(30, asNumber(config.quotaAccountSwitchTimeoutSec, 300));
+            const switchProc = await runHostClaudeAccountSwitch({
+              runId,
+              command,
+              cwd,
+              env,
+              timeoutSec: switchTimeoutSec,
+              graceSec,
+              onLog,
+            });
+            const switchLoginMeta = detectClaudeLoginRequired({
+              parsed: null,
+              stdout: switchProc.stdout,
+              stderr: switchProc.stderr,
+            });
+            return {
+              exitCode: switchProc.exitCode ?? 1,
+              signal: switchProc.signal,
+              timedOut: switchProc.timedOut,
+              errorCode: "claude_account_switch_required",
+              errorMessage: `All ${accountRotationPool.length} Claude accounts in the rotation pool are quota-limited; a browser login is required to add or refresh an account.`,
+              errorMeta: switchLoginMeta.loginUrl ? { loginUrl: switchLoginMeta.loginUrl } : undefined,
+              resultJson: {
+                poolExhausted: true,
+                poolSize: accountRotationPool.length,
+                quotaSwitchThresholdPercent,
+                responsibleUserEmail: asString(config.assignedUserEmail, "") || null,
+                loginUrl: switchLoginMeta.loginUrl ?? null,
+                stdout: switchProc.stdout,
+                stderr: switchProc.stderr,
+              },
+              clearSession: true,
+            };
           } else if (selection.rotated) {
             // Force a fresh session: the prior session belongs to the old account.
             accountSwitchedForQuota = true;
@@ -1395,6 +1466,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             errorMessage: fallbackErrorMessage,
           })
         : null;
+      if (providerQuota && runClaudeConfigDir) {
+        // Reactive rotation: this account just hit its quota. Cool it down so the
+        // next heartbeat's selection skips it until the window resets.
+        markClaudeAccountCoolingDown(
+          runClaudeConfigDir,
+          transientRetryNotBefore ? transientRetryNotBefore.getTime() : Date.now() + CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS,
+        );
+      }
       const errorCode = loginMeta.requiresLogin
         ? "claude_auth_required"
         : providerQuota
@@ -1521,6 +1600,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           errorMessage,
         })
       : null;
+    if (providerQuota && runClaudeConfigDir) {
+      markClaudeAccountCoolingDown(
+        runClaudeConfigDir,
+        transientRetryNotBefore ? transientRetryNotBefore.getTime() : Date.now() + CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS,
+      );
+    }
     const resolvedErrorCode = loginMeta.requiresLogin
       ? "claude_auth_required"
       : failed && clearSessionForMaxTurns

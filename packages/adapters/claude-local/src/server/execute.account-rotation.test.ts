@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import os from "node:os";
 import path from "node:path";
-import { parseClaudeAccountConfigDirs, selectHealthyClaudeAccountDir } from "./execute.js";
+import {
+  claudeAccountIsCoolingDown,
+  markClaudeAccountCoolingDown,
+  parseClaudeAccountConfigDirs,
+  selectHealthyClaudeAccountDir,
+} from "./execute.js";
 
 describe("parseClaudeAccountConfigDirs", () => {
   it("splits on newlines, commas, and semicolons, resolves, and dedupes", () => {
@@ -86,6 +91,27 @@ describe("selectHealthyClaudeAccountDir", () => {
       probeUsedPercent: async () => 99,
     });
     expect(res).toMatchObject({ dir: "/acct/b", rotated: false, exhausted: true });
+  });
+
+  it("reactive cooldown: a dir counts as over-threshold while cooling, and rotation skips it", async () => {
+    const now = 1_000_000;
+    const dir = "/acct/cooldown-a";
+    const other = "/acct/cooldown-b";
+    // Not cooling yet.
+    expect(claudeAccountIsCoolingDown(dir, now)).toBe(false);
+    // Mark it limited for 1h; the reactive probe treats it as 100% used.
+    markClaudeAccountCoolingDown(dir, now + 60 * 60 * 1000);
+    expect(claudeAccountIsCoolingDown(dir, now)).toBe(true);
+    // Selection (same probe shape used at the call site) skips the cooling dir.
+    const res = await selectHealthyClaudeAccountDir({
+      pool: [dir, other],
+      thresholdPercent: 95,
+      activeDir: dir,
+      probeUsedPercent: async (d) => (claudeAccountIsCoolingDown(d, now) ? 100 : 0),
+    });
+    expect(res).toMatchObject({ dir: other, rotated: true, exhausted: false });
+    // After the window resets, it is reusable again (and self-clears).
+    expect(claudeAccountIsCoolingDown(dir, now + 60 * 60 * 1000 + 1)).toBe(false);
   });
 
   it("treats a failing probe as unknown quota, not a crash", async () => {

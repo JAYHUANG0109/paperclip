@@ -35,6 +35,7 @@ import {
   agentWakeupRequests,
   activityLog,
   approvals,
+  authUsers,
   companyMemberships,
   companySkillTestRuns,
   companySkillVersions,
@@ -287,6 +288,47 @@ const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
 const MAX_PERSISTED_LOG_CHUNK_CHARS = 64 * 1024;
 const MAX_RUN_EVENT_PAYLOAD_STRING_CHARS = 16 * 1024;
 const MAX_RUN_EVENT_PAYLOAD_ARRAY_ITEMS = 50;
+
+// ---------------------------------------------------------------------------
+// Claude account-pool exhaustion → Google Chat login-required notification
+// ---------------------------------------------------------------------------
+// When the claude-local adapter reports `claude_account_switch_required` with
+// `resultJson.poolExhausted`, every pooled Claude account is quota-limited and a
+// human must log a fresh/reset account in via the browser. We DM the responsible
+// user plus a fixed fallback list (Frank, who owns Claude account provisioning)
+// so someone acts on it.
+const CLAUDE_ACCOUNT_SWITCH_REQUIRED_ERROR_CODE = "claude_account_switch_required";
+/** Namespaced Google Chat plugin tool that DMs a person by their Workspace email. */
+const CLAUDE_LOGIN_NOTIFY_TOOL = "paperclip-plugin-google-chat:send_chat_message";
+/** Always-notified recipients (in addition to the responsible user). Frank
+ *  (資訊副理, a0000960@seasonart.org) owns Claude account provisioning. Kept as a
+ *  named constant so the recipient list is easy to change. */
+const CLAUDE_LOGIN_NOTIFY_FALLBACK_EMAILS = ["a0000960@seasonart.org"];
+/** De-dupe window: notify at most once per agent per hour so a burst of
+ *  exhausted heartbeats can't spam Google Chat. */
+const CLAUDE_LOGIN_NOTIFY_MIN_INTERVAL_MS = 60 * 60 * 1000;
+/** In-memory (per-process) guard keyed by agentId → last-notified epoch ms. A
+ *  process restart resets it, which is acceptable for a best-effort alert. */
+const claudeLoginNotifyLastSentAtByAgent = new Map<string, number>();
+
+/** Minimal structural view of the tool gateway the notifier needs. The real
+ *  gateway (created in app.ts with the plugin tool dispatcher) is passed in via
+ *  HeartbeatServiceOptions; typing it structurally avoids importing the gateway's
+ *  unexported return type and keeps the dependency explicit. */
+export interface HeartbeatNotificationToolGateway {
+  executePluginTool(input: {
+    actor: {
+      type: "agent" | "board";
+      agentId?: string | null;
+      companyId?: string | null;
+      userId?: string | null;
+      runId?: string | null;
+    };
+    tool: string;
+    parameters: unknown;
+    runContext: { agentId: string; runId: string; companyId: string; projectId: string };
+  }): Promise<unknown>;
+}
 
 export function redactDetectedSuccessfulRunProgressSummaryForBoard(
   summary: string,
@@ -5393,6 +5435,11 @@ export interface HeartbeatServiceOptions {
   pluginWorkerManager?: PluginWorkerManager;
   environmentRuntime?: HeartbeatEnvironmentRuntime;
   runtimeEnv?: Record<string, string | undefined>;
+  /** Tool gateway used to send best-effort Google Chat notifications (e.g. when
+   *  the Claude account pool is exhausted and a browser login is required). Must
+   *  be the app-level gateway constructed with the plugin tool dispatcher;
+   *  omitted for read-only heartbeat instances, which simply skip notifying. */
+  toolGateway?: HeartbeatNotificationToolGateway;
 }
 
 function isTruthyRuntimeEnvValue(value: string | undefined) {
@@ -5494,6 +5541,130 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
   };
   const budgets = budgetService(db, budgetHooks);
   const recovery = recoveryService(db, { enqueueWakeup });
+  const notificationToolGateway = options.toolGateway ?? null;
+
+  /**
+   * Best-effort Google Chat DM when the Claude account rotation pool is
+   * exhausted (adapter errorCode `claude_account_switch_required` with
+   * `resultJson.poolExhausted`) and a browser login is required.
+   *
+   * Recipients: the responsible user (resultJson.responsibleUserEmail →
+   * adapterConfig.assignedUserEmail → responsibleUserId's user email) plus the
+   * fixed fallback list (Frank). De-duped so the responsible user who IS Frank
+   * is messaged once.
+   *
+   * MUST be called while the run is still `running`: the tool gateway rejects a
+   * runContext whose run has left the active state, so this fires just before the
+   * run is finalized to `failed`. De-duped to at most once per agent per hour.
+   * Fully guarded — it never throws into run finalization.
+   */
+  async function notifyClaudeAccountPoolExhausted(input: {
+    agent: typeof agents.$inferSelect;
+    run: typeof heartbeatRuns.$inferSelect;
+    adapterResult: AdapterExecutionResult;
+    projectId: string | null;
+  }): Promise<void> {
+    try {
+      const gateway = notificationToolGateway;
+      if (!gateway) return;
+
+      const adapterResultJson = parseObject(input.adapterResult.resultJson);
+      // Only fire for genuine pool exhaustion, not the single-account login flow.
+      if (adapterResultJson.poolExhausted !== true) return;
+
+      // Per-agent throttle. Stamp the time up front so slow/concurrent sends
+      // don't double-fire within the window.
+      const now = Date.now();
+      const lastSentAt = claudeLoginNotifyLastSentAtByAgent.get(input.agent.id);
+      if (lastSentAt != null && now - lastSentAt < CLAUDE_LOGIN_NOTIFY_MIN_INTERVAL_MS) {
+        return;
+      }
+      claudeLoginNotifyLastSentAtByAgent.set(input.agent.id, now);
+
+      // Resolve the responsible user's email.
+      let responsibleEmail = readNonEmptyString(adapterResultJson.responsibleUserEmail);
+      if (!responsibleEmail) {
+        responsibleEmail = readNonEmptyString(parseObject(input.agent.adapterConfig).assignedUserEmail);
+      }
+      if (!responsibleEmail && input.run.responsibleUserId) {
+        try {
+          const [userRow] = await db
+            .select({ email: authUsers.email })
+            .from(authUsers)
+            .where(eq(authUsers.id, input.run.responsibleUserId))
+            .limit(1);
+          responsibleEmail = readNonEmptyString(userRow?.email);
+        } catch (err) {
+          logger.warn(
+            { err, agentId: input.agent.id, runId: input.run.id },
+            "failed to resolve responsible user email for Claude login notification",
+          );
+        }
+      }
+
+      // Build the case-insensitively de-duped recipient list.
+      const recipients: string[] = [];
+      const seen = new Set<string>();
+      for (const candidate of [responsibleEmail, ...CLAUDE_LOGIN_NOTIFY_FALLBACK_EMAILS]) {
+        const email = candidate?.trim();
+        if (!email) continue;
+        const key = email.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        recipients.push(email);
+      }
+      if (recipients.length === 0) return;
+
+      const loginUrl =
+        readNonEmptyString(parseObject(input.adapterResult.errorMeta).loginUrl) ??
+        readNonEmptyString(adapterResultJson.loginUrl);
+      const agentName = readNonEmptyString(input.agent.name) ?? input.agent.id;
+      const text =
+        `🔴 Claude 帳號額度已用盡\n` +
+        `代理人「${agentName}」輪替池中的所有 Claude 帳號都已達額度上限，` +
+        `需要有人用瀏覽器登入以新增或更新一個帳號後才能恢復執行。\n` +
+        (loginUrl
+          ? `登入連結：${loginUrl}`
+          : `請在執行主機上執行 Claude 登入流程（claude auth login --claudeai）。`);
+
+      const runContext = {
+        agentId: input.agent.id,
+        runId: input.run.id,
+        companyId: input.run.companyId,
+        projectId: input.projectId ?? "",
+      };
+      for (const email of recipients) {
+        try {
+          await gateway.executePluginTool({
+            actor: {
+              type: "agent",
+              agentId: input.agent.id,
+              companyId: input.run.companyId,
+              runId: input.run.id,
+            },
+            tool: CLAUDE_LOGIN_NOTIFY_TOOL,
+            parameters: { email, text },
+            runContext,
+          });
+          logger.info(
+            { agentId: input.agent.id, runId: input.run.id, email },
+            "sent Claude account-pool-exhausted Google Chat notification",
+          );
+        } catch (err) {
+          logger.warn(
+            { err, agentId: input.agent.id, runId: input.run.id, email },
+            "failed to send Claude account-pool-exhausted Google Chat notification",
+          );
+        }
+      }
+    } catch (err) {
+      // Never let a notification failure affect run finalization.
+      logger.warn(
+        { err, agentId: input.agent?.id, runId: input.run?.id },
+        "Claude account-pool-exhausted notification failed",
+      );
+    }
+  }
 
   function isPlanApprovalConfirmationPayload(payload: unknown) {
     const target = parseObject(parseObject(payload).target);
@@ -13842,6 +14013,18 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         }),
         adapterResult.summary ?? null,
       );
+
+      // Claude account-pool exhaustion needs a human to log in a fresh account.
+      // Notify BEFORE finalizing: the tool gateway only accepts a runContext whose
+      // run is still `running`, so we send while the run is active, then finalize.
+      if (outcome === "failed" && runErrorCode === CLAUDE_ACCOUNT_SWITCH_REQUIRED_ERROR_CODE) {
+        await notifyClaudeAccountPoolExhausted({
+          agent,
+          run,
+          adapterResult,
+          projectId: issueRef?.projectId ?? null,
+        });
+      }
 
       const persistedRunWrite = await setRunStatusIfRunning(run.id, status, {
         finishedAt: new Date(),

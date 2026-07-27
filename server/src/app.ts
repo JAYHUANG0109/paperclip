@@ -79,6 +79,7 @@ import { distillCompanyWiki } from "./services/wiki-distillation.js";
 import { pluginJobStore } from "./services/plugin-job-store.js";
 import { createPluginToolDispatcher } from "./services/plugin-tool-dispatcher.js";
 import { createToolGatewayService } from "./services/tool-gateway.js";
+import type { HeartbeatNotificationToolGateway } from "./services/heartbeat.js";
 import { pluginLifecycleManager } from "./services/plugin-lifecycle.js";
 import { createPluginJobCoordinator } from "./services/plugin-job-coordinator.js";
 import { buildHostServices, flushPluginLogBuffer } from "./services/plugin-host-services.js";
@@ -840,5 +841,12 @@ export async function createApp(
     void flushPluginLogBuffer();
   });
 
-  return app;
+  // Expose the tool gateway (constructed above with the plugin tool dispatcher)
+  // so the caller can inject it into the heartbeat run engine for best-effort
+  // Google Chat notifications. It shares this app's plugin worker manager, so we
+  // must not construct a second gateway for the run engine. Narrowed to the
+  // notification surface the run engine consumes (also keeps the exported return
+  // type nameable — the full gateway type references unexported internals).
+  const notificationToolGateway: HeartbeatNotificationToolGateway = toolGateway;
+  return { app, toolGateway: notificationToolGateway };
 }
