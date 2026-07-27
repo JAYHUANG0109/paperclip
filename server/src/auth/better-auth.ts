@@ -19,6 +19,7 @@ import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { Config } from "../config.js";
 import { resolvePaperclipInstanceId } from "../home-paths.js";
+import { seedOnboardingForAgent } from "../services/onboarding.js";
 
 /**
  * Auto-provision a newly signed-in user from any agents pre-tagged with their
@@ -126,6 +127,17 @@ async function autoProvisionAssignedAgents(
         agentId: agent.id,
         state: "joined",
       });
+    }
+    // The agent now has a resolvable owner (this just-linked user), so make sure
+    // its onboarding 關卡 game exists. This is the self-heal for agents that were
+    // created/tagged before their owner had an account: seeding only fires at
+    // agent-create time otherwise, so a person signing in later would never get
+    // the game. Idempotent + best-effort — skips already-seeded / built-in /
+    // system agents and must never block sign-in.
+    try {
+      await seedOnboardingForAgent(db, { companyId: agent.companyId, agentId: agent.id });
+    } catch (err) {
+      console.warn(`[auth] onboarding seed on sign-in failed for agent ${agent.id}:`, err);
     }
   }
 }
