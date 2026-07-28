@@ -3340,6 +3340,14 @@ function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }:
       .filter((p) => anyTeamTokenMatches(p.teams?.length ? p.teams : p.team ? [p.team] : [], agentTeams))
       .map((p) => p.id);
   }, [projects, agentTeams]);
+  // Projects this agent was explicitly granted access to (project_access_members),
+  // e.g. a private project shared with this agent — surfaced even with no tasks.
+  const memberProjectIds = useMemo(
+    () => (projects ?? [])
+      .filter((p) => !p.archivedAt && (p.accessMembers ?? []).some((m) => m.principalType === "agent" && m.principalId === agentId))
+      .map((p) => p.id),
+    [projects, agentId],
+  );
 
   // Group the agent's issues by project.
   const byProject = useMemo(() => {
@@ -3359,7 +3367,7 @@ function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }:
   const sections = useMemo(() => {
     const company: string[] = [], team: string[] = [], personal: string[] = [];
     const seen = new Set<string>();
-    for (const projectId of [...byProject.groups.keys(), ...ledProjectIds, ...teamProjectIds]) {
+    for (const projectId of [...byProject.groups.keys(), ...ledProjectIds, ...teamProjectIds, ...memberProjectIds]) {
       if (seen.has(projectId)) continue;
       seen.add(projectId);
       const v = projectMeta.get(projectId)?.visibility ?? "company";
@@ -3370,7 +3378,7 @@ function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }:
     const byName = (a: string, b: string) =>
       (projectMeta.get(a)?.name ?? "").localeCompare(projectMeta.get(b)?.name ?? "");
     return { company: company.sort(byName), team: team.sort(byName), personal: personal.sort(byName) };
-  }, [byProject.groups, ledProjectIds, teamProjectIds, projectMeta]);
+  }, [byProject.groups, ledProjectIds, teamProjectIds, memberProjectIds, projectMeta]);
 
   const hasAnything = issues.length > 0 || sections.company.length > 0 || sections.team.length > 0 || sections.personal.length > 0;
 
