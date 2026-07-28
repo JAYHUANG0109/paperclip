@@ -17,6 +17,21 @@ const SANDBOX_ALLOWED_TOOLS =
   "NotebookEdit PushNotification Read RemoteTrigger ScheduleWakeup Skill " +
   "TaskOutput TaskStop TodoWrite ToolSearch WebFetch WebSearch Write";
 
+// The claude.ai Google Calendar/Drive MCP connectors are a SINGLE shared
+// connector identity (bound to one account), so an agent using them reads the
+// WRONG user's data, and they don't do our per-user token auto-refresh. Agents
+// must instead use the Paperclip server-side Google endpoints (which use each
+// responsible user's own token with refresh — see the paperclip skill's
+// google-chat-and-calendar reference + AGENTS rules). Block them at the tool
+// layer for EVERY local run so no agent — existing or future — can fall back to
+// MCP regardless of its per-agent config. (Remote runs already exclude them: the
+// SANDBOX_ALLOWED_TOOLS allowlist has no mcp__claude_ai_* entries.)
+const BLOCKED_LOCAL_MCP_CONNECTORS = "mcp__claude_ai_Google_Calendar mcp__claude_ai_Google_Drive";
+
+function localSkipWithBlockedMcp(): string[] {
+  return ["--dangerously-skip-permissions", "--disallowedTools", BLOCKED_LOCAL_MCP_CONNECTORS];
+}
+
 export function buildClaudeProbePermissionArgs(input: {
   dangerouslySkipPermissions: boolean;
   targetIsRemote: boolean;
@@ -28,7 +43,7 @@ export function buildClaudeProbePermissionArgs(input: {
   // if a future probe prompt does, we don't want Claude CLI to stall on an
   // interactive permission prompt that no human can answer.
   if (input.targetIsRemote) return ["--allowedTools", SANDBOX_ALLOWED_TOOLS];
-  return ["--dangerously-skip-permissions"];
+  return localSkipWithBlockedMcp();
 }
 
 export function buildClaudeExecutionPermissionArgs(input: {
@@ -39,5 +54,5 @@ export function buildClaudeExecutionPermissionArgs(input: {
   if (input.targetIsRemote) {
     return ["--allowedTools", SANDBOX_ALLOWED_TOOLS];
   }
-  return ["--dangerously-skip-permissions"];
+  return localSkipWithBlockedMcp();
 }
