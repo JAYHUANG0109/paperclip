@@ -29,6 +29,7 @@ export { projectMemberships } from "./project_memberships.js";
 export { projectAccessMembers } from "./project_access_members.js";
 export { companySkillAccessMembers } from "./company_skill_access_members.js";
 export { companySkillUsage } from "./company_skill_usage.js";
+export { companySkillFiles } from "./company_skill_files.js";
 export { skillUsageEvents } from "./skill_usage_events.js";
 export { notifications } from "./notifications.js";
 export { skillBounties } from "./skill_bounties.js";
