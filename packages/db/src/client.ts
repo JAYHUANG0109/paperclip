@@ -45,8 +45,26 @@ export type MigrationState =
       reason: "no-migration-journal-empty-db" | "no-migration-journal-non-empty-db" | "pending-migrations";
     };
 
+// postgres-js defaults to a pool of 10, which becomes the ceiling on concurrent
+// request handling long before Postgres' own max_connections does. Sized for the
+// deployment via PAPERCLIP_DB_POOL_MAX; keep it comfortably under the server's
+// max_connections (200) so agents/CLI/backups can still get connections.
+const DEFAULT_DB_POOL_MAX = 40;
+
+function resolveDbPoolMax(): number {
+  const raw = process.env.PAPERCLIP_DB_POOL_MAX;
+  if (!raw) return DEFAULT_DB_POOL_MAX;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_DB_POOL_MAX;
+}
+
 export function createDb(url: string) {
-  const sql = postgres(url);
+  const sql = postgres(url, {
+    max: resolveDbPoolMax(),
+    // Release idle connections so a burst does not pin the pool at max forever.
+    idle_timeout: 30,
+    connect_timeout: 10,
+  });
   return drizzlePg(sql, { schema });
 }
 
