@@ -4221,6 +4221,63 @@ export function companySkillService(db: Db) {
     return row !== null;
   }
 
+  // DB is the single source of truth for a company-managed skill's files. This
+  // mirrors the skill's current on-disk tree into company_skill_files (replacing
+  // the whole set) so every mutation that lands files on disk keeps the DB copy
+  // — which the runtime resolver and readFile now prefer — authoritative and in
+  // sync. Guarded to company-managed local_path/catalog skills: bundled skills
+  // track the shipped release (a frozen DB row would shadow a future update) and
+  // remote-sourced skills (github/url) keep resolving from their upstream, so
+  // both are intentionally left disk/remote-backed (this is a no-op for them).
+  async function syncDbSkillFilesFromDisk(companyId: string, skill: CompanySkill): Promise<void> {
+    if (skill.sourceType !== "local_path" && skill.sourceType !== "catalog") return;
+    if (asString(getSkillMeta(skill).sourceKind) === "paperclip_bundled") return;
+    const dir = normalizeSourceLocatorDirectory(skill.sourceLocator);
+    if (!dir) return;
+    let inventory: CompanySkillFileInventoryEntry[];
+    try {
+      inventory = await collectLocalSkillInventory(dir);
+    } catch {
+      // No readable SKILL.md tree on disk (e.g. a bundled path absent on this
+      // host): leave the DB rows untouched so the disk/markdown fallback applies.
+      return;
+    }
+    const rows: Array<{ path: string; kind: string; content: string; isBinary: boolean; byteSize: number; sha256: string }> = [];
+    for (const entry of inventory) {
+      const normalizedPath = normalizePortablePath(entry.path);
+      const absolutePath = path.resolve(dir, normalizedPath);
+      const bytes = await fs.readFile(absolutePath).catch(() => null);
+      if (!bytes) return; // incomplete read → don't half-mirror the set; abort this sync
+      const isBinary = isBinarySkillFilePath(normalizedPath);
+      rows.push({
+        path: normalizedPath,
+        kind: entry.kind,
+        content: isBinary ? bytes.toString("base64") : stripNul(bytes.toString("utf8")),
+        isBinary,
+        byteSize: bytes.byteLength,
+        sha256: sha256Buffer(bytes),
+      });
+    }
+    if (!rows.some((row) => row.path === "SKILL.md")) return;
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(companySkillFiles)
+        .where(and(eq(companySkillFiles.companyId, companyId), eq(companySkillFiles.skillId, skill.id)));
+      for (const row of rows) {
+        await tx.insert(companySkillFiles).values({
+          companyId,
+          skillId: skill.id,
+          path: row.path,
+          kind: row.kind,
+          content: row.content,
+          isBinary: row.isBinary,
+          byteSize: row.byteSize,
+          sha256: row.sha256,
+        });
+      }
+    });
+  }
+
   async function readDbSkillFileBytes(
     companyId: string,
     skillId: string,
@@ -4686,6 +4743,10 @@ export function companySkillService(db: Db) {
       await createVersion(companyId, skillId, {}, actor);
     }
 
+    // Mirror the edit into the DB (source of truth) before we read it back, so
+    // readFile and the runtime resolver return the new content, not a stale row.
+    await syncDbSkillFilesFromDisk(companyId, skill);
+
     const detail = await readFile(companyId, skillId, normalizedPath);
     if (!detail) throw notFound("Skill file not found");
     return detail;
@@ -4747,6 +4808,9 @@ export function companySkillService(db: Db) {
     await createVersion(companyId, skillId, {
       label: input.target === "folder" ? `Deleted ${normalizedPath}/` : `Deleted ${normalizedPath}`,
     }, actor);
+
+    // Removed the file(s) on disk → drop them from the DB source of truth too.
+    await syncDbSkillFilesFromDisk(companyId, skill);
 
     return {
       skillId: skill.id,
@@ -4860,7 +4924,9 @@ export function companySkillService(db: Db) {
           audit: postAudit,
         });
       }
-      return persistAuditMetadata(updated, postAudit);
+      const auditedUpdate = await persistAuditMetadata(updated, postAudit);
+      await syncDbSkillFilesFromDisk(companyId, auditedUpdate);
+      return auditedUpdate;
     }
 
     if (!skill.sourceLocator) {
@@ -4972,7 +5038,9 @@ export function companySkillService(db: Db) {
         audit: postAudit,
       });
     }
-    return persistAuditMetadata(reset, postAudit);
+    const auditedReset = await persistAuditMetadata(reset, postAudit);
+    await syncDbSkillFilesFromDisk(companyId, auditedReset);
+    return auditedReset;
   }
 
   async function scanProjectWorkspaces(
@@ -5733,6 +5801,7 @@ export function companySkillService(db: Db) {
       });
     }
     const audited = await persistAuditMetadata(installed, postAudit);
+    await syncDbSkillFilesFromDisk(companyId, audited);
     return {
       action: existingByKey ? "updated" : "created",
       skill: audited,
@@ -6170,7 +6239,11 @@ export function companySkillService(db: Db) {
           .returning()
           .then((rows) => rows[0] ?? null);
       if (!row) throw notFound("Failed to persist company skill");
-      out.push(toCompanySkill(row));
+      const persistedSkill = toCompanySkill(row);
+      out.push(persistedSkill);
+      // Keep the DB the single source of truth: mirror the just-persisted skill's
+      // on-disk files into company_skill_files (no-op for bundled/remote skills).
+      await syncDbSkillFilesFromDisk(companyId, persistedSkill);
     }
     return out;
   }
