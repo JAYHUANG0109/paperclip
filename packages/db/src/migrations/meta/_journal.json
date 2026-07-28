@@ -1380,6 +1380,13 @@
       "when": 1782366118990,
       "tag": "9021_project_instructions",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1782366119990,
+      "tag": "9022_company_skill_files",
+      "breakpoints": true
     }
   ]
 }

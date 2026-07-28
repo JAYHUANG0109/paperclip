@@ -17,6 +17,7 @@ import {
   companySkillTestRunTemplates,
   companySkillTestRuns,
   companySkillVersions,
+  companySkillFiles,
   companySkills,
   companySkillFolders,
   costEvents,
@@ -4184,6 +4185,52 @@ export function companySkillService(db: Db) {
     };
   }
 
+  // DB-backed per-file content (single source of truth). Returns null when the
+  // skill hasn't been migrated to DB-backed storage yet — callers then fall
+  // back to the legacy on-disk source_locator copy (backward-compatible).
+  async function readDbSkillFileRow(
+    companyId: string,
+    skillId: string,
+    normalizedPath: string,
+  ): Promise<{ content: string; binary: boolean; byteSize: number | null } | null> {
+    return db
+      .select({
+        content: companySkillFiles.content,
+        binary: companySkillFiles.isBinary,
+        byteSize: companySkillFiles.byteSize,
+      })
+      .from(companySkillFiles)
+      .where(
+        and(
+          eq(companySkillFiles.companyId, companyId),
+          eq(companySkillFiles.skillId, skillId),
+          eq(companySkillFiles.path, normalizedPath),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function skillHasDbFiles(companyId: string, skillId: string): Promise<boolean> {
+    const row = await db
+      .select({ id: companySkillFiles.id })
+      .from(companySkillFiles)
+      .where(and(eq(companySkillFiles.companyId, companyId), eq(companySkillFiles.skillId, skillId)))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return row !== null;
+  }
+
+  async function readDbSkillFileBytes(
+    companyId: string,
+    skillId: string,
+    normalizedPath: string,
+  ): Promise<Buffer | null> {
+    const row = await readDbSkillFileRow(companyId, skillId, normalizedPath);
+    if (!row) return null;
+    return row.binary ? Buffer.from(row.content, "base64") : Buffer.from(row.content, "utf8");
+  }
+
   async function readFile(companyId: string, skillId: string, relativePath: string): Promise<CompanySkillFileDetail | null> {
     await ensureSkillInventoryCurrent(companyId);
     const skill = await getById(companyId, skillId);
@@ -4193,6 +4240,37 @@ export function companySkillService(db: Db) {
     const fileEntry = skill.fileInventory.find((entry) => entry.path === normalizedPath);
     if (!fileEntry) {
       throw notFound("Skill file not found");
+    }
+
+    // DB-backed content takes precedence over the legacy on-disk copy.
+    const dbFileRow = await readDbSkillFileRow(companyId, skill.id, normalizedPath);
+    if (dbFileRow) {
+      if (dbFileRow.binary || isBinarySkillFilePath(normalizedPath)) {
+        const ext = (normalizedPath.split(".").pop() ?? "").toLowerCase();
+        const kb = dbFileRow.byteSize != null ? ` · ${Math.max(1, Math.round(dbFileRow.byteSize / 1024))} KB` : "";
+        return {
+          skillId: skill.id,
+          path: normalizedPath,
+          kind: fileEntry.kind,
+          content:
+            `〔二進位檔案 · .${ext}${kb}〕\n\n`
+            + `這是二進位檔（圖片／PDF／壓縮檔等），無法以文字預覽。檔案已原樣保存，可下載使用。`,
+          language: null,
+          markdown: false,
+          editable: false,
+          binary: true,
+          byteSize: dbFileRow.byteSize ?? undefined,
+        };
+      }
+      return {
+        skillId: skill.id,
+        path: normalizedPath,
+        kind: fileEntry.kind,
+        content: dbFileRow.content,
+        language: inferLanguageFromPath(normalizedPath),
+        markdown: isMarkdownPath(normalizedPath),
+        editable: true,
+      };
     }
 
     const source = deriveSkillSourceInfo(skill);
@@ -5676,6 +5754,14 @@ export function companySkillService(db: Db) {
       const targetPath = path.resolve(skillDir, entry.path);
       // Binary assets must be copied byte-for-byte; a utf8 round-trip corrupts
       // them (and would strand images/pdfs shipped inside a .skill).
+      if (isBinarySkillFilePath(normalizedPath)) {
+        const dbBytes = await readDbSkillFileBytes(companyId, skill.id, normalizedPath);
+        if (dbBytes) {
+          await fs.mkdir(path.dirname(targetPath), { recursive: true });
+          await fs.writeFile(targetPath, dbBytes);
+          continue;
+        }
+      }
       if (isLocal && isBinarySkillFilePath(normalizedPath)) {
         const absolutePath = resolveLocalSkillFilePath(skill, normalizedPath);
         const bytes = absolutePath ? await fs.readFile(absolutePath).catch(() => null) : null;
@@ -5817,6 +5903,14 @@ export function companySkillService(db: Db) {
       }
       const versionSource = await materializeVersionSnapshot(companyId, skill, version).catch(() => null);
       return versionSource ? { status: "available", source: versionSource } : null;
+    }
+
+    // DB is the single source of truth: when the skill's files are stored in
+    // company_skill_files, materialize from the DB. The on-disk source_locator
+    // copy is only a fallback for skills not yet migrated (backward-compatible).
+    if (await skillHasDbFiles(companyId, skill.id)) {
+      const dbSource = await materializeRuntimeSkillFiles(companyId, skill).catch(() => null);
+      if (dbSource) return { status: "available", source: dbSource };
     }
 
     const source = await resolveExistingSkillDirectory(normalizeSkillDirectory(skill));
