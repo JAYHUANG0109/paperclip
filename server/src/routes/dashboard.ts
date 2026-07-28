@@ -204,6 +204,41 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     res.json({ connected: true, events: result.events.filter((e) => eventIsMine(e, aliases)) });
   });
 
+  // Read/list events — same data as GET /me, exposed at the intuitive REST path.
+  // Agents kept calling GET .../me/events (only POST/PATCH/DELETE existed there),
+  // hit 404, and concluded there was "no way to read the calendar / historical
+  // events". This alias fixes that: board user → own calendars, agent → its
+  // responsible user's. Supports timeMin/timeMax, optional calendarId filter, and
+  // mine=1 (alias-name match). Read-only, per-user isolated.
+  router.get("/companies/:companyId/google-calendar/me/events", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId =
+      req.actor.type === "board"
+        ? req.actor.userId ?? null
+        : req.actor.type === "agent"
+          ? req.actor.onBehalfOfUserId ?? null
+          : null;
+    if (!userId) {
+      res.json({ connected: false, reason: "auth_required", events: [] });
+      return;
+    }
+    const { timeMin, timeMax } = resolveCalendarRange(req.query);
+    const result = await getCalendarEventsForUser(db, userId, { timeMin, timeMax });
+    if (!result.connected) {
+      res.json({ connected: false, reason: result.reason, events: [] });
+      return;
+    }
+    const calendarId = typeof req.query.calendarId === "string" ? req.query.calendarId.trim() : "";
+    let events = calendarId ? result.events.filter((e) => e.calendarId === calendarId) : result.events;
+    const onlyMine = req.query.mine === "1" || req.query.mine === "true";
+    if (onlyMine) {
+      const aliases = await getEffectiveAliases(db, userId);
+      events = events.filter((e) => eventIsMine(e, aliases));
+    }
+    res.json({ connected: true, events });
+  });
+
   // List the calendars the caller can see (board user → own; agent → its
   // responsible/owner user's). Lets an agent learn which calendars its owner has
   // (per role/department/campus) and their ids, plus the shared default. Read-only.

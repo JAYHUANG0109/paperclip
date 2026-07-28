@@ -3171,9 +3171,22 @@ export function issueRoutes(
     };
   }
 
+  async function readStreamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    // Storage streams binary objects → chunks are Buffers.
+    for await (const chunk of stream as AsyncIterable<Buffer>) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+
   async function canonicalizePaperclipArtifactMetadata(input: {
     issue: { id: string; companyId: string };
     metadata: Record<string, unknown> | null | undefined;
+    // When set (agent creating a deliverable artifact), deliver a copy of the file
+    // to THIS user's own Google Drive ("Paperclip 產出檔案") and capture the
+    // per-user webViewLink so the Output card links each user to THEIR copy.
+    deliverToUserId?: string | null;
   }) {
     const parsed = attachmentArtifactMetadataInputSchema.safeParse(input.metadata);
     if (!parsed.success) {
@@ -3191,6 +3204,42 @@ export function issueRoutes(
       });
     }
 
+    // Deliver the deliverable to the responsible user's own Google Drive and
+    // capture the per-user link. Best-effort: a Drive failure (unconsented scope,
+    // offline, …) is logged with its concrete reason but never blocks creating the
+    // work product — the file is already stored in Paperclip regardless.
+    let driveWebViewLink: string | null = null;
+    let driveUserId: string | null = null;
+    if (input.deliverToUserId) {
+      try {
+        const object = await storage.getObject(attachment.companyId, attachment.objectKey);
+        const bytes = await readStreamToBuffer(object.stream);
+        const driveResult = await deliverOutputToUserDrive(db, input.deliverToUserId, {
+          filename: attachment.originalFilename || "output",
+          contentType: attachment.contentType,
+          bytes,
+        });
+        if (driveResult.delivered) {
+          driveWebViewLink = driveResult.webViewLink ?? null;
+          driveUserId = input.deliverToUserId;
+          logger.info(
+            { driveUserId, issueId: input.issue.id, attachmentId: attachment.id, filename: attachment.originalFilename, fileId: driveResult.fileId },
+            "drive_output_delivered",
+          );
+        } else {
+          logger.warn(
+            { driveUserId: input.deliverToUserId, issueId: input.issue.id, attachmentId: attachment.id, filename: attachment.originalFilename, reason: driveResult.reason, detail: driveResult.detail },
+            "drive_output_not_delivered",
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          { driveUserId: input.deliverToUserId, issueId: input.issue.id, attachmentId: attachment.id, err: err instanceof Error ? err.message : String(err) },
+          "drive_output_delivery_threw",
+        );
+      }
+    }
+
     const contentPath = buildAttachmentContentPath(attachment.id);
     return attachmentArtifactWorkProductMetadataSchema.parse({
       attachmentId: attachment.id,
@@ -3200,6 +3249,7 @@ export function issueRoutes(
       openPath: contentPath,
       downloadPath: `${contentPath}?download=1`,
       originalFilename: attachment.originalFilename ?? null,
+      ...(driveWebViewLink ? { driveWebViewLink, driveUserId } : {}),
     });
   }
 
@@ -6646,6 +6696,10 @@ export function issueRoutes(
       createInput.metadata = await canonicalizePaperclipArtifactMetadata({
         issue,
         metadata: req.body.metadata ?? null,
+        // Agent deliverable → deliver to the responsible user's own Drive + capture
+        // their per-user link. Any user with Google connected (drive.file scope)
+        // gets it; existing + future users/agents are covered automatically.
+        deliverToUserId: req.actor.type === "agent" ? (req.actor.onBehalfOfUserId ?? null) : null,
       });
     }
     const product = await workProductsSvc.createForIssue(issue.id, issue.companyId, createInput);
@@ -6837,6 +6891,9 @@ export function issueRoutes(
         patch.metadata = await canonicalizePaperclipArtifactMetadata({
           issue,
           metadata: patch.metadata ?? null,
+          // Don't re-deliver on update — a fresh copy is uploaded only when the
+          // artifact work product is first created, to avoid duplicate Drive files.
+          deliverToUserId: null,
         });
       } else if (!requiresPaperclipAttachmentMetadata(existing)) {
         res.status(422).json({ error: "Attachment-backed artifact metadata is required" });
@@ -10738,57 +10795,12 @@ export function issueRoutes(
       },
     });
 
-    // When an AGENT produced this output, also deliver a copy to the RESPONSIBLE
-    // USER's own Google Drive ("Paperclip 產出檔案" folder) — the human driving the
-    // agent gets the file on their end (and, via Drive for Desktop, on their real
-    // machine). Best-effort and non-blocking: the file is already stored in
-    // Paperclip regardless, so a Drive failure (unconsented scope, offline, etc.)
-    // must never fail the upload. Skips user-uploaded attachments.
-    const driveTargetUserId =
-      actor.agentId && req.actor.type === "agent"
-        ? (req.actor.onBehalfOfUserId ?? null)
-        : null;
-    let driveWebViewLink: string | null = null;
-    let driveDelivered = false;
-    if (driveTargetUserId) {
-      try {
-        const driveResult = await deliverOutputToUserDrive(db, driveTargetUserId, {
-          filename: originalFilename || "output",
-          contentType,
-          bytes: file.buffer,
-        });
-        if (driveResult.delivered) {
-          driveDelivered = true;
-          driveWebViewLink = driveResult.webViewLink ?? null;
-          logger.info(
-            { driveUserId: driveTargetUserId, issueId, filename: originalFilename, fileId: driveResult.fileId },
-            "drive_output_delivered",
-          );
-        } else {
-          // Best-effort delivery failed a precondition/API call. This used to be
-          // silent (empty catch, no persistence), which made "files aren't in my
-          // Drive" undiagnosable — log the concrete reason so it's visible.
-          logger.warn(
-            { driveUserId: driveTargetUserId, issueId, filename: originalFilename, reason: driveResult.reason, detail: driveResult.detail },
-            "drive_output_not_delivered",
-          );
-        }
-      } catch (err) {
-        logger.warn(
-          { driveUserId: driveTargetUserId, issueId, filename: originalFilename, err: err instanceof Error ? err.message : String(err) },
-          "drive_output_delivery_threw",
-        );
-      }
-    } else if (actor.agentId && req.actor.type === "agent") {
-      logger.warn({ issueId, filename: originalFilename }, "drive_output_skipped_no_responsible_user");
-    }
-
-    res.status(201).json({
-      ...withContentPath(attachment),
-      driveDelivered,
-      driveWebViewLink,
-      driveUserId: driveTargetUserId,
-    });
+    // NOTE: Google Drive delivery of agent OUTPUT files happens when the artifact
+    // work product is created (see canonicalizePaperclipArtifactMetadata), NOT
+    // here — that's the single place the per-user "open in Drive" link is captured
+    // and persisted onto the work-product metadata. Delivering here too would
+    // upload the file twice.
+    res.status(201).json(withContentPath(attachment));
   });
 
   router.get("/attachments/:attachmentId/content", async (req, res, next) => {
