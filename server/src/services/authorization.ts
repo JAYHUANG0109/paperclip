@@ -680,6 +680,33 @@ export function authorizationService(db: Db) {
     return out;
   }
 
+  // A leadership actor's own tokens PLUS all CHILD teams of the non-leadership
+  // (campus/dept) tokens they hold. Parent→child is derived live from agents'
+  // metadata.teams pairs (teams[0]=parent group, teams[1]=sub-team), so when a
+  // NEW sub-team is later added under a campus/department, its head governs it
+  // automatically — no token list to maintain on the head. The leadership token
+  // itself is never expanded (a head of one campus must not inherit sibling
+  // campuses), preserving one-way, per-campus scope.
+  async function expandTeamsWithChildTeams(
+    companyId: string,
+    tokens: Set<string>,
+    leadership: Set<string>,
+  ): Promise<Set<string>> {
+    const out = new Set(tokens);
+    const rows = await db
+      .select({ metadata: agents.metadata })
+      .from(agents)
+      .where(eq(agents.companyId, companyId));
+    for (const r of rows) {
+      const md = r.metadata && typeof r.metadata === "object" ? (r.metadata as Record<string, unknown>) : {};
+      const arr = Array.isArray(md.teams) ? md.teams.filter((t): t is string => typeof t === "string") : [];
+      const parent = arr[0];
+      const child = arr[1];
+      if (parent && child && tokens.has(parent) && !leadership.has(parent)) out.add(child);
+    }
+    return out;
+  }
+
   async function isProjectMember(projectId: string, principalType: "user" | "agent", principalId: string) {
     return db
       .select({ id: projectAccessMembers.id })
@@ -736,11 +763,18 @@ export function authorizationService(db: Db) {
       const projectTeams = (proj.teams && proj.teams.length > 0) ? proj.teams : (proj.team ? [proj.team] : []);
       if (projectTeams.length > 0) {
         const teams = await resolveActorTeams(companyId, actor);
-        if (teams.size > 0 && anyTeamTokenMatches(projectTeams, teams)) {
-          if (proj.visibility === "team") return true;
-          if (proj.visibility === "private") {
-            const leadership = leadershipTeamTokens();
-            for (const t of teams) if (leadership.has(t)) return true;
+        if (teams.size > 0) {
+          const leadership = leadershipTeamTokens();
+          const isLeadership = [...teams].some((t) => leadership.has(t));
+          // Heads govern their whole sub-tree: expand their campus/dept tokens to
+          // include child sub-teams (incl. future ones). Regular members keep flat
+          // matching, so this never widens non-leadership visibility.
+          const matchSet = isLeadership
+            ? await expandTeamsWithChildTeams(companyId, teams, leadership)
+            : teams;
+          if (anyTeamTokenMatches(projectTeams, matchSet)) {
+            if (proj.visibility === "team") return true;
+            if (proj.visibility === "private" && isLeadership) return true;
           }
         }
       }
