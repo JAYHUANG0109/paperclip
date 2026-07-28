@@ -4211,6 +4211,16 @@ export function companySkillService(db: Db) {
       .then((rows) => rows[0] ?? null);
   }
 
+  async function skillHasDbFiles(companyId: string, skillId: string): Promise<boolean> {
+    const row = await db
+      .select({ id: companySkillFiles.id })
+      .from(companySkillFiles)
+      .where(and(eq(companySkillFiles.companyId, companyId), eq(companySkillFiles.skillId, skillId)))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return row !== null;
+  }
+
   async function readDbSkillFileBytes(
     companyId: string,
     skillId: string,
@@ -5893,6 +5903,14 @@ export function companySkillService(db: Db) {
       }
       const versionSource = await materializeVersionSnapshot(companyId, skill, version).catch(() => null);
       return versionSource ? { status: "available", source: versionSource } : null;
+    }
+
+    // DB is the single source of truth: when the skill's files are stored in
+    // company_skill_files, materialize from the DB. The on-disk source_locator
+    // copy is only a fallback for skills not yet migrated (backward-compatible).
+    if (await skillHasDbFiles(companyId, skill.id)) {
+      const dbSource = await materializeRuntimeSkillFiles(companyId, skill).catch(() => null);
+      if (dbSource) return { status: "available", source: dbSource };
     }
 
     const source = await resolveExistingSkillDirectory(normalizeSkillDirectory(skill));
