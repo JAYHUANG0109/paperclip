@@ -12,9 +12,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -40,6 +37,7 @@ export function TaskRowMenu({ companyId, issue, onChanged }: { companyId: string
   const queryClient = useQueryClient();
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(issue.title);
+  const [addingToProject, setAddingToProject] = useState(false);
 
   const invalidate = () => {
     onChanged?.();
@@ -97,39 +95,10 @@ export function TaskRowMenu({ companyId, issue, onChanged }: { companyId: string
             <Pencil className="mr-2 h-3.5 w-3.5" />
             {t("taskMenu.rename", { defaultValue: "重新命名" })}
           </DropdownMenuItem>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <FolderPlus className="mr-2 h-3.5 w-3.5" />
-              {t("taskMenu.addToProject", { defaultValue: "加入專案" })}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="max-h-72 w-56 overflow-y-auto">
-              {issue.projectId ? (
-                <>
-                  <DropdownMenuItem onSelect={() => update.mutate({ projectId: null })}>
-                    <X className="mr-2 h-3.5 w-3.5" />
-                    {t("taskMenu.removeFromProject", { defaultValue: "移出專案" })}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              ) : null}
-              {scopeGroups.every(([, list]) => list.length === 0) ? (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">{t("taskMenu.noProjects", { defaultValue: "沒有可用的專案" })}</div>
-              ) : (
-                scopeGroups.map(([label, list]) =>
-                  list.length === 0 ? null : (
-                    <div key={label}>
-                      <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{label}</div>
-                      {list.map((p) => (
-                        <DropdownMenuItem key={p.id} disabled={p.id === issue.projectId} onSelect={() => update.mutate({ projectId: p.id })}>
-                          <span className="truncate">{p.name}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </div>
-                  ),
-                )
-              )}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          <DropdownMenuItem onSelect={() => setAddingToProject(true)}>
+            <FolderPlus className="mr-2 h-3.5 w-3.5" />
+            {t("taskMenu.addToProject", { defaultValue: "加入專案" })}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
@@ -160,6 +129,52 @@ export function TaskRowMenu({ companyId, issue, onChanged }: { companyId: string
               {t("common.save", { defaultValue: "儲存" })}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add-to-project as a click-driven dialog (a hover submenu was fiddly to reach). */}
+      <Dialog open={addingToProject} onOpenChange={setAddingToProject}>
+        <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>{t("taskMenu.addToProject", { defaultValue: "加入專案" })}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto overscroll-contain" onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}>
+            {issue.projectId ? (
+              <>
+                <button
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
+                  onClick={() => { update.mutate({ projectId: null }); setAddingToProject(false); }}
+                >
+                  <X className="h-3.5 w-3.5 shrink-0" />
+                  {t("taskMenu.removeFromProject", { defaultValue: "移出專案" })}
+                </button>
+                <div className="my-1 border-t border-border" />
+              </>
+            ) : null}
+            {scopeGroups.every(([, list]) => list.length === 0) ? (
+              <div className="px-2 py-1.5 text-sm text-muted-foreground">{t("taskMenu.noProjects", { defaultValue: "沒有可用的專案" })}</div>
+            ) : (
+              scopeGroups.map(([label, list]) =>
+                list.length === 0 ? null : (
+                  <div key={label}>
+                    <div className="px-2 pt-2 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+                    {list.map((p) => (
+                      <button
+                        key={p.id}
+                        disabled={p.id === issue.projectId}
+                        onClick={() => { update.mutate({ projectId: p.id }); setAddingToProject(false); }}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50 disabled:opacity-50"
+                      >
+                        <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: p.color ?? "var(--project-seed)" }} />
+                        <span className="truncate">{p.name}</span>
+                        {p.id === issue.projectId ? <span className="ml-auto text-[11px] text-muted-foreground">{t("taskMenu.current", { defaultValue: "目前" })}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                ),
+              )
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </>
