@@ -2811,18 +2811,53 @@ export function toolAccessService(db: Db, options: ToolAccessServiceOptions = {}
     return updated;
   }
 
+  /**
+   * Plugin-backed connections are recorded with transport `remote_http` for schema
+   * uniformity, but they are served by the in-process plugin worker and carry no
+   * `config.url`. Probing them as remote HTTP always fails with
+   * "Remote MCP connection requires config.url", so their health has to come from
+   * the plugin's own state instead.
+   */
+  function paperclipPluginKey(config: unknown): string | null {
+    const cfg = asRecord(config);
+    if (cfg.type !== "paperclip_plugin") return null;
+    return typeof cfg.pluginKey === "string" && cfg.pluginKey.length > 0 ? cfg.pluginKey : null;
+  }
+
+  async function assertPluginConnectionReady(pluginKey: string): Promise<void> {
+    const [plugin] = await db
+      .select({ status: plugins.status, lastError: plugins.lastError })
+      .from(plugins)
+      .where(eq(plugins.pluginKey, pluginKey))
+      .limit(1);
+    if (!plugin) {
+      throw badRequest(`Plugin "${pluginKey}" is not installed`, { code: "plugin_not_installed" });
+    }
+    if (plugin.status !== "ready") {
+      throw badRequest(
+        `Plugin "${pluginKey}" is ${plugin.status}${plugin.lastError ? `: ${plugin.lastError}` : ""}`,
+        { code: "plugin_not_ready" },
+      );
+    }
+  }
+
   async function checkConnectionHealth(connectionId: string, actor?: ActorInfo): Promise<ToolConnectionHealthCheckResult> {
     const connection = await getConnectionRow(connectionId);
+    const pluginKey = paperclipPluginKey(connection.config);
     try {
-      if (connection.transport === "remote_http") {
+      if (pluginKey) {
+        await assertPluginConnectionReady(pluginKey);
+      } else if (connection.transport === "remote_http") {
         await remoteTools(connection);
       } else {
         await resolveCredentialHeaders(connection);
         await stdioTemplateId(connection.companyId, connection.config);
       }
-      const updated = await updateConnectionHealth(connection, "ok", connection.transport === "local_stdio"
-        ? "Approved stdio template is ready."
-        : "Remote MCP server responded to tools/list.");
+      const updated = await updateConnectionHealth(connection, "ok", pluginKey
+        ? "Plugin is ready; tools are served by the local plugin runtime."
+        : connection.transport === "local_stdio"
+          ? "Approved stdio template is ready."
+          : "Remote MCP server responded to tools/list.");
       const runtimeSlot = await ensureRuntimeSlot(updated);
       await audit({
         companyId: connection.companyId,
