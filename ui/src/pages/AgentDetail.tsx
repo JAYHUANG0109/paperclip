@@ -3319,9 +3319,9 @@ function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }:
     queryFn: () => projectsApi.list(companyId),
   });
   const projectMeta = useMemo(() => {
-    const m = new Map<string, { name: string; visibility: string; team: string | null; teams: string[] | null; urlKey?: string | null }>();
+    const m = new Map<string, { name: string; visibility: string; team: string | null; teams: string[] | null; urlKey?: string | null; taskCount: number }>();
     for (const p of projects ?? []) {
-      m.set(p.id, { name: p.name, visibility: p.visibility ?? "company", team: p.team ?? null, teams: p.teams ?? null, urlKey: (p as { urlKey?: string | null }).urlKey ?? null });
+      m.set(p.id, { name: p.name, visibility: p.visibility ?? "company", team: p.team ?? null, teams: p.teams ?? null, urlKey: (p as { urlKey?: string | null }).urlKey ?? null, taskCount: p.taskCount ?? 0 });
     }
     return m;
   }, [projects]);
@@ -3385,6 +3385,10 @@ function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }:
   const renderProject = (projectId: string) => {
     const meta = projectMeta.get(projectId);
     const tasks = byProject.groups.get(projectId) ?? [];
+    // Badge shows the PROJECT's total task count (matches the project page), while the
+    // body lists only THIS agent's tasks — a footer reconciles the two when they differ.
+    const total = meta?.taskCount ?? tasks.length;
+    const othersCount = Math.max(0, total - tasks.length);
     const fallbackName = tasks[0]?.project?.name ?? t("agentDetail.projects.unknownProject", { defaultValue: "專案" });
     const name = meta?.name ?? fallbackName;
     return (
@@ -3398,7 +3402,7 @@ function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }:
               <span className="shrink-0 rounded-full border border-border bg-accent/40 px-2 py-0.5 text-[11px] text-muted-foreground">{t("projects.scopePrivateTag", { defaultValue: "私人" })}</span>
             ) : null}
           </span>
-          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{tasks.length}</span>
+          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{total}</span>
         </summary>
         <div className="divide-y divide-border border-t border-border">
           {tasks.map((iss) => (
@@ -3407,6 +3411,17 @@ function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }:
               <span className="shrink-0 text-xs text-muted-foreground">{iss.status}</span>
             </Link>
           ))}
+          {tasks.length === 0 ? (
+            <Link to={projectUrl({ id: projectId, urlKey: meta?.urlKey, name })} className="block px-3 py-2 text-xs text-muted-foreground no-underline hover:bg-muted/40">
+              {total > 0
+                ? t("agentDetail.projects.noAgentTasksWithCount", { defaultValue: "此代理人在此專案暫無任務（專案共 {{count}} 個）· 開啟專案", count: total })
+                : t("agentDetail.projects.noAgentTasks", { defaultValue: "此代理人在此專案暫無任務 · 開啟專案" })}
+            </Link>
+          ) : othersCount > 0 ? (
+            <Link to={projectUrl({ id: projectId, urlKey: meta?.urlKey, name })} className="block px-3 py-1.5 text-xs text-muted-foreground no-underline hover:bg-muted/40">
+              {t("agentDetail.projects.otherTasks", { defaultValue: "另有 {{count}} 個任務未指派給此代理人 · 開啟專案", count: othersCount })}
+            </Link>
+          ) : null}
         </div>
       </details>
     );
