@@ -2129,6 +2129,57 @@ describeEmbeddedPostgres("authorization service", () => {
     expect(decision).toMatchObject({ allowed: true });
   });
 
+  it("Visibility flag ONLY: hides private projects from non-members, but leaves tasks + agents unscoped", async () => {
+    delete process.env.PAPERCLIP_PROJECT_PRIVACY;
+    process.env.PAPERCLIP_PROJECT_VISIBILITY = "true";
+    try {
+      const company = await createCompany(db, "P5_VisOnly");
+      const project = await db.insert(projects).values({
+        companyId: company.id,
+        name: "Private (vis-only)",
+        issuePrefix: randomUUID().slice(0, 6).toUpperCase(),
+        visibility: "private",
+      }).returning().then((r) => r[0]!);
+      const outUser = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: outUser,
+        status: "active", membershipRole: "operator",
+      });
+      const agent = await db.insert(agents).values({
+        companyId: company.id, name: `A ${randomUUID()}`, role: "engineer", status: "active",
+        adapterType: "process", adapterConfig: {}, runtimeConfig: {},
+      }).returning().then((r) => r[0]!);
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "agent", principalId: agent.id,
+        status: "active", membershipRole: "member",
+      });
+      const authz = authorizationService(db);
+
+      // Non-member human: PROJECT hidden (deny), but its TASK still readable (task not scoped).
+      const projRead = await authz.decide({
+        actor: { type: "board", userId: outUser, source: "session" },
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      });
+      expect(projRead).toMatchObject({ allowed: false, reason: "deny_scope" });
+
+      const issueRead = await authz.decide({
+        actor: { type: "board", userId: outUser, source: "session" },
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: randomUUID(), projectId: project.id, assigneeAgentId: null },
+      });
+      expect(issueRead).toMatchObject({ allowed: true });
+
+      // Agent: unaffected under the visibility-only flag (needs the full privacy flag).
+      const agentIssueRead = await authz.decide({
+        actor: { type: "agent", agentId: agent.id, companyId: company.id, source: "agent_key" },
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: randomUUID(), projectId: project.id, assigneeAgentId: null },
+      });
+      expect(agentIssueRead).toMatchObject({ allowed: true, reason: "allow_company_agent" });
+    } finally { delete process.env.PAPERCLIP_PROJECT_VISIBILITY; }
+  });
+
   it("scopes task bridge keys away from company-wide reads and unrelated issue writes", async () => {
     const company = await createCompany(db, "TaskBridge");
     const bridgeAgent = await createAgent(db, company.id);

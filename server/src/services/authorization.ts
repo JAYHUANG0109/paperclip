@@ -458,6 +458,14 @@ function projectPrivacyEnabled(): boolean {
   return process.env.PAPERCLIP_PROJECT_PRIVACY === "true";
 }
 
+// Narrower switch: enforce PROJECT-LIST visibility for humans (sidebar, project
+// detail, and the agent 專案 tab via the viewer's filtered list) WITHOUT the riskier
+// task-visibility + agent task-scoping that the full PAPERCLIP_PROJECT_PRIVACY brings.
+// The full flag implies visibility.
+function projectVisibilityEnabled(): boolean {
+  return process.env.PAPERCLIP_PROJECT_VISIBILITY === "true" || projectPrivacyEnabled();
+}
+
 function isPrivilegedCompanyRole(role: string | null | undefined): boolean {
   return role === "owner" || role === "admin";
 }
@@ -685,7 +693,16 @@ export function authorizationService(db: Db) {
     actor: AuthorizationActor,
     membershipRole: string | null | undefined,
   ): Promise<boolean | null> {
-    if (!projectPrivacyEnabled() || !projectId) return null;
+    // Gate by what's enabled: a human's `project:read` (the project list/detail) is
+    // gated by the narrow visibility flag; a human's `issue:read` (task visibility)
+    // and ALL agent scoping require the full privacy flag. So the visibility flag
+    // hides projects from people without touching tasks or agents.
+    const enabled = actor.type === "agent"
+      ? projectPrivacyEnabled()
+      : action === "project:read"
+        ? projectVisibilityEnabled()
+        : projectPrivacyEnabled();
+    if (!enabled || !projectId) return null;
     const proj = await getProjectVisibility(projectId, companyId);
     if (!proj || (proj.visibility !== "private" && proj.visibility !== "team")) return null;
     // Owners/admins and instance admins always see scoped projects.
@@ -1841,7 +1858,7 @@ export function authorizationService(db: Db) {
           // are blocked even for active members who aren't explicit members.
           if (
             (input.action === "project:read" || input.action === "issue:read") &&
-            projectPrivacyEnabled()
+            projectVisibilityEnabled()
           ) {
             const projectId =
               input.resource.type === "project"
