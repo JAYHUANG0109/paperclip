@@ -19,6 +19,8 @@ import type { Db } from "@paperclipai/db";
 import {
   assets,
   agentApiKeys,
+  agentMemberships,
+  agents,
   authUsers,
   companies,
   companyLogos,
@@ -1365,10 +1367,26 @@ async function loadCompanyUserDirectory(db: Db, companyId: string) {
   const userIds = [...new Set(members.map((member) => member.principalId))];
   const userMap = await loadUsersById(db, userIds);
 
+  // Each user's joined agents, so the UI can group a person + their agent(s) together
+  // when sharing (person-centric picker).
+  const agentRows = await db
+    .select({ userId: agentMemberships.userId, agentId: agents.id, name: agents.name })
+    .from(agentMemberships)
+    .innerJoin(agents, eq(agents.id, agentMemberships.agentId))
+    .where(and(eq(agentMemberships.companyId, companyId), eq(agentMemberships.state, "joined")));
+  const agentsByUserId = new Map<string, Array<{ id: string; name: string }>>();
+  for (const row of agentRows) {
+    if (!row.userId) continue;
+    const list = agentsByUserId.get(row.userId) ?? [];
+    if (!list.some((a) => a.id === row.agentId)) list.push({ id: row.agentId, name: row.name });
+    agentsByUserId.set(row.userId, list);
+  }
+
   return members.map((member) => ({
     principalId: member.principalId,
     status: "active" as const,
     user: userMap.get(member.principalId) ?? null,
+    agents: agentsByUserId.get(member.principalId) ?? [],
   }));
 }
 

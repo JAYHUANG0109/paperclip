@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/i18n";
 import { projectMembersApi, type ProjectMemberRole } from "../api/project-members";
@@ -102,20 +102,82 @@ export function ProjectMembersPanel({ projectId, companyId, canManage, visibilit
   const [addOpen, setAddOpen] = useState(false);
   const [addSearch, setAddSearch] = useState("");
 
+  const search = addSearch.trim().toLowerCase();
   const existingIds = new Set(members?.map((m) => m.principalId) ?? []);
 
-  const agentCandidates = (agents ?? []).filter(
-    (a) => !existingIds.has(a.id) && a.name.toLowerCase().includes(addSearch.toLowerCase()),
-  );
-  const userCandidates = (userDirectory?.users ?? []).filter(
-    (e: CompanyUserDirectoryEntry) => !existingIds.has(e.principalId) && ((e.user?.name ?? e.user?.email ?? "").toLowerCase().includes(addSearch.toLowerCase())),
+  // agent -> owner userId, from each directory user's joined agents.
+  const agentOwnerUserId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of userDirectory?.users ?? []) for (const a of e.agents ?? []) m.set(a.id, e.principalId);
+    return m;
+  }, [userDirectory]);
+
+  const userLabelById = (uid: string) => {
+    const u = userById.get(uid);
+    return u?.name ?? u?.email ?? uid.slice(0, 8);
+  };
+
+  type Mem = NonNullable<typeof members>[number];
+  // Group existing members by person (their user + their agents). Agents whose owner
+  // isn't a known directory user fall into a standalone "other agents" bucket.
+  const memberGroups = useMemo(() => {
+    const byUser = new Map<string, { userId: string; label: string; userMember?: Mem; agentMembers: Mem[] }>();
+    const orphanAgents: Mem[] = [];
+    const ensure = (uid: string) => {
+      let g = byUser.get(uid);
+      if (!g) { g = { userId: uid, label: userLabelById(uid), agentMembers: [] }; byUser.set(uid, g); }
+      return g;
+    };
+    for (const m of members ?? []) {
+      if (m.principalType === "user") ensure(m.principalId).userMember = m;
+      else {
+        const owner = agentOwnerUserId.get(m.principalId);
+        if (owner) ensure(owner).agentMembers.push(m);
+        else orphanAgents.push(m);
+      }
+    }
+    return { groups: [...byUser.values()], orphanAgents };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members, agentOwnerUserId, userById, agentById]);
+
+  // Picker: people (with their agents) + agents that have no known owner.
+  const peopleCandidates = (userDirectory?.users ?? []).filter((e) => {
+    if (!search) return true;
+    const label = (e.user?.name ?? e.user?.email ?? "").toLowerCase();
+    return label.includes(search) || (e.agents ?? []).some((a) => a.name.toLowerCase().includes(search));
+  });
+  const ownedAgentIds = new Set(agentOwnerUserId.keys());
+  const orphanAgentCandidates = (agents ?? []).filter(
+    (a) => !ownedAgentIds.has(a.id) && (!search || a.name.toLowerCase().includes(search)),
   );
 
-  const memberLabel = (m: { principalType: string; principalId: string }) => {
-    if (m.principalType === "agent") return agentById.get(m.principalId)?.name ?? m.principalId.slice(0, 8);
-    const u = userById.get(m.principalId);
-    return u?.name ?? u?.email ?? m.principalId.slice(0, 8);
+  const addOne = (principalType: "user" | "agent", principalId: string) => {
+    if (!existingIds.has(principalId)) add.mutate({ principalType, principalId, projectRole: "editor" });
   };
+
+  const renderMemberRow = (m: Mem, actorLabel: string) => (
+    <div key={m.id} className="flex items-center gap-2 px-2 py-1 hover:bg-accent/30">
+      <span className="flex-1 truncate text-[13px] text-muted-foreground">{actorLabel}</span>
+      <span className="text-[11px] text-muted-foreground">{m.principalType === "agent" ? "Agent" : "User"}</span>
+      {canManage ? (
+        <RolePicker
+          value={m.projectRole as ProjectMemberRole}
+          onChange={(role) => updateRole.mutate({ principalType: m.principalType, principalId: m.principalId, role })}
+        />
+      ) : (
+        <span className="text-[12px] text-muted-foreground">{ROLE_LABELS[m.projectRole as ProjectMemberRole]?.split(" ")[0]}</span>
+      )}
+      {canManage && (
+        <button
+          type="button"
+          onClick={() => remove.mutate({ principalType: m.principalType, principalId: m.principalId })}
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="rounded-lg border border-border p-4 space-y-4">
@@ -219,30 +281,25 @@ export function ProjectMembersPanel({ projectId, companyId, canManage, visibilit
           </p>
         )}
 
-        <div className="space-y-1">
-          {(members ?? []).map((m) => (
-            <div key={m.id} className="flex items-center gap-2 rounded px-2 py-1 hover:bg-accent/30">
-              <span className="flex-1 text-[13px] truncate">{memberLabel(m)}</span>
-              <span className="text-[11px] text-muted-foreground">{m.principalType === "agent" ? "Agent" : "User"}</span>
-              {canManage ? (
-                <RolePicker
-                  value={m.projectRole as ProjectMemberRole}
-                  onChange={(role) => updateRole.mutate({ principalType: m.principalType, principalId: m.principalId, role })}
-                />
-              ) : (
-                <span className="text-[12px] text-muted-foreground">{ROLE_LABELS[m.projectRole as ProjectMemberRole]?.split(" ")[0]}</span>
-              )}
-              {canManage && (
-                <button
-                  type="button"
-                  onClick={() => remove.mutate({ principalType: m.principalType, principalId: m.principalId })}
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+        {/* Members grouped by person: their user account + their agent(s). */}
+        <div className="space-y-2">
+          {memberGroups.groups.map((g) => (
+            <div key={g.userId} className="overflow-hidden rounded border border-border/60">
+              <div className="bg-muted/30 px-2 py-1 text-[12px] font-medium">{g.label}</div>
+              <div className="divide-y divide-border/60">
+                {g.userMember && renderMemberRow(g.userMember, t("projectMembers.userAccount", { defaultValue: "使用者帳號" }))}
+                {g.agentMembers.map((am) => renderMemberRow(am, agentById.get(am.principalId)?.name ?? t("projectMembers.agent", { defaultValue: "代理人" })))}
+              </div>
             </div>
           ))}
+          {memberGroups.orphanAgents.length > 0 && (
+            <div className="overflow-hidden rounded border border-border/60">
+              <div className="bg-muted/30 px-2 py-1 text-[12px] font-medium text-muted-foreground">{t("projectMembers.otherAgents", { defaultValue: "其他代理人" })}</div>
+              <div className="divide-y divide-border/60">
+                {memberGroups.orphanAgents.map((am) => renderMemberRow(am, agentById.get(am.principalId)?.name ?? t("projectMembers.agent", { defaultValue: "代理人" })))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Add member — meaningful only when access is not company-wide. */}
@@ -265,38 +322,42 @@ export function ProjectMembersPanel({ projectId, companyId, canManage, visibilit
                 placeholder={t("projectMembers.searchPlaceholder", { defaultValue: "搜尋成員或代理人…" })}
                 className="mb-2 w-full rounded border border-input bg-transparent px-2 py-1 text-[13px] outline-none focus:border-ring"
               />
-              <div className="max-h-56 overflow-y-auto space-y-0.5">
-                {agentCandidates.length > 0 && (
-                  <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground px-1">
-                    {t("projectMembers.agents", { defaultValue: "代理人" })}
-                  </div>
+              <p className="mb-1 px-1 text-[11px] text-muted-foreground">
+                {t("projectMembers.pickerHint", { defaultValue: "點名字＝加入本人＋代理人；或點單一標籤只加其中一個。" })}
+              </p>
+              <div className="max-h-64 overflow-y-auto overscroll-contain space-y-0.5" onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}>
+                {peopleCandidates.map((e: CompanyUserDirectoryEntry) => {
+                  const uid = e.principalId;
+                  const label = e.user?.name ?? e.user?.email ?? uid.slice(0, 8);
+                  const ags = e.agents ?? [];
+                  const userAdded = existingIds.has(uid);
+                  const addBoth = () => {
+                    addOne("user", uid);
+                    for (const a of ags) addOne("agent", a.id);
+                    setAddOpen(false); setAddSearch("");
+                  };
+                  return (
+                    <div key={uid} className="flex flex-wrap items-center gap-1.5 rounded px-2 py-1.5 hover:bg-accent/30">
+                      <button type="button" onClick={addBoth} className="mr-1 flex-1 truncate text-left text-[13px] hover:underline">{label}</button>
+                      <MemberChip added={userAdded} onClick={() => addOne("user", uid)}>{t("projectMembers.self", { defaultValue: "本人" })}</MemberChip>
+                      {ags.map((a) => (
+                        <MemberChip key={a.id} added={existingIds.has(a.id)} onClick={() => addOne("agent", a.id)}>
+                          {ags.length > 1 ? a.name : t("projectMembers.agent", { defaultValue: "代理人" })}
+                        </MemberChip>
+                      ))}
+                    </div>
+                  );
+                })}
+                {orphanAgentCandidates.length > 0 && (
+                  <div className="mt-1 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">{t("projectMembers.otherAgents", { defaultValue: "其他代理人" })}</div>
                 )}
-                {agentCandidates.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => { add.mutate({ principalType: "agent", principalId: a.id, projectRole: "editor" }); setAddOpen(false); setAddSearch(""); }}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] hover:bg-accent"
-                  >
-                    {a.name}
-                  </button>
-                ))}
-                {userCandidates.length > 0 && (
-                  <div className="mb-1 mt-1 text-[11px] uppercase tracking-wide text-muted-foreground px-1">
-                    {t("projectMembers.users", { defaultValue: "使用者" })}
+                {orphanAgentCandidates.map((a) => (
+                  <div key={a.id} className="flex items-center gap-1.5 rounded px-2 py-1.5 hover:bg-accent/30">
+                    <span className="flex-1 truncate text-[13px]">{a.name}</span>
+                    <MemberChip added={existingIds.has(a.id)} onClick={() => addOne("agent", a.id)}>{t("projectMembers.agent", { defaultValue: "代理人" })}</MemberChip>
                   </div>
-                )}
-                {userCandidates.map((e: CompanyUserDirectoryEntry) => (
-                  <button
-                    key={e.principalId}
-                    type="button"
-                    onClick={() => { add.mutate({ principalType: "user", principalId: e.principalId, projectRole: "editor" }); setAddOpen(false); setAddSearch(""); }}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] hover:bg-accent"
-                  >
-                    {e.user?.name ?? e.user?.email ?? e.principalId.slice(0, 8)}
-                  </button>
                 ))}
-                {agentCandidates.length === 0 && userCandidates.length === 0 && (
+                {peopleCandidates.length === 0 && orphanAgentCandidates.length === 0 && (
                   <div className="px-2 py-2 text-[12px] text-muted-foreground">
                     {t("projectMembers.noResults", { defaultValue: "沒有找到可加入的成員" })}
                   </div>
@@ -307,6 +368,22 @@ export function ProjectMembersPanel({ projectId, companyId, canManage, visibilit
         )}
       </div>
     </div>
+  );
+}
+
+function MemberChip({ added, onClick, children }: { added: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      disabled={added}
+      onClick={onClick}
+      className={cn(
+        "shrink-0 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+        added ? "border-border bg-accent/40 text-muted-foreground" : "border-primary/40 text-primary hover:bg-primary/10",
+      )}
+    >
+      {children} {added ? "✓" : "＋"}
+    </button>
   );
 }
 

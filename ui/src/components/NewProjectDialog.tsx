@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
@@ -40,6 +40,21 @@ import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./Ma
 import { StatusBadge } from "./StatusBadge";
 import { ChoosePathButton } from "./PathInstructionsModal";
 import { useTranslation } from "@/i18n";
+
+function ShareChip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "shrink-0 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+        on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent/50",
+      )}
+    >
+      {children} {on ? "✓" : "＋"}
+    </button>
+  );
+}
 
 const projectStatuses = [
   { value: "backlog", labelKey: "newProject.status.backlog" },
@@ -105,6 +120,14 @@ export function NewProjectDialog() {
       members: companyMembers?.users,
     });
   }, [agents, companyMembers?.users]);
+
+  // Agents that belong to a directory user — so the private-share picker can group a
+  // person + their agent(s), and list the rest under "其他代理人".
+  const agentOwnerIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const u of companyMembers?.users ?? []) for (const a of u.agents ?? []) s.add(a.id);
+    return s;
+  }, [companyMembers?.users]);
 
   const createProject = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -468,29 +491,41 @@ export function NewProjectDialog() {
                   className="max-h-56 overflow-y-auto overscroll-contain"
                   onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}
                 >
-                  <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.people", { defaultValue: "成員" })}</div>
+                  <p className="px-2 py-1 text-[11px] text-muted-foreground">{t("newProject.sharePickerHint", { defaultValue: "點名字＝本人＋代理人；或點單一標籤只加其中一個。" })}</p>
                   {(companyMembers?.users ?? []).map((u) => {
-                    const id = u.user?.id ?? u.principalId;
-                    const on = sharedPrincipals.some((p) => p.type === "user" && p.id === id);
-                    const label = u.user?.name ?? u.user?.email ?? id;
+                    const uid = u.user?.id ?? u.principalId;
+                    const label = u.user?.name ?? u.user?.email ?? uid;
+                    const ags = u.agents ?? [];
+                    const userOn = sharedPrincipals.some((p) => p.type === "user" && p.id === uid);
+                    const agentOn = (aid: string) => sharedPrincipals.some((p) => p.type === "agent" && p.id === aid);
+                    const toggleUser = () => setSharedPrincipals((cur) => userOn ? cur.filter((p) => !(p.type === "user" && p.id === uid)) : [...cur, { type: "user", id: uid, label }]);
+                    const toggleAgent = (a: { id: string; name: string }) => setSharedPrincipals((cur) => agentOn(a.id) ? cur.filter((p) => !(p.type === "agent" && p.id === a.id)) : [...cur, { type: "agent", id: a.id, label: a.name }]);
+                    const addBoth = () => setSharedPrincipals((cur) => {
+                      const next = [...cur];
+                      if (!userOn) next.push({ type: "user", id: uid, label });
+                      for (const a of ags) if (!next.some((p) => p.type === "agent" && p.id === a.id)) next.push({ type: "agent", id: a.id, label: a.name });
+                      return next;
+                    });
                     return (
-                      <button key={`u:${id}`} className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", on && "bg-accent")}
-                        onClick={() => setSharedPrincipals((cur) => on ? cur.filter((p) => !(p.type === "user" && p.id === id)) : [...cur, { type: "user", id, label }])}>
-                        <input type="checkbox" checked={on} readOnly className="pointer-events-none" />
-                        <span className="truncate">{label}</span>
-                      </button>
+                      <div key={`u:${uid}`} className="flex flex-wrap items-center gap-1.5 rounded px-2 py-1.5 hover:bg-accent/50">
+                        <button type="button" onClick={addBoth} className="mr-1 flex-1 truncate text-left text-xs hover:underline">{label}</button>
+                        <ShareChip on={userOn} onClick={toggleUser}>{t("projectMembers.self", { defaultValue: "本人" })}</ShareChip>
+                        {ags.map((a) => (
+                          <ShareChip key={a.id} on={agentOn(a.id)} onClick={() => toggleAgent(a)}>{ags.length > 1 ? a.name : t("projectMembers.agent", { defaultValue: "代理人" })}</ShareChip>
+                        ))}
+                      </div>
                     );
                   })}
-                  <div className="mt-1 border-t border-border px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("newProject.agents", { defaultValue: "代理人" })}</div>
-                  {(agents ?? []).map((a) => {
-                    const id = a.id;
-                    const on = sharedPrincipals.some((p) => p.type === "agent" && p.id === id);
+                  {(agents ?? []).some((a) => !agentOwnerIds.has(a.id)) && (
+                    <div className="mt-1 border-t border-border px-2 py-1 text-[11px] font-medium text-muted-foreground">{t("projectMembers.otherAgents", { defaultValue: "其他代理人" })}</div>
+                  )}
+                  {(agents ?? []).filter((a) => !agentOwnerIds.has(a.id)).map((a) => {
+                    const on = sharedPrincipals.some((p) => p.type === "agent" && p.id === a.id);
                     return (
-                      <button key={`a:${id}`} className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", on && "bg-accent")}
-                        onClick={() => setSharedPrincipals((cur) => on ? cur.filter((p) => !(p.type === "agent" && p.id === id)) : [...cur, { type: "agent", id, label: a.name }])}>
-                        <input type="checkbox" checked={on} readOnly className="pointer-events-none" />
-                        <span className="truncate">{a.name}</span>
-                      </button>
+                      <div key={`a:${a.id}`} className="flex items-center gap-1.5 rounded px-2 py-1.5 hover:bg-accent/50">
+                        <span className="flex-1 truncate text-xs">{a.name}</span>
+                        <ShareChip on={on} onClick={() => setSharedPrincipals((cur) => on ? cur.filter((p) => !(p.type === "agent" && p.id === a.id)) : [...cur, { type: "agent", id: a.id, label: a.name }])}>{t("projectMembers.agent", { defaultValue: "代理人" })}</ShareChip>
+                      </div>
                     );
                   })}
                 </div>

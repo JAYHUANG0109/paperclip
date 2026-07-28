@@ -151,6 +151,8 @@ export type CompanyUserDirectoryEntry = {
   principalId: string;
   status: "active";
   user: { id: string; email: string | null; name: string | null; image: string | null } | null;
+  /** The user's joined agents — so a person + their agent(s) can be shared together. */
+  agents?: Array<{ id: string; name: string }>;
 };
 
 export type CompanyUserDirectoryResponse = {
