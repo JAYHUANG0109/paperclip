@@ -466,6 +466,18 @@ function projectVisibilityEnabled(): boolean {
   return process.env.PAPERCLIP_PROJECT_VISIBILITY === "true" || projectPrivacyEnabled();
 }
 
+// Leadership team tokens: members of these teams (via metadata.teams) may read
+// PRIVATE projects whose team tokens they also match — i.e. a campus/department
+// head oversees the private projects of their own campus/dept, without exposing
+// them to regular peers (who lack the leadership token). team-match on ordinary
+// members still only grants `team`-visibility projects, never `private`.
+// Configurable per deployment; defaults to this instance's "領導團隊".
+function leadershipTeamTokens(): Set<string> {
+  const raw = process.env.PAPERCLIP_LEADERSHIP_TEAM_TOKENS?.trim();
+  const list = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : ["領導團隊"];
+  return new Set(list);
+}
+
 function isPrivilegedCompanyRole(role: string | null | undefined): boolean {
   return role === "owner" || role === "admin";
 }
@@ -714,13 +726,23 @@ export function authorizationService(db: Db) {
     } else if (actor.type === "agent" && actor.agentId) {
       if (await isProjectMember(projectId, "agent", actor.agentId)) return true; // explicit member
     }
-    // Team visibility: allow anyone whose team matches ANY of the project's teams
-    // (multi-team). Falls back to the legacy single `team` label.
-    if (proj.visibility === "team") {
+    // Team visibility (multi-team; falls back to the legacy single `team` label):
+    //  - `team` projects  → ANY actor whose team matches.
+    //  - `private` projects → ONLY a leadership actor (a member of a leadership
+    //    team) whose team matches — so campus/department heads can oversee the
+    //    private projects of their OWN campus/dept, while regular peers (who lack
+    //    the leadership token) still cannot see them.
+    {
       const projectTeams = (proj.teams && proj.teams.length > 0) ? proj.teams : (proj.team ? [proj.team] : []);
       if (projectTeams.length > 0) {
         const teams = await resolveActorTeams(companyId, actor);
-        if (teams.size > 0 && anyTeamTokenMatches(projectTeams, teams)) return true;
+        if (teams.size > 0 && anyTeamTokenMatches(projectTeams, teams)) {
+          if (proj.visibility === "team") return true;
+          if (proj.visibility === "private") {
+            const leadership = leadershipTeamTokens();
+            for (const t of teams) if (leadership.has(t)) return true;
+          }
+        }
       }
     }
     return false;
