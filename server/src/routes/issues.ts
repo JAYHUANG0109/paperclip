@@ -10760,10 +10760,27 @@ export function issueRoutes(
         if (driveResult.delivered) {
           driveDelivered = true;
           driveWebViewLink = driveResult.webViewLink ?? null;
+          logger.info(
+            { driveUserId: driveTargetUserId, issueId, filename: originalFilename, fileId: driveResult.fileId },
+            "drive_output_delivered",
+          );
+        } else {
+          // Best-effort delivery failed a precondition/API call. This used to be
+          // silent (empty catch, no persistence), which made "files aren't in my
+          // Drive" undiagnosable — log the concrete reason so it's visible.
+          logger.warn(
+            { driveUserId: driveTargetUserId, issueId, filename: originalFilename, reason: driveResult.reason, detail: driveResult.detail },
+            "drive_output_not_delivered",
+          );
         }
-      } catch {
-        /* best-effort; never blocks the attachment response */
+      } catch (err) {
+        logger.warn(
+          { driveUserId: driveTargetUserId, issueId, filename: originalFilename, err: err instanceof Error ? err.message : String(err) },
+          "drive_output_delivery_threw",
+        );
       }
+    } else if (actor.agentId && req.actor.type === "agent") {
+      logger.warn({ issueId, filename: originalFilename }, "drive_output_skipped_no_responsible_user");
     }
 
     res.status(201).json({
