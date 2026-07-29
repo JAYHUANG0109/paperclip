@@ -319,10 +319,28 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
             // files into the responsible user's OWN Drive folder ("Paperclip 產出
             // 檔案") — least privilege: the app only ever touches files it created,
             // never the rest of the user's Drive. See services/google-drive.ts.
+            // `gmail.readonly` → triage the user's own mail (summaries, unanswered
+            // threads, escalation/anomaly detection). `gmail.compose` → create
+            // DRAFTS only; note Google has no draft-without-send scope, so the
+            // "agents never send" guarantee lives in services/google-gmail.ts,
+            // which deliberately implements no send call.
+            // `chat.spaces.readonly` + `chat.messages.readonly` → let an agent read
+            // ITS OWN paired user's chat history (DMs + group chats) to answer
+            // questions about it. The bot-identity scope (chat.bot, held by the
+            // google-chat plugin) only sees spaces the bot joined, which is why
+            // these user-auth scopes are needed. See services/google-chat-user.ts.
+            //
+            // These four are sensitive/restricted scopes: they must also be listed
+            // on the GCP consent screen (Data access), or Google rejects the
+            // authorization with invalid_scope and sign-in breaks.
             scope: [
               "https://www.googleapis.com/auth/calendar.readonly",
               "https://www.googleapis.com/auth/calendar.events",
               "https://www.googleapis.com/auth/drive.file",
+              "https://www.googleapis.com/auth/gmail.readonly",
+              "https://www.googleapis.com/auth/gmail.compose",
+              "https://www.googleapis.com/auth/chat.spaces.readonly",
+              "https://www.googleapis.com/auth/chat.messages.readonly",
             ],
             accessType: "offline" as const,
             prompt: "consent" as const,
