@@ -72,6 +72,7 @@ import {
   isClaudeImageProcessingError,
 } from "./parse.js";
 import {
+  ensureBlockedMcpConnectorsDenied,
   materializeRemoteClaudeConfig,
   prepareClaudeConfigSeed,
   resolveManagedClaudeRuntimeStateDir,
@@ -639,7 +640,38 @@ export async function runClaudeLogin(input: {
   });
 }
 
+/**
+ * Deny the claude.ai Google connectors in every Claude config dir this run could
+ * use, BEFORE either engine lane starts.
+ *
+ * This lives here — ahead of the ACP branch below — because the previous
+ * `--disallowedTools` approach only reached CLI runs. ACP runs return early and
+ * never see CLI args, so agents kept reaching for the Gmail/Calendar/Drive
+ * connectors, hitting an expired shared token, and reporting tasks blocked.
+ * settings.json is read by both lanes, so denying there is what actually holds.
+ *
+ * Covers the default/shared dir plus every dir in the account-rotation pool, since
+ * which one a run lands on is decided later (and only for CLI runs).
+ */
+async function enforceBlockedMcpConnectors(ctx: AdapterExecutionContext): Promise<void> {
+  const dirs = new Set<string>();
+  dirs.add(resolveSharedClaudeConfigDir(process.env));
+  for (const dir of parseClaudeAccountConfigDirs(ctx.config?.claudeAccountConfigDirs)) dirs.add(dir);
+  const changed: string[] = [];
+  for (const dir of dirs) {
+    if (await ensureBlockedMcpConnectorsDenied(dir)) changed.push(dir);
+  }
+  if (changed.length > 0) {
+    await ctx.onLog(
+      "stderr",
+      `[paperclip] Denied the claude.ai Google MCP connectors in ${changed.length} Claude config dir(s); `
+        + "agents must use the Paperclip per-user Google endpoints instead.\n",
+    );
+  }
+}
+
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
+  await enforceBlockedMcpConnectors(ctx);
   const engineSelection = await resolveClaudeExecutionEngineForRun(ctx);
   if (engineSelection.engine === "acp") {
     try {

@@ -27,6 +27,68 @@ async function pathExists(candidate: string): Promise<boolean> {
   return fs.access(candidate).then(() => true).catch(() => false);
 }
 
+/**
+ * claude.ai Google connectors that agents must never use. They are ONE shared
+ * connector identity bound to a single account, so an agent reading through them
+ * reads the wrong person's data, and their token expires with no way to
+ * re-authorize from a non-interactive run. Paperclip's own per-user endpoints
+ * (google-calendar/me, gmail/me, google-chat/history) replace them.
+ *
+ * A server-level entry (`mcp__<server>`) denies every tool that server exposes.
+ */
+export const BLOCKED_CLAUDE_MCP_SERVERS = [
+  "mcp__claude_ai_Google_Calendar",
+  "mcp__claude_ai_Google_Drive",
+  "mcp__claude_ai_Gmail",
+] as const;
+
+/**
+ * Enforce the connector block via Claude's own `settings.json` permissions.deny
+ * in the config dir a run will use.
+ *
+ * Why here rather than a CLI flag: `--disallowedTools` only reaches runs launched
+ * through the Claude CLI, and ACP runs (claude-agent-acp) never see it — which is
+ * why the earlier flag-based block silently did nothing for real agent runs. Both
+ * lanes read settings.json from CLAUDE_CONFIG_DIR, so denying there covers every
+ * execution path, including future ones.
+ *
+ * Merges into whatever the user already has and only writes when something
+ * actually changes. Never throws: a settings-write failure must not break a run.
+ */
+export async function ensureBlockedMcpConnectorsDenied(configDir: string): Promise<boolean> {
+  const settingsPath = path.join(configDir, "settings.json");
+  try {
+    let settings: Record<string, unknown> = {};
+    const raw = await fs.readFile(settingsPath, "utf8").catch(() => null);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        settings = { ...(parsed as Record<string, unknown>) };
+      }
+    }
+
+    const permissionsRaw = settings.permissions;
+    const permissions: Record<string, unknown> =
+      permissionsRaw && typeof permissionsRaw === "object" && !Array.isArray(permissionsRaw)
+        ? { ...(permissionsRaw as Record<string, unknown>) }
+        : {};
+    const existingDeny = Array.isArray(permissions.deny)
+      ? (permissions.deny as unknown[]).filter((entry): entry is string => typeof entry === "string")
+      : [];
+
+    const missing = BLOCKED_CLAUDE_MCP_SERVERS.filter((server) => !existingDeny.includes(server));
+    if (missing.length === 0) return false;
+
+    permissions.deny = [...existingDeny, ...missing];
+    settings.permissions = permissions;
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isAlreadyExistsError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const code = "code" in error ? error.code : null;
