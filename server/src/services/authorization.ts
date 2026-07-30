@@ -12,6 +12,7 @@ import {
   principalPermissionGrants,
   projectAccessMembers,
   projects,
+  routineAccessMembers,
   userInboxAgentPolicies,
 } from "@paperclipai/db";
 import type {
@@ -2498,8 +2499,61 @@ export function authorizationService(db: Db) {
     return applyResponsibleUserIntersection(input, agentDecision);
   }
 
+  /**
+   * Can this actor see a routine, given its explicit sharing scope?
+   *
+   * Returns true=allow, false=deny, null="scope says nothing" — the caller then
+   * falls back to the derived agent rule (assigned to an agent you oversee, or you
+   * created it), which acts as the FLOOR. Keeping the floor in the caller means a
+   * tightened scope can never hide a report's automation from their manager.
+   *
+   * Mirrors the project-visibility shape: `company` is open, `team` matches the
+   * actor's team labels against the routine's sharingTeams, `private` requires an
+   * explicit routine_access_members grant.
+   */
+  async function canActorSeeRoutineByScope(input: {
+    companyId: string;
+    actor: AuthorizationActor;
+    routine: {
+      id: string;
+      visibility?: string | null;
+      sharingTeams?: string[] | null;
+      createdByUserId?: string | null;
+    };
+  }): Promise<boolean | null> {
+    const { companyId, actor, routine } = input;
+    const visibility = routine.visibility ?? "private";
+    if (visibility === "company") return true;
+    if (actor.type === "board" && actor.userId && routine.createdByUserId === actor.userId) return true;
+
+    if (visibility === "team") {
+      const shared = (routine.sharingTeams ?? []).map((t) => t.trim()).filter(Boolean);
+      if (shared.length > 0) {
+        const mine = await resolveActorTeams(companyId, actor);
+        if (shared.some((team) => mine.has(team))) return true;
+      }
+    }
+
+    if (actor.type === "board" && actor.userId) {
+      const granted = await db
+        .select({ id: routineAccessMembers.id })
+        .from(routineAccessMembers)
+        .where(and(
+          eq(routineAccessMembers.routineId, routine.id),
+          eq(routineAccessMembers.principalType, "user"),
+          eq(routineAccessMembers.principalId, actor.userId),
+        ))
+        .then((rows) => rows.length > 0);
+      if (granted) return true;
+    }
+
+    // Nothing in the explicit scope grants access; let the agent-visibility floor decide.
+    return null;
+  }
+
   return {
     decide,
     decidePrincipalGrant,
+    canActorSeeRoutineByScope,
   };
 }

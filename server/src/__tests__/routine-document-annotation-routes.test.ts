@@ -119,6 +119,9 @@ function registerModuleMocks() {
     accessService: () => ({
       canUser: vi.fn(async () => true),
     }),
+    // See routines-routes.test.ts: null = "no explicit scope decision", so the
+    // agent-visibility floor decides.
+    authorizationService: () => ({ canActorSeeRoutineByScope: async () => null }),
     documentAnnotationService: () => mockAnnotationService,
     logActivity: mockLogActivity,
     routineService: () => mockRoutineService,

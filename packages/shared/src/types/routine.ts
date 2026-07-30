@@ -251,3 +251,25 @@ export interface RoutineListItem extends Routine {
   lastRun: RoutineRunSummary | null;
   activeIssue: RoutineIssueSummary | null;
 }
+
+/**
+ * Explicit sharing scope for a routine, mirroring CompanySkillSharingScope:
+ * - `private`  — creator plus principals in routine_access_members
+ * - `team`     — any team listed in the routine's sharingTeams
+ * - `company`  — everyone in the company
+ *
+ * This governs sharing between HUMANS. The derived rule (a member can see routines
+ * assigned to agents they manage/oversee) remains a floor on top of it, so tightening
+ * a scope never hides a report's automation from their manager.
+ */
+export type RoutineVisibility = "private" | "team" | "company";
+
+/** A principal explicitly granted access to a routine. Users only — agents reach a routine by assignment. */
+export interface RoutineAccessMember {
+  id: string;
+  companyId: string;
+  routineId: string;
+  principalType: "user";
+  principalId: string;
+  createdAt: string;
+}

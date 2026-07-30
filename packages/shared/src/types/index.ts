@@ -688,10 +688,12 @@ export type {
 } from "./secrets.js";
 export type {
   Routine,
+  RoutineAccessMember,
   RoutineEnvConfig,
   RoutineManagedByPlugin,
   RoutineDescriptionDocument,
   RoutineVariable,
+  RoutineVisibility,
   RoutineVariableDefaultValue,
   RoutineRevisionSnapshotRoutineV1,
   RoutineRevisionSnapshotTriggerV1,
