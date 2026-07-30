@@ -147,14 +147,35 @@ export function routineRoutes(
     });
   }
 
+  /**
+   * Per-item routine visibility (mirrors issues): privileged/agent actors see all;
+   * a restricted board member sees routines assigned to an agent they manage/oversee,
+   * plus routines they created themselves. No-op when the flag is disabled.
+   *
+   * Shared by the list AND the by-id endpoints. Filtering only the list left a hole:
+   * a member could still read any routine by guessing/holding its id, because the
+   * detail route checked company access only.
+   */
+  async function canSeeRoutine(
+    req: Request,
+    companyId: string,
+    routine: { assigneeAgentId?: string | null; createdByUserId?: string | null },
+  ): Promise<boolean> {
+    if (!restrictVisibility || req.actor.type !== "board" || isPrivilegedMemberViewer(req, companyId, true)) {
+      return true;
+    }
+    const userId = req.actor.userId ?? null;
+    if (userId != null && routine.createdByUserId === userId) return true;
+    if (!routine.assigneeAgentId) return false;
+    const visible = userId ? await getVisibleAgentIds(db, companyId, userId) : new Set<string>();
+    return visible.has(routine.assigneeAgentId);
+  }
+
   router.get("/companies/:companyId/routines", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
     const result = await svc.list(companyId, { projectId });
-    // Per-item visibility (mirrors issues): privileged/agent actors see all;
-    // restricted board members see routines for agents they manage/oversee, plus
-    // their own. Off when the flag is disabled.
     if (!restrictVisibility || req.actor.type !== "board" || isPrivilegedMemberViewer(req, companyId, true)) {
       res.json(result);
       return;
@@ -207,6 +228,12 @@ export function routineRoutes(
   router.get("/routines/:id", async (req, res) => {
     const detail = await getAccessibleResource(req, res, svc.getDetail(req.params.id as string), "Routine not found");
     if (!detail) return;
+    // Same predicate as the list. 404 rather than 403 so an out-of-scope routine is
+    // not even confirmed to exist.
+    if (!(await canSeeRoutine(req, detail.companyId, detail))) {
+      res.status(404).json({ error: "Routine not found" });
+      return;
+    }
     res.json(detail);
   });
 
