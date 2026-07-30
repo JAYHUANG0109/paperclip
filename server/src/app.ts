@@ -47,6 +47,7 @@ import { smokeLabRoutes } from "./routes/smoke-lab.js";
 import { costRoutes } from "./routes/costs.js";
 import { activityRoutes } from "./routes/activity.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
+import { googleWorkspaceRoutes } from "./routes/google-workspace.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { attentionRoutes } from "./routes/attention.js";
 import { userProfileRoutes } from "./routes/user-profiles.js";
@@ -298,6 +299,7 @@ export async function createApp(
   api.use(costRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(activityRoutes(db, { restrictVisibility }));
   api.use(dashboardRoutes(db, { restrictVisibility }));
+  api.use(googleWorkspaceRoutes(db));
   api.use(notificationRoutes(db));
   api.use(attentionRoutes(db));
   api.use(userProfileRoutes(db));
