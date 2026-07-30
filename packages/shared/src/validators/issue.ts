@@ -613,7 +613,20 @@ export const issueCommentMetadataSectionSchema = z.object({
 export const issueCommentMetadataSchema = z.object({
   version: z.literal(1),
   sourceRunId: z.string().uuid().nullable().optional(),
-  sections: z.array(issueCommentMetadataSectionSchema).min(1).max(20),
+  /**
+   * Optional because metadata is no longer only for structured rendering: a comment
+   * can carry provenance (see `privateSource`) with no sections at all. Every reader
+   * already treats sections as possibly-absent (`metadata?.sections ?? []`).
+   */
+  sections: z.array(issueCommentMetadataSectionSchema).min(1).max(20).optional(),
+  /**
+   * Server-set provenance: true when the run that wrote this comment had read the
+   * user's Gmail or Google Chat history. Lets "which comments were derived from
+   * someone's private mail/DMs" be answered directly instead of by joining
+   * activity_log on the run id. Clients may send it, but the server overwrites it
+   * from the actual run state, so it cannot be spoofed into looking clean.
+   */
+  privateSource: z.boolean().optional(),
 }).strict();
 
 export type IssueCommentMetadata = z.infer<typeof issueCommentMetadataSchema>;

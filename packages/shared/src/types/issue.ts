@@ -942,7 +942,14 @@ export interface IssueCommentMetadataSection {
 export interface IssueCommentMetadata {
   version: 1;
   sourceRunId?: string | null;
-  sections: IssueCommentMetadataSection[];
+  /** Optional: a comment may carry only provenance (see `privateSource`). */
+  sections?: IssueCommentMetadataSection[];
+  /**
+   * Server-set: the run that wrote this comment had read the user's Gmail or Google
+   * Chat history. Kept in step with `issueCommentMetadataSchema` in
+   * validators/issue.ts — this interface is hand-written, so both must change together.
+   */
+  privateSource?: boolean;
 }
 
 export interface IssueCommentPresentation {

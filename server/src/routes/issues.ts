@@ -128,6 +128,7 @@ import {
   workProductService,
 } from "../services/index.js";
 import { buildPlanReviewContext } from "../services/plan-review-context.js";
+import { runReadPrivateSource } from "../services/private-source-runs.js";
 import { hydrateSuccessfulRunHandoffLiveness } from "../services/successful-run-handoff-state.js";
 import {
   TASK_WATCHDOG_ORIGIN_KIND,
@@ -10191,10 +10192,17 @@ export function issueRoutes(
       };
 
       const sourceTrust = await sourceTrustForActorWrite(currentIssue, actor);
+      // Provenance: if this run read the caller's Gmail or Chat history, stamp the
+      // comment so private-derived narrative is identifiable later. Server-set from
+      // the run's own state, so an agent cannot claim a clean comment. Tag only —
+      // nothing is blocked, redacted or rewritten.
+      const metadata = runReadPrivateSource(req.actor.runId ?? null)
+        ? { ...(req.body.metadata ?? { version: 1 as const }), privateSource: true }
+        : req.body.metadata ?? null;
       const commentOptions = {
         authorType: req.body.authorType ?? (actor.actorType === "agent" ? "agent" : "user"),
         presentation: req.body.presentation ?? null,
-        metadata: req.body.metadata ?? null,
+        metadata,
         sourceTrust,
       };
       let txResult: { comment: Awaited<ReturnType<typeof svc.addComment>>; issue: NonNullable<Awaited<ReturnType<typeof svc.update>>> };
