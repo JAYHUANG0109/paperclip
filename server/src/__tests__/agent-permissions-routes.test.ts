@@ -102,11 +102,13 @@ const mockAgentInstructionsService = vi.hoisted(() => ({
   materializeManagedBundle: vi.fn(),
 }));
 const mockCompanySkillService = vi.hoisted(() => ({
-  listRuntimeSkillEntries: vi.fn(),
+  listRuntimeSkillEntries: vi.fn(async () => [] as unknown[]),
   resolveRequestedSkillKeys: vi.fn(),
-  // Agent creation auto-equips team skills (routes/agents.ts). Without this the
-  // route logs "auto-equip resolve failed" and the create path 500s.
+  // Agent creation auto-equips team skills, then resolves the requested desired
+  // skills (routes/agents.ts resolveDesiredSkillAssignment). Both were missing from
+  // this mock, so every create test 500'd on a TypeError the error handler hid.
   autoEquipSkillKeysForTeams: vi.fn(async () => [] as string[]),
+  resolveRequestedSkillEntries: vi.fn(async () => ({ resolved: [], unresolved: [] })),
 }));
 const mockWorkspaceOperationService = vi.hoisted(() => ({}));
 const mockLogActivity = vi.hoisted(() => vi.fn());

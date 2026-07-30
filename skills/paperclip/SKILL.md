@@ -485,14 +485,28 @@ If `plan` already exists, fetch the current document first and send its latest `
 
 Full endpoint table (company imports/exports, OpenClaw invites, company skills, routines, etc.) lives in `references/api-reference.md`.
 
-## Google Chat rooms & Google Calendar events
+## Google Chat rooms, Calendar events, Gmail, Chat history
 
-To post to a Google Chat **group room** (空間), DM a person, or **create a Google
-Calendar event**, read `references/google-chat-and-calendar.md`. These are reached
-through the Paperclip API (`/api/plugins/tools/execute` for chat;
-`/api/companies/:id/google-calendar/me/events` for calendar) — they are NOT
-mounted harness tools, so they won't show in your tool list. Use
-`send_chat_space_message` (room) — not `send_chat_message` (that's a personal DM).
+To post to a Google Chat **group room** (空間), DM a person, **create a Google
+Calendar event**, **read or draft Gmail**, or **search the user's Chat history**,
+read `references/google-chat-and-calendar.md`. These are reached through the
+Paperclip API (`/api/plugins/tools/execute` for chat sends;
+`/api/companies/:id/google-calendar/me/events` for calendar;
+`/api/companies/:id/gmail/me` and `/gmail/drafts` for mail;
+`/api/companies/:id/google-chat/history` for chat history) — they are NOT mounted
+harness tools, so they won't show in your tool list. Use `send_chat_space_message`
+(room) — not `send_chat_message` (that's a personal DM).
+
+**Never use the claude.ai Google MCP connectors** (Calendar, Drive, Gmail). They
+are one shared identity bound to a single account, so they read the wrong person's
+data, and their token expires with no way to re-authorize from a non-interactive
+run. They are blocked at the tool layer. If a Paperclip Google endpoint returns
+`{"connected": false, "reason": "auth_required"}`, that user simply hasn't granted
+the scope yet — report that as the blocker and name the user. Do not conclude "no
+endpoint exists" because nothing is mounted in your tool list.
+
+**Gmail is draft-only by design.** There is no send endpoint. If asked to send
+mail, create the draft and tell the human it's waiting for them.
 
 **Creating a calendar event: ALWAYS ask which calendar first.** Do NOT assume a
 calendar (not even the shared default). List the user's calendars

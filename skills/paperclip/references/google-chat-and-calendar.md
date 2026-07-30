@@ -186,3 +186,110 @@ curl -s -X DELETE -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
 `eventId` accepts a bare Google id (with `calendarId`) or the read endpoint's
 composite `"<calendarId>::<eventId>"`. Success → `{ deleted: true }` (also treats
 already-deleted as success). Same 403 forbidden / 409 auth_required semantics.
+
+---
+
+# Gmail (read + draft) — server-side, NOT the MCP connector
+
+Same model as the calendar endpoints above: they act with the **responsible
+user's OWN** Google token and auto-refresh it. Do **not** use the claude.ai Gmail
+MCP connector — it is one shared connector identity bound to a single account, its
+token expires and cannot be re-authorized from a non-interactive run, and it reads
+the wrong person's mailbox. It is blocked at the tool layer for local runs.
+
+These endpoints will NOT appear in your deferred-tools / ToolSearch list. Do not
+conclude "there is no Gmail endpoint" because no tool is mounted — curl them.
+
+If a call returns `{"connected": false, "reason": "auth_required"}`, that user has
+not yet granted the Gmail scopes (they are granted at Google sign-in). Report that
+as the blocker and name the user — do not fall back to MCP.
+
+### Read recent mail
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/gmail/me?limit=10"
+```
+
+`gmail/me` and `google-gmail/me` are the same endpoint. Returns headers + snippet
+only (`from`, `to`, `subject`, `date`, `snippet`, `unread`) — no message bodies.
+
+### Search mail
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/gmail/search?q=is:unread+newer_than:2d&limit=20"
+```
+
+`q` is ordinary Gmail search syntax (`is:unread`, `from:someone@x.com`,
+`has:attachment`, `newer_than:7d`). Prefer a narrow `q` over fetching everything.
+
+### Read one message (body)
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/gmail/messages/<messageId>?format=full"
+```
+
+Default is `format=metadata` (no body). Request `format=full` only when you
+actually need the body — every body read is recorded in the activity log.
+
+### Create a DRAFT (never sends)
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/gmail/drafts" \
+  -d '{
+    "to": "someone@seasonart.org",
+    "subject": "…",
+    "bodyText": "…",
+    "threadId": "<optional, to reply inside a thread>"
+  }'
+```
+
+Success → `201 {"connected":true,"draft":{"draftId","messageId","threadId"}}`.
+The draft lands in the user's Gmail for them to review and send. **There is no
+send endpoint and there will not be one** — if a task asks you to send mail,
+create the draft and tell the human it is waiting for them.
+
+### Handling what you read
+
+Mail and chat content belongs to the person whose mailbox it is. Summarize; do not
+quote private content into issue comments, which colleagues can read. If detail is
+needed, say so and let the human open it themselves.
+
+---
+
+# Google Chat history (read the user's own DMs + rooms)
+
+Reads as the **user** (not the bot), so it covers DMs and rooms the responsible
+user belongs to — unlike the plugin's bot identity, which only sees rooms the bot
+joined. Requires the Chat read scopes, granted at Google sign-in; otherwise
+`{"connected": false, "reason": "auth_required"}`.
+
+### List the user's spaces (rooms + DMs)
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-chat/spaces"
+```
+
+### Messages in one space
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-chat/messages?space=spaces/AAA&limit=50&since=2026-07-01T00:00:00Z"
+```
+
+### Search across the user's history
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-chat/history?q=請假&since=2026-07-01T00:00:00Z"
+```
+
+Answers "look through my chat history and see if anything needs attention". The
+sweep is bounded (20 spaces × 30 messages by default, tunable via `maxSpaces` /
+`perSpace`), so **always pass `since` when the question has a time frame** —
+otherwise you see a recent slice and may miss older matches. Every read is logged.

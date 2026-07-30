@@ -17,7 +17,7 @@ const SANDBOX_ALLOWED_TOOLS =
   "NotebookEdit PushNotification Read RemoteTrigger ScheduleWakeup Skill " +
   "TaskOutput TaskStop TodoWrite ToolSearch WebFetch WebSearch Write";
 
-// The claude.ai Google Calendar/Drive MCP connectors are a SINGLE shared
+// The claude.ai Google Calendar/Drive/Gmail MCP connectors are a SINGLE shared
 // connector identity (bound to one account), so an agent using them reads the
 // WRONG user's data, and they don't do our per-user token auto-refresh. Agents
 // must instead use the Paperclip server-side Google endpoints (which use each
@@ -26,7 +26,13 @@ const SANDBOX_ALLOWED_TOOLS =
 // layer for EVERY local run so no agent — existing or future — can fall back to
 // MCP regardless of its per-agent config. (Remote runs already exclude them: the
 // SANDBOX_ALLOWED_TOOLS allowlist has no mcp__claude_ai_* entries.)
-const BLOCKED_LOCAL_MCP_CONNECTORS = "mcp__claude_ai_Google_Calendar mcp__claude_ai_Google_Drive";
+//
+// Gmail was added to this list once server-side Gmail existed. Before that, agents
+// reached for the Gmail MCP connector, hit an expired shared token, and reported the
+// task blocked pending a human re-authorization — the exact failure mode this block
+// exists to prevent.
+const BLOCKED_LOCAL_MCP_CONNECTORS =
+  "mcp__claude_ai_Google_Calendar mcp__claude_ai_Google_Drive mcp__claude_ai_Gmail";
 
 function localSkipWithBlockedMcp(): string[] {
   return ["--dangerously-skip-permissions", "--disallowedTools", BLOCKED_LOCAL_MCP_CONNECTORS];

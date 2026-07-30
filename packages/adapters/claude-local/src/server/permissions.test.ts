@@ -41,7 +41,7 @@ describe("claude-local remote permission args", () => {
     expect(buildClaudeExecutionPermissionArgs({ dangerouslySkipPermissions: true, targetIsRemote: false })).toEqual([
       "--dangerously-skip-permissions",
       "--disallowedTools",
-      "mcp__claude_ai_Google_Calendar mcp__claude_ai_Google_Drive",
+      "mcp__claude_ai_Google_Calendar mcp__claude_ai_Google_Drive mcp__claude_ai_Gmail",
     ]);
   });
 
@@ -49,7 +49,7 @@ describe("claude-local remote permission args", () => {
     expect(buildClaudeProbePermissionArgs({ dangerouslySkipPermissions: true, targetIsRemote: false })).toEqual([
       "--dangerously-skip-permissions",
       "--disallowedTools",
-      "mcp__claude_ai_Google_Calendar mcp__claude_ai_Google_Drive",
+      "mcp__claude_ai_Google_Calendar mcp__claude_ai_Google_Drive mcp__claude_ai_Gmail",
     ]);
   });
 });

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import type { Request } from "express";
+import type { Request, RequestHandler } from "express";
 import type { Db } from "@paperclipai/db";
 import { assertCompanyAccess } from "./authz.js";
 import { logActivity } from "../services/activity-log.js";
@@ -215,6 +215,40 @@ export function googleWorkspaceRoutes(db: Db) {
     });
     res.status(201).json({ connected: true, draft: result.data });
   });
+
+  /**
+   * `…/gmail/me` — recent mail for the caller, mirroring the `google-calendar/me`
+   * convention. This alias exists because that convention is what agents guess
+   * first: an agent looking for Gmail tried `gmail/me` and `google-gmail/me`, got
+   * 404 on both, and concluded "no Paperclip Gmail endpoint exists" before falling
+   * back to the shared claude.ai MCP connector. Cheap alias, one less dead end.
+   */
+  const recentMail: RequestHandler = async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.json({ ...notConnected("auth_required"), messages: [] });
+      return;
+    }
+    const limit = Number(req.query.limit ?? 20);
+    const result = await searchMail(db, userId, {
+      query: typeof req.query.q === "string" && req.query.q.trim() ? req.query.q : "in:inbox",
+      maxResults: Number.isFinite(limit) ? limit : 20,
+    });
+    if (!result.connected) {
+      res.json({ ...notConnected(result.reason), messages: [] });
+      return;
+    }
+    await audit(req, companyId, "gmail.search", "gmail", userId, {
+      onBehalfOfUserId: userId,
+      resultCount: result.data.length,
+      via: "me",
+    });
+    res.json({ connected: true, messages: result.data });
+  };
+  router.get("/companies/:companyId/gmail/me", recentMail);
+  router.get("/companies/:companyId/google-gmail/me", recentMail);
 
   // ── Google Chat history ─────────────────────────────────────────────────
 
