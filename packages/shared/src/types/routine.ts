@@ -79,6 +79,14 @@ export interface Routine {
   assigneeAgentId: string | null;
   priority: string;
   status: string;
+  /**
+   * Explicit sharing scope between humans. The agent-visibility rule (you see routines
+   * assigned to agents you manage) stays as a floor on top of it — see
+   * routes/routines.ts canSeeRoutine. Optional so older payloads still parse.
+   */
+  visibility?: RoutineVisibility;
+  /** Teams this routine is shared with when `visibility` is "team". */
+  sharingTeams?: string[];
   concurrencyPolicy: string;
   catchUpPolicy: string;
   originKind?: string;

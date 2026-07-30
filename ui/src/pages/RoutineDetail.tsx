@@ -48,6 +48,7 @@ import {
   type RoutineRunDialogSubmitData,
 } from "../components/RoutineRunVariablesDialog";
 import { RoutineVariablesEditor, RoutineVariablesHint } from "../components/RoutineVariablesEditor";
+import { RoutineSharing } from "../components/RoutineSharing";
 import { ScheduleEditor, describeSchedule } from "../components/ScheduleEditor";
 import { RunButton } from "../components/AgentActionButtons";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
@@ -1034,6 +1035,21 @@ export function RoutineDetail() {
         value={editDraft.variables}
         onChange={(variables) => setEditDraft((current) => ({ ...current, variables }))}
       />
+
+      {/* Sharing: explicit scope + per-person grants. Saves immediately rather than
+          waiting for the routine's Save button, so changing who can see something is
+          never left half-applied in an unsaved draft. */}
+      {routine && (
+        <RoutineSharing
+          routineId={routine.id}
+          visibility={routine.visibility}
+          sharingTeams={routine.sharingTeams}
+          // The server is the authority here (only someone who can manage the routine
+          // may change sharing); the control surfaces its error rather than guessing.
+          canManage
+          directory={companyMembers?.users ?? []}
+        />
+      )}
 
       {/* Advanced delivery settings */}
       <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>

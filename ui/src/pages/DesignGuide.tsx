@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { InlineBanner } from "@/components/InlineBanner";
 import { BuiltInAgentBadge, BuiltInLifecycleChip } from "@/components/BuiltInAgentBadges";
+import { RoutineVisibilityBadge } from "@/components/RoutineSharing";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -2009,6 +2010,35 @@ export function DesignGuide() {
             Compact variant for embedding inside dialogs and modals.
           </InlineBanner>
         </div>
+      </Section>
+
+      <Section title="Routine Sharing">
+        <p className="text-sm text-muted-foreground">
+          Explicit sharing scope for a routine, plus per-person grants. The scope governs
+          sharing between people; anyone who manages the assigned agent keeps seeing the
+          routine regardless (the agent-visibility floor), so the copy says so rather than
+          implying <span className="font-mono">Private</span> hides it from a manager.
+        </p>
+        <SubSection title="Scope badge">
+          <div className="flex flex-wrap items-center gap-3">
+            <RoutineVisibilityBadge visibility="private" />
+            <RoutineVisibilityBadge visibility="team" />
+            <RoutineVisibilityBadge visibility="company" />
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Lists only render the badge when the scope is not the default{" "}
+            <span className="font-mono">private</span>, keeping rows quiet for the common case.
+          </p>
+        </SubSection>
+        <SubSection title="Scope picker + share list">
+          <p className="text-sm text-muted-foreground">
+            <span className="font-mono">&lt;RoutineSharing&gt;</span> renders the three-card scope
+            picker, a team chip editor when the scope is <span className="font-mono">team</span>,
+            and a share-with-person picker fed by the company user directory (names, not ids).
+            Changes save immediately instead of waiting for the page&apos;s Save button, so access
+            is never left half-applied in an unsaved draft.
+          </p>
+        </SubSection>
       </Section>
 
       <Section title="Built-in Agent Badges">

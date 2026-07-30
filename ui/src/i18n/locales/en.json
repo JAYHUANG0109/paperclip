@@ -5143,7 +5143,30 @@
     "noRuns": "No runs yet.",
     "noActivity": "No activity yet.",
     "secretsIntroPre": "Routine secrets apply to every issue this routine creates. They override matching keys in project and agent env.",
-    "secretsIntroPost": "variables are reserved."
+    "secretsIntroPost": "variables are reserved.",
+    "sharing": {
+      "title": "Sharing",
+      "subtitle": "Who can see this routine. People who manage the assigned agent always can, whatever you pick here.",
+      "scopePrivate": "Private",
+      "scopePrivateDesc": "Only you and people you share it with.",
+      "scopeTeam": "Team",
+      "scopeTeamDesc": "Anyone on the teams you pick below.",
+      "scopeCompany": "Company",
+      "scopeCompanyDesc": "Everyone in this company.",
+      "teams": "Teams",
+      "noTeams": "No teams yet.",
+      "teamPlaceholder": "Team name",
+      "addTeam": "Add",
+      "needTeamFirst": "Add at least one team, then choose Team.",
+      "sharedWith": "Shared with",
+      "nobodyYet": "Nobody yet.",
+      "choosePerson": "Choose a person…",
+      "sharePlaceholder": "User id to share with",
+      "share": "Share",
+      "needEditAccess": "You need edit access to change sharing.",
+      "updateFailed": "Could not update sharing.",
+      "shareFailed": "Could not share."
+    }
   },
   "companyImport": {
     "selectFilePreview": "Select a file to preview its contents.",

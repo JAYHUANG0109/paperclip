@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
+import { RoutineVisibilityBadge } from "@/components/RoutineSharing";
 
 export type RoutineListProjectSummary = {
   name: string;
@@ -28,6 +29,8 @@ export type RoutineListRowItem = {
   status: string;
   projectId: string | null;
   assigneeAgentId: string | null;
+  /** Explicit sharing scope; absent on payloads from before routine sharing existed. */
+  visibility?: "private" | "team" | "company";
   lastRun?: {
     triggeredAt?: Date | string | null;
     status?: string | null;
@@ -137,6 +140,11 @@ export function RoutineListRow<TRoutine extends RoutineListRowItem>({
           ) : null}
           {managedByLabel ? (
             <span className="text-xs text-muted-foreground">{managedByLabel}</span>
+          ) : null}
+          {/* Only surface the scope when it is NOT the default private, so the list
+              stays quiet for the common case and calls out anything shared wider. */}
+          {routine.visibility && routine.visibility !== "private" ? (
+            <RoutineVisibilityBadge visibility={routine.visibility} />
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
