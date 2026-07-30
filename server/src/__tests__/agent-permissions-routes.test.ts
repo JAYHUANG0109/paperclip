@@ -104,6 +104,9 @@ const mockAgentInstructionsService = vi.hoisted(() => ({
 const mockCompanySkillService = vi.hoisted(() => ({
   listRuntimeSkillEntries: vi.fn(),
   resolveRequestedSkillKeys: vi.fn(),
+  // Agent creation auto-equips team skills (routes/agents.ts). Without this the
+  // route logs "auto-equip resolve failed" and the create path 500s.
+  autoEquipSkillKeysForTeams: vi.fn(async () => [] as string[]),
 }));
 const mockWorkspaceOperationService = vi.hoisted(() => ({}));
 const mockLogActivity = vi.hoisted(() => vi.fn());

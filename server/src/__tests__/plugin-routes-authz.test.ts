@@ -712,7 +712,11 @@ describe.sequential("plugin tool and bridge authz", () => {
     expect(call).toHaveBeenCalledWith(pluginId, "getData", {
       key: "health",
       companyId: companyA,
-      params: { view: "compact" },
+      // Viewer context rides inside params so the plugin can apply per-viewer authz.
+      params: {
+        view: "compact",
+        __pcViewer: { agentId: null, isPrivileged: false, userId: "user-1" },
+      },
       renderEnvironment: null,
     });
   });
@@ -737,7 +741,7 @@ describe.sequential("plugin tool and bridge authz", () => {
     expect(res.status).toBe(200);
     expect(call).toHaveBeenCalledWith(pluginId, "performAction", {
       key: "sync",
-      params: {},
+      params: { __pcViewer: { agentId: null, isPrivileged: false, userId: "admin-1" } },
       actorContext: {
         type: "user",
         userId: "admin-1",
@@ -774,6 +778,7 @@ describe.sequential("plugin tool and bridge authz", () => {
       params: {
         companyId: companyA,
         reviewerUserId: "spoofed-user",
+        __pcViewer: { agentId: null, isPrivileged: false, userId: "user-1" },
       },
       actorContext: {
         type: "user",
@@ -834,6 +839,7 @@ describe.sequential("plugin tool and bridge authz", () => {
       params: {
         companyId: companyA,
         reviewerAgentId: "spoofed-agent",
+        __pcViewer: { agentId: agentA, isPrivileged: true, userId: null },
       },
       actorContext: {
         type: "agent",
@@ -863,6 +869,7 @@ describe.sequential("plugin tool and bridge authz", () => {
       params: {
         companyId: companyA,
         reviewerAgentId: "spoofed-agent",
+        __pcViewer: { agentId: agentA, isPrivileged: true, userId: null },
       },
       actorContext: {
         type: "agent",

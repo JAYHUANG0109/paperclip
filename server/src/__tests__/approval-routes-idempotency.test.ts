@@ -32,9 +32,20 @@ const mockAccessService = vi.hoisted(() => ({
   decide: vi.fn(),
 }));
 
+/**
+ * approvalRoutes resolves an agentService at construction time (skill_distribution
+ * approvals read + update the recipient agent), so the module mock has to expose it
+ * or every test in this file dies while building the app.
+ */
+const mockAgentService = vi.hoisted(() => ({
+  getById: vi.fn(),
+  update: vi.fn(),
+}));
+
 function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
     accessService: () => mockAccessService,
+    agentService: () => mockAgentService,
     approvalService: () => mockApprovalService,
     heartbeatService: () => mockHeartbeatService,
     issueApprovalService: () => mockIssueApprovalService,
