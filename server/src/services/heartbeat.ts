@@ -156,6 +156,7 @@ import {
   refreshIssueContinuationSummary,
 } from "./issue-continuation-summary.js";
 import { buildPlanReviewContext } from "./plan-review-context.js";
+import { runReadPrivateSource } from "./private-source-runs.js";
 import { executionWorkspaceService, mergeExecutionWorkspaceConfig } from "./execution-workspaces.js";
 import { workspaceOperationService, type WorkspaceOperationRecorder } from "./workspace-operations.js";
 import { isProcessGroupAlive, terminateLocalService } from "./local-service-supervisor.js";
@@ -14035,7 +14036,11 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         usageJson,
         resultJson: persistedResultJson,
         sessionIdAfter: nextSessionState.displayId ?? nextSessionState.legacySessionId,
-        stdoutExcerpt,
+        // A run that read Gmail/Chat may have echoed private content to stdout, and
+        // this excerpt is stored on the run row — which is NOT covered by the
+        // per-issue access control. Drop it for those runs rather than persisting
+        // quotable private data in a table other staff can reach.
+        stdoutExcerpt: runReadPrivateSource(run.id) ? "" : stdoutExcerpt,
         stderrExcerpt,
         logBytes: logSummary?.bytes,
         logSha256: logSummary?.sha256,
@@ -14266,7 +14271,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           errorMessage: message,
           resultJson: workspaceValidationFailure?.resultJson ?? configurationIncompleteFailure?.resultJson ?? null,
         }),
-        stdoutExcerpt,
+        // Same reasoning as the success path: don't persist a private-source run's
+        // stdout on the run row.
+        stdoutExcerpt: runReadPrivateSource(run.id) ? "" : stdoutExcerpt,
         stderrExcerpt,
         logBytes: logSummary?.bytes,
         logSha256: logSummary?.sha256,

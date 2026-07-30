@@ -3,6 +3,7 @@ import type { Request, RequestHandler } from "express";
 import type { Db } from "@paperclipai/db";
 import { assertCompanyAccess } from "./authz.js";
 import { logActivity } from "../services/activity-log.js";
+import { markRunReadPrivateSource } from "../services/private-source-runs.js";
 import { createDraft, getMail, gmailReadiness, listDrafts, searchMail } from "../services/google-gmail.js";
 import {
   chatUserReadiness,
@@ -68,6 +69,10 @@ export function googleWorkspaceRoutes(db: Db) {
     entityId: string,
     details: Record<string, unknown>,
   ): Promise<void> {
+    // Mark the run as having touched private data. Comments it writes get tagged
+    // with metadata.privateSource, and its stdout excerpt is not persisted — see
+    // services/private-source-runs.ts.
+    markRunReadPrivateSource(req.actor.runId ?? null);
     const { actorType, actorId } = actorFor(req);
     try {
       await logActivity(db, { companyId, actorType, actorId, action, entityType, entityId, details });
