@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { authAccounts, type Db } from "@paperclipai/db";
+import { fileIntoOutputFolder } from "./google-drive.js";
 
 /**
  * Google Slides, read and write, acting as the USER. Same per-user token model as
@@ -14,14 +15,16 @@ import { authAccounts, type Db } from "@paperclipai/db";
  * Anything else (theming, images, tables, speaker notes) is a deliberate omission
  * rather than an oversight — add it when a real task needs it.
  *
- * ─── This is NOT the deliverable path ──────────────────────────────────────
- * The agent instructions say to deliver files by uploading them as Paperclip
- * artifacts, and NOT to create a native Google Workspace file as the deliverable —
- * because a native file created through the API lands in the user's My Drive ROOT,
- * bypassing the "Paperclip 產出檔案" folder and Paperclip's tracking. Adding Slides
- * must not become a way around that rule. So: use this for decks people will keep
- * editing together, and keep using the artifact upload for anything that is the
- * finished output of a task. The docs repeat this where agents will read it.
+ ─── Where created decks land ──────────────────────────────────────────────
+ * A deck created here is filed into the user's "Paperclip 產出檔案" folder, not left
+ * loose in My Drive root. Root placement was the original reason the agent rules said
+ * never to create native Google files, so createPresentation moves the deck straight
+ * after creating it (see google-drive.ts fileIntoOutputFolder).
+ *
+ * That does NOT replace artifact upload. An artifact is tracked by Paperclip, appears
+ * on the task with a download button, and is what a reviewer looks for; a native deck
+ * is a live document people keep editing. Use a deck when co-editing is the point, and
+ * still upload an artifact when the task has a finished output to hand over.
  *
  * ─── Finding a presentation ────────────────────────────────────────────────
  * The app holds `drive.file` only, so it cannot browse Drive. Callers pass an id or a
@@ -190,11 +193,18 @@ export async function getPresentation(
   };
 }
 
+/**
+ * Create a deck, filed into the user's "Paperclip 產出檔案" folder.
+ *
+ * The Slides API creates in My Drive ROOT; we move it afterwards, since that root
+ * placement is exactly what made native Google files a bad deliverable. Best-effort —
+ * `filedInOutputFolder` reports what happened rather than assuming.
+ */
 export async function createPresentation(
   db: Db,
   userId: string,
   title: string,
-): Promise<SlidesResult<PresentationMetadata>> {
+): Promise<SlidesResult<PresentationMetadata & { filedInOutputFolder: boolean }>> {
   if (!googleClientCreds()) return { connected: false, reason: "not_configured" };
   const token = await getAccessTokenForUser(db, userId);
   if (!token) return { connected: false, reason: "auth_required" };
@@ -203,6 +213,7 @@ export async function createPresentation(
   if (!res.ok) return { connected: false, reason: failureReason(res.status) };
   const json = (await res.json()) as { presentationId?: string; title?: string; slides?: ApiSlide[] };
   const id = json.presentationId ?? "";
+  const filed = id ? await fileIntoOutputFolder(token, id) : { moved: false };
   return {
     connected: true,
     data: {
@@ -210,6 +221,7 @@ export async function createPresentation(
       title: json.title ?? title,
       url: id ? `https://docs.google.com/presentation/d/${id}/edit` : null,
       slideCount: (json.slides ?? []).length,
+      filedInOutputFolder: filed.moved,
       slides: (json.slides ?? []).map((s, index) => ({ objectId: s.objectId ?? "", index, text: slideText(s) })),
     },
   };

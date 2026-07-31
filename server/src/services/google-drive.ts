@@ -142,6 +142,40 @@ async function findOrCreateOutputFolder(token: string): Promise<string | null> {
   }
 }
 
+/**
+ * Move an app-created file into the user's "Paperclip 產出檔案" folder.
+ *
+ * Why this exists: a spreadsheet or deck created through the Sheets/Slides API lands in
+ * My Drive ROOT, which is the reason the agent rules told agents not to create native
+ * Google files. Filing them here removes that objection — a created sheet/deck now
+ * appears in the same folder as every other Paperclip output instead of loose at the
+ * top of someone's Drive.
+ *
+ * `drive.file` is sufficient because we only ever touch files this app created.
+ * Best-effort by design: if the move fails the file still exists and is still usable,
+ * so callers should not fail their operation over it.
+ */
+export async function fileIntoOutputFolder(
+  token: string,
+  fileId: string,
+): Promise<{ moved: boolean; folderId: string | null; webViewLink: string | null }> {
+  const folderId = await findOrCreateOutputFolder(token);
+  if (!folderId) return { moved: false, folderId: null, webViewLink: null };
+  try {
+    const res = await fetch(
+      `${DRIVE_API}/files/${encodeURIComponent(fileId)}`
+        + `?addParents=${encodeURIComponent(folderId)}&removeParents=root`
+        + `&fields=${encodeURIComponent("id,webViewLink")}`,
+      { method: "PATCH", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}" },
+    );
+    if (!res.ok) return { moved: false, folderId, webViewLink: null };
+    const json = (await res.json()) as { webViewLink?: string };
+    return { moved: true, folderId, webViewLink: json.webViewLink ?? null };
+  } catch {
+    return { moved: false, folderId, webViewLink: null };
+  }
+}
+
 export type DriveDeliveryResult =
   | { delivered: true; fileId: string; webViewLink: string | null }
   | {

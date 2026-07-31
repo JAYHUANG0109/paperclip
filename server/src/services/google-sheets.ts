@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { authAccounts, type Db } from "@paperclipai/db";
+import { fileIntoOutputFolder } from "./google-drive.js";
 
 /**
  * Google Sheets, read and write, acting as the USER.
@@ -16,6 +17,12 @@ import { authAccounts, type Db } from "@paperclipai/db";
  * an agent reads and writes exactly the spreadsheets its responsible human can, and
  * nothing else. Use the MCP server for shared allowlisted sheets; use this for
  * anything belonging to a person.
+ *
+ * ─── Where created sheets land ─────────────────────────────────────────────
+ * A spreadsheet created here is filed into the user's "Paperclip 產出檔案" folder
+ * rather than left in My Drive root — see createSpreadsheet. It still does not replace
+ * artifact upload: an artifact is tracked and shows on the task, a native sheet is a
+ * live document for ongoing edits.
  *
  * ─── Finding a spreadsheet ─────────────────────────────────────────────────
  * The app holds `drive.file` (per-file) rather than a broad Drive scope, so it CANNOT
@@ -262,12 +269,20 @@ export async function updateRange(
   };
 }
 
-/** Create a new spreadsheet owned by the caller. App-created, so always reachable later. */
+/**
+ * Create a new spreadsheet owned by the caller, filed into the user's
+ * "Paperclip 產出檔案" folder.
+ *
+ * The Sheets API always creates in My Drive ROOT, so we move it afterwards — that root
+ * placement was the whole reason agents were told not to create native Google files.
+ * The move is best-effort: if it fails the sheet still exists and is still usable, and
+ * `filedInOutputFolder` reports what actually happened rather than assuming success.
+ */
 export async function createSpreadsheet(
   db: Db,
   userId: string,
   title: string,
-): Promise<SheetsResult<SpreadsheetMetadata>> {
+): Promise<SheetsResult<SpreadsheetMetadata & { filedInOutputFolder: boolean }>> {
   if (!googleClientCreds()) return { connected: false, reason: "not_configured" };
   const token = await getAccessTokenForUser(db, userId);
   if (!token) return { connected: false, reason: "auth_required" };
@@ -283,12 +298,15 @@ export async function createSpreadsheet(
     properties?: { title?: string };
     sheets?: { properties?: { sheetId?: number; title?: string } }[];
   };
+  const spreadsheetId = json.spreadsheetId ?? "";
+  const filed = spreadsheetId ? await fileIntoOutputFolder(token, spreadsheetId) : { moved: false };
   return {
     connected: true,
     data: {
-      spreadsheetId: json.spreadsheetId ?? "",
+      spreadsheetId,
       title: json.properties?.title ?? title,
       url: json.spreadsheetUrl ?? null,
+      filedInOutputFolder: filed.moved,
       tabs: (json.sheets ?? []).map((s) => ({
         sheetId: s.properties?.sheetId ?? null,
         title: s.properties?.title ?? "",

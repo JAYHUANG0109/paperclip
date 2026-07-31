@@ -375,11 +375,14 @@ Acts with the responsible user's OWN token. Same `drive.file` caveat as Sheets: 
 **cannot search Drive** for a deck — pass the id or the pasted Slides URL, or use a
 deck you created here.
 
-**Not the deliverable path.** A native Slides deck created through the API lands in the
-user's My Drive **root**, bypassing the "Paperclip 產出檔案" folder and Paperclip's
-tracking. Task deliverables still go out as uploaded artifacts (see AGENTS rules). Use
-these endpoints for decks people will keep editing together — org charts, recurring
-review decks — not as a shortcut for handing over finished output.
+**Where created decks land.** A deck created through `POST .../google-slides` is filed
+into the user's "Paperclip 產出檔案" folder automatically, and the response reports
+`filedInOutputFolder`. It is no longer left loose in My Drive root.
+
+That still is not the same as a deliverable: an artifact is tracked by Paperclip and
+shows on the task with a download button, whereas a native deck is a live document.
+Use these endpoints for decks people keep editing together — org charts, recurring
+review decks — and upload an artifact when the task has finished output to hand over.
 
 ### Read a deck (slide ids + text)
 

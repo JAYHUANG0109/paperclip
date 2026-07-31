@@ -8,6 +8,7 @@ import type { Agent, ResourceMemberships } from "@paperclipai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SidebarAgents } from "./SidebarAgents";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { queryKeys } from "@/lib/queryKeys";
 
 const mockAgentsApi = vi.hoisted(() => ({
   list: vi.fn(),
@@ -303,6 +304,28 @@ describe("SidebarAgents", () => {
       );
     });
     await flushReact();
+  }
+
+  /**
+   * Fake-timer-safe variant. `flushReact()` awaits a real `window.setTimeout`,
+   * which never fires while `vi.useFakeTimers()` is installed — the linger-window
+   * cases would hang. Advance the fake clock instead.
+   */
+  async function renderSidebarAgentsWithFakeTimers(streamlined = true) {
+    const currentRoot = createRoot(container);
+    root = currentRoot;
+
+    await act(async () => {
+      currentRoot.render(
+        <QueryClientProvider client={queryClient}>
+          <SidebarAgents streamlined={streamlined} />
+        </QueryClientProvider>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+    });
   }
 
   async function renderRailSidebarAgents() {

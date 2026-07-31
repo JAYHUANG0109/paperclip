@@ -434,9 +434,9 @@ export function googleWorkspaceRoutes(db: Db) {
   });
 
   // ── Google Slides ───────────────────────────────────────────────────────
-  // Reminder for anyone extending this: a native Slides deck created here lands in the
-  // user's My Drive root and is NOT tracked by Paperclip. Task deliverables still go
-  // through the artifact upload path — these endpoints are for decks people co-edit.
+  // Decks created here are filed into the user's "Paperclip 產出檔案" folder rather than
+  // left in My Drive root. Artifact upload is still the path for a finished deliverable
+  // (tracked, shows on the task); a native deck is for documents people keep editing.
 
   router.get("/companies/:companyId/google-slides/readiness", async (req, res) => {
     const companyId = req.params.companyId as string;
