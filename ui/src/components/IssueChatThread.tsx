@@ -379,6 +379,8 @@ interface IssueChatThreadProps {
     interaction: AskUserQuestionsInteraction,
   ) => Promise<void> | void;
   composerRef?: Ref<IssueChatComposerHandle>;
+  /** Optional node rendered inline directly above the sticky composer dock (e.g. the monitor strip). */
+  composerAccessory?: ReactNode;
   issueWorkMode?: IssueWorkMode;
   /**
    * Hook for the parent to refetch comments when the user explicitly asks
@@ -3695,6 +3697,7 @@ export function IssueChatThread({
   onSubmitInteractionAnswers,
   onCancelInteraction,
   composerRef,
+  composerAccessory,
   issueWorkMode,
   onWorkModeChange,
   onRefreshLatestComments,
@@ -4357,6 +4360,12 @@ export function IssueChatThread({
             </div>
           </div>
         </IssueChatErrorBoundary>
+
+        {showComposer && composerAccessory ? (
+          <div data-testid="issue-chat-composer-accessory" className="mb-2">
+            {composerAccessory}
+          </div>
+        ) : null}
 
         {showComposer ? (
           <div

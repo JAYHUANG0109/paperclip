@@ -23,7 +23,9 @@ import type {
   IssueDocumentSummary,
   IssueRelationIssueSummary,
   IssueAssigneeAdapterOverrides,
+  IssueAttachment,
   IssueThreadInteraction,
+  Approval,
   SuggestTasksInteraction,
   AskUserQuestionsInteraction,
   RequestConfirmationInteraction,
@@ -1347,6 +1349,20 @@ export interface PluginIssueSummariesClient {
 }
 
 /**
+ * Attachment content bytes returned by `ctx.issues.getAttachmentContent`.
+ * Bytes are base64-encoded; there is no URL surface.
+ */
+export interface PluginIssueAttachmentContent {
+  attachmentId: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  originalFilename: string | null;
+  /** The attachment's raw bytes, base64-encoded. */
+  contentBase64: string;
+}
+
+/**
  * `ctx.issues` — read and mutate issues plus comments.
  *
  * Requires:
@@ -1358,10 +1374,53 @@ export interface PluginIssueSummariesClient {
  * - `issues.orchestration.read` for orchestration summaries
  * - `issue.comments.read` for `listComments`
  * - `issue.comments.create` for `createComment`
+ * - `issue.comments.create_human_attributed` for `createComment` calls that pass `actorUserId`
  * - `issue.interactions.create` for `createInteraction`, `suggestTasks`, `askUserQuestions`, `requestConfirmation`, and `requestCheckboxConfirmation`
+ * - `issue.interactions.read` for `listInteractions`
+ * - `issue.interactions.respond` for `respondInteraction`
+ * - `issue.attachments.read` for `listAttachments` and `getAttachmentContent`
  * - `issue.documents.read` for `documents.list` and `documents.get`
  * - `issue.documents.write` for `documents.upsert` and `documents.delete`
  */
+/**
+ * Attribution options for {@link PluginIssuesClient.createComment}.
+ *
+ * Precedence at the host: `actorUserId` (re-verified as an active human member)
+ * wins, then `authorUserEmail` (resolved to an account; an unknown email
+ * degrades to the plugin system actor), then `authorAgentId`.
+ */
+export type PluginCreateCommentOptions = {
+  authorAgentId?: string;
+  actorUserId?: string;
+  authorUserEmail?: string;
+};
+
+/**
+ * Parameters for {@link PluginIssuesClient.respondInteraction}.
+ *
+ * Merged contract: upstream's `action`/`actorUserId` plus the fork's three-way
+ * `decision`/`responderEmail`/`answers` form used by Google Chat cards. Host
+ * precedence is `action` over `decision` and `actorUserId` over
+ * `responderEmail`; supply one of each pair.
+ */
+export type PluginRespondInteractionParams = {
+  issueId: string;
+  companyId: string;
+  interactionId: string;
+  /** Upstream form. Takes precedence over `decision`. */
+  action?: "accept" | "reject";
+  /** Fork form; superset of `action` (adds `"answer"`). */
+  decision?: "accept" | "reject" | "answer";
+  /** Paperclip user id. Takes precedence over `responderEmail`. */
+  actorUserId?: string;
+  /** External-channel identity (e.g. Google Chat sender), resolved by the host. */
+  responderEmail?: string;
+  reason?: string | null;
+  selectedOptionIds?: string[];
+  selectedClientKeys?: string[];
+  answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
+};
+
 export interface PluginIssuesClient {
   list(input: {
     companyId: string;
@@ -1461,11 +1520,34 @@ export interface PluginIssuesClient {
     } & PluginIssueMutationActor,
   ): Promise<PluginIssueWakeupBatchResult[]>;
   listComments(issueId: string, companyId: string): Promise<IssueComment[]>;
+  /**
+   * Post a comment on an issue.
+   *
+   * (Declared as a named type rather than inline: an inline object-literal
+   * options type here, implemented as an object-literal method in testing.ts,
+   * trips a TypeScript 5.9 contextual-parameter caching assertion — "Parameter
+   * symbol already has a cached type which differs from newly assigned type".)
+   *
+   * Pass `authorAgentId` to attribute the comment to the plugin's own agent
+   * identity (requires `issue.comments.create`, the default).
+   *
+   * Pass `actorUserId` to attribute the comment to a real human instead —
+   * for example, relaying a paired chat user's reply back into the issue
+   * thread. Requires the additional `issue.comments.create_human_attributed`
+   * capability. The host independently verifies that `actorUserId` is an
+   * active human member of the issue's company before applying the
+   * attribution — a plugin can only ever attribute comments to identities
+   * that could have posted them in the web app. A human-attributed comment
+   * also participates in the normal wake-the-assignee behavior a board
+   * user's comment gets in the web app (subject to the same closed-issue /
+   * no-assignee exclusions) — unlike a plugin's own agent-attributed
+   * comments, which never wake anyone.
+   */
   createComment(
     issueId: string,
     body: string,
     companyId: string,
-    options?: { authorAgentId?: string; authorUserEmail?: string },
+    options?: PluginCreateCommentOptions,
   ): Promise<IssueComment>;
   createInteraction(
     issueId: string,
@@ -1474,22 +1556,29 @@ export interface PluginIssuesClient {
     options?: { authorAgentId?: string },
   ): Promise<IssueThreadInteraction>;
   /**
-   * Resolve a pending interaction on behalf of a human responding from an
-   * external channel (e.g. a Google Chat button). The responder is identified
-   * by email; the host maps it to a user account. Requires the
-   * `issue.interactions.respond` capability.
+   * Resolve a pending issue-thread interaction on behalf of a human. Requires
+   * `issue.interactions.respond`.
+   *
+   * Identity: pass `actorUserId` (a Paperclip user id) or `responderEmail` (an
+   * external-channel identity such as a Google Chat button click, which the
+   * host maps to an account). `actorUserId` wins when both are given. Either
+   * way the host independently re-verifies the resolved user is an active human
+   * member of the issue's company before applying the decision — a plugin can
+   * only ever resolve interactions as an identity that could have resolved them
+   * in the web app (whose interaction-resolve routes are board-only).
+   *
+   * Decision: pass `action` (accept/reject) or `decision`, which additionally
+   * supports `"answer"` for submitting ask_user_questions answers. `action`
+   * wins when both are given.
+   *
+   * Returns the (possibly already-resolved) interaction and `applied`, which is
+   * `true` when this call performed the resolution and `false` when the
+   * interaction had already converged to a resolved state (idempotent replays).
    */
-  respondInteraction(params: {
-    issueId: string;
-    companyId: string;
-    interactionId: string;
-    decision: "accept" | "reject" | "answer";
-    responderEmail: string;
-    reason?: string | null;
-    selectedOptionIds?: string[];
-    selectedClientKeys?: string[];
-    answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
-  }): Promise<{ ok: boolean; status: string }>;
+  respondInteraction(params: PluginRespondInteractionParams): Promise<{
+    interaction: IssueThreadInteraction;
+    applied: boolean;
+  }>;
   suggestTasks(
     issueId: string,
     interaction: Omit<Extract<CreateIssueThreadInteraction, { kind: "suggest_tasks" }>, "kind">,
@@ -1514,6 +1603,27 @@ export interface PluginIssuesClient {
     companyId: string,
     options?: { authorAgentId?: string },
   ): Promise<RequestCheckboxConfirmationInteraction>;
+  /**
+   * List the issue-thread interactions (decision cards) on an issue.
+   * Requires `issue.interactions.read`.
+   */
+  listInteractions(issueId: string, companyId: string): Promise<IssueThreadInteraction[]>;
+  /** List attachment metadata for an issue. Requires `issue.attachments.read`. */
+  listAttachments(issueId: string, companyId: string): Promise<IssueAttachment[]>;
+  /**
+   * Read an attachment's content bytes (base64) through the capability-scoped
+   * host bridge. Requires `issue.attachments.read`.
+   *
+   * Company-scoped and audit-logged host-side; there is no URL surface. Returns
+   * `null` for an unknown or cross-company attachment id (indistinguishable by
+   * design). Pass `maxBytes` to refuse over-cap assets — the host throws rather
+   * than partially reading when the stored size exceeds the cap.
+   */
+  getAttachmentContent(
+    attachmentId: string,
+    companyId: string,
+    options?: { maxBytes?: number | null },
+  ): Promise<PluginIssueAttachmentContent | null>;
   /** Read and write issue documents. Requires `issue.documents.read` / `issue.documents.write`. */
   documents: PluginIssueDocumentsClient;
   /** Upload binary file attachments. Requires `issue.attachments.write`. */
@@ -1522,6 +1632,36 @@ export interface PluginIssuesClient {
   relations: PluginIssueRelationsClient;
   /** Read compact orchestration summaries. */
   summaries: PluginIssueSummariesClient;
+}
+
+/**
+ * `ctx.approvals` — read and decide company approvals.
+ *
+ * Requires `approvals.read` for `list` / `get`; `approvals.respond` for
+ * `decide`. Approval payloads returned by `list` / `get` are redacted host-side
+ * to match the web app's own approval read surface (no secret leakage through
+ * the bridge).
+ */
+export interface PluginApprovalsClient {
+  list(input: { companyId: string; status?: string | null }): Promise<Approval[]>;
+  get(approvalId: string, companyId: string): Promise<Approval | null>;
+  /**
+   * Approve or reject an approval on behalf of a paired board user.
+   *
+   * `actorUserId` is the human company member the decision is attributed to.
+   * The host independently re-verifies that this user is an active human member
+   * of the approval's company before applying the decision — a plugin can only
+   * ever decide approvals as an identity that could have decided them in the
+   * web app (whose approval-decision routes are board-only).
+   *
+   * `applied` is `true` when this call performed the decision and `false` when
+   * the approval had already converged to a decided state (idempotent replays).
+   */
+  decide(
+    approvalId: string,
+    input: { action: "approve" | "reject"; actorUserId?: string; decisionNote?: string | null },
+    companyId: string,
+  ): Promise<{ approval: Approval; applied: boolean }>;
 }
 
 /**
@@ -1576,6 +1716,10 @@ export interface AgentSessionEvent {
   /** The kind of event: "chunk" for output data, "status" for run state changes, "done" for end-of-stream, "error" for failures. */
   eventType: "chunk" | "status" | "done" | "error";
   stream: "stdout" | "stderr" | "system" | null;
+  /**
+   * Event text. On a successful `done` event this is the canonical final
+   * user-facing assistant reply, or null when the run produced no reply text.
+   */
   message: string | null;
   payload: Record<string, unknown> | null;
 }
@@ -1950,6 +2094,9 @@ export interface PluginContext {
 
   /** Read and write issues, comments, and documents. Requires issue capabilities. */
   issues: PluginIssuesClient;
+
+  /** Read and decide company approvals. Requires `approvals.read` / `approvals.respond`. */
+  approvals: PluginApprovalsClient;
 
   /** Read and manage agents. Requires `agents.read` for reads; `agents.pause` / `agents.resume` / `agents.invoke` for write ops. */
   agents: PluginAgentsClient;

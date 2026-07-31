@@ -617,7 +617,7 @@ export function CompanyExport() {
     [agents],
   );
   const visibleProjects = useMemo(
-    () => projects.filter((project: Project) => !project.archivedAt),
+    () => projects,
     [projects],
   );
   const { orderedAgents } = useAgentOrder({

@@ -160,7 +160,6 @@ function AwaitingJoinApprovalPanel({
   onboardingTextUrl = null,
 }: AwaitingJoinApprovalPanelProps) {
   const { t } = useTranslation();
-  const approvalUrl = `${window.location.origin}/company/settings/members`;
   const approverLabel = invitedByUserName ?? t("inviteLanding.aCompanyAdmin");
 
   return (
@@ -180,16 +179,14 @@ function AwaitingJoinApprovalPanel({
             {t("inviteLanding.awaitingApproval", { approver: approverLabel })}
           </p>
           <div className="border border-zinc-800 p-3">
+            {/* Upstream #6786 made this guidance deliberately non-clickable: the
+                invitee cannot reach the members page, so a link misleads them.
+                Fork keeps i18n, adopts the plain-text treatment. */}
             <p className="text-xs text-zinc-500 mb-1">{t("inviteLanding.approvalPage")}</p>
-            <a
-              href={approvalUrl}
-              className="text-sm text-zinc-200 underline underline-offset-2 hover:text-zinc-100"
-            >
-              {t("inviteLanding.settingsMembers")}
-            </a>
+            <p className="text-sm text-zinc-200">{t("inviteLanding.settingsMembers")}</p>
           </div>
           <p className="text-sm text-zinc-400">
-            {t("inviteLanding.askThemToVisit")} <a href={approvalUrl} className="text-zinc-200 underline underline-offset-2 hover:text-zinc-100">{t("inviteLanding.settingsMembers")}</a> {t("inviteLanding.toApprove")}
+            {t("inviteLanding.askThemToVisit")} <span className="text-zinc-200">{t("inviteLanding.settingsMembers")}</span> {t("inviteLanding.toApprove")}
           </p>
           <p className="text-xs text-zinc-500">
             {t("inviteLanding.refreshHint")}

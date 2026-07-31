@@ -4667,6 +4667,7 @@
     "args": "命令列引數，以逗號分隔。",
     "extraArgs": "本機介接器的額外 CLI 引數，以逗號分隔。",
     "envVars": "注入介接器程序的環境變數。可使用純文字值或密鑰參照。",
+    "secretAccess": "此代理可存取的密鑰。環境變數綁定會在執行開始時注入；API 存取綁定則透過執行綁定的代理 API 隨需取得，絕不寫入環境變數。",
     "bootstrapPrompt": "僅在 Paperclip 啟動全新工作階段時送出。用於不應在每次心跳重複的穩定設定指引。",
     "payloadTemplateJson": "選用的 JSON，會在 Paperclip 加入標準喚醒與工作區欄位之前，合併進遠端介接器的請求酬載中。",
     "webhookUrl": "當代理被呼叫時，接收 POST 請求的 URL。",
@@ -4687,13 +4688,17 @@
       "missing_disposition": "缺少處置",
       "stranded_assigned_issue": "停滯議題",
       "active_run_watchdog": "進行中監看",
-      "issue_graph_liveness": "圖譜活性"
+      "issue_graph_liveness": "圖譜活性",
+      "workspace_validation": "工作區驗證",
+      "configuration_validation": "設定驗證"
     },
     "kindHeadline": {
       "missing_disposition": "此議題的執行已結束，但尚未選擇下一步。",
       "stranded_assigned_issue": "Paperclip 已重試此議題的最後一次執行，但仍沒有有效的執行路徑。",
       "active_run_watchdog": "進行中的執行已無回應。復原機制正在觀察而不中斷它。",
-      "issue_graph_liveness": "Paperclip 偵測到此議題失去了有效的行動路徑。需要復原負責人採取行動。"
+      "issue_graph_liveness": "Paperclip 偵測到此議題失去了有效的行動路徑。需要復原負責人採取行動。",
+      "workspace_validation": "Paperclip 已停止此次執行，因為無法驗證此議題的 git 工作區。",
+      "configuration_validation": "Paperclip 在派送此次執行前已停止，因為缺少必要的密鑰／環境變數綁定。"
     },
     "tone": {
       "needed": "需要復原",

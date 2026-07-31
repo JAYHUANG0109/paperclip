@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
+import { Navigate, Outlet, Route, Routes, useActiveCompanyPrefix, useLocation, useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/i18n";
 import { authApi } from "@/api/auth";
@@ -12,6 +12,13 @@ import { OnboardingWizardVariant } from "./components/OnboardingWizardVariant";
 import { CloudAccessGate } from "./components/CloudAccessGate";
 import { CasesExperimentalGate } from "./components/CasesExperimentalGate";
 import { AppsExperimentalGate } from "./components/AppsExperimentalGate";
+// Gates are small and always evaluated, so they stay eager like the others.
+// Their gated pages are code-split below via lazyPage().
+import { PipelinesExperimentalGate } from "./components/PipelinesExperimentalGate";
+import { StatusCardsExperimentalGate } from "./components/StatusCardsExperimentalGate";
+// Used by upstream's route-level loading states; eager because it is the
+// fallback rendered *while* lazy page chunks stream in.
+import { PaperclipLoading } from "./components/AnimatedPaperclipIcon";
 // ProfileWizardRoute takes a `mode` prop, so it can't use the props-stripping
 // lazyPage() helper — import it eagerly.
 import { ProfileWizardRoute } from "./pages/tools/profiles/ProfileWizardRoute";
@@ -107,6 +114,17 @@ const AppDetail = lazyPage(() => import("./pages/apps/AppDetail"), "AppDetail");
 const AppNotConnected = lazyPage(() => import("./pages/apps/AppNotConnected"), "AppNotConnected");
 const GatewaysList = lazyPage(() => import("./pages/apps/gateways/GatewaysList"), "GatewaysList");
 const GatewayDetail = lazyPage(() => import("./pages/apps/gateways/GatewayDetail"), "GatewayDetail");
+// New pages from the 2026-07-30 upstream merge. Upstream imports these eagerly;
+// the fork keeps them code-split so the first-load bundle does not grow.
+const Pipelines = lazyPage(() => import("./pages/Pipelines"), "Pipelines");
+const PipelineItemDetail = lazyPage(() => import("./pages/Pipelines"), "PipelineItemDetail");
+const PipelineItemLegacyRedirect = lazyPage(() => import("./pages/Pipelines"), "PipelineItemLegacyRedirect");
+const ReviewQueue = lazyPage(() => import("./pages/Pipelines"), "ReviewQueue");
+const Learnings = lazyPage(() => import("./pages/Pipelines"), "Learnings");
+const PipelineSettings = lazyPage(() => import("./pages/PipelineSettings"), "PipelineSettings");
+const StatusCards = lazyPage(() => import("./pages/StatusCards"), "StatusCards");
+const TrainingLibrary = lazyPage(() => import("./pages/Training"), "TrainingLibrary");
+const TrainingInspector = lazyPage(() => import("./pages/Training"), "TrainingInspector");
 import { useCompany } from "./context/CompanyContext";
 import { useDialogActions, useDialogState } from "./context/DialogContext";
 import { loadLastInboxTab } from "./lib/inbox";
@@ -214,6 +232,57 @@ function boardRoutes() {
         <Route path="tests/perf/long-thread" element={<IssueChatLongThreadPerf />} />
       ) : null}
       <Route path="routines" element={<Routines />} />
+      <Route
+        path="cases"
+        element={<CasesExperimentalGate><Cases /></CasesExperimentalGate>}
+      />
+      <Route
+        path="cases/:caseIdentifier"
+        element={<CasesExperimentalGate><CaseDetail /></CasesExperimentalGate>}
+      />
+      <Route
+        path="status"
+        element={<StatusCardsExperimentalGate><StatusCards /></StatusCardsExperimentalGate>}
+      />
+      <Route
+        path="status/:cardId"
+        element={<StatusCardsExperimentalGate><StatusCards /></StatusCardsExperimentalGate>}
+      />
+      {/* Back-compat: the board lived at /status-cards before PAP-15223. */}
+      <Route path="status-cards" element={<StatusCardsLegacyRedirect />} />
+      <Route path="status-cards/:cardId" element={<StatusCardsLegacyRedirect />} />
+      <Route
+        path="review-queue"
+        element={<PipelinesExperimentalGate><ReviewQueue /></PipelinesExperimentalGate>}
+      />
+      <Route
+        path="learnings"
+        element={<PipelinesExperimentalGate><Learnings /></PipelinesExperimentalGate>}
+      />
+      <Route
+        path="pipelines"
+        element={<PipelinesExperimentalGate><Pipelines /></PipelinesExperimentalGate>}
+      />
+      <Route
+        path="pipelines/:pipelineId"
+        element={<PipelinesExperimentalGate><Pipelines /></PipelinesExperimentalGate>}
+      />
+      <Route
+        path="pipelines/:pipelineId/add"
+        element={<PipelinesExperimentalGate><Pipelines /></PipelinesExperimentalGate>}
+      />
+      <Route
+        path="pipelines/:pipelineId/settings"
+        element={<PipelinesExperimentalGate><PipelineSettings /></PipelinesExperimentalGate>}
+      />
+      <Route
+        path="pipelines/:pipelineId/items/:caseId"
+        element={<PipelinesExperimentalGate><PipelineItemDetail /></PipelinesExperimentalGate>}
+      />
+      <Route
+        path="pipelines/:pipelineId/cases/:caseId"
+        element={<PipelinesExperimentalGate><PipelineItemLegacyRedirect /></PipelinesExperimentalGate>}
+      />
       <Route path="routines/:routineId" element={<RoutineDetail />} />
       <Route path="routines/:routineId/:section" element={<RoutineDetail />} />
       <Route path="execution-workspaces/:workspaceId" element={<ExecutionWorkspaceDetail />} />
@@ -240,6 +309,11 @@ function boardRoutes() {
         <Route path="board-chat" element={<BoardChat />} />
         <Route path="artifacts" element={<Artifacts />} />
       </Route>
+      <Route path="decisions" element={<WhatNeedsMe />} />
+      <Route path="decisions/training" element={<TrainingLibrary />} />
+      <Route path="decisions/training/:id" element={<TrainingInspector />} />
+      <Route path="training" element={<Navigate to="/decisions/training" replace />} />
+      <Route path="training/:id" element={<LegacyTrainingRedirect />} />
       <Route path="inbox" element={<InboxRootRedirect />} />
       <Route path="inbox/mine" element={<Inbox />} />
       <Route path="inbox/recent" element={<Inbox />} />
@@ -279,13 +353,45 @@ function InboxRootRedirect() {
   return <Navigate to={`/inbox/${loadLastInboxTab()}`} replace />;
 }
 
+function LegacyTrainingRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={id ? `/decisions/training/${id}` : "/decisions/training"} replace />;
+}
+
+function LegacySkillStudioRedirect() {
+  const location = useLocation();
+  const { companies, selectedCompany, loading } = useCompany();
+  const { companyPrefix, skillId } = useParams<{ companyPrefix?: string; skillId?: string }>();
+
+  if (loading) return null;
+
+  const targetCompany =
+    (companyPrefix
+      ? companies.find((company) => company.issuePrefix.toUpperCase() === companyPrefix.toUpperCase())
+      : null) ??
+    selectedCompany ??
+    companies[0] ??
+    null;
+
+  if (!targetCompany || !skillId) {
+    return <Navigate to="/skills/studio" replace />;
+  }
+
+  return (
+    <Navigate
+      to={`/${targetCompany.issuePrefix}/skills/studio/${encodeURIComponent(skillId)}${location.search}${location.hash}`}
+      replace
+    />
+  );
+}
+
 function LegacySettingsRedirect() {
   const location = useLocation();
   const { companies, selectedCompany, loading } = useCompany();
   const { companyPrefix } = useParams<{ companyPrefix?: string }>();
 
   if (loading) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+    return <PaperclipLoading />;
   }
 
   const targetCompany =
@@ -393,7 +499,7 @@ function CompanyRootRedirect() {
   const location = useLocation();
 
   if (loading) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+    return <PaperclipLoading />;
   }
 
   const targetCompany = selectedCompany ?? companies[0] ?? null;
@@ -412,12 +518,19 @@ function CompanyRootRedirect() {
   return <Navigate to={`/${targetCompany.issuePrefix}/dashboard`} replace />;
 }
 
+function StatusCardsLegacyRedirect() {
+  const { cardId } = useParams<{ cardId?: string }>();
+  const prefix = useActiveCompanyPrefix();
+  const base = prefix ? `/${prefix}` : "";
+  return <Navigate to={`${base}/status${cardId ? `/${cardId}` : ""}`} replace />;
+}
+
 function UnprefixedBoardRedirect() {
   const location = useLocation();
   const { companies, selectedCompany, loading } = useCompany();
 
   if (loading) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+    return <PaperclipLoading />;
   }
 
   const targetCompany = selectedCompany ?? companies[0] ?? null;
@@ -505,6 +618,20 @@ export function App() {
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />
           <Route path="routines" element={<UnprefixedBoardRedirect />} />
           <Route path="routines/:routineId" element={<UnprefixedBoardRedirect />} />
+          <Route path="review-queue" element={<UnprefixedBoardRedirect />} />
+          <Route path="learnings" element={<UnprefixedBoardRedirect />} />
+          <Route path="cases" element={<UnprefixedBoardRedirect />} />
+          <Route path="cases/:caseIdentifier" element={<UnprefixedBoardRedirect />} />
+          <Route path="status" element={<UnprefixedBoardRedirect />} />
+          <Route path="status/:cardId" element={<UnprefixedBoardRedirect />} />
+          <Route path="status-cards" element={<UnprefixedBoardRedirect />} />
+          <Route path="status-cards/:cardId" element={<UnprefixedBoardRedirect />} />
+          <Route path="pipelines" element={<UnprefixedBoardRedirect />} />
+          <Route path="pipelines/:pipelineId" element={<UnprefixedBoardRedirect />} />
+          <Route path="pipelines/:pipelineId/add" element={<UnprefixedBoardRedirect />} />
+          <Route path="pipelines/:pipelineId/settings" element={<UnprefixedBoardRedirect />} />
+          <Route path="pipelines/:pipelineId/items/:caseId" element={<UnprefixedBoardRedirect />} />
+          <Route path="pipelines/:pipelineId/cases/:caseId" element={<UnprefixedBoardRedirect />} />
           <Route path="artifacts" element={<UnprefixedBoardRedirect />} />
           <Route path="calendar" element={<UnprefixedBoardRedirect />} />
           <Route path="leaderboard" element={<UnprefixedBoardRedirect />} />

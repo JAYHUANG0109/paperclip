@@ -32,6 +32,7 @@ const mockResourceMembershipsApi = vi.hoisted(() => ({
 const mockNavigate = vi.hoisted(() => vi.fn());
 const mockSetBreadcrumbs = vi.hoisted(() => vi.fn());
 const mockIssuesList = vi.hoisted(() => vi.fn());
+const mockSummarySlotCard = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/projects", () => ({ projectsApi: mockProjectsApi }));
 vi.mock("../api/issues", () => ({ issuesApi: mockIssuesApi }));
@@ -80,6 +81,12 @@ vi.mock("../components/InlineEditor", () => ({
 }));
 vi.mock("../components/ProjectWorkspacesContent", () => ({
   ProjectWorkspacesContent: () => <div data-testid="project-workspaces" />,
+}));
+vi.mock("../components/SummarySlotCard", () => ({
+  SummarySlotCard: (props: unknown) => {
+    mockSummarySlotCard(props);
+    return <div data-testid="summary-slot-card">Project summary card</div>;
+  },
 }));
 vi.mock("../components/PageTabBar", () => ({
   PageTabBar: ({ items }: { items: Array<{ value: string; label: string }> }) => (

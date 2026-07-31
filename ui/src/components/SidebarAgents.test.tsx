@@ -230,6 +230,8 @@ describe("SidebarAgents", () => {
     memberships = {
       projectMemberships: {},
       agentMemberships: {},
+      starredDocumentIds: [],
+      documentStarredAt: {},
       updatedAt: null,
     };
     mockResourceMembershipsApi.listMine.mockImplementation(() => Promise.resolve(memberships));
@@ -353,8 +355,10 @@ describe("SidebarAgents", () => {
       agentMemberships: {},
       starredProjectIds: [],
       starredAgentIds: ["agent-b"],
+      starredDocumentIds: [],
       projectStarredAt: {},
       agentStarredAt: {},
+      documentStarredAt: {},
       updatedAt: new Date(),
     };
 
@@ -402,8 +406,10 @@ describe("SidebarAgents", () => {
       agentMemberships: { "agent-b": "joined" },
       starredProjectIds: [],
       starredAgentIds: ["agent-b"],
+      starredDocumentIds: [],
       projectStarredAt: {},
       agentStarredAt: {},
+      documentStarredAt: {},
       updatedAt: new Date(),
     };
     mockResourceMembershipsApi.updateAgent.mockRejectedValue(new Error("nope"));
@@ -529,6 +535,8 @@ describe("SidebarAgents", () => {
       resolveMemberships({
         projectMemberships: {},
         agentMemberships: { "agent-1": "left" },
+        starredDocumentIds: [],
+        documentStarredAt: {},
         updatedAt: null,
       });
     });

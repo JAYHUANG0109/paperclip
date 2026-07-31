@@ -43,7 +43,7 @@ import {
   rememberIssueDetailLocationState,
   withIssueDetailHeaderSeed,
 } from "../lib/issueDetailBreadcrumb";
-import { prefetchIssueDetail } from "../lib/issueDetailCache";
+import { prefetchIssueDetailForNavigation } from "../lib/issueDetailCache";
 import {
   hasBlockingShortcutDialog,
   isKeyboardShortcutTextInputTarget,
@@ -744,8 +744,8 @@ export function Inbox() {
   });
 
   const { data: projects } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!),
-    queryFn: () => projectsApi.list(selectedCompanyId!),
+    queryKey: queryKeys.projects.list(selectedCompanyId!, { includeArchived: true }),
+    queryFn: () => projectsApi.list(selectedCompanyId!, { includeArchived: true }),
     enabled: !!selectedCompanyId,
   });
   const { data: labels } = useQuery({
@@ -875,7 +875,7 @@ export function Inbox() {
     resourceKey: "live-runs",
     queryKey: liveRunsQueryKey,
     enabled: !!selectedCompanyId,
-    // Event-sourced via LiveUpdatesProvider (#9627); no interval poll needed.
+    // Event-sourced via LiveUpdatesProvider (GitHub issue 9627); no interval poll needed.
     refetchInterval: false,
     leaderOnly: true,
   });
@@ -893,6 +893,17 @@ export function Inbox() {
     enabled: !!selectedCompanyId,
   });
   const currentUserId = session?.user.id ?? session?.session.userId ?? null;
+  const [archivingIssueIds, setArchivingIssueIds] = useState<Set<string>>(new Set());
+  const [undoableArchiveIssueIds, setUndoableArchiveIssueIds] = useState<string[]>([]);
+  const [unarchivingIssueIds, setUnarchivingIssueIds] = useState<Set<string>>(new Set());
+  const guardedArchiveIssueIds = useLocalInboxArchiveIssueIds(selectedCompanyId);
+  const locallyArchivedIssueIds = useMemo(() => {
+    const issueIds = new Set(guardedArchiveIssueIds);
+    for (const issueId of undoableArchiveIssueIds) issueIds.add(issueId);
+    for (const issueId of archivingIssueIds) issueIds.add(issueId);
+    for (const issueId of unarchivingIssueIds) issueIds.delete(issueId);
+    return issueIds;
+  }, [archivingIssueIds, guardedArchiveIssueIds, undoableArchiveIssueIds, unarchivingIssueIds]);
 
   const companyUserLabelMap = useMemo(
     () => buildCompanyUserLabelMap(companyMembers?.users),
@@ -903,8 +914,14 @@ export function Inbox() {
     [companyMembers?.users],
   );
 
-  const mineIssues = useMemo(() => getRecentTouchedIssues(mineIssuesRaw), [mineIssuesRaw]);
-  const touchedIssues = useMemo(() => getRecentTouchedIssues(touchedIssuesRaw), [touchedIssuesRaw]);
+  const mineIssues = useMemo(
+    () => getRecentTouchedIssues(mineIssuesRaw).filter((issue) => !locallyArchivedIssueIds.has(issue.id)),
+    [locallyArchivedIssueIds, mineIssuesRaw],
+  );
+  const touchedIssues = useMemo(
+    () => getRecentTouchedIssues(touchedIssuesRaw).filter((issue) => !locallyArchivedIssueIds.has(issue.id)),
+    [locallyArchivedIssueIds, touchedIssuesRaw],
+  );
   const shouldUseIssueSearchSupplement =
     !!selectedCompanyId
     && normalizedSearchQuery.length > 0;
@@ -1549,9 +1566,6 @@ export function Inbox() {
 
   const [fadingOutIssues, setFadingOutIssues] = useState<Set<string>>(new Set());
   const [showMarkAllReadConfirm, setShowMarkAllReadConfirm] = useState(false);
-  const [archivingIssueIds, setArchivingIssueIds] = useState<Set<string>>(new Set());
-  const [undoableArchiveIssueIds, setUndoableArchiveIssueIds] = useState<string[]>([]);
-  const [unarchivingIssueIds, setUnarchivingIssueIds] = useState<Set<string>>(new Set());
   const [fadingNonIssueItems, setFadingNonIssueItems] = useState<Set<string>>(new Set());
   const [archivingNonIssueIds, setArchivingNonIssueIds] = useState<Set<string>>(new Set());
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
@@ -1618,7 +1632,7 @@ export function Inbox() {
         });
       }
 
-      return { previousData };
+      return { companyId: selectedCompanyId, previousData };
     },
     onError: (err, id, context) => {
       setActionError(err instanceof Error ? err.message : t("inbox.failedToArchiveIssue"));
@@ -1634,7 +1648,7 @@ export function Inbox() {
         }
       }
     },
-    onSettled: (_data, _error, id) => {
+    onSettled: async (_data, error, id, context) => {
       // Clean up archiving state and refetch to sync with server
       setArchivingIssueIds((prev) => {
         const next = new Set(prev);
@@ -1653,6 +1667,8 @@ export function Inbox() {
     onMutate: (id) => {
       setActionError(null);
       setUnarchivingIssueIds((prev) => new Set(prev).add(id));
+      if (selectedCompanyId) clearLocalInboxArchive(selectedCompanyId, id);
+      return { companyId: selectedCompanyId };
     },
     onError: (err) => {
       setActionError(err instanceof Error ? err.message : t("inbox.failedToUndoArchive"));
@@ -1788,6 +1804,12 @@ export function Inbox() {
   useEffect(() => {
     selectedNavKeyRef.current = selectedIndex >= 0 ? navEntryKey(flatNavItems[selectedIndex]) : null;
   }, [flatNavItems, selectedIndex]);
+
+  useEffect(() => {
+    setUndoableArchiveIssueIds((prev) =>
+      prev.filter((issueId) => guardedArchiveIssueIds.has(issueId) || unarchivingIssueIds.has(issueId)),
+    );
+  }, [guardedArchiveIssueIds, unarchivingIssueIds]);
 
   useEffect(() => {
     setUndoableArchiveIssueIds([]);
@@ -1979,7 +2001,7 @@ export function Inbox() {
             const pathId = issue.identifier ?? issue.id;
             const detailState = armIssueDetailInboxQuickArchive(withIssueDetailHeaderSeed(issueLinkState, issue));
             rememberIssueDetailLocationState(pathId, detailState);
-            void prefetchIssueDetail(queryClient, pathId, { issue });
+            void prefetchIssueDetailForNavigation(queryClient, pathId, { issue });
             act.navigate(createIssueDetailPath(pathId), { state: detailState });
           } else if (item) {
             if (item.kind === "issue") {
@@ -1988,7 +2010,7 @@ export function Inbox() {
                 withIssueDetailHeaderSeed(issueLinkState, item.issue),
               );
               rememberIssueDetailLocationState(pathId, detailState);
-              void prefetchIssueDetail(queryClient, pathId, { issue: item.issue });
+              void prefetchIssueDetailForNavigation(queryClient, pathId, { issue: item.issue });
               act.navigate(createIssueDetailPath(pathId), { state: detailState });
             } else if (item.kind === "approval") {
               act.navigate(`/approvals/${item.approval.id}`);
@@ -2494,13 +2516,12 @@ export function Inbox() {
                               >
                                 <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-90")} />
                               </button>
-                            ) : (isUnread || isFading) ? (
-                              // Unread rows already carry the leading mark-read
-                              // dot (IssueRow, order-first) in the chevron
-                              // column, so skip the spacer — otherwise the dot
-                              // and this spacer would double-indent the status.
-                              null
                             ) : (
+                              // Every non-chevron row reserves this spacer so the
+                              // status column lines up under the parent rows'
+                              // collapse chevron. (The unread mark-read dot has
+                              // its own reserved leading slot in IssueRow, to the
+                              // left of this spacer.)
                               <span className="hidden w-4 shrink-0 sm:block" />
                             )
                           ) : null}

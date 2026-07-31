@@ -47,6 +47,9 @@ const HELP_KEYS = [
   "args",
   "extraArgs",
   "envVars",
+  // Upstream added this alongside run-bound agent secret access (#9921); the
+  // fork resolves it through i18n like every other help key.
+  "secretAccess",
   "bootstrapPrompt",
   "payloadTemplateJson",
   "webhookUrl",

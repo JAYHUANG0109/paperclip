@@ -24,8 +24,13 @@ import {
   Building2,
   Bot,
   ListChecks,
+  GanttChartSquare,
+  LayoutGrid,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { attentionApi } from "../api/attention";
+import { attentionBadgeCount } from "../lib/attention";
+import { usePublishSharedQueryData, useSharedPollingQuery } from "../hooks/useSharedPolling";
 import { NavLink } from "@/lib/router";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -78,22 +83,55 @@ export function Sidebar() {
     queryKey: queryKeys.instance.experimentalSettings,
     queryFn: () => instanceSettingsApi.getExperimental(),
   });
-  const { data: liveRuns } = useQuery({
-    queryKey: queryKeys.liveRuns(selectedCompanyId!),
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+  const liveRunsQueryKey = queryKeys.liveRuns(selectedCompanyId!);
+  const sharedLiveRuns = useSharedPollingQuery({
+    companyId: selectedCompanyId,
+    resourceKey: "live-runs",
+    queryKey: liveRunsQueryKey,
     enabled: !!selectedCompanyId,
-    refetchInterval: 10_000,
+    // Event-sourced via LiveUpdatesProvider (GitHub issue 9627) + reconnect reconcile — no
+    // interval poll needed. Polling here also re-armed React Query's timer on
+    // every live-event cache write, a major source of steady-state churn.
+    refetchInterval: false,
+    leaderOnly: true,
   });
+  const { data: liveRuns, dataUpdatedAt: liveRunsUpdatedAt } = useQuery({
+    queryKey: liveRunsQueryKey,
+    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    // Driven by the shared leader-election gate rather than a per-tab interval,
+    // so N open tabs no longer each poll live-runs every 10s.
+    enabled: sharedLiveRuns.enabled,
+    refetchInterval: sharedLiveRuns.refetchInterval,
+  });
+  usePublishSharedQueryData(sharedLiveRuns, liveRuns, liveRunsUpdatedAt);
   const liveRunCount = liveRuns?.length ?? 0;
   // Live indicator on "My Agent": lit only when THIS user's own agent has a live
   // run (mirrors the per-company "N live" on Dashboard, scoped to one agent).
   const myAgentLive = !!myAgent && (liveRuns ?? []).some((r) => r.agentId === myAgent.id);
   const showWorkspacesLink = experimentalSettings?.enableIsolatedWorkspaces === true;
-  // IA flag: branch the sidebar nav presentation. Default ON =
-  // streamlined (top-level Projects link). Users can opt out in experiments to
-  // get classic (per-project collapsible, no Projects nav link). Issue/Task
-  // wording is split to PR #7651. Gating is navigation-only; all routes stay
-  // registered in both modes.
+  const showApps = experimentalSettings?.enableApps === true;
+  const showPipelines = experimentalSettings?.enablePipelines === true;
+  const showStatusCards = experimentalSettings?.enableStatusCards === true;
+  const goalsLinkPending = experimentalSettings === undefined;
+  const showGoalsLink = experimentalSettings?.enableGoalsSidebarLink === true;
+  // Decisions (attention home) is an experimental surface (PAP-13481): the nav
+  // item is hidden entirely until the flag is enabled (same no-flash pattern as
+  // showWorkspacesLink — it defaults hidden, so no placeholder is needed).
+  const showDecisions = experimentalSettings?.enableDecisions === true;
+  const { data: attentionFeed } = useQuery({
+    queryKey: queryKeys.attention(selectedCompanyId!),
+    queryFn: () => attentionApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId && showDecisions,
+    refetchInterval: 60_000,
+  });
+  const attentionCount = attentionBadgeCount(attentionFeed);
+  const showCases = experimentalSettings?.enableCases === true;
+  // IA flag: branch the sidebar nav presentation. Default ON = streamlined
+  // (top-level Projects link); users can opt out in experiments to get classic
+  // (per-project collapsible, no Projects nav link). Upstream retired this
+  // opt-out and hardcodes `true` (PAP-12472); the fork keeps the flag, so the
+  // classic branch below stays reachable. Gating is navigation-only — all
+  // routes stay registered in both modes.
   const streamlined = experimentalSettings?.enableStreamlinedLeftNavigation !== false;
   // Conference Room Chat flag (PAP-136/PAP-137): the Conference Room nav item
   // is a new surface, hidden entirely while the flag is off (same no-flash
@@ -215,6 +253,18 @@ export function Sidebar() {
             badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
             alert={inboxBadge.failedRuns > 0}
           />
+          {showDecisions ? (
+            <SidebarNavItem
+              to="/decisions"
+              label="Decisions"
+              icon={ListChecks}
+              badge={attentionCount}
+              badgeLabel="decisions"
+            />
+          ) : null}
+          {showStatusCards ? (
+            <SidebarNavItem to="/status" label="Status" icon={LayoutGrid} textBadge="beta" />
+          ) : null}
           {conferenceRoomChatEnabled ? (
             <SidebarNavItem to="/board-chat" label={t("nav.conferenceRoom", { defaultValue: "Conference Room" })} icon={MessagesSquare} />
           ) : null}

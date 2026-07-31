@@ -7,6 +7,7 @@ import { instanceSettingsApi } from "../api/instanceSettings";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { ProjectWorkspacesContent } from "../components/ProjectWorkspacesContent";
+import { SummarySlotCard } from "../components/SummarySlotCard";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
@@ -125,6 +126,13 @@ export function Workspaces() {
       <div>
         <h2 className="text-xl font-bold">{t("nav.workspaces")}</h2>
       </div>
+
+      <SummarySlotCard
+        companyId={selectedCompanyId}
+        scopeKind="workspaces_overview"
+        title="Workspace summary"
+        description="Summarizer tracks workspace activity, live services, and follow-up needs across projects."
+      />
 
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("workspaces.noActivity")}</p>

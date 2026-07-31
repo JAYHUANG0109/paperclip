@@ -1237,152 +1237,278 @@
     {
       "idx": 176,
       "version": "7",
+      "when": 1785420001000,
+      "tag": "0178_summary_slots",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1785420002000,
+      "tag": "0179_summary_slot_failure_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1785420003000,
+      "tag": "0180_decision_training_examples",
+      "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1785420004000,
+      "tag": "0181_decision_training_retention_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1785420005000,
+      "tag": "0182_connections_v3_schema_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1785420006000,
+      "tag": "0183_connection_user_authorization_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 182,
+      "version": "7",
+      "when": 1785420007000,
+      "tag": "0184_routable_blocked",
+      "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1785420008000,
+      "tag": "0185_status_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1785420009000,
+      "tag": "0186_status_card_compile_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1785420010000,
+      "tag": "0187_status_card_pending_change_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1785420011000,
+      "tag": "0188_status_card_generation_issue_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1785420012000,
+      "tag": "0189_status_card_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1785420013000,
+      "tag": "0190_status_card_single_prompt",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1785420014000,
+      "tag": "0191_status_card_mentioned_issue_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1785420015000,
+      "tag": "0192_task_watchdog_stop_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1785420016000,
+      "tag": "0193_document_memberships",
+      "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1785420017000,
+      "tag": "0194_company_skill_releases",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1785420018000,
+      "tag": "0195_built_in_agent_unique_marker",
+      "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
       "when": 1782289918252,
       "tag": "9001_colorful_human_cannonball",
       "breakpoints": true
     },
     {
-      "idx": 177,
+      "idx": 195,
       "version": "7",
       "when": 1782292347775,
       "tag": "9002_bright_black_tarantula",
       "breakpoints": true
     },
     {
-      "idx": 178,
+      "idx": 196,
       "version": "7",
       "when": 1782346899022,
       "tag": "9003_mighty_ares",
       "breakpoints": true
     },
     {
-      "idx": 179,
+      "idx": 197,
       "version": "7",
       "when": 1782360198071,
       "tag": "9004_smart_madame_masque",
       "breakpoints": true
     },
     {
-      "idx": 180,
+      "idx": 198,
       "version": "7",
       "when": 1782366102990,
       "tag": "9005_aromatic_khan",
       "breakpoints": true
     },
     {
-      "idx": 181,
+      "idx": 199,
       "version": "7",
       "when": 1782366103990,
       "tag": "9006_skill_sharing",
       "breakpoints": true
     },
     {
-      "idx": 182,
+      "idx": 200,
       "version": "7",
       "when": 1782366104990,
       "tag": "9007_skill_approval",
       "breakpoints": true
     },
     {
-      "idx": 183,
+      "idx": 201,
       "version": "7",
       "when": 1782366105990,
       "tag": "9008_skill_usage",
       "breakpoints": true
     },
     {
-      "idx": 184,
+      "idx": 202,
       "version": "7",
       "when": 1782366106990,
       "tag": "9009_skill_bounties",
       "breakpoints": true
     },
     {
-      "idx": 185,
+      "idx": 203,
       "version": "7",
       "when": 1782366107990,
       "tag": "9010_monthly_awards",
       "breakpoints": true
     },
     {
-      "idx": 186,
+      "idx": 204,
       "version": "7",
       "when": 1782366108990,
       "tag": "9011_skill_teams",
       "breakpoints": true
     },
     {
-      "idx": 187,
+      "idx": 205,
       "version": "7",
       "when": 1782366109990,
       "tag": "9012_skill_usage_events",
       "breakpoints": true
     },
     {
-      "idx": 188,
+      "idx": 206,
       "version": "7",
       "when": 1782366110990,
       "tag": "9013_notifications",
       "breakpoints": true
     },
     {
-      "idx": 189,
+      "idx": 207,
       "version": "7",
       "when": 1782366111990,
       "tag": "9014_user_calendar_preferences",
       "breakpoints": true
     },
     {
-      "idx": 190,
+      "idx": 208,
       "version": "7",
       "when": 1782366112990,
       "tag": "9015_skill_folders",
       "breakpoints": true
     },
     {
-      "idx": 191,
+      "idx": 209,
       "version": "7",
       "when": 1782366113990,
       "tag": "9016_skill_folder_members",
       "breakpoints": true
     },
     {
-      "idx": 192,
+      "idx": 210,
       "version": "7",
       "when": 1782366114990,
       "tag": "9017_folder_access_control",
       "breakpoints": true
     },
     {
-      "idx": 193,
+      "idx": 211,
       "version": "7",
       "when": 1782366115990,
       "tag": "9018_issue_pinned",
       "breakpoints": true
     },
     {
-      "idx": 194,
+      "idx": 212,
       "version": "7",
       "when": 1782366116990,
       "tag": "9019_folder_alpha_order",
       "breakpoints": true
     },
     {
-      "idx": 195,
+      "idx": 213,
       "version": "7",
       "when": 1782366117990,
       "tag": "9020_project_teams",
       "breakpoints": true
     },
     {
-      "idx": 196,
+      "idx": 214,
       "version": "7",
       "when": 1782366118990,
       "tag": "9021_project_instructions",
       "breakpoints": true
     },
     {
-      "idx": 197,
+      "idx": 215,
       "version": "7",
       "when": 1782366119990,
       "tag": "9022_company_skill_files",

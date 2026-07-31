@@ -28,8 +28,10 @@ import type {
   IssueDocument,
   IssueDocumentSummary,
   IssueAssigneeAdapterOverrides,
+  IssueAttachment,
   IssueThreadInteraction,
   CreateIssueThreadInteraction,
+  Approval,
   PluginManagedAgentResolution,
   PluginManagedProjectResolution,
   PluginManagedRoutineResolution,
@@ -55,6 +57,7 @@ import type {
   PluginIssueOrchestrationSummary,
   PluginIssueRelationSummary,
   PluginIssueSubtree,
+  PluginIssueAttachmentContent,
   PluginIssueWakeupBatchResult,
   PluginIssueWakeupResult,
   PluginJobContext,
@@ -255,6 +258,14 @@ export const PLUGIN_RPC_ERROR_CODES = {
   METHOD_NOT_IMPLEMENTED: -32004,
   /** The worker→host call attempted to escape the current invocation company scope. */
   INVOCATION_SCOPE_DENIED: -32005,
+  /**
+   * A `configChanged` delivery would have collapsed a single-tenant worker onto
+   * a second, distinct company's configuration. The worker fails closed instead
+   * of silently overwriting the already-applied tenant's config. A plugin that
+   * genuinely serves multiple companies from one worker must opt in via
+   * `multiCompanyConfig: true` on its definition.
+   */
+  CROSS_TENANT_CONFIG: -32006,
   /** A catch-all for errors that do not fit other categories. */
   UNKNOWN: -32099,
 } as const;
@@ -603,6 +614,7 @@ export interface PluginEnvironmentAcquireLeaseParams extends PluginEnvironmentDr
    * per-run sandbox should use this to select the runtime image and per-run env.
    */
   adapterType?: string;
+  executionWorkspaceSettings?: Record<string, unknown> | null;
 }
 
 export interface PluginEnvironmentResumeLeaseParams extends PluginEnvironmentDriverBaseParams {
@@ -649,6 +661,108 @@ export interface PluginEnvironmentExecuteResult {
   stdout: string;
   stderr: string;
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * A single source→target file or directory transfer within a sync operation.
+ *
+ * For `environmentSyncIn`, `sourcePath` is a host path and `targetPath` is a
+ * sandbox path; for `environmentSyncOut` the direction is reversed. All sandbox
+ * paths are POSIX. The contract is provider-agnostic: a provider may transfer a
+ * directory by whatever native mechanism it prefers (bulk upload, internal tar,
+ * per-file enumeration) as long as the observable result matches this mapping.
+ */
+export interface PluginSyncFileMapping {
+  /** Absolute path of the transfer source (host for syncIn, sandbox for syncOut). */
+  sourcePath: string;
+  /** Absolute path of the transfer target (sandbox for syncIn, host for syncOut). */
+  targetPath: string;
+  /** Whether the mapping transfers a single regular file or a directory tree. */
+  kind: "file" | "directory";
+  /**
+   * POSIX file mode to apply at the target (e.g. `0o600` for secret material).
+   * When set, providers MUST create the target with this mode with no
+   * world-readable window (create-with-mode or chmod-before-bytes, never after).
+   */
+  mode?: number;
+  /** Glob patterns to exclude when `kind` is `"directory"`. */
+  exclude?: string[];
+  /**
+   * Symlink handling for `kind: "directory"` transfers. Falsy preserves symlinks
+   * as links; `true` dereferences them to their target bytes. Mirrors tar's `-h`.
+   */
+  followSymlinks?: boolean;
+}
+
+/**
+ * A single control command run against the sandbox after a sync operation's
+ * files have landed. Ordered within {@link PluginSyncOperation.postUploadCommands}
+ * and executed in array order, fail-fast (the first non-zero exit or timeout
+ * aborts the operation).
+ *
+ * SECURITY — command origin (Stage-1 design review, condition C1). `command` is
+ * a **Paperclip/adapter-authored control operation**: it may be supplied ONLY by
+ * core/adapter code. No server route, issue/comment content, project/workspace
+ * file content, provider-plugin callback, or arbitrary adapter config may supply
+ * a raw `command` string, and any path embedded in it MUST be built by
+ * adapter/core helpers from already-confined paths and shell-quoted (C3). A
+ * provider MUST treat the command as **opaque**: it may execute or reject it, but
+ * MUST NOT rewrite, concatenate, or append provider-decided shell fragments to
+ * it.
+ */
+export interface PluginPostUploadCommand {
+  /**
+   * The opaque, adapter-authored shell command to run after upload. Executed
+   * verbatim by the provider (never rewritten/concatenated). See the security
+   * note above.
+   */
+  command: string;
+  /**
+   * Working directory for the command. When present, MUST be an absolute POSIX
+   * path confined under the operation's allowed sandbox target root (condition
+   * C2); providers re-validate it before exec. When absent, the provider
+   * defaults to the resolved sync remote/runtime root — never a process default
+   * cwd.
+   */
+  cwd?: string;
+  /** Optional per-command timeout in milliseconds. */
+  timeoutMs?: number;
+}
+
+/**
+ * An ordered, opaque unit of work handed to a sync hook. The `operationId` is an
+ * opaque, non-sensitive token authored by the orchestrator; a provider MUST NOT
+ * interpret it. Operations are applied in array order.
+ */
+export interface PluginSyncOperation {
+  operationId: string;
+  files: PluginSyncFileMapping[];
+  /**
+   * Optional ordered control commands run after this operation's files land, in
+   * array order, fail-fast. Absent means "no commands" — byte-identical to a
+   * pre-contract operation. See {@link PluginPostUploadCommand} for the command
+   * origin/confinement security contract (C1–C4).
+   */
+  postUploadCommands?: PluginPostUploadCommand[];
+}
+
+export interface PluginEnvironmentSyncInParams extends PluginEnvironmentDriverBaseParams {
+  lease: PluginEnvironmentLease;
+  operations: PluginSyncOperation[];
+}
+
+export interface PluginEnvironmentSyncOutParams extends PluginEnvironmentDriverBaseParams {
+  lease: PluginEnvironmentLease;
+  operations: PluginSyncOperation[];
+}
+
+/** Per-operation transfer accounting returned by a sync hook, for observability. */
+export interface PluginEnvironmentSyncResult {
+  operations: {
+    operationId: string;
+    filesTransferred: number;
+    bytesTransferred: number;
+  }[];
 }
 
 export type PluginEnvironmentInteractiveSetupStatus =
@@ -865,6 +979,14 @@ export interface HostToWorkerMethods {
     params: PluginEnvironmentExecuteParams,
     result: PluginEnvironmentExecuteResult,
   ];
+  environmentSyncIn: [
+    params: PluginEnvironmentSyncInParams,
+    result: PluginEnvironmentSyncResult,
+  ];
+  environmentSyncOut: [
+    params: PluginEnvironmentSyncOutParams,
+    result: PluginEnvironmentSyncResult,
+  ];
   environmentStartInteractiveSetup: [
     params: PluginEnvironmentStartInteractiveSetupParams,
     result: PluginEnvironmentInteractiveSetupSession,
@@ -919,6 +1041,8 @@ export const HOST_TO_WORKER_OPTIONAL_METHODS: readonly HostToWorkerMethodName[] 
   "environmentDestroyLease",
   "environmentRealizeWorkspace",
   "environmentExecute",
+  "environmentSyncIn",
+  "environmentSyncOut",
   "environmentStartInteractiveSetup",
   "environmentGetInteractiveSetup",
   "environmentCaptureTemplate",
@@ -1385,9 +1509,12 @@ export interface WorkerToHostMethods {
       body: string;
       companyId: string;
       authorAgentId?: string;
+      /** Active human company member the comment is attributed to. Requires `issue.comments.create_human_attributed`. */
+      actorUserId?: string;
       /** Attribute the comment to a human user (by email) instead of the plugin
        *  system actor — e.g. a Google Chat DM relayed as the sender's own
-       *  comment. The host resolves the email to a Paperclip account. */
+       *  comment. The host resolves the email to a Paperclip account. Used when
+       *  the caller only has an email; `actorUserId` takes precedence. */
       authorUserEmail?: string;
     },
     result: IssueComment,
@@ -1401,18 +1528,35 @@ export interface WorkerToHostMethods {
     },
     result: IssueThreadInteraction,
   ];
+  "issues.listInteractions": [
+    params: { issueId: string; companyId: string },
+    result: IssueThreadInteraction[],
+  ];
+  // Merged contract: upstream's `action`/`actorUserId` plus the fork's
+  // three-way `decision`/`responderEmail`/`answers` form (Google Chat cards).
+  // Host precedence: `action` over `decision`, `actorUserId` over
+  // `responderEmail`. Exactly one of each pair must be supplied.
   "issues.respondInteraction": [
     params: {
       issueId: string;
-      companyId: string;
       interactionId: string;
+      companyId: string;
+      /** Upstream contract: accept/reject. Prefer this when you do not need
+       *  the fork's "answer" form. Takes precedence over `decision`. */
+      action?: "accept" | "reject";
       /** accept = approve/confirm; reject = request changes/decline; answer =
-       *  submit ask_user_questions answers. */
-      decision: "accept" | "reject" | "answer";
+       *  submit ask_user_questions answers. Fork form; superset of `action`. */
+      decision?: "accept" | "reject" | "answer";
+      /**
+       * Active human company member the decision is attributed to. The host
+       * re-verifies active membership at apply time and never trusts this
+       * value blindly. Takes precedence over `responderEmail`.
+       */
+      actorUserId?: string;
       /** The email of the human responding (e.g. from a Google Chat click). The
        *  host resolves it to a user account and records them as the responder;
        *  an unknown email is refused. */
-      responderEmail: string;
+      responderEmail?: string;
       /** Optional reason, forwarded on reject. */
       reason?: string | null;
       /** Optional selected option ids (for checkbox-style confirmations). */
@@ -1422,7 +1566,15 @@ export interface WorkerToHostMethods {
       /** ask_user_questions answers, required when decision === "answer". */
       answers?: Array<{ questionId: string; optionIds: string[]; otherText?: string | null }>;
     },
-    result: { ok: boolean; status: string },
+    result: { interaction: IssueThreadInteraction; applied: boolean },
+  ];
+  "issues.listAttachments": [
+    params: { issueId: string; companyId: string },
+    result: IssueAttachment[],
+  ];
+  "issues.getAttachmentContent": [
+    params: { attachmentId: string; companyId: string; maxBytes?: number | null },
+    result: PluginIssueAttachmentContent | null,
   ];
 
   // Issue Documents
@@ -1474,6 +1626,31 @@ export interface WorkerToHostMethods {
       byteSize: number;
       contentPath: string;
     },
+  ];
+
+  // Approvals
+  "approvals.list": [
+    params: { companyId: string; status?: string | null },
+    result: Approval[],
+  ];
+  "approvals.get": [
+    params: { approvalId: string; companyId: string },
+    result: Approval | null,
+  ];
+  "approvals.decide": [
+    params: {
+      approvalId: string;
+      companyId: string;
+      action: "approve" | "reject";
+      /**
+       * Active human company member the decision is attributed to. Required —
+       * deciding an approval is a board-user action; the host re-verifies
+       * active membership at apply time and never trusts this value blindly.
+       */
+      actorUserId?: string;
+      decisionNote?: string | null;
+    },
+    result: { approval: Approval; applied: boolean },
   ];
 
   // Agents (read)

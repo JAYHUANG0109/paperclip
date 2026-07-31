@@ -17,9 +17,11 @@ import type {
   IssueComment,
   IssueThreadInteraction,
   CreateIssueThreadInteraction,
+  IssueAttachment,
   IssueDocument,
   Agent,
   Goal,
+  Approval,
 } from "@paperclipai/shared";
 import type {
   EventFilter,
@@ -108,6 +110,9 @@ export interface TestHarness {
     projects?: Project[];
     issues?: Issue[];
     issueComments?: IssueComment[];
+    issueInteractions?: IssueThreadInteraction[];
+    issueAttachments?: Array<IssueAttachment & { contentBase64?: string }>;
+    approvals?: Approval[];
     agents?: Agent[];
     goals?: Goal[];
     projectWorkspaces?: PluginWorkspace[];
@@ -492,6 +497,9 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
   const blockedByIssueIds = new Map<string, string[]>();
   const issueComments = new Map<string, IssueComment[]>();
   const issueInteractions = new Map<string, IssueThreadInteraction[]>();
+  const issueAttachments = new Map<string, IssueAttachment[]>();
+  const attachmentContentById = new Map<string, string>();
+  const approvals = new Map<string, Approval>();
   const issueDocuments = new Map<string, IssueDocument>();
   const agents = new Map<string, Agent>();
   const goals = new Map<string, Goal>();
@@ -527,6 +535,31 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
       accessMembers.set(member.id, { ...member, grants: stamped, updatedAt: new Date().toISOString() });
     }
     return stamped;
+  }
+
+  /**
+   * Mirror the host's `requireActiveHumanMember` write bar so the harness
+   * rejects the same forged/over-privileged attributions production does: the
+   * actor must be an active `user` member of the company whose `membershipRole`
+   * is not the read-only `viewer` role (the web app 403s viewers on these same
+   * board write-routes). Keeps the harness a faithful mirror so a plugin test
+   * cannot pass an attribution production would reject. Seed members via
+   * `createTestPluginHost({ accessMembers: [...] })`.
+   */
+  function assertActiveHumanMemberCanWrite(companyId: string, actorUserId: string) {
+    const member = [...accessMembers.values()].find(
+      (entry) =>
+        entry.companyId === companyId
+        && entry.principalType === "user"
+        && entry.principalId === actorUserId
+        && entry.status === "active",
+    );
+    if (!member) {
+      throw new Error(`actorUserId "${actorUserId}" is not an active human member of this company`);
+    }
+    if (member.membershipRole === "viewer") {
+      throw new Error(`actorUserId "${actorUserId}" has viewer (read-only) access and cannot take this write action`);
+    }
   }
   const projectWorkspaces = new Map<string, PluginWorkspace[]>();
   const executionWorkspaces = new Map<string, PluginExecutionWorkspaceMetadata>();
@@ -1212,6 +1245,8 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
             status: declaration.status ?? (assigneeAgentId ? "active" : "paused"),
             concurrencyPolicy: declaration.concurrencyPolicy ?? "coalesce_if_active",
             catchUpPolicy: declaration.catchUpPolicy ?? "skip_missed",
+            activityGatePolicy: declaration.activityGatePolicy ?? "always",
+            activityGateScope: declaration.activityGateScope ?? "company",
             variables: declaration.variables ?? [],
             latestRevisionId: null,
             latestRevisionNumber: 1,
@@ -1689,22 +1724,33 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
       },
       async createComment(issueId, body, companyId, options) {
         requireCapability(manifest, capabilitySet, "issue.comments.create");
+        if (options?.actorUserId) {
+          requireCapability(manifest, capabilitySet, "issue.comments.create_human_attributed");
+        }
         const parentIssue = issues.get(issueId);
         if (!isInCompany(parentIssue, companyId)) {
           throw new Error(`Issue not found: ${issueId}`);
+        }
+        if (options?.actorUserId) {
+          assertActiveHumanMemberCanWrite(companyId, options.actorUserId);
         }
         const now = new Date();
         const comment: IssueComment = {
           id: randomUUID(),
           companyId: parentIssue.companyId,
           issueId,
-          authorType: options?.authorAgentId
-            ? "agent"
-            : options?.authorUserEmail
+          // Human attribution wins over agent attribution; actorUserId (a real
+          // Paperclip user id) takes precedence over the fork's email form.
+          authorType:
+            options?.actorUserId || options?.authorUserEmail
               ? "user"
-              : "system",
-          authorAgentId: options?.authorAgentId ?? null,
-          authorUserId: options?.authorUserEmail ? `user:${options.authorUserEmail}` : null,
+              : options?.authorAgentId
+                ? "agent"
+                : "system",
+          authorAgentId:
+            options?.actorUserId || options?.authorUserEmail ? null : options?.authorAgentId ?? null,
+          authorUserId:
+            options?.actorUserId ?? (options?.authorUserEmail ? `user:${options.authorUserEmail}` : null),
           body,
           presentation: null,
           metadata: null,
@@ -1753,13 +1799,39 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
       },
       async respondInteraction(params) {
         requireCapability(manifest, capabilitySet, "issue.interactions.respond");
+        const parentIssue = issues.get(params.issueId);
+        if (!isInCompany(parentIssue, params.companyId)) {
+          throw new Error(`Issue not found: ${params.issueId}`);
+        }
+        // Identity: actorUserId wins, else the fork's external-channel email form.
+        if (!params.actorUserId && !params.responderEmail) {
+          throw new Error("actorUserId or responderEmail is required to respond on behalf of a board user");
+        }
+        if (params.actorUserId) {
+          // Mirror the host's active-human-member write re-verification. The
+          // email path is resolved to an account by the host, so there is no
+          // user id to verify here.
+          assertActiveHumanMemberCanWrite(params.companyId, params.actorUserId);
+        }
+        // Decision: `action` wins, else the fork's three-way `decision`.
+        const decision = params.action ?? params.decision;
+        if (!decision) throw new Error("action or decision is required");
         const list = issueInteractions.get(params.issueId) ?? [];
-        const found = list.find((entry) => entry.id === params.interactionId);
-        if (!found) throw new Error(`Interaction not found: ${params.interactionId}`);
-        const status =
-          params.decision === "reject" ? "rejected" : params.decision === "answer" ? "answered" : "accepted";
-        (found as { status?: string }).status = status;
-        return { ok: true, status };
+        const current = list.find((entry) => entry.id === params.interactionId);
+        if (!current) {
+          throw new Error(`Interaction not found: ${params.interactionId}`);
+        }
+        if (current.status !== "pending") {
+          return { interaction: current, applied: false };
+        }
+        const resolved: IssueThreadInteraction = {
+          ...current,
+          status: decision === "accept" ? "accepted" : decision === "answer" ? "answered" : "rejected",
+          updatedAt: new Date(),
+        } as IssueThreadInteraction;
+        list[list.indexOf(current)] = resolved;
+        issueInteractions.set(params.issueId, list);
+        return { interaction: resolved, applied: true };
       },
       async suggestTasks(issueId, interaction, companyId, options) {
         return this.createInteraction(issueId, { ...interaction, kind: "suggest_tasks" }, companyId, options) as Promise<any>;
@@ -1772,6 +1844,36 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
       },
       async requestCheckboxConfirmation(issueId, interaction, companyId, options) {
         return this.createInteraction(issueId, { ...interaction, kind: "request_checkbox_confirmation" }, companyId, options) as Promise<any>;
+      },
+      async listInteractions(issueId, companyId) {
+        requireCapability(manifest, capabilitySet, "issue.interactions.read");
+        if (!isInCompany(issues.get(issueId), companyId)) return [];
+        return issueInteractions.get(issueId) ?? [];
+      },
+      async listAttachments(issueId, companyId) {
+        requireCapability(manifest, capabilitySet, "issue.attachments.read");
+        if (!isInCompany(issues.get(issueId), companyId)) return [];
+        return issueAttachments.get(issueId) ?? [];
+      },
+      async getAttachmentContent(attachmentId, companyId, options) {
+        requireCapability(manifest, capabilitySet, "issue.attachments.read");
+        const attachment = [...issueAttachments.values()]
+          .flat()
+          .find((entry) => entry.id === attachmentId);
+        if (!attachment || attachment.companyId !== companyId) return null;
+        const maxBytes = typeof options?.maxBytes === "number" && options.maxBytes > 0 ? options.maxBytes : null;
+        if (maxBytes !== null && attachment.byteSize > maxBytes) {
+          throw new Error(`attachment ${attachment.id} is ${attachment.byteSize} bytes, over the ${maxBytes}-byte cap`);
+        }
+        const contentBase64 = attachmentContentById.get(attachment.id) ?? "";
+        return {
+          attachmentId: attachment.id,
+          contentType: attachment.contentType,
+          byteSize: attachment.byteSize,
+          sha256: attachment.sha256,
+          originalFilename: attachment.originalFilename ?? null,
+          contentBase64,
+        };
       },
       documents: {
         async list(issueId, companyId) {
@@ -1940,6 +2042,47 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
             invocationBlocks: [],
           };
         },
+      },
+    },
+    approvals: {
+      async list(input) {
+        requireCapability(manifest, capabilitySet, "approvals.read");
+        return [...approvals.values()].filter(
+          (approval) =>
+            approval.companyId === input.companyId
+            && (!input.status || approval.status === input.status),
+        );
+      },
+      async get(approvalId, companyId) {
+        requireCapability(manifest, capabilitySet, "approvals.read");
+        const approval = approvals.get(approvalId);
+        if (!approval || approval.companyId !== companyId) return null;
+        return approval;
+      },
+      async decide(approvalId, input, companyId) {
+        requireCapability(manifest, capabilitySet, "approvals.respond");
+        const approval = approvals.get(approvalId);
+        if (!approval || approval.companyId !== companyId) {
+          throw new Error(`Approval not found: ${approvalId}`);
+        }
+        if (!input.actorUserId) {
+          throw new Error("actorUserId is required to decide an approval on behalf of a board user");
+        }
+        const actorUserId = input.actorUserId;
+        assertActiveHumanMemberCanWrite(companyId, actorUserId);
+        if (approval.status !== "pending") {
+          return { approval, applied: false };
+        }
+        const decided: Approval = {
+          ...approval,
+          status: input.action === "approve" ? "approved" : "rejected",
+          decisionNote: input.decisionNote ?? null,
+          decidedByUserId: actorUserId,
+          decidedAt: new Date(),
+          updatedAt: new Date(),
+        };
+        approvals.set(approvalId, decided);
+        return { approval: decided, applied: true };
       },
     },
     agents: {
@@ -2426,6 +2569,19 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         list.push(row);
         issueComments.set(row.issueId, list);
       }
+      for (const row of input.issueInteractions ?? []) {
+        const list = issueInteractions.get(row.issueId) ?? [];
+        list.push(row);
+        issueInteractions.set(row.issueId, list);
+      }
+      for (const row of input.issueAttachments ?? []) {
+        const { contentBase64, ...attachment } = row;
+        const list = issueAttachments.get(attachment.issueId) ?? [];
+        list.push(attachment);
+        issueAttachments.set(attachment.issueId, list);
+        attachmentContentById.set(attachment.id, contentBase64 ?? "");
+      }
+      for (const row of input.approvals ?? []) approvals.set(row.id, row);
       for (const row of input.agents ?? []) agents.set(row.id, row);
       for (const row of input.goals ?? []) goals.set(row.id, row);
       for (const row of input.projectWorkspaces ?? []) {

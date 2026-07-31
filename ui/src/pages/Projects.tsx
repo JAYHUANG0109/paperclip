@@ -130,7 +130,7 @@ export function Projects() {
   };
 
   const projects = useMemo(
-    () => (allProjects ?? []).filter((p) => !p.archivedAt),
+    () => allProjects ?? [],
     [allProjects],
   );
   const sortedProjects = useMemo(

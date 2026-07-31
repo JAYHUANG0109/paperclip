@@ -474,6 +474,13 @@ export interface IssueBlockedInboxAttention {
   };
 }
 
+export type IssueUnblockOwner = { agentId: string } | { userId: string } | "board";
+
+export interface IssueUnblockDescriptor {
+  owner: IssueUnblockOwner;
+  action: string;
+}
+
 export type IssueProductivityReviewTrigger =
   | "no_comment_streak"
   | "long_active_duration"
@@ -761,6 +768,9 @@ export interface Issue {
   blocks?: IssueRelationIssueSummary[];
   blockerAttention?: IssueBlockerAttention;
   blockedInboxAttention?: IssueBlockedInboxAttention | null;
+  unblockDescriptor?: IssueUnblockDescriptor | null;
+  blockedTransitionAt?: Date | null;
+  blockedOwnerNotifiedAt?: Date | null;
   productivityReview?: IssueProductivityReview | null;
   activeRecoveryAction?: IssueRecoveryAction | null;
   successfulRunHandoff?: SuccessfulRunHandoffState | null;
@@ -1000,6 +1010,8 @@ export interface SuggestTasksResultCreatedTask {
 
 export interface SuggestTasksResult {
   version: 1;
+  outcome?: "withdrawn" | "issue_closed";
+  reason?: string | null;
   createdTasks?: SuggestTasksResultCreatedTask[];
   skippedClientKeys?: string[];
   rejectionReason?: string | null;
@@ -1050,6 +1062,8 @@ export interface AskUserQuestionsAnswer {
 
 export interface AskUserQuestionsResult {
   version: 1;
+  outcome?: "withdrawn" | "issue_closed";
+  reason?: string | null;
   answers: AskUserQuestionsAnswer[];
   cancelled?: true;
   cancellationReason?: string | null;
@@ -1184,7 +1198,7 @@ export interface RequestItemVerdictsPayload {
 
 export interface RequestConfirmationResult {
   version: 1;
-  outcome: "accepted" | "rejected" | "superseded_by_comment" | "stale_target";
+  outcome: "accepted" | "rejected" | "superseded_by_comment" | "stale_target" | "withdrawn" | "issue_closed";
   reason?: string | null;
   commentId?: string | null;
   staleTarget?: RequestConfirmationTarget | null;
@@ -1216,7 +1230,8 @@ export interface RequestItemVerdictsResultItem {
 
 export interface RequestItemVerdictsResult {
   version: 1;
-  outcome: "resolved" | "superseded_by_comment" | "stale_target" | "cancelled";
+  outcome: "resolved" | "superseded_by_comment" | "stale_target" | "cancelled" | "withdrawn" | "issue_closed";
+  reason?: string | null;
   complete: boolean;
   items: RequestItemVerdictsResultItem[];
   commentId?: string | null;

@@ -5,6 +5,7 @@ import type {
   AdapterEnvironmentTestResult,
   CompanySecret,
   EnvBinding,
+  EnvSecretRefBinding,
   Environment,
 } from "@paperclipai/shared";
 import { AGENT_DEFAULT_MAX_CONCURRENT_RUNS, supportedEnvironmentDriversForAdapter } from "@paperclipai/shared";
@@ -47,7 +48,12 @@ import { MarkdownEditor } from "./MarkdownEditor";
 import { ChoosePathButton } from "./PathInstructionsModal";
 import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
 import { ReportsToPicker } from "./ReportsToPicker";
+// The fork keeps its own EnvVarEditor; upstream's replacement
+// (./environment-variables-editor) is deliberately not adopted here — see the
+// sync notes. Upstream's secret-access editor IS adopted below.
 import { EnvVarEditor } from "./EnvVarEditor";
+import { AgentSecretAccessEditor } from "./AgentSecretAccessEditor";
+import { AGENT_ACCESS_CONFIG_PATH_PREFIX } from "../lib/secret-delivery";
 import { shouldShowLegacyWorkingDirectoryField } from "../lib/legacy-agent-config";
 import { listAdapterOptions, listVisibleAdapterTypes } from "../adapters/metadata";
 import { getAdapterDisplay, getAdapterLabel } from "../adapters/adapter-display-registry";
@@ -308,6 +314,33 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       [group]: { ...prev[group], [field]: value },
     }));
   }
+
+  // Upstream's flushEnvironmentDraft() is intentionally omitted: it drives
+  // upstream's EnvironmentVariablesEditor, which the fork does not use, and it
+  // had no callers.
+
+  /**
+   * Replace the agent's API-access grants (top-level `access.<ALIAS>` keys) with
+   * the complete set emitted by the Secret access editor. Added/changed aliases
+   * are marked into the overlay; aliases dropped from the set are marked
+   * `undefined` so `buildAgentUpdatePatch` strips them.
+   */
+  const applyAccessGrants = useCallback((next: Record<string, EnvSecretRefBinding>) => {
+    if (isCreate) return;
+    setOverlay((prev) => {
+      const effective = { ...(props.agent.adapterConfig ?? {}), ...prev.adapterConfig } as Record<string, unknown>;
+      const nextAdapterConfig: Record<string, unknown> = { ...prev.adapterConfig };
+      for (const [alias, binding] of Object.entries(next)) {
+        nextAdapterConfig[`${AGENT_ACCESS_CONFIG_PATH_PREFIX}${alias}`] = binding;
+      }
+      for (const key of Object.keys(effective)) {
+        if (!key.startsWith(AGENT_ACCESS_CONFIG_PATH_PREFIX)) continue;
+        const alias = key.slice(AGENT_ACCESS_CONFIG_PATH_PREFIX.length);
+        if (!(alias in next)) nextAdapterConfig[key] = undefined;
+      }
+      return { ...prev, adapterConfig: nextAdapterConfig };
+    });
+  }, [isCreate, !isCreate ? props.agent : undefined]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Build accumulated patch and send to parent */
   const handleCancel = useCallback(() => {
@@ -1283,6 +1316,16 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 />
               </Field>
 
+              {!isCreate && (
+                <Field label="Secret access" hint={help.secretAccess}>
+                  <AgentSecretAccessEditor
+                    config={{ ...config, ...overlay.adapterConfig }}
+                    secrets={availableSecrets}
+                    onChange={applyAccessGrants}
+                  />
+                </Field>
+              )}
+
               {/* Edit-only: timeout + grace period */}
               {!isCreate && (
                 <>
@@ -1482,7 +1525,9 @@ export function AdapterEnvironmentResult({ result }: { result: AdapterEnvironmen
 
 /* ---- Internal sub-components ---- */
 
-function AdapterTypeDropdown({
+// Exported because upstream's ConfigureBuiltInAgentModal imports it. The fork
+// declared it module-private; upstream exports the same component.
+export function AdapterTypeDropdown({
   value,
   onChange,
   disabledTypes,
@@ -1557,7 +1602,8 @@ function ExperimentalBadge() {
   );
 }
 
-function ModelDropdown({
+// Exported alongside AdapterTypeDropdown for ConfigureBuiltInAgentModal.
+export function ModelDropdown({
   models,
   value,
   onChange,
