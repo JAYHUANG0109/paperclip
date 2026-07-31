@@ -159,6 +159,10 @@ function registerModuleMocks() {
 
   vi.doMock("../services/index.js", () => ({
     accessService: () => mockAccessService,
+    // routineRoutes resolves this for the explicit sharing-scope check; returning
+    // null means "scope says nothing", so the derived agent-visibility floor decides
+    // and these tests keep asserting the original behaviour.
+    authorizationService: () => ({ canActorSeeRoutineByScope: async () => null }),
     documentAnnotationService: () => mockAnnotationService,
     logActivity: mockLogActivity,
     routineService: () => mockRoutineService,

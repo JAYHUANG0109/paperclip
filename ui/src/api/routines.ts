@@ -1,6 +1,7 @@
 import type {
   ActivityEvent,
   Routine,
+  RoutineAccessMember,
   RoutineDetail,
   RoutineListItem,
   RoutineRevision,
@@ -8,6 +9,7 @@ import type {
   RoutineRunSummary,
   RoutineTrigger,
   RoutineTriggerSecretMaterial,
+  RoutineVisibility,
 } from "@paperclipai/shared";
 import { activityApi } from "./activity";
 import { api } from "./client";
@@ -45,6 +47,21 @@ export const routinesApi = {
     api.post<Routine>(`/companies/${companyId}/routines`, data),
   get: (id: string) => api.get<RoutineDetail>(`/routines/${id}`),
   update: (id: string, data: Record<string, unknown>) => api.patch<Routine>(`/routines/${id}`, data),
+  /**
+   * Sharing. `visibility` governs who can see the routine between humans; anyone who
+   * manages an agent this routine is assigned to keeps seeing it regardless (the
+   * agent-visibility floor), so tightening a scope never hides a report's automation.
+   */
+  setVisibility: (id: string, body: { visibility: RoutineVisibility; sharingTeams?: string[] }) =>
+    api.patch<{ id: string; visibility: RoutineVisibility; sharingTeams: string[] }>(
+      `/routines/${id}/visibility`,
+      body,
+    ),
+  listAccessMembers: (id: string) => api.get<RoutineAccessMember[]>(`/routines/${id}/access-members`),
+  addAccessMember: (id: string, principalId: string) =>
+    api.post<{ shared: true; principalId: string }>(`/routines/${id}/access-members`, { principalId }),
+  removeAccessMember: (id: string, principalId: string) =>
+    api.delete<{ revoked: true }>(`/routines/${id}/access-members/${principalId}`),
   listRevisions: (id: string) => api.get<RoutineRevision[]>(`/routines/${id}/revisions`),
   restoreRevision: (
     id: string,

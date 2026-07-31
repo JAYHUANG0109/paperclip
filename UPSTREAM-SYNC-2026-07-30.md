@@ -246,6 +246,47 @@ were already present via auto-merge.
 
 ---
 
+## UI resolution strategy: fork wins on conflicted regions
+
+53 conflicts total. The server/infra tier was merged hunk-by-hunk (see above). For the UI,
+after resolving `App.tsx`, `IssueRow`, `IssuesList` and `Sidebar` in detail, the remaining
+pages turned out to be **page-level restructures**, not mergeable hunks:
+
+| File | Why it isn't a hunk merge |
+|---|---|
+| `Secrets.tsx` | 32 hunks; upstream rewrote the page, fork changed 2,319 lines of it |
+| `IssueDetail.tsx` | 10 hunks straddling JSX boundaries |
+| `Agents.tsx` | one hunk is ours=4 lines vs upstream=158 (whole `renderAgentRow`) |
+| `RoutineDetail.tsx` | upstream restructured around sections (`SECTION_TITLES`, `RoutineSectionKey`) |
+| `AgentDetail.tsx` | upstream swapped to `AgentActionButtons` + built-in panels |
+| `Inbox.tsx` | shares the tree-guide/keyboard-nav rework |
+| `Search.tsx`, `IssuesList.tsx` | upstream blocks reference fork-absent helpers |
+
+**Decision: the fork's complete file wins for those.** Rationale: they are the live
+platform's current, working UI. Hunk-level side-picking across JSX produced unbalanced tags
+and undefined identifiers (14 errors in `Search.tsx` alone) — proof that partial adoption is
+unsafe here. Taking the fork's whole file is internally consistent by construction.
+
+This costs nothing on the server side: only 53 of 770 upstream-changed files conflicted, so
+**717 files of upstream work merged cleanly**, including every migration, service, adapter
+and plugin change.
+
+### Deferred upstream UI work (revisit deliberately)
+- Secrets page rewrite; `IssueDetail` refactor; `Agents` built-in lifecycle chips +
+  environment column; `RoutineDetail` section navigation; `AgentDetail` built-in bundle
+  panel; `Inbox`/`IssuesList` keyboard navigation and nested tree guides.
+- `IssueRow` **did** gain upstream's `treeGuides`/`chevronInGuide`/`hideDivider` props (all
+  optional, defaulted off), so the capability is present but inert until `IssuesList`/`Inbox`
+  pass them.
+- `IssueThreadInteractionCard`: reverted to fork's version, so upstream's interaction
+  *withdrawal* and *expiry* display states are not adopted. Their i18n keys were never added.
+- Two small additive exports were needed for upstream files to link:
+  `AdapterTypeDropdown` and `ModelDropdown` in `AgentConfigForm.tsx` (upstream exports both;
+  the fork had them module-private, which broke `ConfigureBuiltInAgentModal`).
+- `IssueMonitorActivityCard` restored: upstream deleted it in favour of `IssueMonitorBanner`,
+  but the fork's `IssueDetail.tsx` still imports it. **The build caught this; typecheck did
+  not.** Always run `pnpm build`, not just `tsc`.
+
 ## Follow-ups (deliberately not done here)
 
 1. **`Workspaces.test.tsx`** — we deleted it, upstream modified it. Kept deleted to avoid a

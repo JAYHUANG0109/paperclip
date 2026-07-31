@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
-import type { Db } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
+import { routineAccessMembers, routines, type Db } from "@paperclipai/db";
 import {
   createRoutineSchema,
   createDocumentAnnotationCommentSchema,
@@ -10,10 +11,11 @@ import {
   updateDocumentAnnotationThreadSchema,
   updateRoutineSchema,
   updateRoutineTriggerSchema,
+  type RoutineVisibility,
 } from "@paperclipai/shared";
 import { trackRoutineCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
-import { accessService, documentAnnotationService, logActivity, routineService } from "../services/index.js";
+import { accessService, authorizationService, documentAnnotationService, logActivity, routineService } from "../services/index.js";
 import { assertCompanyAccess, getAccessibleResource, getActorInfo, getVisibleAgentIds, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import { forbidden, unauthorized } from "../errors.js";
 import { getTelemetryClient } from "../telemetry.js";
@@ -30,6 +32,7 @@ export function routineRoutes(
   });
   const documentAnnotationsSvc = documentAnnotationService(db);
   const access = accessService(db);
+  const authz = authorizationService(db);
   const routineDocumentKey = "description";
 
   function parseBooleanQuery(value: unknown) {
@@ -159,11 +162,23 @@ export function routineRoutes(
   async function canSeeRoutine(
     req: Request,
     companyId: string,
-    routine: { assigneeAgentId?: string | null; createdByUserId?: string | null },
+    routine: {
+      id: string;
+      assigneeAgentId?: string | null;
+      createdByUserId?: string | null;
+      visibility?: string | null;
+      sharingTeams?: string[] | null;
+    },
   ): Promise<boolean> {
     if (!restrictVisibility || req.actor.type !== "board" || isPrivilegedMemberViewer(req, companyId, true)) {
       return true;
     }
+    // 1) Explicit sharing scope decides first — company / team / explicit member.
+    const byScope = await authz.canActorSeeRoutineByScope({ companyId, actor: req.actor, routine: { ...routine } });
+    if (byScope === true) return true;
+
+    // 2) Floor: you always see routines you created, or ones assigned to an agent you
+    //    manage/oversee. A tightened scope cannot hide a report's automation from you.
     const userId = req.actor.userId ?? null;
     if (userId != null && routine.createdByUserId === userId) return true;
     if (!routine.assigneeAgentId) return false;
@@ -180,12 +195,11 @@ export function routineRoutes(
       res.json(result);
       return;
     }
-    const userId = req.actor.userId ?? null;
-    const visible = userId ? await getVisibleAgentIds(db, companyId, userId) : new Set<string>();
-    res.json(result.filter((r) =>
-      (r.assigneeAgentId && visible.has(r.assigneeAgentId)) ||
-      (userId != null && r.createdByUserId === userId),
-    ));
+    // Per-item so an explicitly shared routine actually shows up here, not just on
+    // its detail route. Routine counts are small (tens), so the per-item scope check
+    // is cheap; the agent-visibility set inside is memoised per request by the caller.
+    const decisions = await Promise.all(result.map((r) => canSeeRoutine(req, companyId, r)));
+    res.json(result.filter((_r, i) => decisions[i]));
   });
 
   router.post("/companies/:companyId/routines", validate(createRoutineSchema), async (req, res) => {
@@ -399,6 +413,119 @@ export function routineRoutes(
       res.json(thread);
     },
   );
+
+  // ── Routine sharing ──────────────────────────────────────────────────────
+  // Only someone who can already MANAGE the routine may change who sees it, which
+  // reuses assertCanManageExistingRoutine (board members of the company; an agent
+  // only for its own routines).
+
+  /** Set the explicit scope: company | team (+sharingTeams) | private. */
+  router.patch("/routines/:id/visibility", async (req, res) => {
+    const routine = await assertCanManageExistingRoutine(req, req.params.id as string);
+    if (!routine) {
+      res.status(404).json({ error: "Routine not found" });
+      return;
+    }
+    const visibility = typeof req.body?.visibility === "string" ? req.body.visibility : "";
+    if (!["private", "team", "company"].includes(visibility)) {
+      res.status(400).json({ error: "visibility must be one of: private, team, company" });
+      return;
+    }
+    const sharingTeams = Array.isArray(req.body?.sharingTeams)
+      ? (req.body.sharingTeams as unknown[])
+        .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+        .map((t) => t.trim())
+      : undefined;
+    if (visibility === "team" && (sharingTeams?.length ?? 0) === 0) {
+      res.status(400).json({ error: "team visibility requires at least one team in sharingTeams" });
+      return;
+    }
+    const [updated] = await db
+      .update(routines)
+      .set({
+        visibility: visibility as RoutineVisibility,
+        ...(sharingTeams ? { sharingTeams } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(routines.id, routine.id))
+      .returning({ id: routines.id, visibility: routines.visibility, sharingTeams: routines.sharingTeams });
+    await logActivity(db, {
+      companyId: routine.companyId,
+      actorType: req.actor.type === "agent" ? "agent" : "user",
+      actorId: (req.actor.type === "agent" ? req.actor.agentId : req.actor.userId) ?? "unknown",
+      action: "routine.visibility_changed",
+      entityType: "routine",
+      entityId: routine.id,
+      details: { visibility, sharingTeams: sharingTeams ?? null },
+    }).catch(() => {});
+    res.json(updated);
+  });
+
+  /** Who has been explicitly granted access. */
+  router.get("/routines/:id/access-members", async (req, res) => {
+    const routine = await assertCanManageExistingRoutine(req, req.params.id as string);
+    if (!routine) {
+      res.status(404).json({ error: "Routine not found" });
+      return;
+    }
+    const members = await db
+      .select()
+      .from(routineAccessMembers)
+      .where(eq(routineAccessMembers.routineId, routine.id));
+    res.json(members);
+  });
+
+  /** Share with one user. Idempotent — re-sharing is not an error. */
+  router.post("/routines/:id/access-members", async (req, res) => {
+    const routine = await assertCanManageExistingRoutine(req, req.params.id as string);
+    if (!routine) {
+      res.status(404).json({ error: "Routine not found" });
+      return;
+    }
+    const principalId = typeof req.body?.principalId === "string" ? req.body.principalId.trim() : "";
+    if (!principalId) {
+      res.status(400).json({ error: "principalId (a user id) is required" });
+      return;
+    }
+    await db
+      .insert(routineAccessMembers)
+      .values({ companyId: routine.companyId, routineId: routine.id, principalType: "user", principalId })
+      .onConflictDoNothing();
+    await logActivity(db, {
+      companyId: routine.companyId,
+      actorType: req.actor.type === "agent" ? "agent" : "user",
+      actorId: (req.actor.type === "agent" ? req.actor.agentId : req.actor.userId) ?? "unknown",
+      action: "routine.shared",
+      entityType: "routine",
+      entityId: routine.id,
+      details: { principalType: "user", principalId },
+    }).catch(() => {});
+    res.status(201).json({ shared: true, principalId });
+  });
+
+  /** Revoke one user's explicit access. */
+  router.delete("/routines/:id/access-members/:principalId", async (req, res) => {
+    const routine = await assertCanManageExistingRoutine(req, req.params.id as string);
+    if (!routine) {
+      res.status(404).json({ error: "Routine not found" });
+      return;
+    }
+    await db.delete(routineAccessMembers).where(and(
+      eq(routineAccessMembers.routineId, routine.id),
+      eq(routineAccessMembers.principalType, "user"),
+      eq(routineAccessMembers.principalId, req.params.principalId as string),
+    ));
+    await logActivity(db, {
+      companyId: routine.companyId,
+      actorType: req.actor.type === "agent" ? "agent" : "user",
+      actorId: (req.actor.type === "agent" ? req.actor.agentId : req.actor.userId) ?? "unknown",
+      action: "routine.unshared",
+      entityType: "routine",
+      entityId: routine.id,
+      details: { principalType: "user", principalId: req.params.principalId },
+    }).catch(() => {});
+    res.json({ revoked: true });
+  });
 
   router.patch("/routines/:id", validate(updateRoutineSchema), async (req, res) => {
     const routine = await assertCanManageExistingRoutine(req, req.params.id as string);

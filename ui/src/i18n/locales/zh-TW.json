@@ -5193,7 +5193,30 @@
     "noRuns": "尚無執行。",
     "noActivity": "尚無活動。",
     "secretsIntroPre": "例行作業密鑰會套用於此例行作業所建立的每個議題。它們會覆寫專案與代理環境中相符的鍵。",
-    "secretsIntroPost": "變數為保留字。"
+    "secretsIntroPost": "變數為保留字。",
+    "sharing": {
+      "title": "分享設定",
+      "subtitle": "誰可以看到這支例行作業。管理被指派代理人的人一定看得到，不受此設定影響。",
+      "scopePrivate": "私人",
+      "scopePrivateDesc": "只有你和你分享的人。",
+      "scopeTeam": "團隊",
+      "scopeTeamDesc": "下方所選團隊的成員。",
+      "scopeCompany": "全公司",
+      "scopeCompanyDesc": "這間公司的所有人。",
+      "teams": "團隊",
+      "noTeams": "尚未加入團隊。",
+      "teamPlaceholder": "團隊名稱",
+      "addTeam": "新增",
+      "needTeamFirst": "請先新增至少一個團隊，再選擇「團隊」。",
+      "sharedWith": "已分享給",
+      "nobodyYet": "尚未分享給任何人。",
+      "choosePerson": "選擇一位同事…",
+      "sharePlaceholder": "要分享的使用者 ID",
+      "share": "分享",
+      "needEditAccess": "你需要編輯權限才能變更分享設定。",
+      "updateFailed": "無法更新分享設定。",
+      "shareFailed": "無法分享。"
+    }
   },
   "companyImport": {
     "selectFilePreview": "選擇檔案以預覽其內容。",

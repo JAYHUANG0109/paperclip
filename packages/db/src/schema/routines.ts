@@ -18,7 +18,7 @@ import { projects } from "./projects.js";
 import { goals } from "./goals.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { folders } from "./folders.js";
-import type { RoutineEnvConfig, RoutineRevisionSnapshotV1, RoutineVariable } from "@paperclipai/shared";
+import type { RoutineEnvConfig, RoutineRevisionSnapshotV1, RoutineVariable, RoutineVisibility } from "@paperclipai/shared";
 
 export const routines = pgTable(
   "routines",
@@ -34,6 +34,16 @@ export const routines = pgTable(
     assigneeAgentId: uuid("assignee_agent_id").references(() => agents.id),
     priority: text("priority").notNull().default("medium"),
     status: text("status").notNull().default("active"),
+    /**
+     * Explicit sharing scope for humans: 'private' (creator + explicit members),
+     * 'team' (any team in sharingTeams), 'company' (everyone in the company).
+     * The derived agent rule — you can see routines assigned to agents you oversee —
+     * stays as a floor on top of this, so a scope can widen access but never hides
+     * a report's automation from their manager. See routes/routines.ts canSeeRoutine.
+     */
+    visibility: text("visibility").$type<RoutineVisibility>().notNull().default("private"),
+    /** Team labels this routine is shared with when visibility = 'team'. */
+    sharingTeams: text("sharing_teams").array().notNull().default([]),
     concurrencyPolicy: text("concurrency_policy").notNull().default("coalesce_if_active"),
     catchUpPolicy: text("catch_up_policy").notNull().default("skip_missed"),
     activityGatePolicy: text("activity_gate_policy").notNull().default("always"),
