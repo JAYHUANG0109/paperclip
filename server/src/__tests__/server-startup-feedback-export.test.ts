@@ -24,7 +24,13 @@ const {
   routineServiceFactoryMock,
   routineServiceMock,
 } = vi.hoisted(() => {
-  const createAppMock = vi.fn(async () => ((_: unknown, __: unknown) => {}) as never);
+  // The fork's createApp resolves to `{ app, toolGateway }` (index.ts destructures
+  // both). Returning a bare handler left `app` undefined — latent until upstream's
+  // startup code began reading `app.locals.bundledPluginsStartup`.
+  const createAppMock = vi.fn(async () => ({
+    app: Object.assign((_: unknown, __: unknown) => {}, { locals: {} }),
+    toolGateway: {},
+  }) as never);
   const createBetterAuthInstanceMock = vi.fn(() => ({}));
   const createDbMock = vi.fn(() => ({}) as never);
   const detectPortMock = vi.fn(async (port: number) => port);

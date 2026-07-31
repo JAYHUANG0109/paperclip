@@ -931,7 +931,9 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const services = buildHostServices(db, "plugin-record-id", "paperclip.gateway", createEventBusStub());
     await expect(
       services.issues.respondInteraction({ issueId, interactionId, companyId, action: "accept" }),
-    ).rejects.toThrow("actorUserId is required");
+      // The merged contract accepts either actorUserId or the fork's
+      // responderEmail; omitting BOTH (as here) still fails closed.
+    ).rejects.toThrow("actorUserId or responderEmail is required");
   });
 
   it("respondInteraction rejects an actorUserId that is not an active company member", async () => {
