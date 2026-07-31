@@ -244,4 +244,30 @@ describe("buildAgentUpdatePatch", () => {
       desiredSkills: ["research", "code-review"],
     });
   });
+
+  it("preserves the agent's owner mapping when changing adapter types", () => {
+    // assignedUserEmail/assignedUserRole are the agent→person mapping: sign-in
+    // matches this email to claim the agent for that user. Dropping them on an
+    // adapter swap silently unlinks the agent from its owner and revokes that
+    // person's access at their next sign-in — with no visible cause, since the
+    // edit was about the adapter.
+    const agent = makeAgent();
+    agent.adapterConfig = {
+      ...agent.adapterConfig,
+      assignedUserEmail: "a0001057@seasonart.org",
+      assignedUserRole: "operator",
+    };
+
+    const patch = buildAgentUpdatePatch(
+      agent,
+      makeOverlay({
+        adapterType: "codex_local",
+        adapterConfig: { model: "gpt-5.4" },
+      }),
+    );
+
+    const next = patch.adapterConfig as Record<string, unknown>;
+    expect(next.assignedUserEmail).toBe("a0001057@seasonart.org");
+    expect(next.assignedUserRole).toBe("operator");
+  });
 });

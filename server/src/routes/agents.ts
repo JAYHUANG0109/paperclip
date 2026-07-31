@@ -58,6 +58,11 @@ import {
   workspaceOperationService,
 } from "../services/index.js";
 import { badRequest, conflict, forbidden, HttpError, notFound, unprocessable } from "../errors.js";
+import {
+  agentOwnershipConfigChanges,
+  mayChangeAgentOwnership,
+  preserveAgentOwnershipConfig,
+} from "../services/agent-ownership-policy.js";
 import { assertBoard, assertCompanyAccess, assertInstanceAdmin, buildActorSecretContext, getAccessibleResource, getActorInfo, getVisibleAgentIds, getJoinedAgentIds, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
@@ -1637,6 +1642,34 @@ export function agentRoutes(
     );
   }
 
+  /**
+   * Enforce the ownership policy in `services/agent-ownership-policy.ts`:
+   * `assignedUserEmail`/`assignedUserRole` grant agent ownership at sign-in
+   * (role `owner` also confers `instance_admin`), so changing them requires a
+   * company owner/admin and is never allowed for agent-authenticated callers.
+   * Unchanged values pass, which is what keeps ordinary operator edits working.
+   */
+  function assertCanChangeAgentOwnershipConfig(
+    req: Request,
+    companyId: string,
+    requested: Record<string, unknown> | null | undefined,
+    existing: Record<string, unknown> | null | undefined,
+    path = "adapterConfig",
+  ) {
+    const changed = agentOwnershipConfigChanges(requested, existing, path);
+    if (changed.length === 0) return;
+    const allowed = mayChangeAgentOwnership({
+      actorType: req.actor.type,
+      isPrivileged: isPrivilegedMemberViewer(req, companyId, true),
+    });
+    if (allowed) return;
+    throw forbidden(
+      req.actor.type === "agent"
+        ? `Agent-authenticated callers cannot change agent ownership (${changed.join(", ")})`
+        : `Only company owners and admins can change agent ownership (${changed.join(", ")})`,
+    );
+  }
+
   function summarizeAgentUpdateDetails(patch: Record<string, unknown>) {
     const changedTopLevelKeys = Object.keys(patch).sort();
     const details: Record<string, unknown> = { changedTopLevelKeys };
@@ -3004,6 +3037,8 @@ export function agentRoutes(
       rawHireAdapterConfig,
     );
     assertNoAgentAdapterConfigMutation(req, rawHireAdapterConfig);
+    // No existing agent yet, so any ownership value present is a change.
+    assertCanChangeAgentOwnershipConfig(req, companyId, rawHireAdapterConfig, null);
     assertNoAgentRuntimeConfigAdapterConfigMutation(req, hireInput.runtimeConfig);
     const hiredAgentId = randomUUID();
     const requestedAdapterConfig = applyCodexLocalKeyIsolation(
@@ -3210,6 +3245,8 @@ export function agentRoutes(
       rawCreateAdapterConfig,
     );
     assertNoAgentAdapterConfigMutation(req, rawCreateAdapterConfig);
+    // No existing agent yet, so any ownership value present is a change.
+    assertCanChangeAgentOwnershipConfig(req, companyId, rawCreateAdapterConfig, null);
     assertNoAgentRuntimeConfigAdapterConfigMutation(req, createInput.runtimeConfig);
     const agentId = randomUUID();
     const requestedAdapterConfig = applyCodexLocalKeyIsolation(
@@ -3688,6 +3725,12 @@ export function agentRoutes(
         return;
       }
       assertNoAgentAdapterConfigMutation(req, adapterConfig);
+      assertCanChangeAgentOwnershipConfig(
+        req,
+        existing.companyId,
+        adapterConfig,
+        asRecord(existing.adapterConfig) ?? {},
+      );
       const changingInstructionsConfig = adapterConfigTouchesInstructionsConfig(adapterConfig);
       if (changingInstructionsConfig) {
         await assertCanManageInstructionsPath(req, existing);
@@ -3746,6 +3789,15 @@ export function agentRoutes(
           rawEffectiveAdapterConfig,
         );
       }
+      // Unconditional, unlike the adapter-swap preservation above: a
+      // `replaceAdapterConfig` write that merely omits the ownership keys would
+      // otherwise unlink the agent from its owner and revoke that person's
+      // access at their next sign-in. Clearing one requires an explicit
+      // authorized null, which the guard above has already vetted.
+      rawEffectiveAdapterConfig = preserveAgentOwnershipConfig(
+        existingAdapterConfig,
+        rawEffectiveAdapterConfig,
+      );
       const effectiveAdapterConfig = applyCodexLocalKeyIsolation(
         existing.companyId,
         existing.id,

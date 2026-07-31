@@ -12,6 +12,10 @@ const EXPECTED_ADAPTER_AGNOSTIC_KEYS = [
   "graceSec",
   "bootstrapPromptTemplate",
   "paperclipSkillSync",
+  // The agent→owner mapping. Dropping these on an adapter swap unlinks the
+  // agent from its person, so they are pinned here deliberately.
+  "assignedUserEmail",
+  "assignedUserRole",
 ] as const;
 
 function readRepoFile(pathFromRoot: string) {

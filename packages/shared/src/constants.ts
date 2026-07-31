@@ -80,6 +80,14 @@ export const WORKSPACE_BRANCH_ROUTINE_VARIABLE = "workspaceBranch";
 
 // Config keys owned by Paperclip/company state rather than one concrete adapter.
 // `paperclipSkillSync` is persisted in adapterConfig but must survive adapter swaps.
+//
+// `assignedUserEmail`/`assignedUserRole` are the agent→person mapping: sign-in
+// matches this email to claim the agent for that user (see
+// autoProvisionAssignedAgents in server/src/auth/better-auth.ts), and
+// authorization derives the agent's owner from it (loadAgentOwnerEmail). They
+// describe who the agent belongs to, not how it runs, so swapping the adapter
+// must not drop them — doing so silently unlinks the agent from its owner and
+// revokes that person's access on their next sign-in.
 export const ADAPTER_AGNOSTIC_KEYS = [
   "env",
   "promptTemplate",
@@ -89,8 +97,26 @@ export const ADAPTER_AGNOSTIC_KEYS = [
   "graceSec",
   "bootstrapPromptTemplate",
   "paperclipSkillSync",
+  "assignedUserEmail",
+  "assignedUserRole",
 ] as const;
 export type AdapterAgnosticKey = (typeof ADAPTER_AGNOSTIC_KEYS)[number];
+
+/**
+ * adapterConfig keys that are authorization grants rather than runtime config.
+ *
+ * At sign-in, `autoProvisionAssignedAgents` (server/src/auth/better-auth.ts)
+ * matches the signed-in email against `assignedUserEmail` and grants that user a
+ * company membership at `assignedUserRole` plus an `agent_memberships` row; a
+ * requested role of `owner` additionally grants `instance_admin`. Writing these
+ * two keys therefore decides who owns an agent and how much power they get.
+ *
+ * They must only ever be written by a company owner/admin, and never by an
+ * agent-authenticated caller — otherwise an operator could tag any agent with
+ * their own email at role `owner` and return as an instance admin.
+ */
+export const AGENT_OWNERSHIP_CONFIG_KEYS = ["assignedUserEmail", "assignedUserRole"] as const;
+export type AgentOwnershipConfigKey = (typeof AGENT_OWNERSHIP_CONFIG_KEYS)[number];
 
 export const MODEL_PROFILE_KEYS = ["cheap"] as const;
 export type ModelProfileKey = (typeof MODEL_PROFILE_KEYS)[number];
