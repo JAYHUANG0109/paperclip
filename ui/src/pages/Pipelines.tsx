@@ -2031,7 +2031,7 @@ export function PipelineItemDetailView({ pipelineId, caseId }: { pipelineId: str
   const conversationCompanyId = activeConversationIssue?.companyId ?? selectedCompanyId ?? null;
   const [locallyQueuedConversationCommentRunIds, setLocallyQueuedConversationCommentRunIds] = useState<Map<string, string>>(() => new Map());
   const comments = useQuery({
-    queryKey: conversationIssueId ? queryKeys.issues.commentsList(conversationIssueId) : ["pipeline-item", caseId, "missing-conversation"],
+    queryKey: conversationIssueId ? queryKeys.issues.comments(conversationIssueId) : ["pipeline-item", caseId, "missing-conversation"],
     queryFn: () => issuesApi.listComments(conversationIssueId!, { order: "asc", limit: 50 }),
     enabled: Boolean(conversationIssueId),
   });

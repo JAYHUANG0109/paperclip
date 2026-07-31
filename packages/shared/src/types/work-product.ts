@@ -63,4 +63,13 @@ export interface AttachmentArtifactWorkProductMetadata {
   openPath: string;
   downloadPath: string;
   originalFilename?: string | null;
+  /**
+   * Per-user Google Drive delivery. Written by the work-product route when the
+   * deliverable was copied into the responsible user's own Drive (best-effort —
+   * absent when there was no `deliverToUserId`, or the copy failed). The outputs
+   * UI surfaces `driveWebViewLink` as a "open in your Drive" link, gated on
+   * `driveUserId` matching the viewer.
+   */
+  driveWebViewLink?: string | null;
+  driveUserId?: string | null;
 }

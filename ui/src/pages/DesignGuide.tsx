@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { InlineBanner } from "@/components/InlineBanner";
-import { BuiltInAgentBadge, BuiltInLifecycleChip } from "@/components/BuiltInAgentBadges";
+import { BuiltInLifecycleChip } from "@/components/BuiltInAgentBadges";
 import { RoutineVisibilityBadge } from "@/components/RoutineSharing";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";

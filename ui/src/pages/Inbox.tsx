@@ -156,6 +156,7 @@ import {
   type InboxWorkItem,
   type InboxWorkItemGroupBy,
 } from "../lib/inbox";
+import { clearLocalInboxArchive, useLocalInboxArchiveIssueIds } from "../lib/inboxArchiveCache";
 import { useDismissedInboxAlerts, useInboxDismissals, useReadInboxItems } from "../hooks/useInboxBadge";
 
 const INBOX_HEARTBEAT_RUN_LIMIT = 200;

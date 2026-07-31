@@ -161,8 +161,6 @@ export function AgentActionButtons({
   navigateToRunOnInvoke = true,
   onActionError,
   onTerminateSuccess,
-  pauseConfirm,
-  hideTerminate = false,
   children,
   className,
 }: {

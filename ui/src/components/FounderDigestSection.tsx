@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+// `JSX` is no longer a global namespace under React 19's types — import it.
+import { useEffect, useRef, useState, type JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Check, Loader2, ChevronDown, ChevronRight, MessageSquare, X, RotateCcw, Send, Diamond, Stamp } from "lucide-react";
 import { useTranslation } from "@/i18n";

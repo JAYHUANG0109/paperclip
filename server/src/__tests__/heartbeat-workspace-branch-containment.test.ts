@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -45,6 +45,17 @@ import {
 } from "../services/execution-workspace-policy.ts";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Resolve symlinks for path comparisons, falling back to the input when the path
+ * no longer exists (temp dirs are cleaned up between cases). Needed because on
+ * macOS `os.tmpdir()` returns /var/folders/... while git and fs.realpath resolve
+ * the /var -> /private/var symlink.
+ */
+async function realpathOrSelf(target: string | null): Promise<string | null> {
+  if (!target) return target;
+  return realpath(target).catch(() => target);
+}
 
 function stableStringifyForTest(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map((entry) => stableStringifyForTest(entry)).join(",")}]`;
@@ -740,8 +751,12 @@ async function expectForwardBranchReconciled(input: {
   expect(activeWorkspace).toMatchObject({
     name: expectedDurableBranch,
     branchName: expectedDurableBranch,
-    providerRef: input.worktreePath,
   });
+  // Compare providerRef through realpath: on macOS `os.tmpdir()` yields
+  // /var/folders/... while git (and fs.realpath) resolve the /var -> /private/var
+  // symlink, so a raw string compare fails locally but passes on Linux CI.
+  expect(await realpathOrSelf(activeWorkspace?.providerRef ?? null))
+    .toBe(await realpathOrSelf(input.worktreePath));
 
   const recoveryRows = await input.db
     .select()

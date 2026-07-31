@@ -4859,13 +4859,17 @@ export function companySkillService(db: Db) {
         .where(eq(companySkills.id, skill.id));
     }
 
-    if (previousContent !== content) {
-      await createVersion(companyId, skillId, {}, actor);
-    }
-
     // Mirror the edit into the DB (source of truth) before we read it back, so
     // readFile and the runtime resolver return the new content, not a stale row.
     await syncDbSkillFilesFromDisk(companyId, skill);
+
+    // Snapshot AFTER the DB sync. createVersion builds its fileInventory via
+    // collectVersionFileInventory -> readFile, which prefers the DB rows; running
+    // it before the sync captured the PRE-edit content, so the new revision (and
+    // therefore currentVersionId) pointed at stale text.
+    if (previousContent !== content) {
+      await createVersion(companyId, skillId, {}, actor);
+    }
 
     const detail = await readFile(companyId, skillId, normalizedPath);
     if (!detail) throw notFound("Skill file not found");

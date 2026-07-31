@@ -3903,7 +3903,7 @@ export function IssueDetail() {
       ) : null}
 
       <ImageGalleryModal
-        images={imageAttachments}
+        items={imageAttachments}
         initialIndex={galleryIndex}
         open={galleryOpen}
         onOpenChange={setGalleryOpen}

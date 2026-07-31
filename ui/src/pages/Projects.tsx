@@ -205,7 +205,9 @@ export function Projects() {
             </div>
           </PopoverContent>
         </Popover>
-        <Button size="sm" variant="outline" onClick={openNewProject}>
+        {/* Wrapped: openNewProject takes optional defaults, which a MouseEvent
+            does not satisfy. */}
+        <Button size="sm" variant="outline" onClick={() => openNewProject()}>
           <Plus className="h-4 w-4 mr-1" />
           {t("projects.addProject")}
         </Button>

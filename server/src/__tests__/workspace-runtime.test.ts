@@ -5287,7 +5287,12 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     expect(service?.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     await expect(fetch(service!.url!)).resolves.toMatchObject({ ok: true });
 
-    await fs.rm(paperclipHome, { recursive: true, force: true });
+    // Reset only the in-memory runtime-service map — that is what "runtime state
+    // is reset" means here (a server restart). PAPERCLIP_HOME must survive,
+    // because the local service registry lives there and holds the pid that
+    // adoption needs; deleting it first left nothing to adopt and the service was
+    // stopped instead. The assertion below on providerRef being a pid only holds
+    // for registry-based adoption.
     await resetRuntimeServicesForTests();
 
     const result = await reconcilePersistedRuntimeServicesOnStartup(db);
@@ -5308,6 +5313,8 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     });
 
     await expect(fetch(service!.url!)).rejects.toThrow();
+
+    await fs.rm(paperclipHome, { recursive: true, force: true });
   });
 
   it("does not reuse a stopped auto-port service port while another process owns it", async () => {

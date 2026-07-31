@@ -1,4 +1,11 @@
-import type { Environment, EnvironmentCapabilities, EnvironmentLease, EnvironmentProbeResult } from "@paperclipai/shared";
+import type {
+  Environment,
+  EnvironmentCapabilities,
+  EnvironmentCustomImageSetupSession,
+  EnvironmentCustomImageTemplate,
+  EnvironmentLease,
+  EnvironmentProbeResult,
+} from "@paperclipai/shared";
 import { api } from "./client";
 
 export interface EnvironmentCustomImageOverview {

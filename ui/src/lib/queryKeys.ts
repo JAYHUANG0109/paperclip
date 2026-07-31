@@ -407,5 +407,4 @@ export const queryKeys = {
   adapters: {
     all: ["adapters"] as const,
   },
-  workTimeline: (companyId: string, lens?: string) => ["work-timeline", companyId, lens ?? "all"] as const,
 };

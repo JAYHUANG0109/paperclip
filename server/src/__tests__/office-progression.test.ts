@@ -53,11 +53,14 @@ describe("level curve", () => {
     expect(titleForLevel(levelForXp(2480)).zh).toBe("時間領主");
   });
 
-  it("keeps the top title past L10 while the level number climbs", () => {
+  it("keeps the top title past the last named tier while the level number climbs", () => {
+    // TITLES has 30 named tiers; titleForLevel clamps to the last one beyond that.
+    // This test predates the expansion from 10 to 30 tiers, when L10 was the top.
     expect(titleForLevel(1).zh).toBe("見習生");
     expect(titleForLevel(10).zh).toBe("時間領主");
-    expect(titleForLevel(34).zh).toBe("時間領主");
-    // a top contributor (~34k XP) is well past L10
+    expect(titleForLevel(30).zh).toBe("時間創世神"); // top of the named table
+    expect(titleForLevel(34).zh).toBe("時間創世神"); // clamps, does not run off the end
+    // a top contributor (~34k XP) is well past L30
     expect(levelForXp(34680)).toBeGreaterThanOrEqual(34);
   });
 });

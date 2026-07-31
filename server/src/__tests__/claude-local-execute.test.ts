@@ -350,6 +350,14 @@ function createLocalSandboxRunner() {
 }
 
 describe("claude execute", () => {
+  // Every case here spawns a real node process (the fake `claude` CLI), writes a
+  // workspace + MCP config to a temp dir, and parses the streamed NDJSON result.
+  // That does not fit vitest's 5s default on a loaded machine — several cases
+  // already carried explicit 10-15s timeouts. Set the describe default so the
+  // whole group is judged on behaviour, not on host speed; the explicit
+  // per-test timeouts below still override this.
+  vi.setConfig({ testTimeout: 30_000 });
+
   it("uses a strict per-agent MCP config only when managed servers are present", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-claude-mcp-config-"));
     const { workspace, commandPath, capturePath, restore } = await setupExecuteEnv(root);
@@ -1347,7 +1355,9 @@ describe("claude execute", () => {
       else process.env.PAPERCLIP_INSTANCE_ID = previousPaperclipInstanceId;
       await fs.rm(root, { recursive: true, force: true });
     }
-  }, 15_000);
+    // Spawns the fake CLI twice (bundle change forces a second, fresh session),
+    // so it needs more headroom than the describe default.
+  }, 40_000);
 
   it("classifies Claude 'out of extra usage' failures as provider quota errors", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-claude-execute-transient-"));

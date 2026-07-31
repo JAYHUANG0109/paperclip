@@ -333,7 +333,13 @@ describe("plugin-worker-manager stderr failure context", () => {
   // `contextForWorkerMessage` in plugin-worker-manager.ts. Upstream rejects this;
   // we accept it because the deployment is single-tenant. A forged *unknown* id is
   // still rejected (covered below).
-  it("permits performAction nested host calls that omit the invocation id (single-tenant)", async () => {
+  // Nested host calls that omit the invocation id are resolved against the
+  // plugin's proactive company scopes (LOOA-687/695 fail-closed cross-tenant
+  // guard). A company the plugin is configured for is admitted; anything else is
+  // denied. This replaces an earlier fork-local behaviour that admitted ANY
+  // company on single-tenant hosts, which let a company-a invocation read
+  // company-b.
+  it("resolves invocation-id-less nested host calls against proactive company scopes", async () => {
     const companiesGet = vi.fn(async (params: { companyId: string }) => ({ id: params.companyId }));
     const handlers = createHostClientHandlers({
       pluginId: "test.plugin",
@@ -357,23 +363,36 @@ describe("plugin-worker-manager stderr failure context", () => {
       hostHandlers: handlers,
     });
 
+    const probe = () => handle.call("performAction", {
+      key: "probe",
+      params: {
+        requestedCompanyId: "company-b",
+      },
+      actorContext: {
+        type: "agent",
+        userId: null,
+        agentId: "agent-1",
+        runId: "run-1",
+        companyId: "company-a",
+      },
+      renderEnvironment: null,
+    });
+
     try {
       await handle.start();
 
-      await expect(handle.call("performAction", {
-        key: "probe",
-        params: {
-          requestedCompanyId: "company-b",
-        },
-        actorContext: {
-          type: "agent",
-          userId: null,
-          agentId: "agent-1",
-          runId: "run-1",
-          companyId: "company-a",
-        },
-        renderEnvironment: null,
-      })).resolves.toMatchObject({ id: "company-b" });
+      // No proactive scope for company-b → denied, even though a performAction
+      // invocation is active for company-a.
+      await expect(probe()).rejects.toMatchObject({
+        code: PLUGIN_RPC_ERROR_CODES.INVOCATION_SCOPE_DENIED,
+      });
+      expect(companiesGet).not.toHaveBeenCalled();
+
+      // Configured for company-b (what the loader seeds from plugin config) →
+      // the same call is admitted. This is the path real connectors use when
+      // they call the host from a background/event handler.
+      handle.setProactiveCompanyScopes(["company-b"]);
+      await expect(probe()).resolves.toMatchObject({ id: "company-b" });
       expect(companiesGet).toHaveBeenCalledTimes(1);
     } finally {
       await handle.stop().catch(() => undefined);
@@ -460,7 +479,10 @@ describe("plugin-worker-manager stderr failure context", () => {
     try {
       await handle.start();
 
-      // Omitted id → permitted (scope-less background call).
+      // Omitted id → permitted once company-2 is one of the plugin's proactive
+      // company scopes. Without the scope this is denied by the cross-tenant
+      // guard; scope-less "admit anything" was the old fork-local behaviour.
+      handle.setProactiveCompanyScopes(["company-2"]);
       await expect(handle.call("getData", {
         key: "probe",
         companyId: "company-1",

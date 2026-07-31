@@ -394,7 +394,12 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     expect(countExecuteCallsForRun(run!.id)).toBe(1);
   });
 
-  it("allows legacy generic timer wakes by default when no skip policy is set", async () => {
+  // `skipTimerWhenNoActionableWork` defaults to TRUE (see parseHeartbeatPolicy):
+  // a bare idle timer wake is skipped rather than booting the model just to
+  // conclude "nothing to do". This test previously asserted the old permissive
+  // default. Agents that must run on a bare timer opt out explicitly — covered
+  // by "allows explicit proactive generic timer wakes..." below.
+  it("skips generic timer wakes by default when no skip policy is set", async () => {
     const { agentId } = await seedCompanyAndAgent({
       heartbeatConfig: {
         enabled: true,
@@ -406,9 +411,17 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       triggerDetail: "schedule",
     });
 
-    expect(run).not.toBeNull();
-    await waitForCondition(async () => countExecuteCallsForRun(run!.id) > 0);
-    expect(countExecuteCallsForRun(run!.id)).toBe(1);
+    expect(run).toBeNull();
+    expect(mockAdapterExecute).not.toHaveBeenCalled();
+
+    const [wakeup] = await db
+      .select({ status: agentWakeupRequests.status, reason: agentWakeupRequests.reason })
+      .from(agentWakeupRequests)
+      .where(eq(agentWakeupRequests.agentId, agentId));
+    expect(wakeup).toMatchObject({
+      status: "skipped",
+      reason: "heartbeat.timer.no_actionable_work",
+    });
   });
 
   it("allows explicit proactive generic timer wakes without assigned issue work", async () => {

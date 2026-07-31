@@ -1,18 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
-import type { IssueAttachment } from "@paperclipai/shared";
 import { useTranslation } from "@/i18n";
 
+/**
+ * Media the gallery can display. Deliberately structural rather than
+ * `IssueAttachment` so case attachments and skill-studio media work too —
+ * `IssueAttachment` satisfies it (id/contentPath/contentType/originalFilename).
+ */
+export interface GalleryMediaItem {
+  id: string;
+  contentPath: string;
+  openPath?: string;
+  downloadPath?: string;
+  contentType: string;
+  originalFilename: string | null;
+}
+
 interface ImageGalleryModalProps {
-  images: IssueAttachment[];
+  items: GalleryMediaItem[];
   initialIndex: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 export function ImageGalleryModal({
-  images,
+  items,
   initialIndex,
   open,
   onOpenChange,
@@ -26,12 +39,12 @@ export function ImageGalleryModal({
   }, [open, initialIndex]);
 
   const goNext = useCallback(() => {
-    setCurrentIndex((i) => (i + 1) % images.length);
-  }, [images.length]);
+    setCurrentIndex((i) => (i + 1) % items.length);
+  }, [items.length]);
 
   const goPrev = useCallback(() => {
-    setCurrentIndex((i) => (i - 1 + images.length) % images.length);
-  }, [images.length]);
+    setCurrentIndex((i) => (i - 1 + items.length) % items.length);
+  }, [items.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -59,9 +72,9 @@ export function ImageGalleryModal({
     [onOpenChange],
   );
 
-  if (images.length === 0) return null;
+  if (items.length === 0) return null;
 
-  const current = images[currentIndex];
+  const current = items[currentIndex];
   if (!current) return null;
 
   return (
@@ -80,7 +93,7 @@ export function ImageGalleryModal({
             </span>
             <div className="flex items-center gap-4">
               <span className="text-white/40 tabular-nums text-xs">
-                {currentIndex + 1} / {images.length}
+                {currentIndex + 1} / {items.length}
               </span>
               <a
                 href={current.contentPath}
@@ -106,7 +119,7 @@ export function ImageGalleryModal({
           <div className="flex-1 flex items-center min-h-0">
             {/* Left nav zone */}
             <div className="w-16 md:w-24 shrink-0 flex items-center justify-center h-full">
-              {images.length > 1 && (
+              {items.length > 1 && (
                 <button
                   type="button"
                   onClick={goPrev}
@@ -131,7 +144,7 @@ export function ImageGalleryModal({
 
             {/* Right nav zone */}
             <div className="w-16 md:w-24 shrink-0 flex items-center justify-center h-full">
-              {images.length > 1 && (
+              {items.length > 1 && (
                 <button
                   type="button"
                   onClick={goNext}
