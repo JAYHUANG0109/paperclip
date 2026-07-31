@@ -377,6 +377,30 @@ export function heartbeatProgressLogLineKey(line: RunLogChunk): string {
   return `${line.ts}\u0000${line.stream}\u0000${line.chunk}`;
 }
 
+/**
+ * Renaming an agent changes its canonical route ref, so the URL the user is on
+ * goes stale and the cached detail query 404s with "Agent not found". Drop the
+ * stale cached queries and replace the URL with the new canonical reference.
+ * Returns true when a redirect happened.
+ *
+ * AgentDetail.progress.test.ts has always covered this, but the helper was never
+ * actually exported here — those tests failed with "is not a function".
+ */
+export function syncAgentRouteAfterRename(
+  queryClient: QueryClient,
+  navigate: (to: string, options?: { replace?: boolean }) => void,
+  previous: { id: string; urlKey?: string | null; name?: string | null },
+  updated: { id: string; urlKey?: string | null; name?: string | null },
+  tab: string,
+): boolean {
+  const previousRef = agentRouteRef(previous);
+  const nextRef = agentRouteRef(updated);
+  if (nextRef === previousRef) return false;
+  queryClient.removeQueries({ queryKey: queryKeys.agents.detail(previousRef) });
+  navigate(`/agents/${nextRef}/${tab}`, { replace: true });
+  return true;
+}
+
 export function RunInvocationCard({
   payload,
   censorUsernameInLogs,

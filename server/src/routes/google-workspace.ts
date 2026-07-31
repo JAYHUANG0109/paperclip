@@ -15,6 +15,14 @@ import {
   updateRange,
 } from "../services/google-sheets.js";
 import {
+  appendText as appendDocText,
+  createDocument,
+  docsReadiness,
+  getDocument,
+  parseDocumentId,
+  replaceText as replaceDocText,
+} from "../services/google-docs.js";
+import {
   addSlide,
   createPresentation,
   getPresentation,
@@ -431,6 +439,139 @@ export function googleWorkspaceRoutes(db: Db) {
       title,
     });
     res.status(201).json({ connected: true, spreadsheet: result.data });
+  });
+
+  // ── Google Docs ─────────────────────────────────────────────────────────
+  // Created docs are filed into "Paperclip 產出檔案". There is no "replace the whole
+  // document" endpoint on purpose — fill a template or append; do not overwrite
+  // someone's writing.
+
+  router.get("/companies/:companyId/google-docs/readiness", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.json({ configured: false, canUse: false });
+      return;
+    }
+    res.json(await docsReadiness(db, userId));
+  });
+
+  /** Title + body text. `id` accepts a pasted Google Docs URL. */
+  router.get("/companies/:companyId/google-docs/:id", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.json(notConnected("auth_required"));
+      return;
+    }
+    const documentId = parseDocumentId(req.params.id as string);
+    if (!documentId) {
+      res.status(400).json({ error: "id must be a document id or a Google Docs URL" });
+      return;
+    }
+    const result = await getDocument(db, userId, documentId);
+    if (!result.connected) {
+      res.json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "docs.read", "google_docs", documentId, {
+      onBehalfOfUserId: userId,
+      chars: result.data.text.length,
+      truncated: result.data.truncated,
+    });
+    res.json({ connected: true, document: result.data });
+  });
+
+  /** Create a document (filed into the output folder). */
+  router.post("/companies/:companyId/google-docs", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+    if (!title) {
+      res.status(400).json({ error: "title is required" });
+      return;
+    }
+    const result = await createDocument(db, userId, title);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "docs.created", "google_docs", result.data.documentId, {
+      onBehalfOfUserId: userId,
+      title,
+      filedInOutputFolder: result.data.filedInOutputFolder,
+    });
+    res.status(201).json({ connected: true, document: result.data });
+  });
+
+  /** Fill a template — replace {{placeholders}} throughout. */
+  router.post("/companies/:companyId/google-docs/:id/replace-text", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const documentId = parseDocumentId(req.params.id as string);
+    const raw = Array.isArray(req.body?.replacements) ? (req.body.replacements as unknown[]) : null;
+    const replacements = (raw ?? [])
+      .map((r) => (r && typeof r === "object" ? (r as Record<string, unknown>) : null))
+      .filter((r): r is Record<string, unknown> => Boolean(r))
+      .filter((r) => typeof r.find === "string" && (r.find as string).length > 0)
+      .map((r) => ({
+        find: r.find as string,
+        replace: typeof r.replace === "string" ? (r.replace as string) : "",
+        matchCase: r.matchCase === true,
+      }));
+    if (!documentId || replacements.length === 0) {
+      res.status(400).json({ error: "a document id/URL and replacements[{find,replace}] are required" });
+      return;
+    }
+    const result = await replaceDocText(db, userId, documentId, replacements);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "docs.replace_text", "google_docs", documentId, {
+      onBehalfOfUserId: userId,
+      replacements: replacements.length,
+    });
+    res.json({ connected: true, ...result.data });
+  });
+
+  /** Append at the end of the body — the safe write. */
+  router.post("/companies/:companyId/google-docs/:id/append", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const documentId = parseDocumentId(req.params.id as string);
+    const text = typeof req.body?.text === "string" ? req.body.text : "";
+    if (!documentId || !text) {
+      res.status(400).json({ error: "a document id/URL and text are required" });
+      return;
+    }
+    const result = await appendDocText(db, userId, documentId, text);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "docs.append", "google_docs", documentId, {
+      onBehalfOfUserId: userId,
+      chars: text.length,
+    });
+    res.json({ connected: true, ...result.data });
   });
 
   // ── Google Slides ───────────────────────────────────────────────────────

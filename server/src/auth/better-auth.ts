@@ -350,6 +350,9 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
               // (services/google-slides.ts). Same drive.file caveat: no Drive browsing,
               // so a caller supplies a presentation id/URL.
               "https://www.googleapis.com/auth/presentations",
+              // `documents` → read AND write Google Docs the user can open
+              // (services/google-docs.ts). Same drive.file caveat: no Drive browsing.
+              "https://www.googleapis.com/auth/documents",
             ],
             accessType: "offline" as const,
             prompt: "consent" as const,

@@ -1,3 +1,5 @@
+import type { ServerInfoSnapshot } from "@paperclipai/shared";
+
 export type DevServerHealthStatus = {
   enabled: true;
   restartRequired: boolean;
@@ -23,6 +25,9 @@ export type HealthStatus = {
   features?: {
     companyDeletionEnabled?: boolean;
   };
+  // The server has always sent this on full-details health responses
+  // (server/src/routes/health.ts); this type just never declared it.
+  serverInfo?: ServerInfoSnapshot;
   devServer?: DevServerHealthStatus;
 };
 

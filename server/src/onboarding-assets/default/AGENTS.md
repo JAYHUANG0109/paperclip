@@ -87,3 +87,16 @@ deliverables still go out as uploaded artifacts. Use these for decks people co-e
 
 Formatting (colours, fonts, images, tables, notes) is not implemented — text and slide
 structure only.
+
+### Google Docs
+
+- Read a document (incl. table text): `GET .../google-docs/<idOrUrl>`
+- **Fill a template (preferred)**: `POST .../google-docs/<idOrUrl>/replace-text` `{"replacements":[{"find","replace"}]}`
+- Append to the end: `POST .../google-docs/<idOrUrl>/append` `{"text"}`
+- Create a document (filed into 產出檔案): `POST .../google-docs` `{"title"}`
+
+No Drive search — use the URL the human gives you.
+
+**There is no "replace the whole document" endpoint on purpose.** Wholesale rewriting is
+how an agent destroys a colleague's writing. Fill marked placeholders or append; never
+reconstruct someone's document. Text only — no formatting.

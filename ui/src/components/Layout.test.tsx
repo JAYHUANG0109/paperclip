@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -40,6 +41,31 @@ let currentPathname = "/PAP/dashboard";
 
 vi.mock("@/lib/router", () => ({
   Outlet: () => <div>Outlet content</div>,
+  // InstanceSidebar/SidebarNavItem are not mocked and render NavLink, so the
+  // mock must provide it or React throws "Element type is invalid". Both
+  // className and children may be render props on the real NavLink.
+  NavLink: ({
+    to,
+    className,
+    children,
+    ...props
+  }: {
+    to: string;
+    className?: string | ((state: { isActive: boolean; isPending: boolean }) => string);
+    children?: ReactNode | ((state: { isActive: boolean; isPending: boolean }) => ReactNode);
+    [key: string]: unknown;
+  }) => {
+    const state = { isActive: currentPathname === to, isPending: false };
+    return (
+      <a
+        href={typeof to === "string" ? to : "#"}
+        className={typeof className === "function" ? className(state) : className}
+        {...(props as AnchorHTMLAttributes<HTMLAnchorElement>)}
+      >
+        {typeof children === "function" ? children(state) : children}
+      </a>
+    );
+  },
   useLocation: () => ({ pathname: currentPathname, search: "", hash: "", state: null }),
   useNavigate: () => mockNavigate,
   useNavigationType: () => "PUSH",

@@ -138,6 +138,28 @@ function makeVersion(revisionNumber: number, content: string): CompanySkillVersi
   };
 }
 
+/**
+ * Set a controlled input/select through the native value setter so React picks up
+ * the change. Both helpers were called by cases in this file but never defined —
+ * the calls arrived from upstream while the definitions did not.
+ */
+async function inputValue(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+async function selectValue(select: HTMLSelectElement, value: string) {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    setter?.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+
 function makeDetail(
   currentVersion: CompanySkillVersion,
   overrides: Partial<CompanySkillDetail> = {},

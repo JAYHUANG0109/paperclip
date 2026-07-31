@@ -1,13 +1,23 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Agent, Issue, IssueAttachment, IssueTreeControlPreview, IssueTreeHold, IssueWorkProduct } from "@paperclipai/shared";
+import type {
+  Agent,
+  Issue,
+  IssueAttachment,
+  IssueComment,
+  IssueTreeControlPreview,
+  IssueTreeHold,
+  IssueWorkProduct,
+} from "@paperclipai/shared";
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
 import { NavigationType } from "react-router-dom";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { canBoardResolveRecoveryAction, IssueDetail, shouldScrollIssueDetailToTopOnNavigation } from "./IssueDetail";
+import { queryKeys } from "../lib/queryKeys";
+import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 
 const mockIssuesApi = vi.hoisted(() => ({
   get: vi.fn(),
@@ -67,6 +77,14 @@ const mockInstanceSettingsApi = vi.hoisted(() => ({
 }));
 
 const mockNavigate = vi.hoisted(() => vi.fn());
+// Hoisted alongside mockNavigate: referenced by cases in this file but never
+// declared (the references arrived from upstream without the declaration).
+const mockLocation = vi.hoisted(() => ({
+  pathname: "/issues/PAP-1",
+  search: "",
+  hash: "",
+  state: null as unknown,
+}));
 const mockOpenPanel = vi.hoisted(() => vi.fn());
 const mockClosePanel = vi.hoisted(() => vi.fn());
 const mockSetBreadcrumbs = vi.hoisted(() => vi.fn());
@@ -476,6 +494,28 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     ...overrides,
   } as Issue;
 }
+
+/**
+ * Comment factory. Referenced by cases in this file but never declared — the
+ * calls arrived from upstream while the factory did not.
+ */
+function createIssueComment(overrides: Partial<IssueComment> = {}): IssueComment {
+  return {
+    id: "comment-1",
+    companyId: "company-1",
+    issueId: "issue-1",
+    authorType: "user",
+    authorAgentId: null,
+    authorUserId: "user-1",
+    body: "Fresh comment",
+    presentation: null,
+    metadata: null,
+    createdAt: new Date("2026-04-21T00:00:05.000Z"),
+    updatedAt: new Date("2026-04-21T00:00:05.000Z"),
+    ...overrides,
+  };
+}
+
 
 function createAttachment(overrides: Partial<IssueAttachment> & { id: string }): IssueAttachment {
   const { id, ...attachmentOverrides } = overrides;

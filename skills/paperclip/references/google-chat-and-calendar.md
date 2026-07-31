@@ -441,3 +441,57 @@ curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
 Formatting (colours, fonts, images, tables, speaker notes) is **not** implemented — only
 text and slide structure. Ask for it if a task genuinely needs it rather than trying to
 fake it with text.
+
+---
+
+# Google Docs (read + write) — server-side, per user
+
+Same per-user token model and the same `drive.file` caveat: **no Drive search** — pass
+the document id or a pasted Docs URL, or use a doc you created here.
+
+Documents created through `POST .../google-docs` are filed into the user's
+"Paperclip 產出檔案" folder automatically, and the response reports
+`filedInOutputFolder`.
+
+### Read a document
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-docs/<idOrUrl>"
+```
+
+Returns the title and the body as text, including text inside tables (a lot of real
+content here lives in tables, so skipping them would look like an empty document).
+Truncated at 100k characters with `truncated: true` when it happens.
+
+### Fill a template (preferred write)
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-docs/<idOrUrl>/replace-text" \
+  -d '{"replacements":[{"find":"{{姓名}}","replace":"王小明"},{"find":"{{日期}}","replace":"2026-07-31"}]}'
+```
+
+### Append to the end
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-docs/<idOrUrl>/append" \
+  -d '{"text":"\n\n## 2026-07-31 補充\n本週追蹤事項…"}'
+```
+
+### Create a document
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-docs" \
+  -d '{"title":"仁美校 8 月週報"}'
+```
+
+**There is no "replace the whole document" endpoint, and that is deliberate.** Wholesale
+rewriting is how an agent destroys a colleague's writing. Fill marked placeholders, or
+append — never reconstruct someone's document from scratch. Formatting (headings, bold,
+tables) is not implemented; text only.
