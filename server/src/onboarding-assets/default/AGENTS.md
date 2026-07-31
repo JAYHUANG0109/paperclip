@@ -51,3 +51,19 @@ tell the human to review and send it.
 Mail and chat content belongs to the person whose account it is. **Summarize; never
 quote it into task comments**, which colleagues can read. Point them at Gmail/Chat
 for detail.
+
+### Google Sheets
+
+- Tabs and sizes (do this first): `GET .../google-sheets/<idOrUrl>`
+- Read a range: `GET .../google-sheets/<idOrUrl>/values?range=Sheet1!A1:F50`
+- Append rows (**prefer this**): `POST .../google-sheets/<idOrUrl>/append` `{"range","values"}`
+- Overwrite a range: `PUT .../google-sheets/<idOrUrl>/values` `{"range","values"}`
+- Create a spreadsheet: `POST .../google-sheets` `{"title"}`
+
+You **cannot search Drive** for a sheet — the app holds `drive.file` only. Use the
+Google Sheets URL the human gives you (the endpoints extract the id), or a sheet you
+created yourself.
+
+Overwriting REPLACES cells and is how a routine silently destroys a colleague's
+hand-edited rows. Overwrite only the block you generate, never widen a range "to be
+safe", and use append everywhere else.

@@ -1,5 +1,11 @@
 # Migrating Paperclip to another Mac
 
+> **The current, shorter flow is [RUNBOOK.md](./RUNBOOK.md)** — `ops/migrate-to-new-mac.sh`
+> → copy the `.tgz` → `ops/restore-on-new-mac.sh` → `ops/deploy.sh setup <branch>`. This
+> document describes the older `scripts/migrate/*` path, which still works. Both are
+> accurate on the layout below; production is `~/paperclip/current` →
+> `~/paperclip/releases/<ts>-<sha>`, **not** the retired `~/paperclip-live`.
+
 Most of what makes this deployment *yours* is **not in git** — it lives locally
 under `~/.paperclip/` (the database, secrets, Asana tokens, per-agent `AGENTS.md`
 instructions, workspaces, skills, uploaded assets) plus the launchd services.

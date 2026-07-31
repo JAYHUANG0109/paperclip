@@ -1,86 +1,36 @@
 #!/usr/bin/env bash
 #
-# Deploy the live Seasonarts Paperclip site.
+# RETIRED. Use `ops/deploy.sh deploy` instead.
 #
-# Production runs from a DEDICATED checkout (~/paperclip-live) that nobody edits.
-# You develop in ~/dev/paperclip/paperclip (or per-task git worktrees), commit,
-# and PUSH. This script then pulls the pushed code on the production branch into
-# the live checkout, rebuilds, and restarts the service.
+# This script deployed to a dedicated production checkout at ~/paperclip-live and
+# hardcoded LIVE="/Users/jayhuang/paperclip-live" — a path from two machine
+# migrations ago (jayhuang -> seasonart -> seasonarts). That directory does not
+# exist on the current host, so the script died with a confusing
+# "Live checkout not found" instead of saying what to run instead.
 #
-# Because it deploys only committed+pushed code from a separate checkout, your
-# in-progress edits (in any tab/worktree) can never reach or break production.
-# If the build fails, the service is NOT restarted — the live site keeps serving
-# the previous working build.
+# Production is now a blue-green release layout driven by ops/deploy.sh:
+#   ~/paperclip/current -> ~/paperclip/releases/<timestamp>-<sha8>
+# Each deploy builds the commit in an isolated release dir, flips the symlink
+# only on success, health-checks, and auto-rolls-back on failure.
 #
-# Usage:  pnpm deploy:live      (or)   bash scripts/deploy-live.sh
-#
+# See doc/running-paperclip-as-a-service-macos.md.
 set -euo pipefail
 
-LIVE="/Users/jayhuang/paperclip-live"
-SERVICE="com.seasonarts.paperclip"
-ROOT="http://127.0.0.1:3100"
-HEALTH="$ROOT/api/health"
-PUBLIC_URL="https://jays-macbook-pro.tailacdc6f.ts.net"
+cat >&2 <<'MSG'
+✗ `pnpm deploy:live` / scripts/deploy-live.sh is RETIRED.
 
-if [ ! -d "$LIVE/.git" ]; then
-  echo "✗ Live checkout not found at $LIVE. Set it up first." >&2
-  exit 1
-fi
+  Use instead:
+    ops/deploy.sh deploy      # build origin/main, flip, health-check, auto-rollback
+    ops/deploy.sh status      # current/previous release + health
+    ops/deploy.sh rollback    # instant revert to the previous release
 
-cd "$LIVE"
-BRANCH="$(git branch --show-current)"
+  Why: this script targeted ~/paperclip-live and hardcoded
+  /Users/jayhuang/paperclip-live, which does not exist on this machine.
+  Production now runs from ~/paperclip/current -> ~/paperclip/releases/<ts>-<sha>.
 
-echo "▶ [1/5] Pulling pushed code on '$BRANCH' into the live checkout…"
-git fetch --quiet origin "$BRANCH"
-BEFORE="$(git rev-parse --short HEAD)"
-git reset --hard --quiet "origin/$BRANCH"
-AFTER="$(git rev-parse --short HEAD)"
-echo "  $BEFORE → $AFTER"
+  Docs: doc/running-paperclip-as-a-service-macos.md
 
-echo "▶ [2/5] Installing dependencies (fast if unchanged)…"
-pnpm install --frozen-lockfile --prefer-offline >/tmp/deploy-live-install.log 2>&1 \
-  || { echo "✗ Dependency install failed — NOT restarting. See /tmp/deploy-live-install.log" >&2; exit 1; }
-
-echo "▶ [3/5] Building the Claude adapter…"
-# The live server imports workspace adapter packages from their compiled dist
-# output, so adapter source fixes are not deployed until this package is rebuilt.
-if ! pnpm --filter @paperclipai/adapter-claude-local build; then
-  echo "" >&2
-  echo "✗ Claude adapter build FAILED — the service was NOT restarted." >&2
-  echo "  The live site keeps serving the previous working build. Fix and re-run." >&2
-  exit 1
-fi
-
-echo "▶ [4/5] Building the UI bundle…"
-# We deliberately do NOT run the full `pnpm build` here because it re-fetches
-# the skills-catalog manifest from GitHub every time and can fail when GitHub is
-# unreachable/rate-limited.
-if ! pnpm --filter @paperclipai/ui build; then
-  echo "" >&2
-  echo "✗ UI build FAILED — the service was NOT restarted." >&2
-  echo "  The live site keeps serving the previous working build. Fix and re-run." >&2
-  exit 1
-fi
-
-echo ""
-echo "▶ [5/5] Restarting service ($SERVICE)…"
-launchctl kickstart -k "gui/$(id -u)/$SERVICE"
-
-for i in $(seq 1 45); do
-  code="$(curl -s -m3 -o /dev/null -w '%{http_code}' "$HEALTH" 2>/dev/null || true)"
-  if [ "$code" = "200" ]; then
-    bundle="$(curl -s -m6 "$ROOT/" 2>/dev/null | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' | head -1 || true)"
-    echo ""
-    echo "✓ Deployed $AFTER and healthy (~$((i * 2))s)."
-    echo "  Serving bundle: ${bundle:-unknown}"
-    echo "  Public URL:     $PUBLIC_URL"
-    exit 0
-  fi
-  printf '%s.' "$code"
-  sleep 2
-done
-
-echo "" >&2
-echo "✗ Site did not return HTTP 200 after ~90s." >&2
-echo "  Check: tail -50 ~/.paperclip/instances/default/logs/launchd-paperclip.err.log" >&2
+  Note: deploys apply pending DB migrations at startup, and rollback reverts
+  code but NOT schema. Treat migration deploys as one-way and rehearse first.
+MSG
 exit 1

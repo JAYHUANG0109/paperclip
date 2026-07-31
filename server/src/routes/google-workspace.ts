@@ -6,6 +6,15 @@ import { logActivity } from "../services/activity-log.js";
 import { markRunReadPrivateSource } from "../services/private-source-runs.js";
 import { createDraft, getMail, gmailReadiness, listDrafts, searchMail } from "../services/google-gmail.js";
 import {
+  appendRows,
+  createSpreadsheet,
+  getSpreadsheet,
+  parseSpreadsheetId,
+  readRange,
+  sheetsReadiness,
+  updateRange,
+} from "../services/google-sheets.js";
+import {
   chatUserReadiness,
   listSpaceMessages,
   listUserSpaces,
@@ -254,6 +263,166 @@ export function googleWorkspaceRoutes(db: Db) {
   };
   router.get("/companies/:companyId/gmail/me", recentMail);
   router.get("/companies/:companyId/google-gmail/me", recentMail);
+
+  // ── Google Sheets ───────────────────────────────────────────────────────
+  // Per-user: an agent reads and writes exactly the spreadsheets its responsible human
+  // can. For shared company sheets on a service account with an id allowlist, that is
+  // packages/google-sheets-mcp-server instead — the two coexist deliberately.
+
+  router.get("/companies/:companyId/google-sheets/readiness", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.json({ configured: false, canUse: false });
+      return;
+    }
+    res.json(await sheetsReadiness(db, userId));
+  });
+
+  /**
+   * Tabs + sizes for one spreadsheet. `id` accepts a bare id OR a pasted Sheets URL,
+   * because the URL is what a human actually has to hand.
+   */
+  router.get("/companies/:companyId/google-sheets/:id", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.json(notConnected("auth_required"));
+      return;
+    }
+    const spreadsheetId = parseSpreadsheetId(req.params.id as string);
+    if (!spreadsheetId) {
+      res.status(400).json({ error: "id must be a spreadsheet id or a Google Sheets URL" });
+      return;
+    }
+    const result = await getSpreadsheet(db, userId, spreadsheetId);
+    if (!result.connected) {
+      res.json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "sheets.read_metadata", "google_sheets", spreadsheetId, {
+      onBehalfOfUserId: userId,
+      tabs: result.data.tabs.length,
+    });
+    res.json({ connected: true, spreadsheet: result.data });
+  });
+
+  /** Read an A1 range, e.g. ?range=工作表1!A1:F50 */
+  router.get("/companies/:companyId/google-sheets/:id/values", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.json({ ...notConnected("auth_required"), values: [] });
+      return;
+    }
+    const spreadsheetId = parseSpreadsheetId(req.params.id as string);
+    const range = typeof req.query.range === "string" ? req.query.range : "";
+    if (!spreadsheetId || !range) {
+      res.status(400).json({ error: "a spreadsheet id/URL and ?range= are required" });
+      return;
+    }
+    const result = await readRange(db, userId, spreadsheetId, range);
+    if (!result.connected) {
+      res.json({ ...notConnected(result.reason), values: [] });
+      return;
+    }
+    await audit(req, companyId, "sheets.read_values", "google_sheets", spreadsheetId, {
+      onBehalfOfUserId: userId,
+      range,
+      rows: result.data.values.length,
+    });
+    res.json({ connected: true, ...result.data });
+  });
+
+  /** Append rows below the existing data — the safe write. */
+  router.post("/companies/:companyId/google-sheets/:id/append", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const spreadsheetId = parseSpreadsheetId(req.params.id as string);
+    const range = typeof req.body?.range === "string" ? req.body.range : "";
+    const values = Array.isArray(req.body?.values) ? (req.body.values as string[][]) : null;
+    if (!spreadsheetId || !range || !values) {
+      res.status(400).json({ error: "spreadsheet id/URL, range and values[][] are required" });
+      return;
+    }
+    const result = await appendRows(db, userId, spreadsheetId, range, values);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "sheets.append", "google_sheets", spreadsheetId, {
+      onBehalfOfUserId: userId,
+      range,
+      rows: values.length,
+    });
+    res.json({ connected: true, ...result.data });
+  });
+
+  /**
+   * Overwrite an explicit range. Separate from append because this is how a routine
+   * silently destroys someone's hand-edited rows — the caller has to mean it.
+   */
+  router.put("/companies/:companyId/google-sheets/:id/values", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const spreadsheetId = parseSpreadsheetId(req.params.id as string);
+    const range = typeof req.body?.range === "string" ? req.body.range : "";
+    const values = Array.isArray(req.body?.values) ? (req.body.values as string[][]) : null;
+    if (!spreadsheetId || !range || !values) {
+      res.status(400).json({ error: "spreadsheet id/URL, range and values[][] are required" });
+      return;
+    }
+    const result = await updateRange(db, userId, spreadsheetId, range, values);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "sheets.overwrite", "google_sheets", spreadsheetId, {
+      onBehalfOfUserId: userId,
+      range,
+      rows: values.length,
+    });
+    res.json({ connected: true, ...result.data });
+  });
+
+  /** Create a new spreadsheet owned by the caller. */
+  router.post("/companies/:companyId/google-sheets", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+    if (!title) {
+      res.status(400).json({ error: "title is required" });
+      return;
+    }
+    const result = await createSpreadsheet(db, userId, title);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "sheets.created", "google_sheets", result.data.spreadsheetId, {
+      onBehalfOfUserId: userId,
+      title,
+    });
+    res.status(201).json({ connected: true, spreadsheet: result.data });
+  });
 
   // ── Google Chat history ─────────────────────────────────────────────────
 

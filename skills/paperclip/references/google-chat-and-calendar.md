@@ -293,3 +293,76 @@ Answers "look through my chat history and see if anything needs attention". The
 sweep is bounded (20 spaces × 30 messages by default, tunable via `maxSpaces` /
 `perSpace`), so **always pass `since` when the question has a time frame** —
 otherwise you see a recent slice and may miss older matches. Every read is logged.
+
+---
+
+# Google Sheets (read + write) — server-side, per user
+
+Acts with the responsible user's OWN token, like the endpoints above. Use this for
+anything belonging to a person. For SHARED company spreadsheets on a service account
+with an id allowlist, the separate `google-sheets-mcp-server` connection exists — the
+two are different tools for different jobs.
+
+**You cannot search Drive for a sheet.** The app holds `drive.file` only, so you need
+the spreadsheet id — paste the Google Sheets URL and the endpoints extract it — or a
+sheet you created yourself through the create endpoint below.
+
+### Tabs and sizes (do this first)
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-sheets/<idOrUrl>"
+```
+
+Returns the title, URL and every tab with its row/column counts, so you can build a
+correct A1 range instead of guessing one.
+
+### Read a range
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-sheets/<idOrUrl>/values?range=工作表1!A1:F50"
+```
+
+Capped at 2000 rows. Ask for the range you need rather than the whole sheet.
+
+### Append rows (the safe write)
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-sheets/<idOrUrl>/append" \
+  -d '{"range":"工作表1!A:F","values":[["2026-07-31","王小明","報到"]]}'
+```
+
+Adds rows below the existing data. **Prefer this over overwriting.**
+
+### Overwrite an explicit range
+
+```bash
+curl -s -X PUT -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-sheets/<idOrUrl>/values" \
+  -d '{"range":"工作表1!A2:C2","values":[["updated","row","here"]]}'
+```
+
+This REPLACES those cells. It is how a routine silently destroys a colleague's
+hand-edited rows, so only use it when you mean exactly those cells, and never widen
+the range "to be safe". If you are refreshing a generated block, overwrite only that
+block and leave human-edited columns alone.
+
+### Create a new spreadsheet
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-sheets" \
+  -d '{"title":"2026 Q3 招生統計"}'
+```
+
+Returns the new id and URL. Sheets created this way are app-created, so they stay
+reachable afterwards.
+
+`{"connected": false, "reason": "not_found"}` usually means the user cannot open that
+spreadsheet, not that the id is wrong — ask them to share it with themselves' account
+or send a different link.

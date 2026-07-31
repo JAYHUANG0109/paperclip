@@ -341,6 +341,11 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
               "https://www.googleapis.com/auth/gmail.compose",
               "https://www.googleapis.com/auth/chat.spaces.readonly",
               "https://www.googleapis.com/auth/chat.messages.readonly",
+              // `spreadsheets` → read AND write the sheets this user can already open
+              // (services/google-sheets.ts). Note the app holds only `drive.file`, so it
+              // still cannot browse Drive: a caller must supply a spreadsheet id/URL, or
+              // use a sheet the app itself created.
+              "https://www.googleapis.com/auth/spreadsheets",
             ],
             accessType: "offline" as const,
             prompt: "consent" as const,
