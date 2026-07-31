@@ -47,9 +47,19 @@ export interface DocumentContent {
   truncated: boolean;
 }
 
+export type FailureReason =
+  | "auth_required"
+  | "not_configured"
+  | "scope_missing"
+  | "not_found"
+  /** Google rejected the request itself — bad range, bad objectId, malformed body. */
+  | "bad_request"
+  | "rate_limited";
+
 export type DocsResult<T> =
   | { connected: true; data: T }
-  | { connected: false; reason: "auth_required" | "not_configured" | "scope_missing" | "not_found" };
+  /** `detail` carries Google's own error message when it sent one. */
+  | { connected: false; reason: FailureReason; detail?: string };
 
 function googleClientCreds(): { clientId: string; clientSecret: string } | null {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
@@ -133,10 +143,33 @@ async function docsFetch(token: string, path: string, init: RequestInit = {}): P
   });
 }
 
-function failureReason(status: number): "scope_missing" | "not_found" | "auth_required" {
-  if (status === 403) return "scope_missing";
-  if (status === 404) return "not_found";
-  return "auth_required";
+/**
+ * Turn a Google error response into a typed failure, keeping Google's own message.
+ *
+ * The previous version mapped every non-403/404 to `auth_required`, which made a plain
+ * 400 ("invalid objectId") look like an expired token — an agent hit exactly that and
+ * spent its run diagnosing a scope problem that did not exist. Anything the caller can
+ * fix must say so, and Google's message is far more useful than our guess.
+ */
+async function failure(res: Response): Promise<{ connected: false; reason: FailureReason; detail?: string }> {
+  let detail = "";
+  try {
+    const text = await res.text();
+    try {
+      detail = (JSON.parse(text) as { error?: { message?: string } })?.error?.message ?? text.slice(0, 300);
+    } catch {
+      detail = text.slice(0, 300);
+    }
+  } catch {
+    /* body already consumed or unreadable */
+  }
+  const reason: FailureReason =
+    res.status === 403 ? "scope_missing"
+      : res.status === 404 ? "not_found"
+        : res.status === 400 ? "bad_request"
+          : res.status === 429 ? "rate_limited"
+            : "auth_required";
+  return { connected: false, reason, ...(detail ? { detail } : {}) };
 }
 
 type ApiParagraphElement = { textRun?: { content?: string } };
@@ -181,7 +214,7 @@ export async function getDocument(
   if (!token) return { connected: false, reason: "auth_required" };
 
   const res = await docsFetch(token, `/${encodeURIComponent(documentId)}`);
-  if (!res.ok) return { connected: false, reason: failureReason(res.status) };
+  if (!res.ok) return failure(res);
   const json = (await res.json()) as {
     documentId?: string;
     title?: string;
@@ -212,7 +245,7 @@ export async function createDocument(
   if (!token) return { connected: false, reason: "auth_required" };
 
   const res = await docsFetch(token, "", { method: "POST", body: JSON.stringify({ title }) });
-  if (!res.ok) return { connected: false, reason: failureReason(res.status) };
+  if (!res.ok) return failure(res);
   const json = (await res.json()) as { documentId?: string; title?: string };
   const id = json.documentId ?? "";
   const filed = id ? await fileIntoOutputFolder(token, id) : { moved: false };
@@ -243,7 +276,7 @@ async function batchUpdate(
     method: "POST",
     body: JSON.stringify({ requests }),
   });
-  if (!res.ok) return { connected: false, reason: failureReason(res.status) };
+  if (!res.ok) return failure(res);
   const json = (await res.json()) as { replies?: unknown[] };
   return { connected: true, data: { replies: (json.replies ?? []).length } };
 }

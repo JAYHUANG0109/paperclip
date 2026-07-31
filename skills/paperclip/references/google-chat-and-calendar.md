@@ -422,12 +422,26 @@ curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
 
 ### Type into one shape
 
+`objectId` must be a **SHAPE** id, not a slide id. Read the deck first and take an id
+from a slide's `shapes[]` — each entry has `objectId`, its current `text`, and its
+`placeholder` role (`TITLE`, `BODY`, …), so pick the shape you mean:
+
 ```bash
+# 1. find the shape
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-slides/<idOrUrl>" \
+  | jq '.presentation.slides[].shapes[] | {objectId, placeholder, text}'
+
+# 2. write into it
 curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "content-type: application/json" \
   "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-slides/<idOrUrl>/text" \
-  -d '{"objectId":"<from the GET above>","text":"本月招生 42 人"}'
+  -d '{"objectId":"<a shapes[].objectId>","text":"本月招生 42 人"}'
 ```
+
+Passing a slide id returns `{"connected":false,"reason":"bad_request","detail":"…"}` with
+Google's explanation. **`bad_request` means the request was wrong, not that auth failed** —
+read `detail` and fix the call rather than assuming a scope or token problem.
 
 ### Create a deck
 

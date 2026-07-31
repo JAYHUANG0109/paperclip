@@ -41,11 +41,26 @@ const EXPIRY_SKEW_MS = 60_000;
 /** Cap extracted text so one deck cannot flood an agent's context. */
 const MAX_SLIDES = 200;
 
+export interface SlideShape {
+  /** The id insertText needs. A SLIDE id will not work — Google rejects it with a 400. */
+  objectId: string;
+  text: string;
+  /** Placeholder role when the shape is one, e.g. TITLE / BODY / SUBTITLE. */
+  placeholder: string | null;
+}
+
 export interface SlideSummary {
+  /** The SLIDE's id. Useful for ordering; NOT valid for insertText. */
   objectId: string;
   index: number;
   /** Text found on the slide, joined per shape — enough to know what the slide says. */
   text: string[];
+  /**
+   * The text-capable shapes on this slide, each with the objectId insertText wants.
+   * Without this the /text endpoint was uncallable: callers only had slide ids, which
+   * Google rejects, and the failure used to surface as a misleading auth error.
+   */
+  shapes: SlideShape[];
 }
 
 export interface PresentationMetadata {
@@ -56,9 +71,19 @@ export interface PresentationMetadata {
   slides: SlideSummary[];
 }
 
+export type FailureReason =
+  | "auth_required"
+  | "not_configured"
+  | "scope_missing"
+  | "not_found"
+  /** Google rejected the request itself — bad range, bad objectId, malformed body. */
+  | "bad_request"
+  | "rate_limited";
+
 export type SlidesResult<T> =
   | { connected: true; data: T }
-  | { connected: false; reason: "auth_required" | "not_configured" | "scope_missing" | "not_found" };
+  /** `detail` carries Google's own error message when it sent one. */
+  | { connected: false; reason: FailureReason; detail?: string };
 
 function googleClientCreds(): { clientId: string; clientSecret: string } | null {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
@@ -142,16 +167,57 @@ async function slidesFetch(token: string, path: string, init: RequestInit = {}):
   });
 }
 
-function failureReason(status: number): "scope_missing" | "not_found" | "auth_required" {
-  if (status === 403) return "scope_missing";
-  if (status === 404) return "not_found";
-  return "auth_required";
+/**
+ * Turn a Google error response into a typed failure, keeping Google's own message.
+ *
+ * The previous version mapped every non-403/404 to `auth_required`, which made a plain
+ * 400 ("invalid objectId") look like an expired token — an agent hit exactly that and
+ * spent its run diagnosing a scope problem that did not exist. Anything the caller can
+ * fix must say so, and Google's message is far more useful than our guess.
+ */
+async function failure(res: Response): Promise<{ connected: false; reason: FailureReason; detail?: string }> {
+  let detail = "";
+  try {
+    const text = await res.text();
+    try {
+      detail = (JSON.parse(text) as { error?: { message?: string } })?.error?.message ?? text.slice(0, 300);
+    } catch {
+      detail = text.slice(0, 300);
+    }
+  } catch {
+    /* body already consumed or unreadable */
+  }
+  const reason: FailureReason =
+    res.status === 403 ? "scope_missing"
+      : res.status === 404 ? "not_found"
+        : res.status === 400 ? "bad_request"
+          : res.status === 429 ? "rate_limited"
+            : "auth_required";
+  return { connected: false, reason, ...(detail ? { detail } : {}) };
 }
 
 type ApiTextElement = { textRun?: { content?: string } };
-type ApiShape = { text?: { textElements?: ApiTextElement[] } };
-type ApiPageElement = { shape?: ApiShape };
+type ApiShape = {
+  text?: { textElements?: ApiTextElement[] };
+  placeholder?: { type?: string };
+};
+type ApiPageElement = { objectId?: string; shape?: ApiShape };
 type ApiSlide = { objectId?: string; pageElements?: ApiPageElement[] };
+
+/** Text-capable shapes on a slide, with the ids insertText requires. */
+function slideShapes(slide: ApiSlide): SlideShape[] {
+  const out: SlideShape[] = [];
+  for (const el of slide.pageElements ?? []) {
+    if (!el.shape || !el.objectId) continue;
+    const text = (el.shape.text?.textElements ?? [])
+      .map((t) => t.textRun?.content ?? "")
+      .join("")
+      .replace(/\v/g, "\n")
+      .trim();
+    out.push({ objectId: el.objectId, text, placeholder: el.shape.placeholder?.type ?? null });
+  }
+  return out;
+}
 
 /** Flatten a slide's shapes into readable strings, dropping empty runs. */
 function slideText(slide: ApiSlide): string[] {
@@ -178,7 +244,7 @@ export async function getPresentation(
   if (!token) return { connected: false, reason: "auth_required" };
 
   const res = await slidesFetch(token, `/${encodeURIComponent(presentationId)}`);
-  if (!res.ok) return { connected: false, reason: failureReason(res.status) };
+  if (!res.ok) return failure(res);
   const json = (await res.json()) as { presentationId?: string; title?: string; slides?: ApiSlide[] };
   const slides = (json.slides ?? []).slice(0, MAX_SLIDES);
   return {
@@ -188,7 +254,7 @@ export async function getPresentation(
       title: json.title ?? null,
       url: `https://docs.google.com/presentation/d/${json.presentationId ?? presentationId}/edit`,
       slideCount: (json.slides ?? []).length,
-      slides: slides.map((s, index) => ({ objectId: s.objectId ?? "", index, text: slideText(s) })),
+      slides: slides.map((s, index) => ({ objectId: s.objectId ?? "", index, text: slideText(s), shapes: slideShapes(s) })),
     },
   };
 }
@@ -210,7 +276,7 @@ export async function createPresentation(
   if (!token) return { connected: false, reason: "auth_required" };
 
   const res = await slidesFetch(token, "", { method: "POST", body: JSON.stringify({ title }) });
-  if (!res.ok) return { connected: false, reason: failureReason(res.status) };
+  if (!res.ok) return failure(res);
   const json = (await res.json()) as { presentationId?: string; title?: string; slides?: ApiSlide[] };
   const id = json.presentationId ?? "";
   const filed = id ? await fileIntoOutputFolder(token, id) : { moved: false };
@@ -222,7 +288,7 @@ export async function createPresentation(
       url: id ? `https://docs.google.com/presentation/d/${id}/edit` : null,
       slideCount: (json.slides ?? []).length,
       filedInOutputFolder: filed.moved,
-      slides: (json.slides ?? []).map((s, index) => ({ objectId: s.objectId ?? "", index, text: slideText(s) })),
+      slides: (json.slides ?? []).map((s, index) => ({ objectId: s.objectId ?? "", index, text: slideText(s), shapes: slideShapes(s) })),
     },
   };
 }
@@ -241,7 +307,7 @@ async function batchUpdate(
     method: "POST",
     body: JSON.stringify({ requests }),
   });
-  if (!res.ok) return { connected: false, reason: failureReason(res.status) };
+  if (!res.ok) return failure(res);
   const json = (await res.json()) as { replies?: unknown[] };
   return { connected: true, data: { replies: (json.replies ?? []).length } };
 }

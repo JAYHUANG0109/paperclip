@@ -75,8 +75,22 @@ function actorFor(req: Request): { actorType: "agent" | "user" | "system"; actor
   return { actorType: "system", actorId: "system" };
 }
 
-function notConnected(reason: string) {
-  return { connected: false as const, reason };
+/**
+ * Shape a failure for the client. `detail` carries Google's own message when there is
+ * one — without it a 400 ("invalid objectId") reads like an auth failure, which is
+ * exactly how an agent once spent a whole run blaming scopes.
+ */
+/** Safely pull Google's message off a failure — not every service's union carries one. */
+function failureDetail(result: unknown): string | undefined {
+  if (result && typeof result === "object" && "detail" in result) {
+    const value = (result as { detail?: unknown }).detail;
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+function notConnected(reason: string, detail?: string) {
+  return { connected: false as const, reason, ...(detail ? { detail } : {}) };
 }
 
 export function googleWorkspaceRoutes(db: Db) {
@@ -150,7 +164,7 @@ export function googleWorkspaceRoutes(db: Db) {
       maxResults: Number.isFinite(limit) ? limit : 20,
     });
     if (!result.connected) {
-      res.json({ ...notConnected(result.reason), messages: [] });
+      res.json({ ...notConnected(result.reason, failureDetail(result)), messages: [] });
       return;
     }
     await audit(req, companyId, "gmail.search", "gmail", userId, {
@@ -175,7 +189,7 @@ export function googleWorkspaceRoutes(db: Db) {
     const format = req.query.format === "full" ? "full" : "metadata";
     const result = await getMail(db, userId, req.params.messageId as string, { format });
     if (!result.connected) {
-      res.json(notConnected(result.reason));
+      res.json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(
@@ -200,7 +214,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await listDrafts(db, userId, {});
     if (!result.connected) {
-      res.json({ ...notConnected(result.reason), drafts: [] });
+      res.json({ ...notConnected(result.reason, failureDetail(result)), drafts: [] });
       return;
     }
     res.json({ connected: true, drafts: result.data });
@@ -236,7 +250,7 @@ export function googleWorkspaceRoutes(db: Db) {
       inReplyTo: typeof body.inReplyTo === "string" ? body.inReplyTo : undefined,
     });
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "gmail.draft_created", "gmail", result.data.draftId, {
@@ -268,7 +282,7 @@ export function googleWorkspaceRoutes(db: Db) {
       maxResults: Number.isFinite(limit) ? limit : 20,
     });
     if (!result.connected) {
-      res.json({ ...notConnected(result.reason), messages: [] });
+      res.json({ ...notConnected(result.reason, failureDetail(result)), messages: [] });
       return;
     }
     await audit(req, companyId, "gmail.search", "gmail", userId, {
@@ -316,7 +330,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await getSpreadsheet(db, userId, spreadsheetId);
     if (!result.connected) {
-      res.json(notConnected(result.reason));
+      res.json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "sheets.read_metadata", "google_sheets", spreadsheetId, {
@@ -343,7 +357,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await readRange(db, userId, spreadsheetId, range);
     if (!result.connected) {
-      res.json({ ...notConnected(result.reason), values: [] });
+      res.json({ ...notConnected(result.reason, failureDetail(result)), values: [] });
       return;
     }
     await audit(req, companyId, "sheets.read_values", "google_sheets", spreadsheetId, {
@@ -372,7 +386,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await appendRows(db, userId, spreadsheetId, range, values);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "sheets.append", "google_sheets", spreadsheetId, {
@@ -404,7 +418,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await updateRange(db, userId, spreadsheetId, range, values);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "sheets.overwrite", "google_sheets", spreadsheetId, {
@@ -431,7 +445,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await createSpreadsheet(db, userId, title);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "sheets.created", "google_sheets", result.data.spreadsheetId, {
@@ -473,7 +487,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await getDocument(db, userId, documentId);
     if (!result.connected) {
-      res.json(notConnected(result.reason));
+      res.json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "docs.read", "google_docs", documentId, {
@@ -500,7 +514,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await createDocument(db, userId, title);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "docs.created", "google_docs", result.data.documentId, {
@@ -537,7 +551,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await replaceDocText(db, userId, documentId, replacements);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "docs.replace_text", "google_docs", documentId, {
@@ -564,7 +578,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await appendDocText(db, userId, documentId, text);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "docs.append", "google_docs", documentId, {
@@ -606,7 +620,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await getPresentation(db, userId, presentationId);
     if (!result.connected) {
-      res.json(notConnected(result.reason));
+      res.json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "slides.read", "google_slides", presentationId, {
@@ -632,7 +646,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await createPresentation(db, userId, title);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "slides.created", "google_slides", result.data.presentationId, {
@@ -672,7 +686,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await replaceText(db, userId, presentationId, replacements);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "slides.replace_text", "google_slides", presentationId, {
@@ -702,7 +716,7 @@ export function googleWorkspaceRoutes(db: Db) {
       ...(typeof req.body?.layout === "string" ? { layout: req.body.layout } : {}),
     });
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "slides.add_slide", "google_slides", presentationId, {
@@ -729,7 +743,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await insertText(db, userId, presentationId, objectId, text);
     if (!result.connected) {
-      res.status(422).json(notConnected(result.reason));
+      res.status(422).json(notConnected(result.reason, failureDetail(result)));
       return;
     }
     await audit(req, companyId, "slides.insert_text", "google_slides", presentationId, {
@@ -763,7 +777,7 @@ export function googleWorkspaceRoutes(db: Db) {
     }
     const result = await listUserSpaces(db, userId, { audit: chatAudit(req, companyId) });
     if (!result.connected) {
-      res.json({ ...notConnected(result.reason), spaces: [] });
+      res.json({ ...notConnected(result.reason, failureDetail(result)), spaces: [] });
       return;
     }
     res.json({ connected: true, spaces: result.data });
@@ -793,7 +807,7 @@ export function googleWorkspaceRoutes(db: Db) {
       audit: chatAudit(req, companyId),
     });
     if (!result.connected) {
-      res.json({ ...notConnected(result.reason), messages: [] });
+      res.json({ ...notConnected(result.reason, failureDetail(result)), messages: [] });
       return;
     }
     res.json({ connected: true, messages: result.data });
@@ -822,7 +836,7 @@ export function googleWorkspaceRoutes(db: Db) {
       audit: chatAudit(req, companyId),
     });
     if (!result.connected) {
-      res.json({ ...notConnected(result.reason), results: [] });
+      res.json({ ...notConnected(result.reason, failureDetail(result)), results: [] });
       return;
     }
     res.json({ connected: true, results: result.data });
