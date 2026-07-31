@@ -139,7 +139,15 @@ type ResolvedDependencyWakeBackstopOptions = {
 
 type LatestIssueRun = Pick<
   typeof heartbeatRuns.$inferSelect,
-  "id" | "agentId" | "status" | "error" | "errorCode" | "contextSnapshot" | "livenessState"
+  | "id"
+  | "agentId"
+  | "status"
+  | "error"
+  | "errorCode"
+  | "contextSnapshot"
+  | "livenessState"
+  | "startedAt"
+  | "createdAt"
 > & {
   resultJson?: unknown;
 } | null;
@@ -713,6 +721,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
+        startedAt: heartbeatRuns.startedAt,
+        createdAt: heartbeatRuns.createdAt,
       })
       .from(heartbeatRuns)
       .where(
@@ -741,6 +751,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
+        startedAt: heartbeatRuns.startedAt,
+        createdAt: heartbeatRuns.createdAt,
       })
       .from(heartbeatRuns)
       .where(
@@ -877,6 +889,29 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       .then((rows) => Boolean(rows[0]));
   }
 
+  async function wasTodoHandedBackDuringOrAfterLatestRun(
+    issue: typeof issues.$inferSelect,
+    latestRun: LatestIssueRun,
+  ) {
+    if (issue.status !== "todo" || latestRun?.status !== "succeeded") return false;
+    const runBeganAt = latestRun.startedAt ?? latestRun.createdAt;
+
+    return db
+      .select({ id: issueRecoveryActions.id })
+      .from(issueRecoveryActions)
+      .where(
+        and(
+          eq(issueRecoveryActions.companyId, issue.companyId),
+          eq(issueRecoveryActions.sourceIssueId, issue.id),
+          eq(issueRecoveryActions.status, "resolved"),
+          eq(issueRecoveryActions.outcome, "handed_back"),
+          gte(issueRecoveryActions.resolvedAt, runBeganAt),
+        ),
+      )
+      .limit(1)
+      .then((rows) => Boolean(rows[0]));
+  }
+
   async function hasQueuedIssueWake(companyId: string, issueId: string, agentId?: string | null) {
     return db
       .select({ id: agentWakeupRequests.id })
@@ -955,6 +990,8 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
         contextSnapshot: heartbeatRuns.contextSnapshot,
         livenessState: heartbeatRuns.livenessState,
         resultJson: heartbeatRuns.resultJson,
+        startedAt: heartbeatRuns.startedAt,
+        createdAt: heartbeatRuns.createdAt,
       })
       .from(heartbeatRuns)
       .where(
@@ -3929,7 +3966,10 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
           continue;
         }
 
-        if (latestRun.status === "succeeded") {
+        if (
+          latestRun.status === "succeeded" &&
+          !(await wasTodoHandedBackDuringOrAfterLatestRun(issue, latestRun))
+        ) {
           result.skipped += 1;
           continue;
         }
