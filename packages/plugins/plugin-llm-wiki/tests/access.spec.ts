@@ -24,6 +24,41 @@ describe("spaceScopeVisible", () => {
     expect(spaceScopeVisible(agentSpace, { userId: "alice" })).toBe(false);
   });
 
+  // An agent's tool calls now carry a viewer whose userId is the agent's MAPPED
+  // user (its direct agent_memberships join), not whoever triggered the run. So
+  // when a campus head drives a member's agent, that agent reaches the member's
+  // space and not the campus head's.
+  it("an agent carrying its mapped user reaches that user's personal space", () => {
+    const mappedToAlice = { userId: "alice", agentId: "agent-1", isPrivileged: false };
+    expect(spaceScopeVisible(personalAlice, mappedToAlice)).toBe(true);
+  });
+
+  it("driving another user's agent does NOT expose the driver's own space", () => {
+    // Campus head "bob" runs alice's agent: the viewer is alice's, so bob's own
+    // personal space is out of reach for that agent.
+    const personalBob = { accessScope: "personal", ownerUserId: "bob", slug: "personal-bob" };
+    const aliceAgentViewer = { userId: "alice", agentId: "agent-1", isPrivileged: false };
+    expect(spaceScopeVisible(personalBob, aliceAgentViewer)).toBe(false);
+    expect(spaceScopeVisible(personalAlice, aliceAgentViewer)).toBe(true);
+  });
+
+  it("an agent is never privileged, so it cannot read a third party's space", () => {
+    // The acting agent must not inherit the admin rights of whoever triggered
+    // the run, or driving an agent would become a way to read everything.
+    const agentViewer = { userId: "alice", agentId: "agent-1", isPrivileged: false };
+    const personalCarol = { accessScope: "personal", ownerUserId: "carol", slug: "personal-carol" };
+    expect(spaceScopeVisible(personalCarol, agentViewer)).toBe(false);
+  });
+
+  it("an agent with an ambiguous mapping (null user) still reads only its own space", () => {
+    // resolveAgentMappedUserId returns null when an agent maps to several users,
+    // rather than guessing and handing one user's space to another's agent.
+    const unmapped = { userId: null, agentId: "agent-1", isPrivileged: false };
+    expect(spaceScopeVisible(personalAlice, unmapped)).toBe(false);
+    expect(spaceScopeVisible(agentSpace, unmapped)).toBe(true);
+    expect(spaceScopeVisible(shared, unmapped)).toBe(true);
+  });
+
   it("team spaces are visible to members of the team (and the owner)", () => {
     expect(spaceScopeVisible(teamEng, { userId: "bob", teams: ["eng", "design"] })).toBe(true);
     expect(spaceScopeVisible(teamEng, { userId: "bob", teams: ["design"] })).toBe(false);

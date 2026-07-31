@@ -56,7 +56,10 @@ describe("wiki space gate — resolveSpace enforcement (deploy gate)", () => {
     expect(s.slug).toBe("p-alice");
   });
 
-  it("NO viewer = trusted/system path (agent tools, distillation) — not gated", async () => {
+  // Agent tools are NO LONGER in this bucket: the host now injects a viewer on
+  // the tool transport too, so only the event-ingestion path (which has no HTTP
+  // actor) still reaches here viewer-less.
+  it("NO viewer = trusted/system path (event ingestion, distillation) — not gated", async () => {
     const ctx = ctxReturning([personalAlice]);
     const s = await resolveSpace(ctx, { companyId: "c1", spaceSlug: "p-alice" });
     expect(s.slug).toBe("p-alice");

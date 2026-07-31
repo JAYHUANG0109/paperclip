@@ -28,6 +28,7 @@ import type { Request, Response } from "express";
 import { and, desc, eq, gte } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
+  agentMemberships,
   agents,
   companies,
   heartbeatRuns,
@@ -776,6 +777,71 @@ export function pluginRoutes(
     return { ...rest, __pcViewer: resolvePluginViewer(req, companyId) };
   }
 
+  /**
+   * The user an agent is MAPPED to — its direct `agent_memberships` join.
+   *
+   * Deliberately NOT the transitive report closure that
+   * `getVisibleAgentIdsForUser` builds for *visibility*: mapping is ownership,
+   * and a manager's agent must not inherit its subordinates' owners.
+   *
+   * Personal-space access follows the agent's mapped user, never the human
+   * currently driving it. When a campus head runs a member's agent, that agent
+   * still reads the member's private space, not the campus head's.
+   *
+   * Ambiguity fails CLOSED: if an agent is mapped to more than one user we
+   * return null rather than pick one, because guessing would hand one user's
+   * private space to another user's agent.
+   */
+  async function resolveAgentMappedUserId(companyId: string, agentId: string): Promise<string | null> {
+    try {
+      const rows = await db
+        .select({ userId: agentMemberships.userId })
+        .from(agentMemberships)
+        .where(
+          and(
+            eq(agentMemberships.companyId, companyId),
+            eq(agentMemberships.agentId, agentId),
+            eq(agentMemberships.state, "joined"),
+          ),
+        );
+      const unique = [...new Set(rows.map((r) => r.userId))];
+      return unique.length === 1 ? (unique[0] ?? null) : null;
+    } catch {
+      // Never let a mapping lookup break tool execution. Degrading to null is
+      // fail-CLOSED for access (the agent keeps shared spaces and its own, and
+      // loses its mapped user's personal ones) rather than fail-open.
+      return null;
+    }
+  }
+
+  /**
+   * Authoritative viewer for the plugin TOOL transport.
+   *
+   * This path used to inject nothing, and `guardSpace` no-ops when no viewer is
+   * present, so any agent's wiki tools could read any other user's or agent's
+   * personal space. Shared spaces remain visible to every viewer, so gating
+   * here removes only cross-owner access.
+   *
+   * An acting agent is never privileged: it must not inherit the admin rights
+   * of whoever triggered the run, or driving someone's agent would become a way
+   * to read everything.
+   */
+  async function resolvePluginToolViewer(
+    req: Request,
+    companyId: string,
+    runContextAgentId: string | undefined,
+  ): Promise<{ userId: string | null; agentId: string | null; isPrivileged: boolean }> {
+    if (req.actor.type === "agent") {
+      const actingAgentId = runContextAgentId ?? req.actor.agentId ?? null;
+      return {
+        userId: actingAgentId ? await resolveAgentMappedUserId(companyId, actingAgentId) : null,
+        agentId: actingAgentId,
+        isPrivileged: false,
+      };
+    }
+    return resolvePluginViewer(req, companyId);
+  }
+
   function performActionActorContext(req: Request, companyId: string | undefined): PluginPerformActionActorContext {
     const scopedCompanyId = companyId ?? null;
     if (req.actor.type === "agent") {
@@ -1060,6 +1126,15 @@ export function pluginRoutes(
       return;
     }
 
+    // Strip any caller-supplied __pcViewer and set the authoritative one, exactly
+    // as the getData/performAction transports do. Without this the tool path
+    // reaches guardSpace with no viewer, which no-ops.
+    const { __pcViewer: _droppedToolViewer, ...callerParameters } = (parameters ?? {}) as Record<string, unknown>;
+    const toolParameters: Record<string, unknown> = {
+      ...callerParameters,
+      __pcViewer: await resolvePluginToolViewer(req, runContext.companyId, runContext.agentId),
+    };
+
     if (req.actor.type === "agent" && toolGatewayDeps) {
       try {
         const result = await toolGatewayDeps.toolGateway.executePluginTool({
@@ -1070,7 +1145,7 @@ export function pluginRoutes(
             runId: req.actor.runId ?? null,
           },
           tool,
-          parameters: parameters ?? {},
+          parameters: toolParameters,
           runContext,
         });
         res.json(result);
@@ -1099,7 +1174,7 @@ export function pluginRoutes(
     try {
       const result = await toolDeps.toolDispatcher.executeTool(
         tool,
-        parameters ?? {},
+        toolParameters,
         runContext,
       );
       res.json(result);

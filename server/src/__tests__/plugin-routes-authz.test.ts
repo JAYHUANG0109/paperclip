@@ -663,7 +663,13 @@ describe.sequential("plugin tool and bridge authz", () => {
     expect(res.status).toBe(200);
     expect(executeTool).toHaveBeenCalledWith(
       "paperclip.example:search",
-      { q: "test" },
+      // The tool transport now carries the host-resolved viewer, like getData and
+      // performAction, so plugins can gate per-space access. This caller is a
+      // board user, hence userId set and agentId null.
+      {
+        q: "test",
+        __pcViewer: { userId: "user-1", agentId: null, isPrivileged: false },
+      },
       {
         agentId: agentA,
         runId: runA,
@@ -1044,7 +1050,14 @@ describe.sequential("plugin tool and bridge authz", () => {
     expect(res.status).toBe(200);
     expect(executeTool).toHaveBeenCalledWith(
       "paperclip.example:search",
-      { q: "test" },
+      // An acting agent's viewer names the agent and is never privileged, so it
+      // cannot inherit the rights of whoever triggered the run. userId is the
+      // agent's MAPPED user, null here because this fixture has no
+      // agent_memberships row.
+      {
+        q: "test",
+        __pcViewer: { userId: null, agentId: agentA, isPrivileged: false },
+      },
       { agentId: agentA, runId: runA, companyId: companyA, projectId: projectA },
     );
   });

@@ -7,11 +7,18 @@
  * implicit) see everything.
  *
  * This module is intentionally PURE and side-effect free so it can be unit
- * tested in isolation and reused wherever a space is resolved. It is NOT yet
- * wired into the read/write path — enforcement requires threading an actor into
- * the plugin worker (incl. the getData transport, which carries no actor today)
- * and resolving the privileged flag host-side. See
- * doc/WIKI-SPACE-ACCESS-PLAN.md for the sequenced enforcement steps.
+ * tested in isolation and reused wherever a space is resolved.
+ *
+ * Enforcement IS live. The host resolves the viewer from `req.actor` (never from
+ * caller params) and injects it as `__pcViewer` on all four transports —
+ * getData, performAction, onApiRequest and tool execution (see
+ * `resolvePluginViewer` / `injectPluginViewer` / `resolvePluginToolViewer` in
+ * server/src/routes/plugins.ts). Only the event-ingestion path stays viewer-less
+ * and trusted, by design.
+ *
+ * For an acting agent the injected `userId` is the agent's MAPPED user (its
+ * direct agent_memberships join), not whoever triggered the run, and
+ * `isPrivileged` is always false. See doc/WIKI-SPACE-ACCESS-PLAN.md.
  */
 
 export type WikiSpaceViewer = {
