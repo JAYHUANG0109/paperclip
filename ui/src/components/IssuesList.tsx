@@ -722,14 +722,21 @@ export function IssuesList({
       ISSUE_SEARCH_RESULT_LIMIT,
       enableRoutineVisibilityFilter ? "with-routine-executions" : "without-routine-executions",
     ],
-    queryFn: () =>
-      issuesApi.list(selectedCompanyId!, {
-        q: normalizedIssueSearch,
-        projectId,
-        limit: ISSUE_SEARCH_RESULT_LIMIT,
-        ...searchFilters,
-        ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
-      }),
+    // Forward the query's abort signal so a superseded search stops in flight
+    // and can coalesce, matching ActivityFeed/Training. Search re-fires on
+    // every keystroke, so this is where it matters most.
+    queryFn: ({ signal }) =>
+      issuesApi.list(
+        selectedCompanyId!,
+        {
+          q: normalizedIssueSearch,
+          projectId,
+          limit: ISSUE_SEARCH_RESULT_LIMIT,
+          ...searchFilters,
+          ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
+        },
+        { signal },
+      ),
     enabled: !!selectedCompanyId && normalizedIssueSearch.length > 0 && !searchWithinLoadedIssues,
     placeholderData: (previousData) => previousData,
   });
@@ -745,15 +752,19 @@ export function IssuesList({
         ISSUE_BOARD_COLUMN_RESULT_LIMIT,
         enableRoutineVisibilityFilter ? "with-routine-executions" : "without-routine-executions",
       ],
-      queryFn: () =>
-        issuesApi.list(selectedCompanyId!, {
-          ...searchFilters,
-          ...(normalizedIssueSearch.length > 0 ? { q: normalizedIssueSearch } : {}),
-          projectId,
-          status,
-          limit: ISSUE_BOARD_COLUMN_RESULT_LIMIT,
-          ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
-        }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        issuesApi.list(
+          selectedCompanyId!,
+          {
+            ...searchFilters,
+            ...(normalizedIssueSearch.length > 0 ? { q: normalizedIssueSearch } : {}),
+            projectId,
+            status,
+            limit: ISSUE_BOARD_COLUMN_RESULT_LIMIT,
+            ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
+          },
+          { signal },
+        ),
       enabled: !!selectedCompanyId && viewState.viewMode === "board" && !searchWithinLoadedIssues,
       placeholderData: (previousData: Issue[] | undefined) => previousData,
     })),

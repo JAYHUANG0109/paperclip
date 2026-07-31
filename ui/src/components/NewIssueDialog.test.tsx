@@ -164,6 +164,14 @@ vi.mock("./MarkdownEditor", async () => {
   };
 });
 
+// The dialog renders every picker (assignee, project, goal, reviewer, ...)
+// through InlineEntitySelector, so the mock records each one's onChange keyed
+// by placeholder. Without this the mock is read-only and no test can set an
+// assignee, which silently no-ops every submit path: handleSubmit requires an
+// agent assignee. Kept out of the DOM deliberately -- rendering the options
+// would change container.textContent and disturb passing assertions.
+const selectorChangeHandlers = vi.hoisted(() => new Map<string, (value: string) => void>());
+
 vi.mock("./InlineEntitySelector", async () => {
   const React = await import("react");
   return {
@@ -172,9 +180,11 @@ vi.mock("./InlineEntitySelector", async () => {
       {
         value: string;
         placeholder?: string;
+        onChange?: (value: string) => void;
         renderTriggerValue?: (option: { id: string; label: string } | null) => ReactNode;
       }
-    >(function InlineEntitySelectorMock({ value, placeholder, renderTriggerValue }, ref) {
+    >(function InlineEntitySelectorMock({ value, placeholder, onChange, renderTriggerValue }, ref) {
+      if (placeholder && onChange) selectorChangeHandlers.set(placeholder, onChange);
       return (
         <button ref={ref} type="button">
           {(renderTriggerValue?.(value ? { id: value, label: value } : null) ?? value) || placeholder}
@@ -280,6 +290,24 @@ async function waitForAssertion(assertion: () => void, attempts = 20) {
   throw lastError;
 }
 
+/**
+ * Pick an assignee through the recorded InlineEntitySelector onChange, which
+ * is the same path the real picker uses. handleSubmit refuses to create
+ * without an agent assignee, so submit-path tests must call this first.
+ */
+async function selectAssigneeAgent(agentId: string) {
+  const onChange = selectorChangeHandlers.get("Assignee");
+  if (!onChange) {
+    throw new Error(
+      `assignee selector never rendered; recorded pickers: ${[...selectorChangeHandlers.keys()].join(", ") || "(none)"}`,
+    );
+  }
+  await act(async () => {
+    onChange(`agent:${agentId}`);
+  });
+  await flush();
+}
+
 function renderDialog(container: HTMLDivElement) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -304,6 +332,7 @@ describe("NewIssueDialog", () => {
 
   beforeEach(() => {
     vi.useRealTimers();
+    selectorChangeHandlers.clear();
     originalResizeObserver = globalThis.ResizeObserver;
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
@@ -437,6 +466,7 @@ describe("NewIssueDialog", () => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -476,6 +506,7 @@ describe("NewIssueDialog", () => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -511,6 +542,7 @@ describe("NewIssueDialog", () => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -586,6 +618,7 @@ describe("NewIssueDialog", () => {
       .find((button) => button.textContent?.includes("Create Task"));
     expect(submitButton).not.toBeUndefined();
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -703,6 +736,7 @@ describe("NewIssueDialog", () => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -768,6 +802,7 @@ describe("NewIssueDialog", () => {
     await vi.waitFor(() => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -808,6 +843,7 @@ describe("NewIssueDialog", () => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -847,6 +883,7 @@ describe("NewIssueDialog", () => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -885,6 +922,7 @@ describe("NewIssueDialog", () => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -1179,6 +1217,7 @@ describe("NewIssueDialog", () => {
       expect(submitButton?.hasAttribute("disabled")).toBe(false);
     });
 
+    await selectAssigneeAgent("agent-1");
     await act(async () => {
       submitButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });

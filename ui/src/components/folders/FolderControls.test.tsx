@@ -345,7 +345,16 @@ describe("FolderControls", () => {
     act(() => {
       submit?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
-    expect(onSubmit).toHaveBeenCalledWith({ name: "Reporting", color: expect.any(String) });
+    // Asserted as the whole payload, not objectContaining, so that adding a
+    // field to the create contract has to be acknowledged here. The sharing
+    // fields postdate the original assertion.
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "Reporting",
+      color: expect.any(String),
+      scope: "company",
+      sharedUserIds: [],
+      sharingTeams: [],
+    });
   });
 
   it("states the forgiving delete behavior and confirms", () => {
