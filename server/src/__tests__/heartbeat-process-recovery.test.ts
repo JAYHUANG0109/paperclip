@@ -2039,6 +2039,20 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     expect(comments[0]?.body).toContain("recovery issues do not create nested `stranded_issue_recovery` issues");
     expect(comments[0]?.body).toContain("Latest retry failure details were withheld from the issue thread");
     expect(comments[0]?.body).not.toContain("sk-test-recovery-secret");
+    expect(comments[0]?.presentation).toMatchObject({
+      kind: "system_notice",
+      tone: "warning",
+      title: "Recovery: recovery attempt failed — remains blocked",
+      density: "compact",
+    });
+    expect(comments[0]?.metadata).toMatchObject({
+      version: 1,
+      sections: [expect.objectContaining({
+        rows: expect.arrayContaining([
+          expect.objectContaining({ type: "key_value", label: "Cause", value: "recovery_issue_failed" }),
+        ]),
+      })],
+    });
     await expect(sourceBlockerIssueIds(companyId, sourceIssueId)).resolves.toEqual([issueId]);
   });
 
@@ -3134,6 +3148,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       tone: "danger",
       detailsDefaultOpen: false,
     });
+    expect(comments[0]?.presentation).not.toHaveProperty("density");
     expect(comments[0]?.metadata).toMatchObject({
       version: 1,
       sections: expect.arrayContaining([
@@ -3287,6 +3302,24 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     expect(comments[0]?.body).not.toContain(`${issuePrefix}-12`);
     // Plain language — the raw machine error code never leaks into the thread.
     expect(comments[0]?.body).not.toContain("issue_continuation_waiting_on_review");
+    expect(comments[0]?.presentation).toMatchObject({
+      kind: "system_notice",
+      tone: "warning",
+      title: "Recovery: waiting on dependencies — moved to blocked",
+      density: "compact",
+    });
+    expect(comments[0]?.metadata).toMatchObject({
+      version: 1,
+      sections: [expect.objectContaining({
+        rows: expect.arrayContaining([
+          expect.objectContaining({
+            type: "key_value",
+            label: "Cause",
+            value: "continuation_waiting_on_review",
+          }),
+        ]),
+      })],
+    });
 
     const activity = await db.select().from(activityLog).where(eq(activityLog.entityId, issueId));
     expect(
@@ -4926,6 +4959,8 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       runErrorCode: "process_lost",
       runError: "Authorization: Bearer sk-test-recovery-secret",
     });
+    const longRecoveryOwnerName = "R".repeat(161);
+    await db.update(agents).set({ name: longRecoveryOwnerName }).where(eq(agents.id, agentId));
     const heartbeat = heartbeatService(db);
 
     const result = await heartbeat.reconcileStrandedAssignedIssues();
@@ -4952,7 +4987,23 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     expect(comments[0]?.body).toContain("retried dispatch");
     expect(comments[0]?.body).toContain("Latest retry failure details were withheld from the issue thread");
     expect(comments[0]?.body).toContain(`Recovery action: \`${recoveryAction.id}\``);
-    expect(comments[0]?.body).toContain("Recovery owner: [CodexCoder]");
+    expect(comments[0]?.body).toContain(`Recovery owner: [${longRecoveryOwnerName}]`);
+    expect(comments[0]?.presentation).toMatchObject({
+      kind: "system_notice",
+      tone: "warning",
+      title: `${`Recovery: retries exhausted — moved to blocked (owner: ${longRecoveryOwnerName})`.slice(0, 159)}…`,
+      density: "compact",
+    });
+    expect(comments[0]?.metadata).toMatchObject({
+      version: 1,
+      sections: [expect.objectContaining({
+        rows: expect.arrayContaining([
+          expect.objectContaining({ type: "key_value", label: "Recovery action", value: recoveryAction.id }),
+          expect.objectContaining({ type: "key_value", label: "Cause", value: "process_lost" }),
+          expect.objectContaining({ type: "agent_link", label: "Recovery owner", name: "R".repeat(160) }),
+        ]),
+      })],
+    });
   });
 
   it("blocks an already stranded recovery issue without creating a recovery child", async () => {
@@ -5030,6 +5081,13 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     expect(comments[0]?.body).toContain("recovery issues do not create nested `stranded_issue_recovery` issues");
     expect(comments[0]?.body).toContain(`Recovery issue: [${recoveryIssues[0]?.identifier}]`);
     expect(comments[0]?.body).toContain("Next action:");
+    expect(comments[0]?.presentation).toMatchObject({
+      kind: "system_notice",
+      tone: "warning",
+      title: "Recovery: recovery attempt failed — remains blocked",
+      density: "compact",
+    });
+    expect(comments[0]?.metadata).toMatchObject({ version: 1 });
   });
 
   it("assigns open unassigned blockers back to their creator agent", async () => {
