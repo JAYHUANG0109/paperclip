@@ -138,7 +138,10 @@ function makeVersion(revisionNumber: number, content: string): CompanySkillVersi
   };
 }
 
-function makeDetail(currentVersion: CompanySkillVersion): CompanySkillDetail {
+function makeDetail(
+  currentVersion: CompanySkillVersion,
+  overrides: Partial<CompanySkillDetail> = {},
+): CompanySkillDetail {
   return {
     id: "skill-1",
     companyId: "company-1",
@@ -187,10 +190,14 @@ function makeDetail(currentVersion: CompanySkillVersion): CompanySkillDetail {
     sourcePath: null,
     currentVersion,
     starredByCurrentActor: false,
+    ...overrides,
   };
 }
 
-async function renderSkillDetail(versions: CompanySkillVersion[]) {
+async function renderSkillDetail(
+  versions: CompanySkillVersion[],
+  props: Partial<ComponentProps<typeof SkillDetailPage>> = {},
+) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
