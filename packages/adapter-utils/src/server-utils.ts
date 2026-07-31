@@ -2039,6 +2039,15 @@ export function shapePaperclipWorkspaceEnvForExecution(input: {
   workspaceHints?: Array<Record<string, unknown>>;
   executionTargetIsRemote?: boolean;
   executionCwd?: string | null;
+  /**
+   * On a remote target, the map of referenced (mentioned) project id to the staged in-sandbox
+   * directory that received that project's tree (`project-<projectId>`). A non-anchor hint whose
+   * `projectId` has an entry repoints its `cwd` to the staged directory. A non-anchor hint with no
+   * entry loses its `cwd`, so the agent never receives a path the transport did not stage. The map
+   * is empty on a local target and defaults to empty, so a caller that passes nothing keeps the
+   * previous behavior (every non-anchor hint loses its `cwd` on a remote target).
+   */
+  stagedProjectDirs?: Record<string, string>;
 }): {
   workspaceCwd: string | null;
   workspaceWorktreePath: string | null;
@@ -2081,6 +2090,7 @@ export function shapePaperclipWorkspaceEnvForExecution(input: {
   }
   const realizedWorkspaceCwd = executionCwd;
   const localWorkspaceCwd = workspaceCwd ? path.resolve(workspaceCwd) : null;
+  const stagedProjectDirs = input.stagedProjectDirs ?? {};
   const shapedWorkspaceHints = workspaceHints.map((hint) => {
     const nextHint = { ...hint };
     const hintCwd = typeof nextHint.cwd === "string" ? nextHint.cwd.trim() : "";
@@ -2095,7 +2105,19 @@ export function shapePaperclipWorkspaceEnvForExecution(input: {
       return nextHint;
     }
 
-    delete nextHint.cwd;
+    // A referenced (mentioned) project hint carries its `projectId`. When the transport staged that
+    // project into the sandbox, repoint the hint at its staged `project-<projectId>` directory so
+    // the agent reads it there. Without a staged directory the hint would point at a local path that
+    // the remote target cannot reach, so remove the `cwd` (fail loud — never expose an unstaged
+    // path). This also removes the `cwd` of a non-anchor hint that carries no `projectId`, such as an
+    // alternative anchor-project workspace, which keeps the previous behavior for those hints.
+    const hintProjectId = typeof nextHint.projectId === "string" ? nextHint.projectId : "";
+    const stagedProjectDir = hintProjectId ? stagedProjectDirs[hintProjectId] : undefined;
+    if (stagedProjectDir && stagedProjectDir.trim().length > 0) {
+      nextHint.cwd = stagedProjectDir.trim();
+    } else {
+      delete nextHint.cwd;
+    }
     return nextHint;
   });
 
@@ -2158,6 +2180,8 @@ export function refreshPaperclipWorkspaceEnvForExecution(input: {
   agentHome?: string | null;
   executionTargetIsRemote?: boolean;
   executionCwd?: string | null;
+  /** Referenced-project id to staged in-sandbox directory map; see {@link shapePaperclipWorkspaceEnvForExecution}. */
+  stagedProjectDirs?: Record<string, string>;
 }): {
   workspaceCwd: string | null;
   workspaceWorktreePath: string | null;
@@ -2169,6 +2193,7 @@ export function refreshPaperclipWorkspaceEnvForExecution(input: {
     workspaceHints: input.workspaceHints,
     executionTargetIsRemote: input.executionTargetIsRemote,
     executionCwd: input.executionCwd,
+    stagedProjectDirs: input.stagedProjectDirs,
   });
 
   delete input.env.PAPERCLIP_WORKSPACE_CWD;
