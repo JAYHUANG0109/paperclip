@@ -40,7 +40,7 @@ script for the new Mac** — you can literally tell Claude Code on that Mac
 
 **On the OLD Mac**
 ```bash
-cd ~/dev/paperclip/paperclip        # (or ~/paperclip-live)
+cd ~/dev/paperclip/paperclip
 scripts/migrate/export-paperclip.sh ~/Desktop --encrypt
 ```
 - Briefly stops the service to snapshot the DB, then restarts it.
@@ -54,17 +54,18 @@ email or public cloud).
 1. Install prereqs: Homebrew, `node`, `pnpm`, `git`.
 2. Clone the repo to the two locations the setup expects:
    ```bash
-   git clone <repo-url> ~/paperclip-live && (cd ~/paperclip-live && git checkout <branch>)
-   git clone <repo-url> ~/dev/paperclip/paperclip   # dev checkout (optional)
+   git clone <repo-url> ~/dev/paperclip/paperclip && (cd ~/dev/paperclip/paperclip && git checkout <branch>)
+   # Production is NOT a checkout you manage: `ops/deploy.sh setup <branch>` creates
+   # ~/paperclip/releases/<ts>-<sha> and the ~/paperclip/current symlink for you.
    ```
 3. Restore:
    ```bash
-   cd ~/paperclip-live
+   cd ~/dev/paperclip/paperclip
    scripts/migrate/import-paperclip.sh ~/Downloads/paperclip-migrate-<stamp>.tar.gz.enc
    ```
 4. Follow the printed checklist: `pnpm install` + build, update device-specific
-   config (Tailscale hostname, `deploy-live.sh` `PUBLIC_URL`/`LIVE`, Google OAuth
-   redirects), then start the service.
+   config (Tailscale hostname, Google OAuth redirects), then deploy with
+   `ops/deploy.sh setup <branch>`.
 5. Verify the dashboard, agents, tokens, and digests — then **delete the bundle**
    from both machines.
 
@@ -72,7 +73,7 @@ email or public cloud).
 
 | Transfers in the bundle | Re-set on each device |
 |---|---|
-| DB, secrets, tokens, `.env`, AGENTS.md, workspaces, skills, assets, plists | Tailscale hostname + funnel, `PUBLIC_URL`/`LIVE` paths, Google OAuth redirect URIs, Homebrew/node/pnpm install |
+| DB, secrets, tokens, `.env`, AGENTS.md, workspaces, skills, assets, plists | Tailscale hostname + funnel, Google OAuth redirect URIs, Homebrew/node/pnpm install |
 
 ---
 
