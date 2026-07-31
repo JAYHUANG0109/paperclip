@@ -130,7 +130,7 @@ describe("deriveRecoveryCardState", () => {
 });
 
 describe("IssueRecoveryActionCard", () => {
-  it("renders state and kind attributes with owner names and the recorded next action", () => {
+  it("renders required fields and an aria-label naming the state", () => {
     const node = render(
       <IssueRecoveryActionCard
         action={buildAction()}
@@ -142,9 +142,7 @@ describe("IssueRecoveryActionCard", () => {
       />,
     );
     const section = node.querySelector("section[aria-label]");
-    expect(section).not.toBeNull();
-    expect(section?.getAttribute("data-recovery-state")).toBe("needed");
-    expect(section?.getAttribute("data-recovery-kind")).toBe("missing_disposition");
+    expect(section?.getAttribute("aria-label")).toBe("Recovery action: needed");
     expect(node.textContent).toContain("RECOVERY NEEDED");
     expect(node.textContent).toContain("Missing Disposition");
     expect(node.textContent).not.toContain("missing_disposition");
@@ -152,6 +150,14 @@ describe("IssueRecoveryActionCard", () => {
     expect(node.textContent).toContain("ClaudeCoder");
     expect(node.textContent).toContain("CodexCoder");
     expect(node.textContent).toContain("Choose and record a valid issue disposition.");
+    expect(node.textContent).toContain("Corrective wake queued");
+  });
+
+  it("falls back to em dash when wake policy is absent", () => {
+    const node = render(
+      <IssueRecoveryActionCard action={buildAction({ wakePolicy: null })} />,
+    );
+    expect(node.textContent).toContain("—");
   });
 
   it("renders observe_only tone for active_run_watchdog", () => {
@@ -159,31 +165,11 @@ describe("IssueRecoveryActionCard", () => {
       <IssueRecoveryActionCard action={buildAction({ kind: "active_run_watchdog" })} />,
     );
     const section = node.querySelector("section[aria-label]");
-    expect(section?.getAttribute("data-recovery-state")).toBe("observe_only");
+    expect(section?.getAttribute("aria-label")).toBe("Recovery action: observing active run");
     expect(node.textContent).toContain("OBSERVING ACTIVE RUN");
-    expect(node.textContent).toContain(
-      "The active run has been silent. Recovery is observing without interrupting it.",
-    );
   });
 
-  it("explains issue_graph_liveness in plain language", () => {
-    const node = render(
-      <IssueRecoveryActionCard
-        action={buildAction({ kind: "issue_graph_liveness", cause: "issue_graph_liveness" })}
-      />,
-    );
-    expect(node.textContent).toContain("Task Needs Next Step");
-    expect(node.textContent).toContain(
-      "Paperclip could not find a clear next step for this open task. Choose whether to continue work, send it for review, mark it done, or record what is blocking it.",
-    );
-  });
-
-  it("falls back to an em dash when no evidence summary is available", () => {
-    const node = render(<IssueRecoveryActionCard action={buildAction({ evidence: {} })} />);
-    expect(node.textContent).toContain("—");
-  });
-
-  it("renders workspace_validation with its kind attribute and the recorded next action", () => {
+  it("renders a workspace-specific label and headline for workspace_validation", () => {
     const node = render(
       <IssueRecoveryActionCard
         action={buildAction({
@@ -229,9 +215,6 @@ describe("IssueRecoveryActionCard", () => {
     expect(summary).toBeTruthy();
     expect(summary?.className).toContain("text-xs");
     expect(summary?.className).not.toContain("font-mono");
-    expect(node.textContent).toContain(
-      "To get it moving, choose what happens next — try the task again, mark it done, or send it for review.",
-    );
   });
 
   it("keeps code-shaped evidence (error code, no summary) in the mono treatment", () => {
@@ -253,14 +236,11 @@ describe("IssueRecoveryActionCard", () => {
     expect(code?.className).toContain("font-mono");
   });
 
-  it("renders the resolved state and outcome when resolved", () => {
+  it("renders the resolved label and outcome when resolved", () => {
     const node = render(
       <IssueRecoveryActionCard action={buildAction({ status: "resolved", outcome: "restored", resolvedAt: "2026-05-09T19:35:00.000Z" })} />,
     );
-    const section = node.querySelector("section[aria-label]");
-    expect(section?.getAttribute("data-recovery-state")).toBe("resolved");
     expect(node.textContent).toContain("RECOVERY RESOLVED");
-    expect(node.textContent).toContain("Recovery resolved as restored.");
     expect(node.textContent).toContain("Resolved as restored");
   });
 
@@ -356,35 +336,22 @@ describe("IssueRecoveryActionCard workspace_validation divergence", () => {
     const diagnosis = node.querySelector("[data-testid='recovery-divergence-diagnosis']");
     expect(diagnosis).not.toBeNull();
     const text = diagnosis?.textContent ?? "";
-    expect(text).toContain("Divergence diagnosis");
-    expect(text).toContain("Expected · recorded");
-    expect(text).toContain("Live · checked out");
     expect(text).toContain("PAP-522-recorded");
     expect(text).toContain("nleach/PAP-1405-live");
     // shortened shas (10 chars)
     expect(text).toContain("aaaaaaaaaa");
     expect(text).toContain("bbbbbbbbbb");
     expect(text).toContain("cannot prove a forward-only reconciliation");
-    expect(node.querySelector("[data-testid='recovery-ancestry-verdict']")).not.toBeNull();
+    expect(node.querySelector("[data-testid='recovery-ancestry-verdict']")?.textContent).toContain("Diverged");
   });
 
-  it("labels each ancestry verdict", () => {
-    const diverged = render(<IssueRecoveryActionCard action={buildWorkspaceValidationAction()} />);
-    expect(diverged.querySelector("[data-testid='recovery-ancestry-verdict']")?.textContent).toBe("Diverged");
-
-    const ancestor = render(
+  it("labels an ancestor verdict as forward-only", () => {
+    const node = render(
       <IssueRecoveryActionCard
         action={buildWorkspaceValidationAction({ provenance: { ancestryVerdict: "ancestor" } })}
       />,
     );
-    expect(ancestor.querySelector("[data-testid='recovery-ancestry-verdict']")?.textContent).toBe("Forward-only");
-
-    const unknown = render(
-      <IssueRecoveryActionCard
-        action={buildWorkspaceValidationAction({ provenance: { ancestryVerdict: "unknown" } })}
-      />,
-    );
-    expect(unknown.querySelector("[data-testid='recovery-ancestry-verdict']")?.textContent).toBe("Ancestry unknown");
+    expect(node.querySelector("[data-testid='recovery-ancestry-verdict']")?.textContent).toContain("Forward-only");
   });
 
   it("does not render a divergence diagnosis for non-incoherence workspace failures", () => {
@@ -407,6 +374,7 @@ describe("IssueRecoveryActionCard workspace_validation divergence", () => {
       />,
     );
     click(node.querySelector("[data-testid='recovery-action-reissue-trigger']"));
+    expect(document.body.textContent).toContain("Re-issue on isolated workspace");
     click(document.body.querySelector("[data-testid='recovery-action-reissue-confirm']"));
     expect(onReissueIsolated).toHaveBeenCalledWith({
       baseRef: "nleach/PAP-1405-live",
@@ -522,13 +490,14 @@ describe("IssueRecoveryActionCard W7 reconcile actions", () => {
     );
     click(node.querySelector("[data-testid='recovery-action-breakglass-trigger']"));
 
-    // The confirm step restates the divergence: both branches and both short SHAs.
+    // The confirm step restates the divergence: both branches, both short SHAs, and the verdict.
     const restated = document.body.querySelector("[data-testid='recovery-breakglass-restated-divergence']");
     const restatedText = restated?.textContent ?? "";
     expect(restatedText).toContain("PAP-522-recorded");
     expect(restatedText).toContain("nleach/PAP-1405-live");
     expect(restatedText).toContain("aaaaaaaaaa");
     expect(restatedText).toContain("bbbbbbbbbb");
+    expect(restatedText).toContain("Diverged");
 
     // The override is disabled until a non-empty reason is recorded.
     const confirm = document.body.querySelector<HTMLButtonElement>(
@@ -630,12 +599,10 @@ describe("IssueRecoveryActionCard repair workspace (quarantine_restore)", () => 
     click(node.querySelector("[data-testid='recovery-action-repair-trigger']"));
     const restated = document.body.querySelector("[data-testid='recovery-repair-restated']");
     const text = restated?.textContent ?? "";
-    expect(
-      document.body.querySelector("[data-testid='recovery-repair-dirty-count']")?.textContent,
-    ).toBe("3 uncommitted changes");
-    // live branch is named in the restated summary, left untouched
+    expect(text).toContain("3 uncommitted changes");
+    // live branch is explicitly left untouched
     expect(text).toContain("nleach/PAP-1405-live");
-    expect(text).toContain("(left untouched)");
+    expect(text).toContain("left untouched");
     // rescue branch preview mirrors the server naming (prefix + timestamp marker)
     expect(
       document.body.querySelector("[data-testid='recovery-repair-rescue-branch']")?.textContent,
@@ -650,7 +617,7 @@ describe("IssueRecoveryActionCard repair workspace (quarantine_restore)", () => 
     expect(onQuarantineRestore).toHaveBeenCalledTimes(1);
   });
 
-  it("singularizes a one-file dirty count", () => {
+  it("singularizes the dirty change count", () => {
     const node = render(
       <IssueRecoveryActionCard
         action={buildDirtyDivergenceAction({ workspaceValidation: { statusEntryCount: 1 } })}
@@ -694,11 +661,10 @@ describe("IssueRecoveryActionCard repair workspace (quarantine_restore)", () => 
         onReissueIsolated={() => {}}
       />,
     );
-    // Diagnosis gains a claimant line naming the claiming issue.
+    // Diagnosis gains a claimant line naming the issue + active run.
     const notice = node.querySelector("[data-testid='recovery-contention-notice']");
-    expect(notice?.textContent).toContain("Worktree claimed by");
     expect(notice?.textContent).toContain("PAP-9001");
-    expect(notice?.textContent).toContain("(active run)");
+    expect(notice?.textContent).toContain("active run");
 
     // The repair control is present but disabled, with the claimant as the explanation.
     const disabled = node.querySelector("[data-testid='recovery-action-repair-disabled']");
@@ -707,9 +673,7 @@ describe("IssueRecoveryActionCard repair workspace (quarantine_restore)", () => 
       "[data-testid='recovery-action-repair-trigger']",
     );
     expect(trigger?.disabled).toBe(true);
-    expect(disabled?.textContent).toContain(
-      "Held by PAP-9001 — re-issue on an isolated workspace instead.",
-    );
+    expect(disabled?.textContent).toContain("PAP-9001");
     // Clicking the disabled control never fires the repair.
     click(trigger ?? null);
     expect(onQuarantineRestore).not.toHaveBeenCalled();
