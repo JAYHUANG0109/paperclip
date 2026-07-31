@@ -68,6 +68,7 @@ export function NewAgent() {
 
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
   const [role, setRole] = useState("general");
   const [reportsTo, setReportsTo] = useState<string | null>(null);
   const [configValues, setConfigValues] = useState<CreateConfigValues>(defaultCreateValues);
@@ -179,6 +180,7 @@ export function NewAgent() {
         configValues,
         adapterConfig: buildAdapterConfig(),
         permissions,
+        ownerEmail,
       }),
     );
   }
@@ -237,6 +239,19 @@ export function NewAgent() {
             placeholder={t("newAgent.titlePlaceholder")}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+
+        {/* Owner email — the agent→person mapping. Filling this in at creation is
+            what lets the person claim the agent by simply signing in with Google,
+            instead of being mapped to it by hand afterwards. */}
+        <div className="px-4 pb-2">
+          <input
+            type="email"
+            className="w-full bg-transparent outline-none text-sm text-muted-foreground placeholder:text-muted-foreground/40"
+            placeholder={t("newAgent.ownerEmailPlaceholder")}
+            value={ownerEmail}
+            onChange={(e) => setOwnerEmail(e.target.value)}
           />
         </div>
 

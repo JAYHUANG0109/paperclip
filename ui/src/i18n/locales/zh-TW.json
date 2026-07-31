@@ -1871,6 +1871,7 @@
     "opencodeModelRequired": "OpenCode 需要以 provider/model 格式指定明確的模型。",
     "namePlaceholder": "代理人名稱",
     "titlePlaceholder": "職稱（例如：工程副總）",
+    "ownerEmailPlaceholder": "負責人 Email（登入後自動綁定本代理）",
     "companySkills": "公司技能",
     "companySkillsHint": "來自公司技能庫的選用技能。內建的 Paperclip 執行時技能會自動加入。",
     "noOptionalSkills": "尚未安裝任何選用的公司技能。",
