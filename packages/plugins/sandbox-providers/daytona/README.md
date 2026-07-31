@@ -29,6 +29,15 @@ Notes:
 - The driver supports both `snapshot`-based and `image`-based sandbox creation. If both are set, validation rejects the config as ambiguous.
 - Reusable leases map to Daytona stop/start semantics. Non-reusable leases are deleted on release.
 
+## Advisory bwrap wrapper
+
+The driver prepares an advisory bubblewrap (`bwrap`) wrapper for a sandbox command. The wrapper is advisory and best-effort. The driver does not wrap the command during execution yet. At lease time the driver probes the sandbox for the wrapper capability and records the result on the lease metadata. The command builder exists as a pure function. A later change wires the builder into command execution.
+
+- **The wrapper adds no security.** The ephemeral sandbox stays the only security posture. The wrapper only gives an agent real-time feedback when the agent tries to change a file that the ephemeral sandbox will not keep.
+- **The read-only root is a feedback signal.** The wrapper binds the root as read-only (`--ro-bind / /`) and re-binds only the writable directories. A write to a path outside the writable set fails at once, so the agent learns the change is not durable.
+- **A capability probe records the wrapper capability.** No configuration field turns it on. At lease time the driver probes the sandbox for the end-to-end `bwrap` capability (`sudo -n bwrap` with a user namespace) and reads the sandbox user's uid and gid. It stores `bwrapAvailable`, `sandboxUid`, and `sandboxGid` on the lease metadata.
+- **The probe is best-effort.** A missing `bwrap` binary, a missing passwordless `sudo -n` rule, or a missing user namespace records `bwrapAvailable: false` and never fails the lease.
+
 ## Local development
 
 ```bash
