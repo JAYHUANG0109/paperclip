@@ -15,6 +15,15 @@ import {
   updateRange,
 } from "../services/google-sheets.js";
 import {
+  addSlide,
+  createPresentation,
+  getPresentation,
+  insertText,
+  parsePresentationId,
+  replaceText,
+  slidesReadiness,
+} from "../services/google-slides.js";
+import {
   chatUserReadiness,
   listSpaceMessages,
   listUserSpaces,
@@ -422,6 +431,171 @@ export function googleWorkspaceRoutes(db: Db) {
       title,
     });
     res.status(201).json({ connected: true, spreadsheet: result.data });
+  });
+
+  // ── Google Slides ───────────────────────────────────────────────────────
+  // Reminder for anyone extending this: a native Slides deck created here lands in the
+  // user's My Drive root and is NOT tracked by Paperclip. Task deliverables still go
+  // through the artifact upload path — these endpoints are for decks people co-edit.
+
+  router.get("/companies/:companyId/google-slides/readiness", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.json({ configured: false, canUse: false });
+      return;
+    }
+    res.json(await slidesReadiness(db, userId));
+  });
+
+  /** Deck title, slide ids and the text on each slide. `id` accepts a pasted Slides URL. */
+  router.get("/companies/:companyId/google-slides/:id", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.json(notConnected("auth_required"));
+      return;
+    }
+    const presentationId = parsePresentationId(req.params.id as string);
+    if (!presentationId) {
+      res.status(400).json({ error: "id must be a presentation id or a Google Slides URL" });
+      return;
+    }
+    const result = await getPresentation(db, userId, presentationId);
+    if (!result.connected) {
+      res.json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "slides.read", "google_slides", presentationId, {
+      onBehalfOfUserId: userId,
+      slides: result.data.slideCount,
+    });
+    res.json({ connected: true, presentation: result.data });
+  });
+
+  /** Create a deck. See the note above about deliverables vs co-edited decks. */
+  router.post("/companies/:companyId/google-slides", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+    if (!title) {
+      res.status(400).json({ error: "title is required" });
+      return;
+    }
+    const result = await createPresentation(db, userId, title);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "slides.created", "google_slides", result.data.presentationId, {
+      onBehalfOfUserId: userId,
+      title,
+    });
+    res.status(201).json({ connected: true, presentation: result.data });
+  });
+
+  /**
+   * Fill a template deck — replace {{placeholders}} across every slide. This is the
+   * primary write path: it only touches text the template author marked, so it cannot
+   * quietly mangle a slide the way free-form editing can.
+   */
+  router.post("/companies/:companyId/google-slides/:id/replace-text", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const presentationId = parsePresentationId(req.params.id as string);
+    const raw = Array.isArray(req.body?.replacements) ? (req.body.replacements as unknown[]) : null;
+    const replacements = (raw ?? [])
+      .map((r) => (r && typeof r === "object" ? (r as Record<string, unknown>) : null))
+      .filter((r): r is Record<string, unknown> => Boolean(r))
+      .filter((r) => typeof r.find === "string" && (r.find as string).length > 0)
+      .map((r) => ({
+        find: r.find as string,
+        replace: typeof r.replace === "string" ? (r.replace as string) : "",
+        matchCase: r.matchCase === true,
+      }));
+    if (!presentationId || replacements.length === 0) {
+      res.status(400).json({ error: "a presentation id/URL and replacements[{find,replace}] are required" });
+      return;
+    }
+    const result = await replaceText(db, userId, presentationId, replacements);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "slides.replace_text", "google_slides", presentationId, {
+      onBehalfOfUserId: userId,
+      replacements: replacements.length,
+    });
+    res.json({ connected: true, ...result.data });
+  });
+
+  /** Add a slide, optionally at an index / with a predefined layout. */
+  router.post("/companies/:companyId/google-slides/:id/slides", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const presentationId = parsePresentationId(req.params.id as string);
+    if (!presentationId) {
+      res.status(400).json({ error: "id must be a presentation id or a Google Slides URL" });
+      return;
+    }
+    const insertionIndex = Number(req.body?.insertionIndex);
+    const result = await addSlide(db, userId, presentationId, {
+      ...(Number.isFinite(insertionIndex) ? { insertionIndex } : {}),
+      ...(typeof req.body?.layout === "string" ? { layout: req.body.layout } : {}),
+    });
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "slides.add_slide", "google_slides", presentationId, {
+      onBehalfOfUserId: userId,
+    });
+    res.status(201).json({ connected: true, ...result.data });
+  });
+
+  /** Type text into one shape, addressed by an objectId from the GET above. */
+  router.post("/companies/:companyId/google-slides/:id/text", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = effectiveUserId(req);
+    if (!userId) {
+      res.status(422).json(notConnected("auth_required"));
+      return;
+    }
+    const presentationId = parsePresentationId(req.params.id as string);
+    const objectId = typeof req.body?.objectId === "string" ? req.body.objectId.trim() : "";
+    const text = typeof req.body?.text === "string" ? req.body.text : "";
+    if (!presentationId || !objectId || !text) {
+      res.status(400).json({ error: "presentation id/URL, objectId and text are required" });
+      return;
+    }
+    const result = await insertText(db, userId, presentationId, objectId, text);
+    if (!result.connected) {
+      res.status(422).json(notConnected(result.reason));
+      return;
+    }
+    await audit(req, companyId, "slides.insert_text", "google_slides", presentationId, {
+      onBehalfOfUserId: userId,
+      objectId,
+    });
+    res.json({ connected: true, ...result.data });
   });
 
   // ── Google Chat history ─────────────────────────────────────────────────

@@ -366,3 +366,75 @@ reachable afterwards.
 `{"connected": false, "reason": "not_found"}` usually means the user cannot open that
 spreadsheet, not that the id is wrong — ask them to share it with themselves' account
 or send a different link.
+
+---
+
+# Google Slides (read + write) — server-side, per user
+
+Acts with the responsible user's OWN token. Same `drive.file` caveat as Sheets: you
+**cannot search Drive** for a deck — pass the id or the pasted Slides URL, or use a
+deck you created here.
+
+**Not the deliverable path.** A native Slides deck created through the API lands in the
+user's My Drive **root**, bypassing the "Paperclip 產出檔案" folder and Paperclip's
+tracking. Task deliverables still go out as uploaded artifacts (see AGENTS rules). Use
+these endpoints for decks people will keep editing together — org charts, recurring
+review decks — not as a shortcut for handing over finished output.
+
+### Read a deck (slide ids + text)
+
+```bash
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-slides/<idOrUrl>"
+```
+
+Returns the title, slide count, and for each slide its `objectId`, index and the text
+on it — so you can see what a deck says before changing anything, and you get the
+`objectId` values the text endpoint needs.
+
+### Fill a template deck (the main write path)
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-slides/<idOrUrl>/replace-text" \
+  -d '{"replacements":[
+        {"find":"{{校區}}","replace":"仁美校"},
+        {"find":"{{月份}}","replace":"2026 年 8 月"}
+      ]}'
+```
+
+Replaces every occurrence across all slides. **Prefer this over free-form editing:** it
+only touches text the template author deliberately marked, so it cannot mangle a
+layout. Keep a template deck with `{{placeholders}}` and populate a copy.
+
+### Add a slide
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-slides/<idOrUrl>/slides" \
+  -d '{"insertionIndex":2,"layout":"TITLE_AND_BODY"}'
+```
+
+### Type into one shape
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-slides/<idOrUrl>/text" \
+  -d '{"objectId":"<from the GET above>","text":"本月招生 42 人"}'
+```
+
+### Create a deck
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+  -H "content-type: application/json" \
+  "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/google-slides" \
+  -d '{"title":"2026 Q3 招生檢討"}'
+```
+
+Formatting (colours, fonts, images, tables, speaker notes) is **not** implemented — only
+text and slide structure. Ask for it if a task genuinely needs it rather than trying to
+fake it with text.

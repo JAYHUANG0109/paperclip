@@ -346,6 +346,10 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
               // still cannot browse Drive: a caller must supply a spreadsheet id/URL, or
               // use a sheet the app itself created.
               "https://www.googleapis.com/auth/spreadsheets",
+              // `presentations` → read AND write Slides decks the user can open
+              // (services/google-slides.ts). Same drive.file caveat: no Drive browsing,
+              // so a caller supplies a presentation id/URL.
+              "https://www.googleapis.com/auth/presentations",
             ],
             accessType: "offline" as const,
             prompt: "consent" as const,

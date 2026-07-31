@@ -67,3 +67,23 @@ created yourself.
 Overwriting REPLACES cells and is how a routine silently destroys a colleague's
 hand-edited rows. Overwrite only the block you generate, never widen a range "to be
 safe", and use append everywhere else.
+
+### Google Slides
+
+- Read a deck (slide ids + text): `GET .../google-slides/<idOrUrl>`
+- **Fill a template (main write path)**: `POST .../google-slides/<idOrUrl>/replace-text` `{"replacements":[{"find":"{{x}}","replace":"y"}]}`
+- Add a slide: `POST .../google-slides/<idOrUrl>/slides`
+- Type into a shape: `POST .../google-slides/<idOrUrl>/text` `{"objectId","text"}`
+- Create a deck: `POST .../google-slides` `{"title"}`
+
+Same limit as Sheets: **no Drive search** — use the URL the human gives you.
+
+Prefer `replace-text` on a template deck: it only touches `{{placeholders}}` the author
+marked, so it cannot mangle a layout.
+
+**This is not the deliverable path.** A native deck created through the API lands in the
+user's My Drive root, outside "Paperclip 產出檔案" and untracked by Paperclip. Task
+deliverables still go out as uploaded artifacts. Use these for decks people co-edit.
+
+Formatting (colours, fonts, images, tables, notes) is not implemented — text and slide
+structure only.
