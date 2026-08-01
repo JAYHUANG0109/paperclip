@@ -1,0 +1,12 @@
+-- Marks a task whose title the server derived from its description because the
+-- person creating it did not write one.
+--
+-- Requiring a title is friction on the most common workflow: type what you
+-- want, hit create. So the title became optional, the server derives a
+-- placeholder, and the assigned agent replaces it with a real summary on its
+-- first run. This flag is how the agent knows the title is a placeholder rather
+-- than a deliberate choice it should leave alone.
+--
+-- Defaults to false so every existing task, and every task created with an
+-- explicit title, is treated as deliberately titled.
+ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "title_auto_generated" boolean DEFAULT false NOT NULL;

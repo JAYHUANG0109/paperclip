@@ -35,6 +35,7 @@ import { usePublishSharedQueryData, useSharedPollingQuery } from "../hooks/useSh
 import { NavLink } from "@/lib/router";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
+import { SidebarMyTasks } from "./SidebarMyTasks";
 import { SidebarAgents } from "./SidebarAgents";
 import { SidebarChat } from "./SidebarChat";
 import { SidebarProjects } from "./SidebarProjects";
@@ -274,6 +275,10 @@ export function Sidebar() {
 
         <SidebarSection label={t("nav.work", { defaultValue: "Work" })}>
           <SidebarNavItem to="/issues" label={t("nav.issues", { defaultValue: "Tasks" })} icon={CircleDot} />
+          {/* This person's own open tasks, nested under Tasks. Scoped to the
+              agent they are paired with, so every user sees their own list and
+              nobody sees anyone else's. */}
+          <SidebarMyTasks companyId={selectedCompanyId} agentId={myAgent?.id} rail={rail} />
           <SidebarNavItem to="/calendar" label={t("nav.calendar", { defaultValue: "Calendar" })} icon={CalendarDays} />
           {SHOW_LEADERBOARD && isAdminViewer && <SidebarNavItem to="/leaderboard" label={t("nav.leaderboard", { defaultValue: "Leaderboard" })} icon={Trophy} />}
           {SHOW_BOUNTIES && isAdminViewer && <SidebarNavItem to="/bounties" label={t("nav.bounties", { defaultValue: "Bounties" })} icon={Lightbulb} />}

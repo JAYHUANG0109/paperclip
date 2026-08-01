@@ -315,8 +315,10 @@ const IssueTitleTextarea = memo(function IssueTitleTextarea({
 
   return (
     <textarea
-      className="w-full text-lg font-semibold bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50"
-      placeholder={t("newIssue.taskTitle", { defaultValue: "Task title" })}
+      className="w-full text-sm font-medium bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50"
+      placeholder={t("newIssue.taskTitleOptional", {
+        defaultValue: "Title (optional) — your agent will write one",
+      })}
       rows={1}
       value={draftValue}
       onChange={(e) => {
@@ -350,7 +352,6 @@ const IssueTitleTextarea = memo(function IssueTitleTextarea({
           }
         }
       }}
-      autoFocus
     />
   );
 });
@@ -419,6 +420,10 @@ export function NewIssueDialog() {
   const titleRef = useRef("");
   const descriptionRef = useRef("");
   const [titleHasText, setTitleHasText] = useState(false);
+  // Tracked like titleHasText because the create button's enabled state now
+  // depends on the description too: with an optional title, a description alone
+  // is a complete task.
+  const [descriptionHasText, setDescriptionHasText] = useState(false);
   // True once the user has pressed Create — turns on inline highlighting for any
   // still-missing required field (title + an AGENT assignee). Errors are derived
   // live below, so they clear themselves the moment the field is filled.
@@ -479,6 +484,18 @@ export function NewIssueDialog() {
     enabled: !!effectiveCompanyId && newIssueOpen,
   });
 
+  // The agent this user is paired with. Used as the default assignee so the
+  // common case — "give this to my own agent" — needs no picking. Same source
+  // as the sidebar's "My Agent" shortcut, so the two always agree.
+  const { data: myAgents } = useQuery({
+    queryKey: queryKeys.agents.mine(effectiveCompanyId!),
+    queryFn: () => agentsApi.mine(effectiveCompanyId!),
+    enabled: !!effectiveCompanyId && newIssueOpen,
+  });
+  const myAgentAssigneeValue = myAgents?.[0]
+    ? assigneeValueFromSelection({ assigneeAgentId: myAgents[0].id })
+    : "";
+
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(effectiveCompanyId!),
     queryFn: () => projectsApi.list(effectiveCompanyId!),
@@ -532,12 +549,14 @@ export function NewIssueDialog() {
   const selectedAssigneeAgentId = selectedAssignee.assigneeAgentId;
   const selectedAssigneeUserId = selectedAssignee.assigneeUserId;
 
-  // Required to create: a title AND an AGENT assignee. A task assigned to a
-  // person (or no one) is never picked up by a heartbeat, so it silently idles —
-  // which is exactly the "goes nowhere" confusion. Block on it and say why.
-  const titleMissing = !titleHasText;
+  // Required to create: SOME text (title or description) AND an AGENT assignee.
+  // A task assigned to a person (or no one) is never picked up by a heartbeat,
+  // so it silently idles — which is exactly the "goes nowhere" confusion. Block
+  // on it and say why. The title alone is not required: blank is the normal
+  // path and the agent names the task itself.
+  const contentMissing = !titleHasText && !descriptionHasText;
   const assigneeNotAgent = !selectedAssigneeAgentId;
-  const showTitleError = attemptedSubmit && titleMissing;
+  const showContentError = attemptedSubmit && contentMissing;
   const showAssigneeError = attemptedSubmit && assigneeNotAgent;
 
   const assigneeAdapterType = (agents ?? []).find((agent) => agent.id === selectedAssigneeAgentId)?.adapterType ?? null;
@@ -700,6 +719,7 @@ export function NewIssueDialog() {
     setTitle(nextTitle);
     setDescription(nextDescription);
     setTitleHasText(nextTitle.trim().length > 0);
+    setDescriptionHasText(nextDescription.trim().length > 0);
     setDraftHasText(nextTitle.trim().length > 0 || nextDescription.trim().length > 0);
   }, []);
 
@@ -758,7 +778,9 @@ export function NewIssueDialog() {
 
   const handleDescriptionChange = useCallback((nextDescription: string) => {
     descriptionRef.current = nextDescription;
-    const nextDraftHasText = titleRef.current.trim().length > 0 || nextDescription.trim().length > 0;
+    const nextDescriptionHasText = nextDescription.trim().length > 0;
+    const nextDraftHasText = titleRef.current.trim().length > 0 || nextDescriptionHasText;
+    setDescriptionHasText((current) => current === nextDescriptionHasText ? current : nextDescriptionHasText);
     setDraftHasText((current) => current === nextDraftHasText ? current : nextDraftHasText);
     queueDraftSave({ description: nextDescription });
   }, [queueDraftSave]);
@@ -814,7 +836,10 @@ export function NewIssueDialog() {
       setPriority(newIssueDefaults.priority ?? "");
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceId);
-      setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
+      // Fall back to this user's own agent when the caller named no assignee,
+      // so a fresh task is ready to submit instead of opening on a blank
+      // required field. An explicit default still wins.
+      setAssigneeValue(assigneeValueFromSelection(newIssueDefaults) || myAgentAssigneeValue);
       setAssigneeModelLane("primary");
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
@@ -835,7 +860,10 @@ export function NewIssueDialog() {
       const hasExplicitProjectWorkspaceId = newIssueDefaults.projectWorkspaceId !== undefined;
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(newIssueDefaults.projectWorkspaceId ?? defaultProjectWorkspaceIdForProject(defaultProject));
-      setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
+      // Fall back to this user's own agent when the caller named no assignee,
+      // so a fresh task is ready to submit instead of opening on a blank
+      // required field. An explicit default still wins.
+      setAssigneeValue(assigneeValueFromSelection(newIssueDefaults) || myAgentAssigneeValue);
       setReviewerValue("");
       setApproverValue("");
       setShowReviewerRow(false);
@@ -865,7 +893,7 @@ export function NewIssueDialog() {
       setAssigneeValue(
         newIssueDefaults.assigneeAgentId || newIssueDefaults.assigneeUserId
           ? assigneeValueFromSelection(newIssueDefaults)
-          : (draft.assigneeValue ?? draft.assigneeId ?? ""),
+          : (draft.assigneeValue ?? draft.assigneeId ?? myAgentAssigneeValue),
       );
       setReviewerValue(draft.reviewerValue ?? "");
       setApproverValue(draft.approverValue ?? "");
@@ -911,7 +939,10 @@ export function NewIssueDialog() {
       setPriority(newIssueDefaults.priority ?? "");
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(newIssueDefaults.projectWorkspaceId ?? defaultProjectWorkspaceIdForProject(defaultProject));
-      setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
+      // Fall back to this user's own agent when the caller named no assignee,
+      // so a fresh task is ready to submit instead of opening on a blank
+      // required field. An explicit default still wins.
+      setAssigneeValue(assigneeValueFromSelection(newIssueDefaults) || myAgentAssigneeValue);
       setReviewerValue("");
       setApproverValue("");
       setShowReviewerRow(false);
@@ -1033,9 +1064,13 @@ export function NewIssueDialog() {
     if (createIssue.isPending) return;
     // Enforce required fields with visible feedback rather than a silently
     // disabled button: flag what's missing and focus the assignee picker.
-    if (!currentTitle || !selectedAssigneeAgentId) {
+    //
+    // The title is NOT required — leaving it blank is the normal path, and the
+    // server derives a placeholder the agent later replaces. What a task cannot
+    // be is empty, so require text in one of the two fields.
+    if ((!currentTitle && !currentDescription) || !selectedAssigneeAgentId) {
       setAttemptedSubmit(true);
-      if (currentTitle && !selectedAssigneeAgentId) {
+      if ((currentTitle || currentDescription) && !selectedAssigneeAgentId) {
         assigneeSelectorRef.current?.focus();
       }
       return;
@@ -1076,7 +1111,8 @@ export function NewIssueDialog() {
     createIssue.mutate({
       companyId: effectiveCompanyId,
       stagedFiles,
-      title: currentTitle,
+      // Omit rather than send "" so the server takes the derive-a-title path.
+      title: currentTitle || undefined,
       description: currentDescription || undefined,
       status,
       priority: priority || "medium",
@@ -1283,6 +1319,15 @@ export function NewIssueDialog() {
     setSelectedExecutionWorkspaceId("");
   }, [orderedProjects]);
 
+  // The description is the primary field now, so it takes the focus the title
+  // textarea used to claim with autoFocus. A frame's delay lets the editor
+  // mount before we reach for it.
+  useEffect(() => {
+    if (!newIssueOpen) return;
+    const raf = requestAnimationFrame(() => descriptionEditorRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
+  }, [newIssueOpen]);
+
   useEffect(() => {
     if (
       !newIssueOpen ||
@@ -1443,8 +1488,113 @@ export function NewIssueDialog() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          {/* Title */}
-          <div className="px-4 pt-4 pb-2">
+          {/* Description */}
+          <div
+            className="border-t border-border/60 px-4 pb-2 pt-3"
+            onDragEnter={handleFileDragEnter}
+            onDragOver={handleFileDragOver}
+            onDragLeave={handleFileDragLeave}
+            onDrop={handleFileDrop}
+          >
+            <div
+              className={cn(
+                "rounded-md transition-colors",
+                isFileDragOver && "bg-accent/20",
+              )}
+            >
+              <IssueDescriptionEditor
+                value={description}
+                expanded={expanded}
+                mentions={mentionOptions}
+                descriptionEditorRef={descriptionEditorRef}
+                imageUploadHandler={uploadDescriptionImageHandler}
+                onChange={handleDescriptionChange}
+              />
+            </div>
+            {showContentError ? (
+              <p className="mt-1 text-xs text-destructive">
+                {t("newIssue.contentRequired", {
+                  defaultValue: "請描述這個任務 / Describe the task",
+                })}
+              </p>
+            ) : null}
+            {stagedFiles.length > 0 ? (
+              <div className="mt-4 space-y-3 rounded-lg border border-border/70 p-3">
+              {stagedDocuments.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">{t("newIssue.documents", { defaultValue: "Documents" })}</div>
+                  <div className="space-y-2">
+                    {stagedDocuments.map((file) => (
+                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                              {file.documentKey}
+                            </span>
+                            <span className="truncate text-sm">{file.file.name}</span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <FileText className="h-3.5 w-3.5" />
+                            <span>{file.title || file.file.name}</span>
+                            <span>•</span>
+                            <span>{formatFileSize(file.file)}</span>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="shrink-0 text-muted-foreground"
+                          onClick={() => removeStagedFile(file.id)}
+                          disabled={createIssue.isPending}
+                          title={t("newIssue.removeDocument", { defaultValue: "Remove document" })}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {stagedAttachments.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">{t("newIssue.attachments", { defaultValue: "Attachments" })}</div>
+                  <div className="space-y-2">
+                    {stagedAttachments.map((file) => (
+                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="truncate text-sm">{file.file.name}</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            {file.file.type || "application/octet-stream"} • {formatFileSize(file.file)}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="shrink-0 text-muted-foreground"
+                          onClick={() => removeStagedFile(file.id)}
+                          disabled={createIssue.isPending}
+                          title={t("newIssue.removeAttachment", { defaultValue: "Remove attachment" })}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              </div>
+            ) : null}
+          </div>
+          {/* Title — deliberately optional and below the description. Most
+              people just want to type what they want and hit create, so the
+              description is the primary field. Leave this blank and the server
+              derives a placeholder that the assigned agent replaces with a
+              real summary on its first run. */}
+          <div className="border-t border-border/60 px-4 py-2">
             <IssueTitleTextarea
               value={title}
               pending={createIssue.isPending}
@@ -1455,14 +1605,9 @@ export function NewIssueDialog() {
               projectSelectorRef={projectSelectorRef}
               onChange={handleTitleChange}
             />
-            {showTitleError ? (
-              <p className="mt-1 text-xs text-destructive">
-                {t("newIssue.titleRequired", { defaultValue: "請輸入任務標題 / Task title is required" })}
-              </p>
-            ) : null}
           </div>
 
-          <div className="px-4 pb-2">
+          <div className="px-4 pt-2 pb-2">
             <div className="overflow-x-auto overscroll-x-contain">
               <div className="inline-flex items-center gap-2 text-sm text-muted-foreground flex-wrap sm:flex-nowrap sm:min-w-max">
               <span className="w-6 shrink-0 text-center">{t("newIssue.for", { defaultValue: "For" })}</span>
@@ -1992,102 +2137,8 @@ export function NewIssueDialog() {
             )}
             </div>
           )}
-
-          {/* Description */}
-          <div
-            className="border-t border-border/60 px-4 pb-2 pt-3"
-            onDragEnter={handleFileDragEnter}
-            onDragOver={handleFileDragOver}
-            onDragLeave={handleFileDragLeave}
-            onDrop={handleFileDrop}
-          >
-            <div
-              className={cn(
-                "rounded-md transition-colors",
-                isFileDragOver && "bg-accent/20",
-              )}
-            >
-              <IssueDescriptionEditor
-                value={description}
-                expanded={expanded}
-                mentions={mentionOptions}
-                descriptionEditorRef={descriptionEditorRef}
-                imageUploadHandler={uploadDescriptionImageHandler}
-                onChange={handleDescriptionChange}
-              />
-            </div>
-            {stagedFiles.length > 0 ? (
-              <div className="mt-4 space-y-3 rounded-lg border border-border/70 p-3">
-              {stagedDocuments.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">{t("newIssue.documents", { defaultValue: "Documents" })}</div>
-                  <div className="space-y-2">
-                    {stagedDocuments.map((file) => (
-                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                              {file.documentKey}
-                            </span>
-                            <span className="truncate text-sm">{file.file.name}</span>
-                          </div>
-                          <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                            <FileText className="h-3.5 w-3.5" />
-                            <span>{file.title || file.file.name}</span>
-                            <span>•</span>
-                            <span>{formatFileSize(file.file)}</span>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          className="shrink-0 text-muted-foreground"
-                          onClick={() => removeStagedFile(file.id)}
-                          disabled={createIssue.isPending}
-                          title={t("newIssue.removeDocument", { defaultValue: "Remove document" })}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {stagedAttachments.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">{t("newIssue.attachments", { defaultValue: "Attachments" })}</div>
-                  <div className="space-y-2">
-                    {stagedAttachments.map((file) => (
-                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate text-sm">{file.file.name}</span>
-                          </div>
-                          <div className="mt-1 text-[11px] text-muted-foreground">
-                            {file.file.type || "application/octet-stream"} • {formatFileSize(file.file)}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          className="shrink-0 text-muted-foreground"
-                          onClick={() => removeStagedFile(file.id)}
-                          disabled={createIssue.isPending}
-                          title={t("newIssue.removeAttachment", { defaultValue: "Remove attachment" })}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              </div>
-            ) : null}
-          </div>
         </div>
+
 
         {/* Property chips bar */}
         <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap shrink-0">

@@ -1,5 +1,10 @@
 export { agentAdapterTypeSchema, optionalAgentAdapterTypeSchema } from "./adapter-type.js";
 export {
+  PROVISIONAL_TITLE_FALLBACK,
+  PROVISIONAL_TITLE_MAX_CHARS,
+  deriveProvisionalIssueTitle,
+} from "./provisional-issue-title.js";
+export {
   SCOPED_TEAM_SEPARATOR,
   CANONICAL_CAMPUSES,
   ALLOWED_NON_CAMPUS_TOP_TEAMS,

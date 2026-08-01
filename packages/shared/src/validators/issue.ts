@@ -435,7 +435,12 @@ const createIssueBaseSchema = z.object({
     action: multilineTextSchema.pipe(z.string().trim().min(1).max(2_000)),
   }).strict().optional().nullable(),
   inheritExecutionWorkspaceFromIssueId: z.string().uuid().optional().nullable(),
-  title: z.string().min(1),
+  // Optional so the common workflow is "type what you want, hit create". When
+  // it is absent the server derives a provisional title from the description
+  // and the assigned agent replaces it with a real summary on its first run.
+  // A blank string is accepted and treated as absent, because that is what an
+  // untouched input actually sends.
+  title: z.string().optional().nullable(),
   description: multilineTextSchema.optional().nullable(),
   status: z.enum(ISSUE_STATUSES),
   workMode: z.enum(ISSUE_WORK_MODES).optional().default("standard"),
@@ -478,6 +483,23 @@ function requireBlockedStatusForUnblockDescriptor(
   }
 }
 
+/**
+ * A task may omit its title, but it may not be entirely empty — there would be
+ * nothing to derive a provisional title from and nothing for the agent to do.
+ * One of title or description must carry text.
+ */
+function requireTitleOrDescription(
+  value: { title?: string | null; description?: string | null },
+  ctx: z.RefinementCtx,
+) {
+  if ((value.title ?? "").trim() || (value.description ?? "").trim()) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: "A task needs a title or a description",
+    path: ["description"],
+  });
+}
+
 const createIssueDuplicateGuardSchema = {
   idempotencyKey: z.string().trim().min(1).max(255).optional().nullable(),
   allowDuplicate: z.boolean()
@@ -493,7 +515,9 @@ export const createIssueInputSchema = createIssueBaseSchema.extend({
 
 export const createIssueSchema = withCreateIssueStatusDefault(
   createIssueBaseSchema.extend(createIssueDuplicateGuardSchema),
-).superRefine(requireBlockedStatusForUnblockDescriptor);
+)
+  .superRefine(requireBlockedStatusForUnblockDescriptor)
+  .superRefine(requireTitleOrDescription);
 
 export type CreateIssue = z.infer<typeof createIssueSchema>;
 

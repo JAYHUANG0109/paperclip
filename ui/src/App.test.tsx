@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CloudAccessGate } from "./components/CloudAccessGate";
 import appSource from "./App.tsx?raw";
+import sidebarSource from "./components/Sidebar.tsx?raw";
 
 const mockHealthApi = vi.hoisted(() => ({
   get: vi.fn(),
@@ -240,5 +241,35 @@ describe("Skill Studio routes", () => {
     expect(detailIndexes).toHaveLength(2);
     expect(createIndexes[0]).toBeLessThan(detailIndexes[0]!);
     expect(createIndexes[1]).toBeLessThan(detailIndexes[1]!);
+  });
+});
+
+/**
+ * Every sidebar link is unprefixed (`/memory`), but most pages live under
+ * `:companyPrefix`. A board page therefore needs EITHER a master-level route or
+ * an `UnprefixedBoardRedirect` at the top level. Miss both and the path falls
+ * through to `:companyPrefix`, where the segment is read as a company code and
+ * the user gets "no company matches MEMORY" instead of the page.
+ *
+ * That is exactly how `/memory` shipped broken, so this asserts the property
+ * for every sidebar destination rather than just that one.
+ */
+describe("sidebar destinations resolve at the top level", () => {
+  it("gives every unprefixed sidebar link a master route or a redirect", () => {
+    const targets = [...sidebarSource.matchAll(/<SidebarNavItem\s+to="\/([a-z0-9-]+)"/g)]
+      .map((match) => match[1]!)
+      .filter((segment, index, all) => all.indexOf(segment) === index);
+
+    // Guard the guard: if the extraction stops matching, the test must fail
+    // loudly rather than silently assert nothing.
+    expect(targets.length).toBeGreaterThan(10);
+    expect(targets).toContain("memory");
+
+    // `skills` is registered as the splat `skills/*`, so accept either form.
+    const unresolved = targets.filter(
+      (segment) => !new RegExp(`path="${segment}(?:/\\*)?"`).test(appSource),
+    );
+
+    expect(unresolved).toEqual([]);
   });
 });

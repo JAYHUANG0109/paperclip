@@ -639,6 +639,12 @@ export function App() {
           <Route path="leaderboard" element={<UnprefixedBoardRedirect />} />
           <Route path="bounties" element={<UnprefixedBoardRedirect />} />
           <Route path="office" element={<UnprefixedBoardRedirect />} />
+          {/* Memory is a board route, so the sidebar's unprefixed `/memory`
+              needs this redirect the way `office` and `skills` do. Without it
+              the path falls through to `:companyPrefix` and resolves as a
+              company code, which is why it rendered "no company matches
+              MEMORY" instead of the page. */}
+          <Route path="memory" element={<UnprefixedBoardRedirect />} />
           <Route path="u/:userSlug" element={<UnprefixedBoardRedirect />} />
           <Route path="skills/*" element={<UnprefixedBoardRedirect />} />
           <Route path="settings" element={<LegacySettingsRedirect />} />
