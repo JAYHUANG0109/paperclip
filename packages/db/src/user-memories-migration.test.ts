@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import {
   getEmbeddedPostgresTestSupport,
@@ -31,16 +31,31 @@ const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
 describeEmbeddedPostgres("9025_user_memories", () => {
-  afterEach(async () => {
+  // ONE embedded postgres for the whole file, reset between tests.
+  //
+  // Starting an instance per test costs ~5s each, which passes when the file
+  // runs alone and times out under the group run's parallelism — a test that
+  // only fails when other work is happening is worse than no test.
+  let shared: postgres.Sql;
+
+  beforeAll(async () => {
+    const database = await startEmbeddedPostgresTestDatabase("paperclip-user-memories-");
+    cleanups.push(database.cleanup);
+    shared = postgres(database.connectionString, { max: 1 });
+    cleanups.push(async () => shared.end());
+  }, 120_000);
+
+  afterAll(async () => {
     await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
   });
 
+  beforeEach(async () => {
+    // Companies cascade to user_memories; agents are referenced by provenance.
+    await shared.unsafe(`TRUNCATE TABLE "user_memories", "agents", "companies" CASCADE`);
+  });
+
   async function freshDatabase() {
-    const database = await startEmbeddedPostgresTestDatabase("paperclip-user-memories-");
-    cleanups.push(database.cleanup);
-    const sql = postgres(database.connectionString, { max: 1 });
-    cleanups.push(async () => sql.end());
-    return sql;
+    return shared;
   }
 
   it("applies and accepts a memory row", async () => {

@@ -3358,6 +3358,15 @@ registry.registerPath({
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
+// ─── Personal memory ─────────────────────────────────────────────────────────
+for (const route of [
+  ["get", "/api/companies/{companyId}/users/{userId}/memories", "List a user's personal memories"],
+  ["put", "/api/companies/{companyId}/users/{userId}/memories/{name}", "Create or replace a personal memory"],
+  ["delete", "/api/companies/{companyId}/users/{userId}/memories/{name}", "Delete a personal memory"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["memory"], summary: route[2] });
+}
+
 registry.registerPath({
   method: "get",
   path: "/api/instance/view-as-users",
