@@ -205,7 +205,16 @@ async function createApp(actor: Record<string, unknown>) {
     (req as any).actor = actor;
     next();
   });
-  app.use("/api", companySkillRoutes({} as any));
+  // actorAllowsRestrictedFolders looks the acting user's email up directly, so
+  // the routes need a db with select(); an empty object made every mutation 500.
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => Promise.resolve([{ email: "member@example.com" }]),
+      }),
+    }),
+  };
+  app.use("/api", companySkillRoutes(db as any));
   app.use(errorHandler);
   return app;
 }
@@ -1496,13 +1505,21 @@ describe("company skill mutation permissions", () => {
     await request(app)
       .get("/api/companies/company-1/skills?sort=stars&categories[]=memory&category=git&scope=company&q=review&include=lastEditor")
       .expect(200);
-    expect(mockCompanySkillService.list).toHaveBeenCalledWith("company-1", {
-      q: "review",
-      sort: "stars",
-      categories: ["git", "memory"],
-      scope: "company",
-      include: ["lastEditor"],
-    });
+    // The store list gained folder filters and a viewer argument (folder
+    // restrictions are applied per-viewer), so the call shape moved with it.
+    expect(mockCompanySkillService.list).toHaveBeenCalledWith(
+      "company-1",
+      {
+        q: "review",
+        sort: "stars",
+        categories: ["git", "memory"],
+        scope: "company",
+        include: ["lastEditor"],
+        folderId: undefined,
+        includeSubtree: undefined,
+      },
+      { userId: null, isPrivileged: true, allowRestrictedFolders: true },
+    );
 
     await request(app).get("/api/companies/company-1/skills/categories").expect(200);
     expect(mockCompanySkillService.categoryCounts).toHaveBeenCalledWith("company-1");
@@ -1691,6 +1708,14 @@ describe("company skill mutation permissions", () => {
       code: "reflection_coach_mutation_gate_required",
     }));
 
+    // Explicit, because vi.clearAllMocks() clears calls but not implementations:
+    // without this the agent lookup inherits the canCreateSkills:false agent set
+    // by an earlier test and this case fails on permissions rather than consent.
+    mockAgentService.getById.mockResolvedValue({
+      id: "reflection-coach",
+      companyId: "company-1",
+      permissions: { canCreateSkills: true },
+    });
     const res = await request(await createApp({
       type: "agent",
       agentId: "reflection-coach",
@@ -1712,6 +1737,14 @@ describe("company skill mutation permissions", () => {
     ));
     mockReflectionCoachMutationGate.assertConsented.mockRejectedValue(new Error("database unavailable"));
 
+    // Explicit, because vi.clearAllMocks() clears calls but not implementations:
+    // without this the agent lookup inherits the canCreateSkills:false agent set
+    // by an earlier test and this case fails on permissions rather than consent.
+    mockAgentService.getById.mockResolvedValue({
+      id: "reflection-coach",
+      companyId: "company-1",
+      permissions: { canCreateSkills: true },
+    });
     const res = await request(await createApp({
       type: "agent",
       agentId: "reflection-coach",
@@ -2203,7 +2236,9 @@ describe("company skill mutation permissions", () => {
     expect(res.body).toEqual({
       error: 'Cannot delete skill "Find Skills" while it is still used by Builder, Reviewer. Detach it from those agents first.',
     });
-    expect(mockCompanySkillService.deleteSkill).toHaveBeenCalledWith("company-1", "skill-1");
+    // deleteSkill gained a force flag; an ordinary delete passes force: false,
+    // which is what makes the in-use check above fire.
+    expect(mockCompanySkillService.deleteSkill).toHaveBeenCalledWith("company-1", "skill-1", { force: false });
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 });

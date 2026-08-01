@@ -40,6 +40,15 @@ function createDbStub() {
     "membershipRole" in table &&
     "principalType" in table &&
     "principalId" in table;
+  // The directory also joins each person's agents so the picker can group a
+  // person with their agent(s). Without a branch for it the stub throws
+  // "Unexpected table" and the route 500s for a reason unrelated to the test.
+  const isAgentMembershipsTable = (table: unknown) =>
+    !!table &&
+    typeof table === "object" &&
+    "agentId" in table &&
+    "userId" in table &&
+    "state" in table;
   const isAuthUsersTable = (table: unknown) =>
     !!table &&
     typeof table === "object" &&
@@ -61,6 +70,13 @@ function createDbStub() {
               },
             };
             return query;
+          }
+          if (isAgentMembershipsTable(table)) {
+            const q: any = {
+              innerJoin: () => q,
+              where: () => Promise.resolve([]),
+            };
+            return q;
           }
           if (isAuthUsersTable(table)) {
             return {
@@ -120,11 +136,15 @@ describe("GET /companies/:companyId/user-directory", () => {
           principalId: "user-2",
           status: "active",
           user: { id: "user-2", name: null, email: "alex@example.com", image: null },
+          // The directory groups each person with their joined agents; the stub
+          // returns no agent memberships, so every user comes back with none.
+          agents: [],
         },
         {
           principalId: "user-1",
           status: "active",
           user: { id: "user-1", name: "Dotta", email: "dotta@example.com", image: "https://example.com/dotta.png" },
+          agents: [],
         },
       ],
     });

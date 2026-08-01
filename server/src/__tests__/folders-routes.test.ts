@@ -16,6 +16,13 @@ const mockLogActivity = vi.hoisted(() => vi.fn());
 vi.mock("../services/index.js", () => ({
   folderService: () => mockFolderService,
   logActivity: mockLogActivity,
+  // routes/folders.ts resolves team scoping through the skill service. Omitting
+  // it from the mock makes the whole module fail to load, so every case in this
+  // file fails for a reason unrelated to folders.
+  companySkillService: () => ({
+    getUserTeams: vi.fn(async () => new Set<string>()),
+    getShareableTeams: vi.fn(async () => ({ teams: [], canShareToAll: true })),
+  }),
 }));
 
 async function createApp() {
