@@ -34,7 +34,7 @@ export type WikiSpaceViewer = {
 
 /** The subset of a WikiSpace needed to decide visibility. */
 export type SpaceAccessFields = {
-  accessScope: string; // "shared" | "personal" | "team" (unknown → fail closed)
+  accessScope: string; // "shared" | "admin" | "personal" | "team" (unknown → fail closed)
   ownerUserId?: string | null;
   ownerAgentId?: string | null;
   teamKey?: string | null;
@@ -49,6 +49,12 @@ export function spaceScopeVisible(space: SpaceAccessFields, viewer: WikiSpaceVie
   if (viewer.isPrivileged) return true;
   const scope = (space.accessScope || "shared").toLowerCase();
   if (scope === "shared") return true;
+  // The company wiki: admins only. Privileged viewers already returned true
+  // above, so this denies everyone else outright — including a space's own
+  // owner, and including agents, which is the point. Unlike leaving the scope
+  // unknown and leaning on the fail-closed branch below, this says so out loud,
+  // so nobody later "fixes" an unrecognised scope by making it shared.
+  if (scope === "admin") return false;
 
   const ownedByUser = !!viewer.userId && !!space.ownerUserId && space.ownerUserId === viewer.userId;
   const ownedByAgent = !!viewer.agentId && !!space.ownerAgentId && space.ownerAgentId === viewer.agentId;

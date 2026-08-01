@@ -81,6 +81,50 @@ describe("spaceScopeVisible", () => {
   it("empty accessScope defaults to shared (the default space has no scope surprises)", () => {
     expect(spaceScopeVisible({ accessScope: "" }, {})).toBe(true);
   });
+
+  // The company wiki: readable by admins and nobody else. This is the scope the
+  // shared `default` space is converted to, so these cases pin the whole point
+  // of the conversion.
+  describe("admin scope (the company wiki)", () => {
+    const companyWiki = { accessScope: "admin", slug: "default" };
+
+    it("ALLOWS a privileged viewer (owner/admin/instance-admin)", () => {
+      expect(spaceScopeVisible(companyWiki, { isPrivileged: true })).toBe(true);
+    });
+
+    it("DENIES an ordinary user", () => {
+      expect(spaceScopeVisible(companyWiki, { userId: "alice" })).toBe(false);
+    });
+
+    it("DENIES an agent", () => {
+      expect(spaceScopeVisible(companyWiki, { agentId: "agent-1" })).toBe(false);
+      expect(spaceScopeVisible(companyWiki, { userId: "alice", agentId: "agent-1" })).toBe(false);
+    });
+
+    // Deliberately stricter than "personal": admin-only means admins, so being
+    // named as the owner is not a way in.
+    it("DENIES even the space's own owner", () => {
+      expect(spaceScopeVisible(
+        { accessScope: "admin", ownerUserId: "alice", ownerAgentId: "agent-1" },
+        { userId: "alice", agentId: "agent-1" },
+      )).toBe(false);
+    });
+
+    it("DENIES a team member of the space's team", () => {
+      expect(spaceScopeVisible(
+        { accessScope: "admin", teamKey: "leadership" },
+        { userId: "alice", teams: ["leadership"] },
+      )).toBe(false);
+    });
+
+    it("DENIES a viewer-less (trusted-path) caller", () => {
+      expect(spaceScopeVisible(companyWiki, {})).toBe(false);
+    });
+
+    it("is case-insensitive, so a capitalised scope cannot open it up", () => {
+      expect(spaceScopeVisible({ accessScope: "ADMIN" }, { userId: "alice" })).toBe(false);
+    });
+  });
 });
 
 describe("assertSpaceAccess", () => {
