@@ -26,6 +26,7 @@ import {
   ListChecks,
   GanttChartSquare,
   LayoutGrid,
+  Brain,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { attentionApi } from "../api/attention";
@@ -279,6 +280,11 @@ export function Sidebar() {
           <SidebarNavItem to="/office" label={t("nav.office", { defaultValue: "Virtual Office" })} icon={Building2} />
           <SidebarNavItem to="/routines" label={t("nav.routines", { defaultValue: "Routines" })} icon={Repeat} />
           {isAdminViewer && <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />}
+          {/* Deliberately NOT behind isAdminViewer: everyone has their own
+              memory, and it is scoped to the signed-in user server-side. Hiding
+              it would leave people unable to see or correct what their agents
+              remember about them. */}
+          <SidebarNavItem to="/memory" label={t("nav.memory", { defaultValue: "Memory" })} icon={Brain} />
           <SidebarNavItem to="/artifacts" label={t("nav.artifacts", { defaultValue: "Artifacts" })} icon={Package} />
           <SidebarNavItem to="/skills" label={t("nav.skills", { defaultValue: "Skills" })} icon={Boxes} />
           {showWorkspacesLink ? (

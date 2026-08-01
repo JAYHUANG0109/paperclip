@@ -60,6 +60,7 @@ const RoutineDetail = lazyPage(() => import("./pages/RoutineDetail"), "RoutineDe
 const UserProfile = lazyPage(() => import("./pages/UserProfile"), "UserProfile");
 const ExecutionWorkspaceDetail = lazyPage(() => import("./pages/ExecutionWorkspaceDetail"), "ExecutionWorkspaceDetail");
 const Goals = lazyPage(() => import("./pages/Goals"), "Goals");
+const Memory = lazyPage(() => import("./pages/Memory"), "Memory");
 const Artifacts = lazyPage(() => import("./pages/Artifacts"), "Artifacts");
 const GoalDetail = lazyPage(() => import("./pages/GoalDetail"), "GoalDetail");
 const Approvals = lazyPage(() => import("./pages/Approvals"), "Approvals");
@@ -292,6 +293,7 @@ function boardRoutes() {
       <Route path="execution-workspaces/:workspaceId/issues" element={<ExecutionWorkspaceDetail />} />
       <Route path="execution-workspaces/:workspaceId/routines" element={<ExecutionWorkspaceDetail />} />
       <Route path="goals" element={<Goals />} />
+      <Route path="memory" element={<Memory />} />
       <Route path="goals/:goalId" element={<GoalDetail />} />
       <Route path="artifacts" element={<Artifacts />} />
       <Route path="approvals" element={<Navigate to="/approvals/pending" replace />} />
