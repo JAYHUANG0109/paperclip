@@ -10136,7 +10136,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         },
       });
 
-      await finalizeAgentStatus(run.agentId, "interrupted", message);
+      await finalizeAgentStatus(run.agentId, "interrupted", message, {
+        wasFirstHeartbeat: timerClaimWasFirstHeartbeat(run),
+      });
       interruptedRunIds.push(interrupted.id);
     }
 
@@ -11606,6 +11608,40 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       .where(eq(agents.id, agentId));
   }
 
+  async function claimDueTimerHeartbeat(
+    agent: typeof agents.$inferSelect,
+    now: Date,
+    intervalSec: number,
+  ) {
+    const dueBefore = new Date(now.getTime() - intervalSec * 1000);
+    const claimed = await db
+      .update(agents)
+      .set({
+        lastHeartbeatAt: now,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(agents.id, agent.id),
+        eq(agents.companyId, agent.companyId),
+        or(
+          lte(agents.lastHeartbeatAt, dueBefore),
+          and(isNull(agents.lastHeartbeatAt), lte(agents.createdAt, dueBefore)),
+        ),
+      ))
+      .returning({ id: agents.id })
+      .then((rows) => rows[0] ?? null);
+    if (!claimed) return null;
+    return { wasFirstHeartbeat: !agent.lastHeartbeatAt };
+  }
+
+  function timerClaimWasFirstHeartbeat(
+    run: Pick<typeof heartbeatRuns.$inferSelect, "contextSnapshot">,
+  ): true | undefined {
+    return parseObject(run.contextSnapshot).timerClaimWasFirstHeartbeat === true
+      ? true
+      : undefined;
+  }
+
   function parseMaxTurnContinuationPolicy(agent: typeof agents.$inferSelect): MaxTurnContinuationPolicy {
     const runtimeConfig = parseObject(agent.runtimeConfig);
     const heartbeat = parseObject(runtimeConfig.heartbeat);
@@ -12097,7 +12133,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     agentId: string,
     outcome: "succeeded" | "interrupted" | "failed" | "cancelled" | "timed_out",
     failureReason?: string | null,
-    options?: { keepIdleOnFailure?: boolean },
+    options?: { keepIdleOnFailure?: boolean; wasFirstHeartbeat?: boolean },
   ) {
     const existing = await getAgent(agentId);
     if (!existing) return;
@@ -12106,7 +12142,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       return;
     }
 
-    const isFirstHeartbeat = !existing.lastHeartbeatAt;
+    const isFirstHeartbeat = options?.wasFirstHeartbeat ?? !existing.lastHeartbeatAt;
 
     const runningCount = await countRunningRunsForAgent(agentId);
     const nextStatus =
@@ -12551,7 +12587,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         },
       });
 
-      await finalizeAgentStatus(run.agentId, "failed", baseMessage);
+      await finalizeAgentStatus(run.agentId, "failed", baseMessage, {
+        wasFirstHeartbeat: timerClaimWasFirstHeartbeat(run),
+      });
       await startNextQueuedRunForAgent(run.agentId);
       runningProcesses.delete(run.id);
       reaped.push(run.id);
@@ -15206,6 +15244,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           keepIdleOnFailure:
             outcome === "failed" &&
             (finalizedRun ? readHeartbeatRunErrorFamily(finalizedRun) === "provider_quota" : runErrorCode === "provider_quota"),
+          wasFirstHeartbeat: timerClaimWasFirstHeartbeat(run),
         },
       );
     } catch (err) {
@@ -15340,7 +15379,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         }
       }
 
-      await finalizeAgentStatus(agent.id, "failed", message);
+      await finalizeAgentStatus(agent.id, "failed", message, {
+        wasFirstHeartbeat: timerClaimWasFirstHeartbeat(run),
+      });
     }
     } catch (outerErr) {
           // Setup code before adapter.execute threw (e.g. ensureRuntimeState, resolveWorkspaceForRun).
@@ -15440,7 +15481,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           // path owned the terminal transition. If another path already finalized
           // the run, keep that terminal outcome authoritative.
           if (setupFailureWrite.updated) {
-            await finalizeAgentStatus(run.agentId, "failed", message).catch(() => undefined);
+            await finalizeAgentStatus(run.agentId, "failed", message, {
+              wasFirstHeartbeat: timerClaimWasFirstHeartbeat(run),
+            }).catch(() => undefined);
           }
         } finally {
           const latestRun = await getRun(run.id).catch(() => null);
@@ -17742,7 +17785,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       await releaseIssueExecutionAndPromote(cancelled);
     }
 
-    await finalizeAgentStatus(run.agentId, "cancelled");
+    await finalizeAgentStatus(run.agentId, "cancelled", undefined, {
+      wasFirstHeartbeat: timerClaimWasFirstHeartbeat(run),
+    });
     await startNextQueuedRunForAgent(run.agentId);
     return cancelled;
   }
@@ -18223,6 +18268,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         const baseline = new Date(agent.lastHeartbeatAt ?? agent.createdAt).getTime();
         const elapsedMs = now.getTime() - baseline;
         if (elapsedMs < policy.intervalSec * 1000) continue;
+        const timerClaim = await claimDueTimerHeartbeat(agent, now, policy.intervalSec);
+        if (!timerClaim) continue;
 
         const run = await enqueueWakeup(agent.id, {
           source: "timer",
@@ -18234,6 +18281,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             source: "scheduler",
             reason: "interval_elapsed",
             now: now.toISOString(),
+            timerClaimWasFirstHeartbeat: timerClaim.wasFirstHeartbeat,
           },
         });
         if (run) enqueued += 1;
