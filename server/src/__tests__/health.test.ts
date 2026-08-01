@@ -283,6 +283,7 @@ describe("GET /health", () => {
       deploymentExposure: "public",
       bootstrapStatus: "ready",
       bootstrapInviteActive: false,
+      googleAuthEnabled: false,
       databaseBackup: {
         enabled: true,
         status: "warning",
@@ -339,6 +340,7 @@ describe("GET /health", () => {
       deploymentExposure: "public",
       bootstrapStatus: "ready",
       bootstrapInviteActive: false,
+      googleAuthEnabled: false,
     });
     expect(res.body.serverInfo).toBeUndefined();
   });
@@ -376,6 +378,7 @@ describe("GET /health", () => {
       deploymentExposure: "public",
       bootstrapStatus: "ready",
       bootstrapInviteActive: false,
+      googleAuthEnabled: false,
     });
     expect(res.body.serverInfo).toBeUndefined();
   });
@@ -420,6 +423,7 @@ describe("GET /health", () => {
       authReady: true,
       bootstrapStatus: "ready",
       bootstrapInviteActive: false,
+      googleAuthEnabled: false,
       features: {
         companyDeletionEnabled: false,
       },
@@ -460,6 +464,7 @@ describe("GET /health", () => {
       status: "ok",
       bootstrapStatus: "bootstrap_pending",
       bootstrapInviteActive: false,
+      googleAuthEnabled: false,
     });
   });
 
@@ -497,6 +502,7 @@ describe("GET /health", () => {
       status: "ok",
       bootstrapStatus: "ready",
       bootstrapInviteActive: false,
+      googleAuthEnabled: false,
     });
   });
 });

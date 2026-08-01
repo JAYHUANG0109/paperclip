@@ -99,6 +99,7 @@ describe("GET /health dev-server supervisor access", () => {
         deploymentExposure: "private",
         bootstrapStatus: "ready",
         bootstrapInviteActive: false,
+        googleAuthEnabled: false,
         devServer: {
           enabled: true,
           restartRequired: true,
