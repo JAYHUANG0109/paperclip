@@ -1,5 +1,7 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
+import { authUsers } from "@paperclipai/db";
+import { mayUseViewAs } from "../services/view-as-policy.js";
 import {
   issueGraphLivenessAutoRecoveryRequestSchema,
   patchInstanceSettingsSchema,
@@ -33,6 +35,30 @@ export function instanceSettingsRoutes(db: Db) {
   router.get("/instance/settings", async (req, res) => {
     assertBoardOrgAccess(req);
     res.json(await svc.get());
+  });
+
+  /**
+   * The users the caller may view as, for the "view as" selector.
+   *
+   * Gated by the SAME predicate the middleware enforces, so the selector can
+   * never appear for someone whose view-as requests would be refused — and,
+   * more importantly, so this endpoint is not a user-directory leak for anyone
+   * else. Callers who may not use view-as get a 403, not an empty list: an
+   * empty list would be indistinguishable from "no other users exist".
+   */
+  router.get("/instance/view-as-users", async (req, res) => {
+    if (!mayUseViewAs(req.actor)) {
+      throw forbidden("Not permitted to view as another user");
+    }
+    const rows = await db
+      .select({ id: authUsers.id, email: authUsers.email, name: authUsers.name })
+      .from(authUsers);
+    res.json(
+      rows
+        .filter((row) => row.id !== req.actor.userId)
+        .sort((a, b) => (a.email ?? "").localeCompare(b.email ?? ""))
+        .map((row) => ({ id: row.id, email: row.email ?? null, name: row.name ?? null })),
+    );
   });
 
   router.patch(

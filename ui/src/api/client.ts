@@ -1,4 +1,5 @@
 import { getPageVisibility, getVisibilityHeaderValue } from "@/lib/page-visibility";
+import { applyViewAsHeader, getViewAsUserId } from "@/lib/view-as";
 
 const BASE = "/api";
 
@@ -62,6 +63,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   applyObservabilityHeaders(headers);
+  // "View as" — scopes the request to another user when one is selected. Sent
+  // on writes too, so the server's read-only rail refuses them loudly rather
+  // than letting a click act as the real user against another user's view.
+  applyViewAsHeader(headers);
 
   const res = await fetch(`${BASE}${path}`, {
     headers,
@@ -96,11 +101,20 @@ interface InflightGet {
 
 const inflightGets = new Map<string, InflightGet>();
 
+function coalescingKey(path: string): string {
+  const viewingUserId = getViewAsUserId();
+  return viewingUserId ? `${viewingUserId}\u0000${path}` : path;
+}
+
 function coalescedGet<T>(path: string, options?: RequestOptions): Promise<T> {
   const signal = options?.signal;
   if (signal?.aborted) return Promise.reject(abortError());
 
-  let entry = inflightGets.get(path);
+  // Key by path AND the viewed user: two concurrent GETs for the same path
+  // issued either side of a view-as switch are different requests, and sharing
+  // one response would hand the caller the other identity's data.
+  const key = coalescingKey(path);
+  let entry = inflightGets.get(key);
   if (!entry) {
     const controller = new AbortController();
     const promise = request<T>(path, { method: "GET", signal: controller.signal });
@@ -108,13 +122,13 @@ function coalescedGet<T>(path: string, options?: RequestOptions): Promise<T> {
     // Clear the shared entry once settled so later calls issue a fresh request.
     promise.then(
       () => {
-        if (inflightGets.get(path) === created) inflightGets.delete(path);
+        if (inflightGets.get(key) === created) inflightGets.delete(key);
       },
       () => {
-        if (inflightGets.get(path) === created) inflightGets.delete(path);
+        if (inflightGets.get(key) === created) inflightGets.delete(key);
       },
     );
-    inflightGets.set(path, created);
+    inflightGets.set(key, created);
     entry = created;
   }
 
@@ -125,8 +139,8 @@ function coalescedGet<T>(path: string, options?: RequestOptions): Promise<T> {
   const releaseRef = () => {
     if (!activeEntry.refs.delete(ref)) return;
     // Last caller gone before the fetch settled → abort the shared request.
-    if (activeEntry.refs.size === 0 && inflightGets.get(path) === activeEntry) {
-      inflightGets.delete(path);
+    if (activeEntry.refs.size === 0 && inflightGets.get(key) === activeEntry) {
+      inflightGets.delete(key);
       activeEntry.controller.abort();
     }
   };

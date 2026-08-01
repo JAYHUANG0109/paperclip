@@ -20,9 +20,60 @@ import { boardAuthService } from "../services/board-auth.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { ensureHumanRoleDefaultGrants } from "../services/principal-access-compatibility.js";
 import { forbidden, unprocessable } from "../errors.js";
+import {
+  buildViewAsActor,
+  readViewAsHeader,
+  viewAsDenialReason,
+  type ViewAsTarget,
+} from "../services/view-as-policy.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+/**
+ * Load the user a view-as request names, with the SAME queries used to build a
+ * real session actor — their active memberships and their own instance-admin
+ * row. Using the same source of truth is what makes the resulting view an
+ * honest answer to "what does this person see?".
+ */
+async function resolveViewAsTarget(db: Db, userId: string): Promise<ViewAsTarget | null> {
+  const [user] = await db
+    .select({ id: authUsers.id, email: authUsers.email, name: authUsers.name })
+    .from(authUsers)
+    .where(eq(authUsers.id, userId));
+  if (!user) return null;
+
+  const [adminRow, memberships] = await Promise.all([
+    db
+      .select({ id: instanceUserRoles.id })
+      .from(instanceUserRoles)
+      .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
+      .then((rows) => rows[0] ?? null),
+    db
+      .select({
+        companyId: companyMemberships.companyId,
+        membershipRole: companyMemberships.membershipRole,
+        status: companyMemberships.status,
+      })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.principalId, userId),
+          eq(companyMemberships.status, "active"),
+        ),
+      ),
+  ]);
+
+  return {
+    userId: user.id,
+    userEmail: user.email ?? null,
+    userName: user.name ?? null,
+    companyIds: memberships.map((row) => row.companyId),
+    memberships,
+    isInstanceAdmin: Boolean(adminRow),
+  };
 }
 
 function normalizeOptionalString(value: string | null | undefined) {
@@ -212,6 +263,56 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
             runId: runIdHeader ?? undefined,
             source: "session",
           };
+          // "View as" — scope this request to another user so the lead
+          // developer can check what that person actually sees. Applied only
+          // AFTER the real actor is fully resolved, so every rail in
+          // view-as-policy.ts is decided against a verified identity rather
+          // than anything the client asserted.
+          const viewAsTargetId = readViewAsHeader(req.headers as Record<string, unknown>);
+          if (viewAsTargetId) {
+            const denial = viewAsDenialReason(req.actor, req.method, viewAsTargetId);
+            if (denial) {
+              // Refuse loudly. Silently ignoring the header would show the
+              // viewer their OWN data while they believe they are seeing
+              // someone else's — the worst possible outcome for a tool whose
+              // entire job is answering "what does this person see?".
+              logger.warn(
+                { realUserId: userId, viewAsTargetId, method: req.method, reason: denial },
+                "Refused view-as request",
+              );
+              next(forbidden(`View-as refused: ${denial}`));
+              return;
+            }
+            const target = await resolveViewAsTarget(db, viewAsTargetId);
+            if (!target) {
+              next(forbidden("View-as refused: no such user"));
+              return;
+            }
+            req.actor = buildViewAsActor(req.actor, target);
+            // Audited against the REAL user, every request. Failing to write
+            // the audit row must not silently grant an unlogged view.
+            try {
+              await db.insert(activityLog).values({
+                companyId: target.companyIds[0] ?? null,
+                actorType: "user",
+                actorId: userId,
+                action: "user.viewed_as",
+                entityType: "user",
+                entityId: target.userId,
+                responsibleUserId: userId,
+                details: {
+                  realUserEmail: session.user.email ?? null,
+                  viewedUserEmail: target.userEmail,
+                  method: req.method,
+                  path: req.originalUrl,
+                },
+              });
+            } catch (err) {
+              logger.error({ err, realUserId: userId, viewAsTargetId }, "Failed to audit view-as; refusing");
+              next(forbidden("View-as refused: could not record the audit entry"));
+              return;
+            }
+          }
           next();
           return;
         }

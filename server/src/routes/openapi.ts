@@ -3358,6 +3358,14 @@ registry.registerPath({
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
+registry.registerPath({
+  method: "get",
+  path: "/api/instance/view-as-users",
+  tags: ["instance"],
+  summary: "List the users the caller may view the app as",
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden },
+});
+
 // ─── Board chat (Conference Room Chat, experimental) ──────────────────────────
 
 registry.registerPath({
