@@ -55,6 +55,29 @@ export function resolveDefaultAgentWorkspaceDir(agentId: string): string {
   return path.resolve(resolvePaperclipInstanceRoot(), "workspaces", trimmed);
 }
 
+/**
+ * Resolve one user's materialized personal-memory directory:
+ * `<instanceRoot>/memory/<companyId>/<userId>`.
+ *
+ * Per-user isolation is the whole point, so both segments are sanitized into
+ * single path components — a userId is opaque text (better-auth generates it)
+ * and must never be able to introduce a separator and land one person's memory
+ * inside another's directory.
+ */
+export function resolveUserMemoryDir(input: { companyId: string; userId: string }): string {
+  const companyId = input.companyId.trim();
+  const userId = input.userId.trim();
+  if (!companyId || !userId) {
+    throw new Error("User memory path requires companyId and userId.");
+  }
+  return path.resolve(
+    resolvePaperclipInstanceRoot(),
+    "memory",
+    sanitizeFriendlyPathSegment(companyId, "company"),
+    sanitizeFriendlyPathSegment(userId, "user"),
+  );
+}
+
 function sanitizeFriendlyPathSegment(value: string | null | undefined, fallback = "_default"): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return fallback;
