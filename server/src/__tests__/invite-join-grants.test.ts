@@ -75,6 +75,7 @@ describe("human invite roles", () => {
       { permissionKey: "users:manage_permissions", scope: null },
       { permissionKey: "tasks:assign", scope: null },
       { permissionKey: "joins:approve", scope: null },
+      { permissionKey: "runtime:view_accounts", scope: null },
     ]);
   });
 
@@ -87,6 +88,7 @@ describe("human invite roles", () => {
       { permissionKey: "users:invite", scope: null },
       { permissionKey: "tasks:assign", scope: null },
       { permissionKey: "joins:approve", scope: null },
+      { permissionKey: "runtime:view_accounts", scope: null },
     ]);
   });
 

@@ -368,11 +368,23 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("atomically claims a due timer interval across overlapping scheduler ticks", async () => {
-    const { agentId } = await seedCompanyAndAgent({
+    const { companyId, agentId } = await seedCompanyAndAgent({
       heartbeatConfig: {
         enabled: true,
         intervalSec: 60,
       },
+    });
+    // This fork gates timer ticks on the agent having eligible work newer than the
+    // worktree-execution cutoff (see the `if (cutoff)` guard in tickTimers). Upstream
+    // has no such gate, so its version of this test seeds no issue and every tick is
+    // skipped before reaching the claim.
+    await db.insert(issues).values({
+      id: randomUUID(),
+      companyId,
+      title: "Assigned work",
+      status: "todo",
+      priority: "high",
+      assigneeAgentId: agentId,
     });
     const now = new Date();
     await db
