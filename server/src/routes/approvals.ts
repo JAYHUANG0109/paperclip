@@ -20,7 +20,9 @@ import {
   secretService,
 } from "../services/index.js";
 import { readPaperclipSkillSyncPreference, writePaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
-import { assertBoard, assertCompanyAccess, getAccessibleResource, getActorInfo, hasBoardOrgAccess, hasCompanyAccess } from "./authz.js";
+import { assertBoard, assertCompanyAccess, getAccessibleResource, getActorInfo, hasBoardOrgAccess, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
+import { agentOwnershipConfigChanges, mayChangeAgentOwnership } from "../services/agent-ownership-policy.js";
+import { forbidden } from "../errors.js";
 import { redactEventPayload } from "../redaction.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
@@ -101,6 +103,44 @@ export function approvalRoutes(
     return approval;
   }
 
+  /**
+   * A `hire_agent` approval carries the adapterConfig the agent is later created
+   * with (see the hire branch in services/approvals.ts), and its payload is a
+   * free-form record. Creating an approval and approving one both require only
+   * company access, so without this an operator could file a hire_agent approval
+   * carrying {assignedUserEmail: self, assignedUserRole: "owner"}, approve it
+   * themselves, and reach instance_admin at the next sign-in — around the
+   * identical guard on the hire route.
+   *
+   * Gating at creation (rather than at approval) keeps the legitimate flow
+   * intact: an admin may still hire with an owner email when the company
+   * requires board approval, and mirrors what the hire route already enforces.
+   */
+  function assertHireApprovalOwnershipAllowed(
+    req: Request,
+    companyId: string,
+    type: string,
+    payload: unknown,
+  ) {
+    if (type !== "hire_agent") return;
+    const adapterConfig = (payload as { adapterConfig?: unknown } | null)?.adapterConfig;
+    if (typeof adapterConfig !== "object" || adapterConfig === null) return;
+    const changed = agentOwnershipConfigChanges(
+      adapterConfig as Record<string, unknown>,
+      null,
+      "payload.adapterConfig",
+    );
+    if (changed.length === 0) return;
+    const allowed = mayChangeAgentOwnership({
+      actorType: req.actor.type,
+      isPrivileged: isPrivilegedMemberViewer(req, companyId, true),
+    });
+    if (allowed) return;
+    throw forbidden(
+      `Only company owners and admins can assign agent ownership (${changed.join(", ")})`,
+    );
+  }
+
   async function assertApprovalAccessAllowed(req: Request, res: any, companyId: string) {
     const decision = await access.decide({
       actor: req.actor,
@@ -165,6 +205,7 @@ export function approvalRoutes(
     assertCompanyAccess(req, companyId);
     if (!(await assertApprovalAccessAllowed(req, res, companyId))) return;
     if (!(await assertApprovalMutationAllowedByRunContext(req, res, companyId))) return;
+    assertHireApprovalOwnershipAllowed(req, companyId, req.body.type, req.body.payload);
     const rawIssueIds = req.body.issueIds;
     const issueIds = Array.isArray(rawIssueIds)
       ? rawIssueIds.filter((value: unknown): value is string => typeof value === "string")
@@ -434,6 +475,10 @@ export function approvalRoutes(
       res.status(403).json({ error: "Only requesting agent can resubmit this approval" });
       return;
     }
+
+    // Resubmit replaces the stored payload, so it is a second way to introduce
+    // ownership into a hire_agent approval and needs the same gate as creating one.
+    assertHireApprovalOwnershipAllowed(req, existing.companyId, existing.type, req.body.payload);
 
     const normalizedPayload = req.body.payload
       ? existing.type === "hire_agent"
