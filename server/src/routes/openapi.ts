@@ -6724,6 +6724,16 @@ for (const route of [
   ["get", "/api/companies/{companyId}/agent-progression", "Get agent progression levels"],
   ["get", "/api/companies/{companyId}/agents/mine", "List the signed-in user's own agents"],
   ["get", "/api/companies/{companyId}/agents/office-roster", "List the virtual-office agent roster"],
+  [
+    "get",
+    "/api/companies/{companyId}/agent-assignments/sync",
+    "Preview reconciling agent assignments with agent memberships",
+  ],
+  [
+    "post",
+    "/api/companies/{companyId}/agent-assignments/sync",
+    "Reconcile agent assignments with agent memberships",
+  ],
 ] as const) {
   registerCurrentRoute({ method: route[0], path: route[1], tags: ["agents"], summary: route[2] });
 }

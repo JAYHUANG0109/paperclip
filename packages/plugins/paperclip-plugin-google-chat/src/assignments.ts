@@ -18,6 +18,20 @@ export interface AgentAssignment {
   companyId: string;
   /** ISO timestamp of the last change. */
   updatedAt: string;
+  /**
+   * Provenance, owned by the Paperclip-side reconciler
+   * (server/src/services/agent-assignment-sync.ts).
+   *
+   * Absent means an admin typed this here and no `agent_memberships` row backs
+   * it yet; the reconciler promotes it to one and then stamps it as its own.
+   * That stamp is what lets a membership deleted in Paperclip actually revoke
+   * access instead of being re-created from this map forever.
+   *
+   * `setAssignment` deliberately does not carry it over: an admin editing a row
+   * on the 代理指派 page is re-asserting intent, so the entry goes back to being
+   * hand-made and is promoted again on the next reconcile.
+   */
+  source?: string;
 }
 
 const STATE_KEY = { scopeKind: "instance" as const, stateKey: "agent-assignments" };

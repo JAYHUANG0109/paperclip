@@ -126,7 +126,16 @@ type Assignment = {
   agentName?: string;
   companyId: string;
   updatedAt: string;
+  /**
+   * Provenance, written by the Paperclip-side reconciler
+   * (server/src/services/agent-assignment-sync.ts). Absent means an admin typed
+   * it here and it has not been mirrored into `agent_memberships` yet.
+   */
+  source?: string;
 };
+
+/** The reconciler's own tag — entries it manages, mirrored from a membership. */
+const SYNCED_SOURCE = "google_chat_assignment";
 
 type AgentOption = { id: string; name: string; urlKey?: string; teams?: string[] };
 
@@ -327,7 +336,32 @@ export function AssignmentsSettingsPage(_props: PluginPageProps) {
               {visibleAssignments.map((a) => (
                 <tr key={a.email} style={{ borderBottom: "1px solid var(--border, #2a2a2a)" }}>
                   <td style={cell}>{a.email}</td>
-                  <td style={cell}>{a.agentName ?? a.agentId}</td>
+                  <td style={cell}>
+                    {a.agentName ?? a.agentId}
+                    {/* A synced row mirrors an agent_membership in Paperclip.
+                        Removing it here only sticks if the membership was
+                        created by this page; one granted in Paperclip is
+                        re-added on the next reconcile. Saying so beats an
+                        admin watching a row silently reappear. */}
+                    {a.source === SYNCED_SOURCE && (
+                      <span
+                        title={tx(
+                          "Mirrored from this person's agent membership in Paperclip.",
+                          "與 Paperclip 中該成員的代理歸屬同步。"
+                        )}
+                        style={{
+                          marginLeft: 8,
+                          fontSize: 11,
+                          opacity: 0.65,
+                          border: "1px solid var(--border, #3a3a3a)",
+                          borderRadius: 6,
+                          padding: "1px 6px"
+                        }}
+                      >
+                        {tx("synced", "已同步")}
+                      </span>
+                    )}
+                  </td>
                   <td style={{ ...cell, textAlign: "right" }}>
                     <button style={button} disabled={busy} onClick={() => void remove(a.email)}>
                       {tx("Remove", "移除")}

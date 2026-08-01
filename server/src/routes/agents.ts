@@ -64,6 +64,7 @@ import {
   mayChangeAgentOwnership,
   preserveAgentOwnershipConfig,
 } from "../services/agent-ownership-policy.js";
+import { syncAgentAssignments } from "../services/agent-assignment-sync.js";
 import { assertBoard, assertCompanyAccess, assertInstanceAdmin, buildActorSecretContext, getAccessibleResource, getActorInfo, getVisibleAgentIds, getJoinedAgentIds, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
@@ -2623,6 +2624,69 @@ export function agentRoutes(
     assertCompanyAccess(req, companyId);
     const all = await svc.list(companyId);
     res.json(all.map((agent) => redactForRosterView(agent)));
+  });
+
+  // ─── 代理指派 ↔ agent_memberships reconciliation ─────────────────────────
+  //
+  // The Google Chat plugin's assignment map and `agent_memberships` both record
+  // who owns which agent, and both are edited by hand, so they drift. These two
+  // endpoints converge them. See server/src/services/agent-assignment-sync.ts
+  // for the provenance rules that stop either store from destroying the other's
+  // data — in particular that assignments for people with no Paperclip account
+  // are preserved rather than deleted.
+  //
+  // Gated at company owner/admin: creating a membership is exactly the grant
+  // that `assignedUserEmail` makes, so it sits at the same bar as
+  // `assertCanChangeAgentOwnershipConfig` rather than plain company access.
+  // It reuses that policy's predicate rather than restating the rule, so the
+  // two cannot drift — notably its actor-type ALLOWLIST, which is what keeps an
+  // unauthenticated actor out (`isPrivilegedMemberViewer` reports every
+  // non-board actor as privileged, so testing privilege alone is not enough).
+  function assertCanSyncAgentAssignments(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    const allowed = mayChangeAgentOwnership({
+      actorType: req.actor.type,
+      isPrivileged: isPrivilegedMemberViewer(req, companyId, true),
+    });
+    if (allowed) return;
+    throw forbidden(
+      req.actor.type === "agent"
+        ? "Agent-authenticated callers cannot reconcile agent assignments"
+        : "Only company owners and admins can reconcile agent assignments",
+    );
+  }
+
+  // Preview: reports exactly what a sync would change, writing nothing.
+  router.get("/companies/:companyId/agent-assignments/sync", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCanSyncAgentAssignments(req, companyId);
+    res.json(await syncAgentAssignments(db, { companyId, dryRun: true }));
+  });
+
+  router.post("/companies/:companyId/agent-assignments/sync", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCanSyncAgentAssignments(req, companyId);
+    const result = await syncAgentAssignments(db, { companyId });
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
+      action: "agent_assignments.synced",
+      entityType: "company",
+      entityId: companyId,
+      details: {
+        membershipsCreated: result.dbInserts.length,
+        membershipsRemoved: result.dbRemovals.length,
+        assignmentsWritten: result.mapUpserts.length,
+        assignmentsRemoved: result.mapRemovals.length,
+        unresolvedEmails: result.unresolvedEmails.length,
+      },
+    });
+    res.json(result);
   });
 
   router.get("/companies/:companyId/agents", async (req, res) => {
