@@ -9,6 +9,7 @@ import {
   agentMineInboxQuerySchema,
   ADAPTER_AGNOSTIC_KEYS,
   AGENT_DEFAULT_MAX_CONCURRENT_RUNS,
+  SYSTEM_AUTOMATION_TEAM,
   createAgentKeySchema,
   createAgentHireSchema,
   createAgentSchema,
@@ -1151,6 +1152,41 @@ export function agentRoutes(
         { code: "missing_manager", field: "reportsTo", campus: top },
       );
     }
+  }
+
+  /**
+   * File an agent that belongs to nobody under 系統自動化.
+   *
+   * "Nobody's" means no team was given AND no owner email was set, i.e. it is
+   * infrastructure rather than a person's agent. Both conditions matter: an
+   * agent with an owner but no team is a person's agent that is merely missing
+   * its campus, and silently filing that under 系統自動化 would hide a mistake
+   * worth seeing.
+   *
+   * The point is to keep 未分組 ("ungrouped") empty, so an agent appearing there
+   * is a real signal rather than the normal resting state.
+   *
+   * Mutates `body.metadata` in place, matching enforceOrgPlacement beside it,
+   * and must run before it so the default is validated like any other placement.
+   */
+  function applyDefaultTeamPlacement(
+    body: { metadata?: unknown },
+    adapterConfig: Record<string, unknown> | null | undefined,
+  ): void {
+    const md = asRecord(body.metadata);
+    const teams = Array.isArray(md?.teams)
+      ? md.teams.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+      : [];
+    if (teams.length > 0) return;
+
+    const ownerEmail = adapterConfig?.assignedUserEmail;
+    if (typeof ownerEmail === "string" && ownerEmail.trim().length > 0) return;
+
+    if (md) {
+      md.teams = [SYSTEM_AUTOMATION_TEAM];
+      return;
+    }
+    body.metadata = { teams: [SYSTEM_AUTOMATION_TEAM] };
   }
 
   function asRecord(value: unknown): Record<string, unknown> | null {
@@ -3029,9 +3065,11 @@ export function agentRoutes(
       sourceIssueIds: _sourceIssueIds,
       ...hireInput
     } = req.body;
-    enforceOrgPlacement(hireInput);
     hireInput.adapterType = assertKnownAdapterType(hireInput.adapterType);
     const rawHireAdapterConfig = (hireInput.adapterConfig ?? {}) as Record<string, unknown>;
+    // Before enforceOrgPlacement so the default is validated like any other placement.
+    applyDefaultTeamPlacement(hireInput, rawHireAdapterConfig);
+    enforceOrgPlacement(hireInput);
     assertNoNewAgentLegacyPromptTemplate(
       hireInput.adapterType,
       rawHireAdapterConfig,
@@ -3237,9 +3275,11 @@ export function agentRoutes(
       instructionsBundle,
       ...createInput
     } = req.body;
-    enforceOrgPlacement(createInput);
     createInput.adapterType = assertKnownAdapterType(createInput.adapterType);
     const rawCreateAdapterConfig = (createInput.adapterConfig ?? {}) as Record<string, unknown>;
+    // Before enforceOrgPlacement so the default is validated like any other placement.
+    applyDefaultTeamPlacement(createInput, rawCreateAdapterConfig);
+    enforceOrgPlacement(createInput);
     assertNoNewAgentLegacyPromptTemplate(
       createInput.adapterType,
       rawCreateAdapterConfig,

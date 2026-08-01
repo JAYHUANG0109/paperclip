@@ -3,6 +3,7 @@ export {
   SCOPED_TEAM_SEPARATOR,
   CANONICAL_CAMPUSES,
   ALLOWED_NON_CAMPUS_TOP_TEAMS,
+  SYSTEM_AUTOMATION_TEAM,
   parseTeamToken,
   makeScopedTeamToken,
   teamTokenMatches,

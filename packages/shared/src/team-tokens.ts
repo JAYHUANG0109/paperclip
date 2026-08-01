@@ -23,6 +23,14 @@ export const CANONICAL_CAMPUSES = ["仁美", "市政", "西屯", "黎明", "北�
 // top-team values that don't require a campus or a manager.
 export const ALLOWED_NON_CAMPUS_TOP_TEAMS = ["領導團隊", "系統自動化"] as const;
 
+/**
+ * Where an agent belongs when it is nobody's: no team given and no owner email,
+ * so it is infrastructure rather than a person's agent. Filing these here keeps
+ * 未分組 ("ungrouped") empty, which is what makes an agent showing up there a
+ * real signal that something was mis-created rather than routine noise.
+ */
+export const SYSTEM_AUTOMATION_TEAM = "系統自動化";
+
 const CANONICAL_CAMPUS_SET: ReadonlySet<string> = new Set(CANONICAL_CAMPUSES);
 
 /** True if `s` is one of the six real campuses. */

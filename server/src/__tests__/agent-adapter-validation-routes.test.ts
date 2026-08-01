@@ -22,6 +22,12 @@ const mockAccessService = vi.hoisted(() => ({
 const mockCompanySkillService = vi.hoisted(() => ({
   listRuntimeSkillEntries: vi.fn(),
   resolveRequestedSkillKeys: vi.fn(),
+  // These two drifted out of the mock as the service grew, and neither failure
+  // is loud: agent creation catches the auto-equip error and only warns, while
+  // the missing resolveRequestedSkillEntries surfaces as a bare 500. Both left
+  // the suite red with nothing naming the real cause.
+  autoEquipSkillKeysForTeams: vi.fn(async () => [] as string[]),
+  resolveRequestedSkillEntries: vi.fn(async () => ({ resolved: [], unresolved: [] })),
 }));
 
 const mockSecretService = vi.hoisted(() => ({
