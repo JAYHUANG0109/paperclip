@@ -65,6 +65,7 @@ import {
   preserveAgentOwnershipConfig,
 } from "../services/agent-ownership-policy.js";
 import { syncAgentAssignments } from "../services/agent-assignment-sync.js";
+import { redactForRosterView } from "../services/agent-roster-projection.js";
 import { assertBoard, assertCompanyAccess, assertInstanceAdmin, buildActorSecretContext, getAccessibleResource, getActorInfo, getVisibleAgentIds, getJoinedAgentIds, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
@@ -1862,22 +1863,6 @@ export function agentRoutes(
   // metadata to a whitelist — metadata otherwise carries private founderDigest /
   // asanaDigest / console content that must NOT leak company-wide. Access-gated
   // detail (the 查看代理人 button → full agent) stays behind visibleAgentIds.
-  const OFFICE_METADATA_KEYS = ["teams", "team", "officeCharacterId", "officeAvatarUrl"] as const;
-  function redactForRosterView(agent: Awaited<ReturnType<typeof svc.getById>>) {
-    if (!agent) return null;
-    const md = agent.metadata && typeof agent.metadata === "object" ? (agent.metadata as Record<string, unknown>) : {};
-    const safeMeta: Record<string, unknown> = {};
-    for (const key of OFFICE_METADATA_KEYS) {
-      if (key in md) safeMeta[key] = md[key];
-    }
-    return {
-      ...agent,
-      adapterConfig: {},
-      runtimeConfig: {},
-      metadata: safeMeta,
-    };
-  }
-
   function redactAgentConfiguration(agent: Awaited<ReturnType<typeof svc.getById>>) {
     if (!agent) return null;
     return {

@@ -52,7 +52,8 @@ import {
   writePaperclipSkillSyncPreference,
 } from "@paperclipai/adapter-utils/server-utils";
 import { badRequest, forbidden, HttpError, notFound, unauthorized } from "../errors.js";
-import { assertAuthenticated, assertCompanyAccess, getActorInfo, isPrivilegedMemberViewer } from "./authz.js";
+import { assertAuthenticated, assertCompanyAccess, getActorInfo, getVisibleAgentIds, isPrivilegedMemberViewer } from "./authz.js";
+import { leaderboardDisplayName, scopeAgentKeyedRecord } from "../services/agent-roster-projection.js";
 import { getTelemetryClient } from "../telemetry.js";
 import {
   companySkillPolicyService,
@@ -1819,10 +1820,30 @@ export function companySkillRoutes(db: Db) {
   });
 
   // ---- Virtual office: per-agent skill counts ----
+  /**
+   * Agent ids this caller may see, or null when unrestricted.
+   *
+   * Null is reserved for privileged viewers and agent actors. A member with no
+   * agents gets an EMPTY set, never null — conflating the two would publish
+   * every agent in the company to the people the visibility flag exists to
+   * scope.
+   */
+  async function visibleAgentScope(
+    req: Parameters<typeof assertCompanyAccess>[0],
+    companyId: string,
+  ): Promise<ReadonlySet<string> | null> {
+    if (req.actor.type === "agent") return null;
+    if (isPrivilegedMemberViewer(req, companyId, true)) return null;
+    const userId = req.actor.type === "board" ? req.actor.userId : null;
+    if (!userId) return new Set<string>();
+    return getVisibleAgentIds(db, companyId, userId);
+  }
+
   router.get("/companies/:companyId/agent-skill-counts", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    res.json(await svc.agentSkillCounts(companyId));
+    const scope = await visibleAgentScope(req, companyId);
+    res.json(scopeAgentKeyedRecord(await svc.agentSkillCounts(companyId), scope));
   });
 
   // ---- Virtual office: per-agent progression (level + 15 badges) ----
@@ -1830,7 +1851,8 @@ export function companySkillRoutes(db: Db) {
   router.get("/companies/:companyId/agent-progression", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    res.json(await agentProgression.computeForCompany(companyId));
+    const scope = await visibleAgentScope(req, companyId);
+    res.json(scopeAgentKeyedRecord(await agentProgression.computeForCompany(companyId), scope));
   });
 
   // ---- Leaderboard (排行榜) ----
@@ -1849,7 +1871,9 @@ export function companySkillRoutes(db: Db) {
       ? await db.select({ id: authUsers.id, name: authUsers.name, email: authUsers.email })
           .from(authUsers).where(inArray(authUsers.id, userIds))
       : [];
-    const nameById = new Map(users.map((u) => [u.id, u.name ?? u.email ?? u.id.slice(0, 8)]));
+    // Never fall back to the raw email — the leaderboard is shown to every
+    // member, and that turned a scoreboard into a company address list.
+    const userById = new Map(users.map((u) => [u.id, u]));
     // Frozen awards for the requested month (lifetime view → current month).
     const awardsMonth = period ?? new Date().toISOString().slice(0, 7);
     const awards = await leaderboard.listAwards(companyId, awardsMonth);
@@ -1859,7 +1883,7 @@ export function companySkillRoutes(db: Db) {
       // computed purely from each entry. coinsSpent is 0 until the shop ships.
       entries: result.entries.map((e) => ({
         ...e,
-        displayName: nameById.get(e.userId) ?? e.userId.slice(0, 8),
+        displayName: leaderboardDisplayName(userById.get(e.userId), e.userId),
         progression: progressionFor(e),
       })),
       awards,
