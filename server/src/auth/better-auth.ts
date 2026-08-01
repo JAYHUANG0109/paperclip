@@ -21,6 +21,7 @@ import { randomUUID } from "node:crypto";
 import type { Config } from "../config.js";
 import { resolvePaperclipInstanceId } from "../home-paths.js";
 import { seedOnboardingForAgent } from "../services/onboarding.js";
+import { materializeUserMemory } from "../services/personal-memory.js";
 
 /**
  * Auto-provision a newly signed-in user from any agents pre-tagged with their
@@ -162,6 +163,21 @@ async function autoProvisionAssignedAgents(
       await seedOnboardingForAgent(db, { companyId: agent.companyId, agentId: agent.id });
     } catch (err) {
       console.warn(`[auth] onboarding seed on sign-in failed for agent ${agent.id}:`, err);
+    }
+  }
+
+  // Refresh this user's materialized personal memory, once per company they
+  // have an agent in. Sign-in is the natural moment: the mapped user is already
+  // resolved here, and it keeps the DB→disk projection current without putting
+  // filesystem work on the run hot path.
+  //
+  // Best-effort and never blocking — memory is an enhancement to a run, and
+  // failing to write it must not stop someone signing in.
+  for (const companyId of new Set(mine.map((agent) => agent.companyId))) {
+    try {
+      await materializeUserMemory(db, { companyId, userId });
+    } catch (err) {
+      console.warn(`[auth] memory materialization on sign-in failed for ${companyId}:`, err);
     }
   }
 }
