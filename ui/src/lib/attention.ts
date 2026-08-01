@@ -17,6 +17,7 @@ import type {
  */
 export const INLINE_RESOLVABLE_SOURCE_KINDS: ReadonlySet<AttentionSourceKind> = new Set<AttentionSourceKind>([
   "approval",
+  "decision",
   "issue_thread_interaction",
   "join_request",
 ]);
@@ -37,6 +38,7 @@ interface SourceMeta {
 
 const SOURCE_META: Record<AttentionSourceKind, SourceMeta> = {
   approval: { label: "Approval" },
+  decision: { label: "Decision" },
   issue_thread_interaction: { label: "Decision requested" },
   join_request: { label: "Join request" },
   recovery_action: { label: "Recovery" },
@@ -106,6 +108,8 @@ export const ATTENTION_KIND_STATUS: Record<AttentionKind, "blocked" | "in_review
 /** Does this row report something stuck, or something waiting on a verdict? */
 export function attentionKind(item: AttentionItem): AttentionKind {
   switch (item.sourceKind) {
+    case "decision":
+      return "review";
     case "failed_run":
     case "agent_error_alert":
     case "blocker_attention":

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpDown, Check, CheckCircle2, GraduationCap, Inbox, Layers, ListFilter } from "lucide-react";
-import type { Agent, AttentionItem } from "@paperclipai/shared";
+import type { Agent, AttentionItem, AttentionSubject } from "@paperclipai/shared";
 import { useNavigate } from "@/lib/router";
 import { attentionApi } from "../api/attention";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
+import { decisionsApi } from "../api/decisions";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToastActions } from "../context/ToastContext";
@@ -41,6 +42,7 @@ import { cn } from "../lib/utils";
 import { hasBlockingShortcutDialog, resolveAttentionQueueKeyAction } from "../lib/keyboardShortcuts";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AttentionQueueRow } from "../components/AttentionQueueRow";
+import { DecisionResolver } from "../components/DecisionResolver";
 import { DecisionTrainingDrawer } from "../components/DecisionTrainingDrawer";
 import { IssueGroupHeader } from "../components/IssueGroupHeader";
 import { Button } from "../components/ui/button";
@@ -66,6 +68,17 @@ const noopToggleExpand = () => {};
 const INITIAL_ATTENTION_ROW_RENDER_LIMIT = 50;
 const ATTENTION_ROW_RENDER_BATCH_SIZE = 100;
 const ATTENTION_SCROLL_LOAD_THRESHOLD_PX = 480;
+const DECISION_HISTORY_VISIBLE_LIMIT = 50;
+const DECISION_HISTORY_QUERY_LIMIT = DECISION_HISTORY_VISIBLE_LIMIT + 1;
+
+export function decisionHistoryQueryEnabled(companyId: string | null | undefined, open: boolean) {
+  return Boolean(companyId && open);
+}
+
+export function decisionHistoryCount(count: number | undefined) {
+  if (count == null) return undefined;
+  return count > DECISION_HISTORY_VISIBLE_LIMIT ? `${DECISION_HISTORY_VISIBLE_LIMIT}+` : count;
+}
 
 function findScrollContainer(element: HTMLElement | null): HTMLElement | null {
   if (!element || typeof window === "undefined") return null;
@@ -105,6 +118,8 @@ export function WhatNeedsMe() {
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(() => new Set());
   const [snoozedOpen, setSnoozedOpen] = useState(false);
   const [dismissedOpen, setDismissedOpen] = useState(false);
+  const [decidedOpen, setDecidedOpen] = useState(false);
+  const [expiredOpen, setExpiredOpen] = useState(false);
 
   // Optimistic hide/restore. Reset whenever a fresh feed lands (server truth).
   const [pendingHide, setPendingHide] = useState<Set<string>>(() => new Set());
@@ -142,6 +157,19 @@ export function WhatNeedsMe() {
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+  });
+
+  // Decision history — decided / expired decisions leave the open attention
+  // feed (entryRule = open only), so we fetch them directly for the curtains.
+  const { data: decidedDecisions, isLoading: decidedDecisionsLoading } = useQuery({
+    queryKey: queryKeys.decisions.list(selectedCompanyId!, "decided"),
+    queryFn: () => decisionsApi.list(selectedCompanyId!, { status: "decided", limit: DECISION_HISTORY_QUERY_LIMIT }),
+    enabled: decisionHistoryQueryEnabled(selectedCompanyId, decidedOpen),
+  });
+  const { data: expiredDecisions, isLoading: expiredDecisionsLoading } = useQuery({
+    queryKey: queryKeys.decisions.list(selectedCompanyId!, "expired"),
+    queryFn: () => decisionsApi.list(selectedCompanyId!, { status: "expired", limit: DECISION_HISTORY_QUERY_LIMIT }),
+    enabled: decisionHistoryQueryEnabled(selectedCompanyId, expiredOpen),
   });
 
   const { data: session } = useQuery({
@@ -573,21 +601,53 @@ export function WhatNeedsMe() {
                   )}
                   {!collapsed && (
                     <div className="space-y-4">
-                      {(renderPlan.groupRows.get(group.key) ?? []).map((item) => (
-                        <AttentionQueueRow
-                          key={item.id}
-                          item={item}
-                          companyId={selectedCompanyId}
-                          expanded={expandedId === item.id}
-                          onToggleExpand={handleToggleExpand}
-                          onDismiss={handleDismiss}
-                          onSnooze={handleSnooze}
-                          onTrain={handleTrain}
-                          agentMap={agentMap}
-                          currentUserId={currentUserId}
-                          selected={selectionFromKeyboard && selectedAttentionId === item.id}
-                        />
-                      ))}
+                      {(() => {
+                        const rows = renderPlan.groupRows.get(group.key) ?? [];
+                        const seenBundles = new Set<string>();
+                        return rows.map((item) => {
+                          const bundleId =
+                            item.sourceKind === "decision"
+                              ? ((item.subject.metadata?.bundleId as string | null | undefined) ?? null)
+                              : null;
+                          let header: ReactNode = null;
+                          if (bundleId && !seenBundles.has(bundleId)) {
+                            seenBundles.add(bundleId);
+                            const bundleRows = rows.filter(
+                              (row) =>
+                                row.sourceKind === "decision" &&
+                                ((row.subject.metadata?.bundleId as string | null | undefined) ?? null) === bundleId,
+                            );
+                            const first = bundleRows[0];
+                            header = (
+                              <DecisionBundleHeader
+                                agentName={agentMap.get(first?.subject.metadata?.originAgentId as string)?.name ?? null}
+                                title={(first?.subject.metadata?.bundleTitle as string | null | undefined) ?? null}
+                                originIssue={first?.relatedIssue ?? null}
+                                count={bundleRows.length}
+                              />
+                            );
+                          }
+                          return (
+                            <Fragment key={item.id}>
+                              {header}
+                              <div className={bundleId ? "border-l-2 border-violet-500/40 pl-3" : undefined}>
+                                <AttentionQueueRow
+                                  item={item}
+                                  companyId={selectedCompanyId}
+                                  expanded={expandedId === item.id}
+                                  onToggleExpand={handleToggleExpand}
+                                  onDismiss={handleDismiss}
+                                  onSnooze={handleSnooze}
+                                  onTrain={handleTrain}
+                                  agentMap={agentMap}
+                                  currentUserId={currentUserId}
+                                  selected={selectionFromKeyboard && selectedAttentionId === item.id}
+                                />
+                              </div>
+                            </Fragment>
+                          );
+                        });
+                      })()}
                     </div>
                   )}
                 </section>
@@ -642,8 +702,57 @@ export function WhatNeedsMe() {
               ))}
             </Curtain>
           )}
+
         </div>
       )}
+
+      <div className="space-y-4">
+        <Curtain
+          label="Decided"
+          count={decisionHistoryCount(decidedDecisions?.length)}
+          open={decidedOpen}
+          onToggle={() => setDecidedOpen((prev) => !prev)}
+        >
+          {decidedDecisionsLoading ? (
+            <p className="text-xs text-muted-foreground">Loading decided decisions…</p>
+          ) : (decidedDecisions?.length ?? 0) > 0 ? (
+            decidedDecisions!.slice(0, DECISION_HISTORY_VISIBLE_LIMIT).map((decision) => (
+              <DecisionResolver
+                key={decision.id}
+                companyId={selectedCompanyId}
+                decisionId={decision.id}
+                agentMap={agentMap}
+                initialDecision={{ ...decision, executions: decision.executions ?? [] }}
+              />
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground">No decided decisions.</p>
+          )}
+        </Curtain>
+
+        <Curtain
+          label="Expired"
+          count={decisionHistoryCount(expiredDecisions?.length)}
+          open={expiredOpen}
+          onToggle={() => setExpiredOpen((prev) => !prev)}
+        >
+          {expiredDecisionsLoading ? (
+            <p className="text-xs text-muted-foreground">Loading expired decisions…</p>
+          ) : (expiredDecisions?.length ?? 0) > 0 ? (
+            expiredDecisions!.slice(0, DECISION_HISTORY_VISIBLE_LIMIT).map((decision) => (
+              <DecisionResolver
+                key={decision.id}
+                companyId={selectedCompanyId}
+                decisionId={decision.id}
+                agentMap={agentMap}
+                initialDecision={{ ...decision, executions: decision.executions ?? [] }}
+              />
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground">No expired decisions.</p>
+          )}
+        </Curtain>
+      </div>
 
       <DecisionTrainingDrawer
         open={trainingItem !== null}
@@ -654,6 +763,46 @@ export function WhatNeedsMe() {
         item={trainingItem}
         currentUserId={currentUserId}
       />
+    </div>
+  );
+}
+
+/**
+ * Violet left-rule strip over a run of decisions that share a bundle, e.g.
+ * "Planner proposed 6 decisions · from PAP-123 · routing review · 6 pending".
+ * Grouping is a surface only — each decision is still decided independently.
+ */
+export function DecisionBundleHeader({
+  agentName,
+  title,
+  originIssue,
+  count,
+}: {
+  agentName: string | null;
+  title: string | null;
+  originIssue: AttentionSubject | null;
+  count: number;
+}) {
+  const noun = count === 1 ? "decision" : "decisions";
+  return (
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-sm border-l-2 border-violet-500/60 bg-violet-500/5 px-3 py-1.5 text-xs">
+      <span className="font-semibold text-violet-800 dark:text-violet-200">
+        {agentName ?? "An agent"} proposed {count} {noun}
+      </span>
+      {originIssue && (originIssue.identifier || originIssue.title) && (
+        <span className="text-muted-foreground">
+          {"· from "}
+          {originIssue.href ? (
+            <a href={originIssue.href} className="hover:underline">
+              {originIssue.identifier ?? originIssue.title}
+            </a>
+          ) : (
+            originIssue.identifier ?? originIssue.title
+          )}
+        </span>
+      )}
+      {title && <span className="text-muted-foreground">· {title}</span>}
+      <span className="text-muted-foreground">· {count} pending</span>
     </div>
   );
 }
@@ -798,7 +947,7 @@ function Curtain({
   children,
 }: {
   label: string;
-  count: number;
+  count?: number | string;
   open: boolean;
   onToggle: () => void;
   children: ReactNode;
@@ -806,7 +955,7 @@ function Curtain({
   return (
     <section className="space-y-2">
       <IssueGroupHeader
-        label={`${label} (${count})`}
+        label={count == null ? label : `${label} (${count})`}
         collapsible
         collapsed={!open}
         onToggle={onToggle}

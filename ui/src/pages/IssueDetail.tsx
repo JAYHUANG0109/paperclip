@@ -78,6 +78,8 @@ import { IssueRelatedWorkPanel } from "../components/IssueRelatedWorkPanel";
 import { IssueMonitorActivityCard } from "../components/IssueMonitorActivityCard";
 import { IssueScheduledRetryCard } from "../components/IssueScheduledRetryCard";
 import { IssueProperties } from "../components/IssueProperties";
+import { PendingDecisionStrip } from "../components/PendingDecisionStrip";
+import { IssueMonitorBanner } from "../components/IssueMonitorBanner";
 import { IssueRunLedger } from "../components/IssueRunLedger";
 import { IssueWorkspaceCard } from "../components/IssueWorkspaceCard";
 import type { MentionOption } from "../components/MarkdownEditor";
@@ -3872,6 +3874,14 @@ export function IssueDetail() {
           as="h2"
           className="text-xl font-bold"
         />
+
+        <IssueMonitorBanner
+          issue={issue}
+          onCheckNow={() => checkIssueMonitorNow.mutate()}
+          checkingNow={checkIssueMonitorNow.isPending}
+        />
+
+        <PendingDecisionStrip companyId={issue.companyId} issueId={issue.id} />
 
         <InlineEditor
           value={issue.description ?? ""}

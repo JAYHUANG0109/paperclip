@@ -46,6 +46,7 @@ import {
   backfillLegacyToolOAuthTokens,
   bootstrapExecutionPolicyFromEnv,
   environmentCustomImageService,
+  decisionService,
   heartbeatService,
   issueService,
   instanceSettingsService,
@@ -57,6 +58,9 @@ import {
   statusCardService,
   toolAccessService,
 } from "./services/index.js";
+// Direct import: the services barrel does not re-export this type, and adding it
+// there would diverge a file upstream also edits.
+import type { HeartbeatNotificationToolGateway } from "./services/heartbeat.js";
 import { queueIssueAssignmentWakeup } from "./services/issue-assignment-wakeup.js";
 import { purgeExpiredMemories } from "./services/personal-memory.js";
 import { resolveWorktreeRunExecutionActivationState } from "./services/instance-settings.js";
@@ -73,6 +77,8 @@ import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
 import { initTelemetry, getTelemetryClient } from "./telemetry.js";
 import { conflict } from "./errors.js";
+import { validateDecisionSigningSecret } from "./services/decision-signing.js";
+import { createDecisionWakeOriginAgent } from "./services/decision-wakeup.js";
 import { coordinateHeartbeatSchedulerShutdown } from "./shutdown.js";
 import { flushInFlightRunLogMirrors } from "./services/run-log-store.js";
 import type {
@@ -121,6 +127,7 @@ export async function startServer(): Promise<StartedServer> {
   // Tracing must be active (or have failed and logged) before the first DB
   // connection or the HTTP server exists — see instrumentation.ts.
   await instrumentationReady;
+  validateDecisionSigningSecret();
   let config = loadConfig();
   initTelemetry({ enabled: config.telemetryEnabled });
   if (process.env.PAPERCLIP_SECRETS_PROVIDER === undefined) {
@@ -701,6 +708,21 @@ export async function startServer(): Promise<StartedServer> {
     }
   };
   const pluginWorkerManager = createPluginWorkerManager();
+  // Set once createApp() returns. The heartbeat service is constructed BEFORE
+  // createApp (decisionServiceOptions below needs heartbeat.wakeup), but this
+  // fork's Claude-pool-exhausted Google Chat notification needs the app-level
+  // tool gateway, which createApp produces. Passing a getter keeps that
+  // notification working instead of capturing null at construction time.
+  let notificationToolGateway: HeartbeatNotificationToolGateway | null = null;
+  const heartbeat = config.heartbeatSchedulerEnabled
+    ? heartbeatService(db as any, {
+        pluginWorkerManager,
+        toolGateway: () => notificationToolGateway,
+      })
+    : null;
+  const decisionServiceOptions = {
+    wakeOriginAgent: createDecisionWakeOriginAgent(heartbeat?.wakeup ?? null),
+  };
   // Managed instances drive bundled plugin auto-install from the managed-config
   // document parsed fail-closed above (`plugins.autoInstall`). Absent env means
   // self-hosted: createApp falls back to its built-in kubernetes-only default.
@@ -746,8 +768,11 @@ export async function startServer(): Promise<StartedServer> {
     betterAuthHandler,
     resolveSession,
     pluginWorkerManager,
+    decisionServiceOptions,
     managedPluginAutoInstall,
   });
+  // Close the loop opened above: the heartbeat service holds a getter for this.
+  notificationToolGateway = toolGateway;
   const server = createServer(app as unknown as Parameters<typeof createServer>[0]);
 
   // Increase keep-alive timeouts to safely outlive default idle timeouts
@@ -923,8 +948,11 @@ export async function startServer(): Promise<StartedServer> {
     }
   };
 
-  if (config.heartbeatSchedulerEnabled) {
-    const heartbeat = heartbeatService(db as any, { pluginWorkerManager, toolGateway });
+  // Upstream's shape: use the hoisted `heartbeat` rather than building a second
+  // service here. The fork's toolGateway argument moved to that hoisted call as a
+  // getter, so no behaviour is lost by dropping this local construction.
+  if (heartbeat) {
+    const decisionExecutor = decisionService(db as any, decisionServiceOptions);
     drainHeartbeatRunsForShutdown = heartbeat.drainRunningRunsForShutdown;
     prepareHotRestartShutdown = heartbeat.prepareHotRestartShutdown;
     const environmentCustomImages = environmentCustomImageService(db as any, { pluginWorkerManager });
@@ -1057,6 +1085,7 @@ export async function startServer(): Promise<StartedServer> {
     if (toolHealthSweep.failed > 0) {
       logger.warn({ ...toolHealthSweep }, "startup tool connection health sweep found failing connections");
     }
+    await decisionExecutor.sweepExpired();
 
     heartbeatSchedulerInterval = setInterval(() => {
       // Async so the suppression checks below can honor the override-aware
@@ -1064,6 +1093,9 @@ export async function startServer(): Promise<StartedServer> {
       // wrapped in trackHeartbeatSchedulerWork with its own error handling.
       void (async () => {
         if (heartbeatSchedulerStopped) return;
+        trackHeartbeatSchedulerWork(decisionExecutor.sweepExpired().catch((err: unknown) => {
+          logger.error({ err }, "decision expiry sweep failed");
+        }));
         const sweptRuntimeStatuses = heartbeat.sweepExpiredRuntimeStatuses();
         if (sweptRuntimeStatuses > 0) {
           logger.info(

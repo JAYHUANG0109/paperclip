@@ -6491,8 +6491,15 @@ export interface HeartbeatServiceOptions {
   /** Tool gateway used to send best-effort Google Chat notifications (e.g. when
    *  the Claude account pool is exhausted and a browser login is required). Must
    *  be the app-level gateway constructed with the plugin tool dispatcher;
-   *  omitted for read-only heartbeat instances, which simply skip notifying. */
-  toolGateway?: HeartbeatNotificationToolGateway;
+   *  omitted for read-only heartbeat instances, which simply skip notifying.
+   *
+   *  Accepts a getter because the app-level gateway only exists after createApp(),
+   *  while this service is now constructed before it (decisionServiceOptions needs
+   *  heartbeat.wakeup). Passing the value eagerly from that earlier point would
+   *  capture null forever and silently disable notifications. */
+  toolGateway?:
+    | HeartbeatNotificationToolGateway
+    | (() => HeartbeatNotificationToolGateway | null);
 }
 
 function isTruthyRuntimeEnvValue(value: string | undefined) {
@@ -6594,7 +6601,11 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
   };
   const budgets = budgetService(db, budgetHooks);
   const recovery = recoveryService(db, { enqueueWakeup });
-  const notificationToolGateway = options.toolGateway ?? null;
+  // Resolved per call, not captured: the gateway may be supplied as a getter that
+  // only returns non-null once createApp() has built it. HeartbeatNotificationToolGateway
+  // is an object interface, so a function here is unambiguously the getter form.
+  const resolveNotificationToolGateway = (): HeartbeatNotificationToolGateway | null =>
+    typeof options.toolGateway === "function" ? options.toolGateway() : options.toolGateway ?? null;
 
   /**
    * Best-effort Google Chat DM when the Claude account rotation pool is
@@ -6618,7 +6629,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     projectId: string | null;
   }): Promise<void> {
     try {
-      const gateway = notificationToolGateway;
+      const gateway = resolveNotificationToolGateway();
       if (!gateway) return;
 
       const adapterResultJson = parseObject(input.adapterResult.resultJson);
