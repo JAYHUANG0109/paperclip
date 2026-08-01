@@ -12,6 +12,7 @@
  * which id happened to be in scope.
  */
 import { Router, type Request } from "express";
+import multer from "multer";
 import type { Db } from "@paperclipai/db";
 import { forbidden, notFound } from "../errors.js";
 import { assertCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
@@ -23,6 +24,10 @@ import {
   upsertPersonalMemory,
 } from "../services/personal-memory.js";
 import type { MemoryRequester } from "../services/personal-memory-access.js";
+import { MAX_MEMORY_FILE_BYTES, parseMemoryUploads } from "../services/personal-memory-import.js";
+
+/** Ceiling on files per import. Bounds one request, not the store. */
+const MAX_MEMORY_IMPORT_FILES = 200;
 
 export function personalMemoryRoutes(db: Db) {
   const router = Router();
@@ -98,6 +103,68 @@ export function personalMemoryRoutes(db: Db) {
 
     await materializeUserMemory(db, { companyId, userId: ownerUserId });
     res.json({ name: saved.name, updatedAt: saved.updatedAt });
+  });
+
+  /**
+   * Import files or a whole folder into a user's memory.
+   *
+   * Uploads are parsed by `personal-memory-import.ts`, which refuses unsafe
+   * paths at the door rather than storing them and trusting a later
+   * materializer to be careful. Everything it refused comes back in `skipped`,
+   * so a partial import never reads as a complete one.
+   */
+  router.post("/companies/:companyId/users/:userId/memories/import", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+
+    const upload = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: MAX_MEMORY_FILE_BYTES, files: MAX_MEMORY_IMPORT_FILES },
+    });
+    await new Promise<void>((resolve, reject) => {
+      upload.array("files", MAX_MEMORY_IMPORT_FILES)(req, res, (err: unknown) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const files = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
+    if (files.length === 0) {
+      res.status(400).json({ error: "No files were uploaded" });
+      return;
+    }
+
+    const { memories, skipped } = parseMemoryUploads(
+      files.map((file) => ({ relativePath: file.originalname, content: file.buffer })),
+    );
+
+    const imported: string[] = [];
+    const refused: Array<{ relativePath: string; reason: string }> = [...skipped];
+    for (const memory of memories) {
+      const saved = await upsertPersonalMemory(db, {
+        companyId,
+        ownerUserId,
+        requester,
+        name: memory.name,
+        description: memory.description,
+        memoryType: memory.memoryType,
+        content: memory.content,
+        source: "imported",
+        filePath: memory.filePath,
+        isBinary: memory.isBinary,
+        createdByAgentId: requester.kind === "agent" ? requester.agentId : null,
+      });
+      // A refusal here is the access rule, not the file: the requester may not
+      // write this owner's memory at all, so stop rather than reporting every
+      // file individually.
+      if (!saved) throw notFound("Memory not found");
+      imported.push(saved.name);
+    }
+
+    await materializeUserMemory(db, { companyId, userId: ownerUserId });
+    res.json({ imported, skipped: refused });
   });
 
   router.delete("/companies/:companyId/users/:userId/memories/:name", async (req, res) => {

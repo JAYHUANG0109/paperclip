@@ -3363,6 +3363,7 @@ for (const route of [
   ["get", "/api/companies/{companyId}/users/{userId}/memories", "List a user's personal memories"],
   ["put", "/api/companies/{companyId}/users/{userId}/memories/{name}", "Create or replace a personal memory"],
   ["delete", "/api/companies/{companyId}/users/{userId}/memories/{name}", "Delete a personal memory"],
+  ["post", "/api/companies/{companyId}/users/{userId}/memories/import", "Import files or a folder into a user's memory"],
 ] as const) {
   registerCurrentRoute({ method: route[0], path: route[1], tags: ["memory"], summary: route[2] });
 }
