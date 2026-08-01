@@ -274,11 +274,6 @@ export function Dashboard() {
           straight on it. */}
       <OnboardingChecklist companyId={selectedCompanyId!} />
 
-      {/* Persistent Connections card: paste/update the caller's own Asana + Odoo
-          keys at any time (not only during onboarding). Renders nothing until the
-          signed-in user has their own linked agent. */}
-      <ConnectionsCard companyId={selectedCompanyId!} />
-
       {/* Founder daily console (創辦人每日行事曆) — 4 priority blocks + founder
           status bar. Founder-only (Jay + 創辦人); renders nothing for everyone
           else, who keep the normal tasks + summaries below unchanged. In founder
@@ -296,6 +291,12 @@ export function Dashboard() {
 
       {/* Daily / weekly "tasks done" summaries (hidden until one is generated). */}
       <TaskSummaryCard companyId={selectedCompanyId!} />
+
+      {/* Persistent Connections card: paste/update the caller's own Asana + Odoo
+          keys at any time (not only during onboarding). Renders nothing until the
+          signed-in user has their own linked agent. Sits BELOW the daily/weekly
+          summary so the digest/summary stays at the top of the dashboard. */}
+      <ConnectionsCard companyId={selectedCompanyId!} />
 
       <ActiveAgentsPanel companyId={selectedCompanyId!} />
 

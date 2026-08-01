@@ -118,6 +118,7 @@ const Approvals = lazyPage(() => import("./pages/Approvals"), "Approvals");
 const ApprovalDetail = lazyPage(() => import("./pages/ApprovalDetail"), "ApprovalDetail");
 const Costs = lazyPage(() => import("./pages/Costs"), "Costs");
 const Activity = lazyPage(() => import("./pages/Activity"), "Activity");
+const CompanyAudit = lazyPage(() => import("./pages/audit/CompanyAudit"), "CompanyAudit");
 const Inbox = lazyPage(() => import("./pages/Inbox"), "Inbox");
 const BoardChat = lazyPage(() => import("./pages/BoardChat"), "BoardChat");
 const CompanySettings = lazyPage(() => import("./pages/CompanySettings"), "CompanySettings");
@@ -353,6 +354,7 @@ function boardRoutes() {
       <Route path="approvals/:approvalId" element={<ApprovalDetail />} />
       <Route path="costs" element={<Costs />} />
       <Route path="activity" element={<Activity />} />
+      <Route path="audit" element={<CompanyAudit />} />
       {/* Conference Room Chat surfaces (PAP-136/PAP-137): routes stay
           registered but redirect to the company home while the experimental
           flag is off. The board-level `artifacts` mount below is the new

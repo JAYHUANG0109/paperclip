@@ -25,6 +25,7 @@ import {
   Bot,
   ListChecks,
   GanttChartSquare,
+  ScrollText,
   LayoutGrid,
   Brain,
 } from "lucide-react";
@@ -333,6 +334,7 @@ export function Sidebar() {
           <SidebarNavItem to="/org" label={t("nav.org", { defaultValue: "Org" })} icon={Network} />
           <SidebarNavItem to="/costs" label={t("nav.costs", { defaultValue: "Costs" })} icon={DollarSign} />
           <SidebarNavItem to="/activity" label={t("nav.activity", { defaultValue: "Activity" })} icon={History} />
+          <SidebarNavItem to="/audit" label={t("nav.audit", { defaultValue: "Audit" })} icon={ScrollText} />
           <SidebarNavItem to="/company/settings" label={t("nav.settings", { defaultValue: "Settings" })} icon={Settings} />
         </SidebarSection>
 

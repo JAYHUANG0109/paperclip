@@ -45,6 +45,7 @@ import { EntityRow } from "../components/EntityRow";
 import { TaskRowMenu } from "../components/TaskRowMenu";
 import { MembershipAction } from "../components/MembershipAction";
 import { Identity } from "../components/Identity";
+import { AuditFeed } from "./audit/AuditFeed";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { RunButton, PauseResumeButton } from "../components/AgentActionButtons";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
@@ -298,7 +299,7 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "projects" | "harness" | "tools" | "runs" | "budget";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "projects" | "harness" | "tools" | "runs" | "audit" | "budget";
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "instructions" || value === "prompts") return "instructions";
@@ -308,6 +309,7 @@ function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "harness") return "harness";
   if (value === "tools") return "tools";
   if (value === "budget") return "budget";
+  if (value === "audit") return "audit";
   if (value === "runs") return value;
   return "dashboard";
 }
@@ -888,8 +890,10 @@ export function AgentDetail() {
               ? "tools"
               : activeView === "runs"
                 ? "runs"
-                : activeView === "budget"
-                  ? "budget"
+                : activeView === "audit"
+                  ? "audit"
+                  : activeView === "budget"
+                    ? "budget"
               : "dashboard";
     if (routeAgentRef !== canonicalAgentRef || urlTab !== canonicalTab) {
       navigate(`/agents/${canonicalAgentRef}/${canonicalTab}`, { replace: true });
@@ -1305,6 +1309,7 @@ export function AgentDetail() {
               { value: "configuration", label: t("agentDetail.tab.configuration") },
               { value: "tools", label: t("agentDetail.tab.tools", { defaultValue: "Tools" }) },
               { value: "runs", label: t("agentDetail.tab.runs") },
+              { value: "audit", label: t("agentDetail.tab.audit", { defaultValue: "Audit" }) },
               { value: "budget", label: t("agentDetail.tab.budget") },
             ]}
             value={activeView}
@@ -1465,6 +1470,10 @@ export function AgentDetail() {
           adapterConfig={agent.adapterConfig}
         />
       )}
+
+      {activeView === "audit" && resolvedCompanyId ? (
+        <AuditFeed companyId={resolvedCompanyId} lockedAgentId={agent.id} hideHeader />
+      ) : null}
 
       {activeView === "budget" && resolvedCompanyId ? (
         <div className="max-w-3xl">
