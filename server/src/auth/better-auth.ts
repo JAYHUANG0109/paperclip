@@ -5,6 +5,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { toNodeHandler } from "better-auth/node";
 import type { Db } from "@paperclipai/db";
 import {
+  activityLog,
   agentMemberships,
   agents,
   authAccounts,
@@ -126,7 +127,30 @@ async function autoProvisionAssignedAgents(
         userId,
         agentId: agent.id,
         state: "joined",
+        // Provenance (migration 9024). Rows are only ever reclaimed by the
+        // reconciler that owns their source, so stamping the claim keeps it
+        // distinguishable from a mapping made by hand — and leaves an honest
+        // record of which mappings nobody explicitly created.
+        source: "claimed_on_login",
       });
+      // A claim silently grants company access and agent/task visibility, so it
+      // needs to be visible after the fact. Best-effort: never block sign-in.
+      try {
+        await db.insert(activityLog).values({
+          id: randomUUID(),
+          companyId: agent.companyId,
+          actorType: "system",
+          actorId: "auth",
+          action: "agent_claimed_on_login",
+          entityType: "agent",
+          entityId: agent.id,
+          agentId: agent.id,
+          responsibleUserId: userId,
+          details: { email, agentName: agent.name, membershipRole: role },
+        });
+      } catch (err) {
+        console.warn(`[auth] could not record claim of agent ${agent.id}:`, err);
+      }
     }
     // The agent now has a resolvable owner (this just-linked user), so make sure
     // its onboarding 關卡 game exists. This is the self-heal for agents that were
