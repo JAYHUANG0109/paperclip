@@ -857,6 +857,20 @@ describe("renderPaperclipWakePrompt", () => {
     );
   });
 
+  // Personal memory only reaches the model if the template tells the agent the
+  // directory exists — the env var alone is invisible to it.
+  it("points the agent at its user's memory directory and the API that persists it", () => {
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("PAPERCLIP_MEMORY_DIR");
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("`MEMORY.md` index");
+    // The directory is a projection of the database, so the agent must be told
+    // to persist through the API rather than by editing files that get
+    // overwritten on the next run.
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain(
+      "/api/companies/{companyId}/users/{PAPERCLIP_MEMORY_USER_ID}/memories/{name}",
+    );
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("never persist");
+  });
+
   it("leaves the execution contract to the heartbeat template on fresh scoped wake prompts", () => {
     const prompt = renderPaperclipWakePrompt({
       reason: "issue_assigned",

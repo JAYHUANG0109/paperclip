@@ -1052,6 +1052,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             { path: path.join(path.dirname(sharedClaudeConfigDir), ".claude.json"), access: "rw" },
             { path: promptBundle.addDir, access: "ro" },
             { path: localMcpConfigDir, access: "ro" },
+            // Personal memory is read-only to the sandbox on purpose: the
+            // database is the truth and the directory is a projection of it,
+            // so an edit here would be silently overwritten. Agents remember
+            // new things through the memory API instead.
+            ...(env.PAPERCLIP_MEMORY_DIR
+              ? [{ path: env.PAPERCLIP_MEMORY_DIR, access: "ro" as const }]
+              : []),
           ],
           extraPaths: parseLocalProcessSandboxExtraPaths(config.filesystemExtraPaths),
           homeDir: filesystemScope ? path.dirname(sharedClaudeConfigDir) : null,

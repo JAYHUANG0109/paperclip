@@ -169,6 +169,7 @@ import {
   prepareHeartbeatRunScratch,
   type HeartbeatRunScratch,
 } from "./run-scratch.js";
+import { buildRunMemoryEnv, prepareRunMemory } from "./run-memory.js";
 import {
   buildExecutionWorkspaceAdapterConfig,
   gateProjectExecutionWorkspacePolicy,
@@ -13902,8 +13903,56 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           "failed to prepare heartbeat run scratch directory; continuing without scratch env",
         );
       }
+
+      // Project this agent's user's personal memory onto disk and tell the
+      // adapter where it is. The owner is the agent's MAPPED user, resolved
+      // inside prepareRunMemory — never whoever woke the run, which is why it
+      // takes no acting user. An unmapped or multiply-mapped agent gets no
+      // memory rather than a guess.
+      //
+      // Local execution only: the directory lives on this host, so a remote
+      // target would be handed a path it cannot read.
+      //
+      // Best-effort. Memory enriches a run; failing to project it must never
+      // cost the company a heartbeat.
+      try {
+        const runMemory = await prepareRunMemory(db, {
+          companyId: agent.companyId,
+          agentId: agent.id,
+        });
+        if (runMemory) {
+          const existingRuntimeEnv = parseObject(runtimeConfig.env);
+          runtimeConfig = {
+            ...runtimeConfig,
+            env: {
+              ...existingRuntimeEnv,
+              ...buildRunMemoryEnv(runMemory),
+            },
+          };
+          context.paperclipMemory = {
+            dir: runMemory.dir,
+            indexPath: runMemory.indexPath,
+            userId: runMemory.userId,
+            entryCount: runMemory.entryCount,
+          };
+        } else {
+          delete context.paperclipMemory;
+        }
+      } catch (memoryPrepareError) {
+        delete context.paperclipMemory;
+        logger.warn(
+          {
+            err: memoryPrepareError,
+            runId: run.id,
+            issueId,
+            agentId: agent.id,
+          },
+          "failed to prepare personal memory for run; continuing without memory env",
+        );
+      }
     } else {
       delete context.paperclipScratch;
+      delete context.paperclipMemory;
     }
     context.paperclipEnvironment = {
       id: selectedEnvironment.id,
