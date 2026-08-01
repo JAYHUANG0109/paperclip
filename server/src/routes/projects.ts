@@ -705,17 +705,15 @@ export function projectRoutes(db: Db) {
   // ---- Phase 5: project membership ----
   router.get("/projects/:id/members", async (req, res) => {
     const id = req.params.id as string;
-    const project = await svc.getById(id);
-    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-    assertCompanyAccess(req, project.companyId);
+    const project = await getAccessibleResource(req, res, svc.getById(id), "Project not found");
+    if (!project) return;
     res.json(await svc.listProjectMembers(id));
   });
 
   router.post("/projects/:id/members", validate(addProjectMemberSchema), async (req, res) => {
     const id = req.params.id as string;
-    const project = await svc.getById(id);
-    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-    assertCompanyAccess(req, project.companyId);
+    const project = await getAccessibleResource(req, res, svc.getById(id), "Project not found");
+    if (!project) return;
     if (!isPrivilegedMemberViewer(req, project.companyId, true)) {
       res.status(403).json({ error: "Only owners/admins can manage project members" }); return;
     }
@@ -725,9 +723,8 @@ export function projectRoutes(db: Db) {
 
   router.patch("/projects/:id/members/:principalType/:principalId", validate(updateProjectMemberSchema), async (req, res) => {
     const { id, principalType, principalId } = req.params as Record<string, string>;
-    const project = await svc.getById(id);
-    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-    assertCompanyAccess(req, project.companyId);
+    const project = await getAccessibleResource(req, res, svc.getById(id), "Project not found");
+    if (!project) return;
     if (!isPrivilegedMemberViewer(req, project.companyId, true)) {
       res.status(403).json({ error: "Only owners/admins can manage project members" }); return;
     }
@@ -736,9 +733,8 @@ export function projectRoutes(db: Db) {
 
   router.delete("/projects/:id/members/:principalType/:principalId", async (req, res) => {
     const { id, principalType, principalId } = req.params as Record<string, string>;
-    const project = await svc.getById(id);
-    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-    assertCompanyAccess(req, project.companyId);
+    const project = await getAccessibleResource(req, res, svc.getById(id), "Project not found");
+    if (!project) return;
     if (!isPrivilegedMemberViewer(req, project.companyId, true)) {
       res.status(403).json({ error: "Only owners/admins can manage project members" }); return;
     }

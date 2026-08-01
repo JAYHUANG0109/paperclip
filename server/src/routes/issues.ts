@@ -5259,23 +5259,15 @@ export function issueRoutes(
 
   router.patch("/sections/:sectionId", validate(updateProjectSectionSchema), async (req, res) => {
     const sectionId = req.params.sectionId as string;
-    const existing = await svc.getSectionById(sectionId);
-    if (!existing) {
-      res.status(404).json({ error: "Section not found" });
-      return;
-    }
-    assertCompanyAccess(req, existing.companyId);
+    const existing = await getAccessibleResource(req, res, svc.getSectionById(sectionId), "Section not found");
+    if (!existing) return;
     res.json(await svc.updateSection(sectionId, req.body));
   });
 
   router.delete("/sections/:sectionId", async (req, res) => {
     const sectionId = req.params.sectionId as string;
-    const existing = await svc.getSectionById(sectionId);
-    if (!existing) {
-      res.status(404).json({ error: "Section not found" });
-      return;
-    }
-    assertCompanyAccess(req, existing.companyId);
+    const existing = await getAccessibleResource(req, res, svc.getSectionById(sectionId), "Section not found");
+    if (!existing) return;
     res.json(await svc.deleteSection(sectionId));
   });
 
@@ -5295,23 +5287,15 @@ export function issueRoutes(
 
   router.patch("/custom-fields/:fieldId", validate(updateCustomFieldSchema), async (req, res) => {
     const fieldId = req.params.fieldId as string;
-    const existing = await svc.getCustomFieldById(fieldId);
-    if (!existing) {
-      res.status(404).json({ error: "Custom field not found" });
-      return;
-    }
-    assertCompanyAccess(req, existing.companyId);
+    const existing = await getAccessibleResource(req, res, svc.getCustomFieldById(fieldId), "Custom field not found");
+    if (!existing) return;
     res.json(await svc.updateCustomField(fieldId, req.body));
   });
 
   router.delete("/custom-fields/:fieldId", async (req, res) => {
     const fieldId = req.params.fieldId as string;
-    const existing = await svc.getCustomFieldById(fieldId);
-    if (!existing) {
-      res.status(404).json({ error: "Custom field not found" });
-      return;
-    }
-    assertCompanyAccess(req, existing.companyId);
+    const existing = await getAccessibleResource(req, res, svc.getCustomFieldById(fieldId), "Custom field not found");
+    if (!existing) return;
     res.json(await svc.deleteCustomField(fieldId));
   });
 
@@ -5345,12 +5329,8 @@ export function issueRoutes(
   router.delete("/projects/:projectId/custom-fields/:fieldId", async (req, res) => {
     const projectId = req.params.projectId as string;
     const fieldId = req.params.fieldId as string;
-    const field = await svc.getCustomFieldById(fieldId);
-    if (!field) {
-      res.status(404).json({ error: "Custom field not found" });
-      return;
-    }
-    assertCompanyAccess(req, field.companyId);
+    const field = await getAccessibleResource(req, res, svc.getCustomFieldById(fieldId), "Custom field not found");
+    if (!field) return;
     res.json(await svc.detachCustomField(fieldId, projectId));
   });
 
@@ -5367,12 +5347,8 @@ export function issueRoutes(
 
   router.get("/issues/:id/custom-fields", async (req, res) => {
     const id = req.params.id as string;
-    const issue = await svc.getById(id);
-    if (!issue) {
-      res.status(404).json({ error: "Issue not found" });
-      return;
-    }
-    assertCompanyAccess(req, issue.companyId);
+    const issue = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
+    if (!issue) return;
     res.json(await svc.listIssueCustomFieldValues(id));
   });
 
@@ -5382,12 +5358,8 @@ export function issueRoutes(
     async (req, res) => {
       const id = req.params.id as string;
       const fieldId = req.params.fieldId as string;
-      const issue = await svc.getById(id);
-      if (!issue) {
-        res.status(404).json({ error: "Issue not found" });
-        return;
-      }
-      assertCompanyAccess(req, issue.companyId);
+      const issue = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
+      if (!issue) return;
       res.json(await svc.setIssueCustomFieldValue(issue.companyId, id, fieldId, req.body.value));
     },
   );

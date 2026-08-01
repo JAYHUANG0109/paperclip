@@ -2290,12 +2290,8 @@ export function agentRoutes(
   // target's failure never blocks the others; each target's outcome is reported.
   router.post("/agents/:id/skills/distribute", async (req, res) => {
     const managerId = req.params.id as string;
-    const manager = await svc.getById(managerId);
-    if (!manager) {
-      res.status(404).json({ error: "Agent not found" });
-      return;
-    }
-    assertCompanyAccess(req, manager.companyId);
+    const manager = await getAccessibleResource(req, res, svc.getById(managerId), "Agent not found");
+    if (!manager) return;
 
     const body = (req.body ?? {}) as {
       skill?: unknown;
