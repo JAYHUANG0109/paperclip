@@ -79,6 +79,18 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     offset: z.string().optional(),
   }).passthrough();
 
+  /**
+   * Only an instance admin may let a bundle carry agent ownership
+   * (adapterConfig.assignedUserEmail / assignedUserRole). Importing into an
+   * existing company needs only company access, so without this an operator
+   * could import an agent tagged with their own email at role "owner" and come
+   * back from the next sign-in as an instance admin — routing around the
+   * ownership guard on the agent routes.
+   */
+  function mayImportAgentOwnership(req: Request): boolean {
+    return req.actor.type === "board" && req.actor.isInstanceAdmin === true;
+  }
+
   function assertImportTargetAccess(
     req: Request,
     target: { mode: "new_company" } | { mode: "existing_company"; companyId: string },
@@ -285,7 +297,9 @@ export function companyRoutes(db: Db, storage?: StorageService) {
         const importBody = companyPortabilityImportSchema.parse(rawImportBody);
         assertImportTargetAccess(req, importBody.target);
         const activity = importedCompanyActivityContext(actor, importBody.include ?? null);
-        const result = await portability.importBundle(importBody, boardUserId);
+        const result = await portability.importBundle(importBody, boardUserId, {
+          allowAgentOwnershipConfig: mayImportAgentOwnership(req),
+        });
         await logImportedCompanyActivity(db, activity, result);
         return result;
       };
@@ -299,7 +313,9 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const importBody = companyPortabilityImportSchema.parse(rawImportBody);
     assertImportTargetAccess(req, importBody.target);
     const activity = importedCompanyActivityContext(actor, importBody.include ?? null);
-    const result = await portability.importBundle(importBody, boardUserId);
+    const result = await portability.importBundle(importBody, boardUserId, {
+      allowAgentOwnershipConfig: mayImportAgentOwnership(req),
+    });
     await logImportedCompanyActivity(db, activity, result);
     res.json(result);
   });
@@ -351,6 +367,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const result = await portability.importBundle(body, req.actor.type === "board" ? req.actor.userId : null, {
       mode: "agent_safe",
       sourceCompanyId: companyId,
+      allowAgentOwnershipConfig: mayImportAgentOwnership(req),
     });
     await logActivity(db, {
       companyId: result.company.id,

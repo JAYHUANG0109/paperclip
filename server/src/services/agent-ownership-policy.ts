@@ -69,10 +69,48 @@ export function agentOwnershipConfigChanges(
     .map((key) => `${path}.${key}`);
 }
 
-/** True if this actor is allowed to change agent ownership at all. */
+/**
+ * True if this actor is allowed to change agent ownership at all.
+ *
+ * Allowlists the one actor type that can be a company admin rather than
+ * denying known-bad ones. `board` is the only type a signed-in human has
+ * (`"board" | "agent" | "none"`); an `agent` must never re-home itself, and
+ * `none` must never pass.
+ *
+ * The allowlist matters because `isPrivileged` is supplied by
+ * `isPrivilegedMemberViewer`, which reports EVERY non-board actor as
+ * privileged. Testing `isPrivileged` alone would therefore wave through an
+ * unauthenticated caller. Nothing reaches this today without passing
+ * `hasCompanyAccess` first (which rejects `none`), but a rule this consequential
+ * should not depend on a check somewhere else staying in place.
+ */
 export function mayChangeAgentOwnership(actor: OwnershipActor): boolean {
-  if (actor.actorType === "agent") return false;
+  if (actor.actorType !== "board") return false;
   return actor.isPrivileged;
+}
+
+/**
+ * Remove ownership keys from an adapter config, reporting what was dropped.
+ *
+ * For paths that build an agent from caller-supplied data without going through
+ * the route guard — company import being the case that matters, since it both
+ * creates and updates agents from a manifest and is reachable by any non-viewer
+ * member. Ownership is also an instance-local fact (it names an account on THIS
+ * instance), so carrying it across an export/import boundary is wrong on its own
+ * terms, quite apart from the escalation it would allow.
+ */
+export function stripAgentOwnershipConfig(
+  adapterConfig: Record<string, unknown>,
+): { adapterConfig: Record<string, unknown>; stripped: string[] } {
+  const next = { ...adapterConfig };
+  const stripped: string[] = [];
+  for (const key of AGENT_OWNERSHIP_CONFIG_KEYS) {
+    if (hasKey(next, key)) {
+      delete next[key];
+      stripped.push(key);
+    }
+  }
+  return { adapterConfig: next, stripped };
 }
 
 /**

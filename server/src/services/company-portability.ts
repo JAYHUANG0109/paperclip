@@ -64,6 +64,7 @@ import type { StorageService } from "../storage/types.js";
 import { accessService } from "./access.js";
 import { agentService } from "./agents.js";
 import { agentInstructionsService } from "./agent-instructions.js";
+import { stripAgentOwnershipConfig } from "./agent-ownership-policy.js";
 import { assetService } from "./assets.js";
 import { generateReadme } from "./company-export-readme.js";
 import { renderOrgChartPng, type OrgNode } from "../routes/org-chart-svg.js";
@@ -640,6 +641,17 @@ type ImportMode = "board_full" | "agent_safe";
 type ImportBehaviorOptions = {
   mode?: ImportMode;
   sourceCompanyId?: string | null;
+  /**
+   * Allow an imported manifest to set adapterConfig.assignedUserEmail /
+   * assignedUserRole, which decide who owns an agent at sign-in (role "owner"
+   * also confers instance_admin). Defaults to false: importing into an existing
+   * company needs only company access, so without this an operator could import
+   * an agent tagged with their own email at role "owner" and return as an
+   * instance admin — the same escalation the route guard blocks on PATCH.
+   *
+   * Routes set it only for an instance admin, who could grant this directly.
+   */
+  allowAgentOwnershipConfig?: boolean;
 };
 
 type AgentLike = {
@@ -4686,6 +4698,19 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             desiredSkills,
             mode,
           );
+          // Ownership names an account on THIS instance, so it does not travel
+          // with a bundle. Dropping it also keeps import from becoming a way
+          // around the ownership guard on the agent routes.
+          let importedAdapterConfig = normalizedAdapter.adapterConfig;
+          if (!options?.allowAgentOwnershipConfig) {
+            const sanitized = stripAgentOwnershipConfig(importedAdapterConfig);
+            importedAdapterConfig = sanitized.adapterConfig;
+            if (sanitized.stripped.length > 0) {
+              warnings.push(
+                `Ignored agent ownership config (${sanitized.stripped.join(", ")}) for ${manifestAgent.slug}: only an instance admin can assign agent ownership.`,
+              );
+            }
+          }
           const patch = {
             name: planAgent.plannedName,
             role: manifestAgent.role,
@@ -4694,7 +4719,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
             capabilities: manifestAgent.capabilities,
             reportsTo: null,
             adapterType: normalizedAdapter.adapterType,
-            adapterConfig: normalizedAdapter.adapterConfig,
+            adapterConfig: importedAdapterConfig,
             runtimeConfig: disableImportedTimerHeartbeat(manifestAgent.runtimeConfig),
             budgetMonthlyCents: manifestAgent.budgetMonthlyCents,
             permissions: manifestAgent.permissions,

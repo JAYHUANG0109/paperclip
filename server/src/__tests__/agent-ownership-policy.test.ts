@@ -3,6 +3,7 @@ import {
   agentOwnershipConfigChanges,
   mayChangeAgentOwnership,
   preserveAgentOwnershipConfig,
+  stripAgentOwnershipConfig,
 } from "../services/agent-ownership-policy.js";
 
 const OPERATOR = { actorType: "board", isPrivileged: false };
@@ -87,6 +88,18 @@ describe("agent ownership config policy", () => {
     it("DENIES an unauthenticated caller", () => {
       expect(mayChangeAgentOwnership({ actorType: "none", isPrivileged: false })).toBe(false);
     });
+
+    // isPrivilegedMemberViewer — the source of `isPrivileged` — reports EVERY
+    // non-board actor as privileged, so it hands this function isPrivileged:true
+    // for an unauthenticated caller. Testing isPrivileged alone would let that
+    // through; the actor-type allowlist is what stops it.
+    it("DENIES an unauthenticated caller even when reported as privileged", () => {
+      expect(mayChangeAgentOwnership({ actorType: "none", isPrivileged: true })).toBe(false);
+    });
+
+    it("DENIES an unrecognized actor type", () => {
+      expect(mayChangeAgentOwnership({ actorType: "cloud_tenant", isPrivileged: true })).toBe(false);
+    });
   });
 
   describe("ownership keys are sticky", () => {
@@ -117,6 +130,44 @@ describe("agent ownership config policy", () => {
 
     it("adds nothing when there was no owner to begin with", () => {
       expect(preserveAgentOwnershipConfig({}, { cwd: "/srv" })).toEqual({ cwd: "/srv" });
+    });
+  });
+
+  describe("stripping ownership from untrusted input", () => {
+    // Company import creates AND updates agents straight from a manifest, and
+    // importing into an existing company needs only company access. Without the
+    // strip, an operator could import an agent tagged with their own email at
+    // role "owner" and reach instance_admin the same way the route guard blocks.
+    it("removes both ownership keys and reports them", () => {
+      expect(stripAgentOwnershipConfig({
+        cwd: "/srv",
+        assignedUserEmail: "attacker@x.org",
+        assignedUserRole: "owner",
+      })).toEqual({
+        adapterConfig: { cwd: "/srv" },
+        stripped: ["assignedUserEmail", "assignedUserRole"],
+      });
+    });
+
+    it("leaves everything else alone and reports nothing when there is nothing to strip", () => {
+      expect(stripAgentOwnershipConfig({ cwd: "/srv", env: { A: "1" } })).toEqual({
+        adapterConfig: { cwd: "/srv", env: { A: "1" } },
+        stripped: [],
+      });
+    });
+
+    // An explicit null still overwrites on import, so it has to go too.
+    it("strips an explicit null", () => {
+      expect(stripAgentOwnershipConfig({ assignedUserEmail: null })).toEqual({
+        adapterConfig: {},
+        stripped: ["assignedUserEmail"],
+      });
+    });
+
+    it("does not mutate the input", () => {
+      const input = { assignedUserEmail: "a@x.org", cwd: "/srv" };
+      stripAgentOwnershipConfig(input);
+      expect(input).toEqual({ assignedUserEmail: "a@x.org", cwd: "/srv" });
     });
   });
 });
