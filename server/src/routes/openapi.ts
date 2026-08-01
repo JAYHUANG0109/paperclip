@@ -6711,6 +6711,196 @@ registerCurrentRoute({
   }),
 });
 
+// ─── Fork-specific routes ─────────────────────────────────────────────────────
+//
+// These shipped without OpenAPI entries, which left the generated document an
+// incomplete description of the running server. Registered here as compact
+// tables: paths carry their parameters, and the default response set applies.
+
+// Agents (fork additions)
+for (const route of [
+  ["put", "/api/agents/{id}/office-avatar", "Set an agent's virtual-office avatar"],
+  ["put", "/api/agents/{id}/office-character", "Set an agent's virtual-office character"],
+  ["get", "/api/companies/{companyId}/agent-progression", "Get agent progression levels"],
+  ["get", "/api/companies/{companyId}/agents/mine", "List the signed-in user's own agents"],
+  ["get", "/api/companies/{companyId}/agents/office-roster", "List the virtual-office agent roster"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["agents"], summary: route[2] });
+}
+
+// Skill folders, sharing and approvals
+for (const route of [
+  ["post", "/api/agents/{id}/skills/distribute", "Distribute a skill from a manager to its reports"],
+  ["get", "/api/companies/{companyId}/agent-skill-counts", "Count equipped skills per agent"],
+  ["get", "/api/companies/{companyId}/skill-folders", "List skill folders"],
+  ["post", "/api/companies/{companyId}/skill-folders", "Create a skill folder"],
+  ["delete", "/api/companies/{companyId}/skill-folders/{folderId}", "Delete a skill folder"],
+  ["patch", "/api/companies/{companyId}/skill-folders/{folderId}", "Update a skill folder"],
+  ["get", "/api/companies/{companyId}/skills/pending-approvals", "List skills awaiting approval"],
+  ["post", "/api/companies/{companyId}/skills/{skillId}/approve", "Approve a pending skill"],
+  ["post", "/api/companies/{companyId}/skills/{skillId}/equip-scope", "Set which agents a skill is equipped to"],
+  ["post", "/api/companies/{companyId}/skills/{skillId}/record-usage", "Record a skill usage event"],
+  ["post", "/api/companies/{companyId}/skills/{skillId}/reject", "Reject a pending skill"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["company-skills"], summary: route[2] });
+}
+
+// Custom fields
+for (const route of [
+  ["get", "/api/companies/{companyId}/custom-fields", "List company custom fields"],
+  ["post", "/api/companies/{companyId}/custom-fields", "Create a company custom field"],
+  ["delete", "/api/custom-fields/{fieldId}", "Delete a custom field"],
+  ["patch", "/api/custom-fields/{fieldId}", "Update a custom field"],
+  ["get", "/api/issues/{id}/custom-fields", "List an issue's custom field values"],
+  ["put", "/api/issues/{id}/custom-fields/{fieldId}", "Set an issue's custom field value"],
+  ["get", "/api/projects/{projectId}/custom-field-values", "List custom field values across a project"],
+  ["get", "/api/projects/{projectId}/custom-fields", "List a project's custom fields"],
+  ["post", "/api/projects/{projectId}/custom-fields", "Attach a custom field to a project"],
+  ["delete", "/api/projects/{projectId}/custom-fields/{fieldId}", "Detach a custom field from a project"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["custom-fields"], summary: route[2] });
+}
+
+// Project sections
+for (const route of [
+  ["get", "/api/companies/{companyId}/sections", "List company sections"],
+  ["post", "/api/companies/{companyId}/sections", "Create a section"],
+  ["get", "/api/projects/{projectId}/sections", "List a project's sections"],
+  ["delete", "/api/sections/{sectionId}", "Delete a section"],
+  ["patch", "/api/sections/{sectionId}", "Update a section"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["sections"], summary: route[2] });
+}
+
+// Project / routine membership
+for (const route of [
+  ["get", "/api/companies/{companyId}/skills/{skillId}/members", "List the principals a skill is shared with"],
+  ["post", "/api/companies/{companyId}/skills/{skillId}/members", "Share a skill with a principal"],
+  ["delete", "/api/companies/{companyId}/skills/{skillId}/members/{principalId}", "Stop sharing a skill with a principal"],
+  ["get", "/api/projects/{id}/members", "List project members"],
+  ["post", "/api/projects/{id}/members", "Add a project member"],
+  ["delete", "/api/projects/{id}/members/{principalType}/{principalId}", "Remove a project member"],
+  ["patch", "/api/projects/{id}/members/{principalType}/{principalId}", "Update a project member's role"],
+  ["get", "/api/routines/{id}/access-members", "List routine access members"],
+  ["post", "/api/routines/{id}/access-members", "Grant a principal access to a routine"],
+  ["delete", "/api/routines/{id}/access-members/{principalId}", "Revoke a principal's routine access"],
+  ["patch", "/api/routines/{id}/visibility", "Set a routine's visibility"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["memberships"], summary: route[2] });
+}
+
+// Notifications
+for (const route of [
+  ["get", "/api/companies/{companyId}/notifications", "List notifications"],
+  ["post", "/api/companies/{companyId}/notifications/read-all", "Mark all notifications read"],
+  ["post", "/api/companies/{companyId}/notifications/{id}/read", "Mark a notification read"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["notifications"], summary: route[2] });
+}
+
+// Bounties
+for (const route of [
+  ["get", "/api/companies/{companyId}/bounties", "List bounties"],
+  ["post", "/api/companies/{companyId}/bounties", "Create a bounty"],
+  ["delete", "/api/companies/{companyId}/bounties/{bountyId}", "Delete a bounty"],
+  ["post", "/api/companies/{companyId}/bounties/{bountyId}/claim", "Claim a bounty"],
+  ["post", "/api/companies/{companyId}/bounties/{bountyId}/complete", "Mark a bounty complete"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["bounties"], summary: route[2] });
+}
+
+// Asana digest
+for (const route of [
+  ["post", "/api/companies/{companyId}/asana-digest", "Generate the Asana digest"],
+  ["get", "/api/companies/{companyId}/asana-digest/me", "Get the signed-in user's Asana digest"],
+  ["post", "/api/companies/{companyId}/asana-digest/refresh", "Refresh the Asana digest"],
+  ["post", "/api/companies/{companyId}/asana-digest/tasks/{gid}/approval", "Record an approval decision on a task"],
+  ["post", "/api/companies/{companyId}/asana-digest/tasks/{gid}/comment", "Comment on a task"],
+  ["get", "/api/companies/{companyId}/asana-digest/tasks/{gid}/comments", "List an Asana task's comments"],
+  ["post", "/api/companies/{companyId}/asana-digest/tasks/{gid}/complete", "Mark an Asana task complete"],
+  ["get", "/api/companies/{companyId}/asana-digest/tasks/{gid}/detail", "Get an Asana task's detail"],
+  ["post", "/api/companies/{companyId}/connections/asana", "Connect the company's Asana workspace"],
+  ["post", "/api/companies/{companyId}/connections/asana/me", "Connect the signed-in user's Asana account"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["asana-digest"], summary: route[2] });
+}
+
+// Founder digest
+for (const route of [
+  ["post", "/api/companies/{companyId}/founder-digest", "Generate the founder digest"],
+  ["post", "/api/companies/{companyId}/founder-digest/items/{gid}/close", "Close a digest item"],
+  ["post", "/api/companies/{companyId}/founder-digest/items/{gid}/comment", "Comment on a founder digest item"],
+  ["post", "/api/companies/{companyId}/founder-digest/items/{gid}/decision", "Record a decision on a digest item"],
+  ["get", "/api/companies/{companyId}/founder-digest/me", "Get the signed-in user's founder digest"],
+  ["get", "/api/companies/{companyId}/founder-digest/prep", "Get founder digest preparation data"],
+  ["post", "/api/companies/{companyId}/founder-digest/refresh", "Refresh the founder digest"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["founder-digest"], summary: route[2] });
+}
+
+// Google Workspace integration
+for (const route of [
+  ["get", "/api/companies/{companyId}/gmail/drafts", "List Gmail drafts"],
+  ["post", "/api/companies/{companyId}/gmail/drafts", "Create a Gmail draft"],
+  ["get", "/api/companies/{companyId}/gmail/me", "Get the signed-in user's Gmail profile"],
+  ["get", "/api/companies/{companyId}/gmail/messages/{messageId}", "Get a Gmail message"],
+  ["get", "/api/companies/{companyId}/gmail/readiness", "Check Gmail integration readiness"],
+  ["get", "/api/companies/{companyId}/gmail/search", "Search Gmail messages"],
+  ["get", "/api/companies/{companyId}/google-calendar/aliases", "List calendar aliases"],
+  ["put", "/api/companies/{companyId}/google-calendar/aliases", "Replace the calendar alias map"],
+  ["get", "/api/companies/{companyId}/google-calendar/me", "Get the signed-in user's calendar profile"],
+  ["get", "/api/companies/{companyId}/google-calendar/me/calendars", "List the signed-in user's calendars"],
+  ["delete", "/api/companies/{companyId}/google-calendar/me/events", "Delete a calendar event"],
+  ["get", "/api/companies/{companyId}/google-calendar/me/events", "List the signed-in user's calendar events"],
+  ["patch", "/api/companies/{companyId}/google-calendar/me/events", "Update a calendar event"],
+  ["post", "/api/companies/{companyId}/google-calendar/me/events", "Create a calendar event"],
+  ["get", "/api/companies/{companyId}/google-chat/history", "List Google Chat history"],
+  ["get", "/api/companies/{companyId}/google-chat/messages", "List Google Chat messages"],
+  ["get", "/api/companies/{companyId}/google-chat/readiness", "Check Google Chat integration readiness"],
+  ["get", "/api/companies/{companyId}/google-chat/spaces", "List Google Chat spaces"],
+  ["post", "/api/companies/{companyId}/google-docs", "Create a Google Doc"],
+  ["get", "/api/companies/{companyId}/google-docs/readiness", "Check Google Docs integration readiness"],
+  ["get", "/api/companies/{companyId}/google-docs/{id}", "Get a Google Doc"],
+  ["post", "/api/companies/{companyId}/google-docs/{id}/append", "Append content to a Google Doc"],
+  ["post", "/api/companies/{companyId}/google-docs/{id}/replace-text", "Replace text in a Google Doc"],
+  ["get", "/api/companies/{companyId}/google-gmail/me", "Get the signed-in user's Gmail profile"],
+  ["post", "/api/companies/{companyId}/google-sheets", "Create a Google Sheet"],
+  ["get", "/api/companies/{companyId}/google-sheets/readiness", "Check Google Sheets integration readiness"],
+  ["get", "/api/companies/{companyId}/google-sheets/{id}", "Get a Google Sheet"],
+  ["post", "/api/companies/{companyId}/google-sheets/{id}/append", "Append rows to a Google Sheet"],
+  ["get", "/api/companies/{companyId}/google-sheets/{id}/values", "Read a Google Sheet's cell values"],
+  ["put", "/api/companies/{companyId}/google-sheets/{id}/values", "Write a Google Sheet's cell values"],
+  ["post", "/api/companies/{companyId}/google-slides", "Create a Google Slides presentation"],
+  ["get", "/api/companies/{companyId}/google-slides/readiness", "Check Google Slides integration readiness"],
+  ["get", "/api/companies/{companyId}/google-slides/{id}", "Get a Google Slides presentation"],
+  ["post", "/api/companies/{companyId}/google-slides/{id}/replace-text", "Replace text in a presentation"],
+  ["post", "/api/companies/{companyId}/google-slides/{id}/slides", "Add slides to a presentation"],
+  ["post", "/api/companies/{companyId}/google-slides/{id}/text", "Insert text into a slide"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["google-workspace"], summary: route[2] });
+}
+
+// Company wiki
+for (const route of [
+  ["post", "/api/companies/{companyId}/wiki/distill", "Distill company activity into the wiki"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["wiki"], summary: route[2] });
+}
+
+// Company dashboards and rollups
+for (const route of [
+  ["get", "/api/companies/{companyId}/interactions/pending", "List pending agent interactions"],
+  ["get", "/api/companies/{companyId}/leaderboard", "Get the company leaderboard"],
+  ["post", "/api/companies/{companyId}/leaderboard/rollup", "Recompute leaderboard rollups"],
+  ["get", "/api/companies/{companyId}/my-teams", "List the signed-in user's teams"],
+  ["get", "/api/companies/{companyId}/my-visible-agents", "List agents visible to the signed-in user"],
+  ["get", "/api/companies/{companyId}/onboarding/me", "Get the signed-in user's onboarding progress"],
+  ["get", "/api/companies/{companyId}/shareable-teams", "List teams the signed-in user may share to"],
+  ["post", "/api/companies/{companyId}/summaries/run", "Run company summary generation"],
+] as const) {
+  registerCurrentRoute({ method: route[0], path: route[1], tags: ["dashboards"], summary: route[2] });
+}
+
 // ─── Spec builder ─────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
