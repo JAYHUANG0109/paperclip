@@ -37,6 +37,7 @@ import { readProjectWorkspaceRuntimeConfig } from "./project-workspace-runtime-c
 import {
   listCurrentRuntimeServicesForExecutionWorkspaces,
   listCurrentRuntimeServicesForProjectWorkspaces,
+  selectConfiguredRuntimeServiceRows,
 } from "./workspace-runtime-read-model.js";
 
 type ExecutionWorkspaceRow = typeof executionWorkspaces.$inferSelect;
@@ -752,7 +753,9 @@ export function mergeExecutionWorkspaceConfig(
   return Object.keys(nextMetadata).length > 0 ? nextMetadata : null;
 }
 
-function toRuntimeService(row: WorkspaceRuntimeServiceRow): WorkspaceRuntimeService {
+function toRuntimeService(
+  row: WorkspaceRuntimeServiceRow & { configIndex?: number | null },
+): WorkspaceRuntimeService {
   return {
     id: row.id,
     companyId: row.companyId,
@@ -779,6 +782,7 @@ function toRuntimeService(row: WorkspaceRuntimeServiceRow): WorkspaceRuntimeServ
     stoppedAt: row.stoppedAt ?? null,
     stopPolicy: (row.stopPolicy as Record<string, unknown> | null) ?? null,
     healthStatus: row.healthStatus as WorkspaceRuntimeService["healthStatus"],
+    configIndex: row.configIndex ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -876,8 +880,13 @@ function noActiveRuntimeServicesForWorkspaceCondition(row: ExecutionWorkspaceRow
   const activeServiceConditions = inheritedProjectWorkspaceId
     ? and(
         eq(workspaceRuntimeServices.companyId, row.companyId),
-        eq(workspaceRuntimeServices.projectWorkspaceId, inheritedProjectWorkspaceId),
-        eq(workspaceRuntimeServices.scopeType, "project_workspace"),
+        or(
+          and(
+            eq(workspaceRuntimeServices.projectWorkspaceId, inheritedProjectWorkspaceId),
+            eq(workspaceRuntimeServices.scopeType, "project_workspace"),
+          ),
+          eq(workspaceRuntimeServices.executionWorkspaceId, row.id),
+        ),
         ne(workspaceRuntimeServices.status, "stopped"),
       )
     : and(
@@ -893,28 +902,77 @@ async function loadEffectiveRuntimeServicesByExecutionWorkspace(
   companyId: string,
   rows: ExecutionWorkspaceRow[],
 ) {
-  const executionRuntimeServices = await listCurrentRuntimeServicesForExecutionWorkspaces(
-    db,
-    companyId,
-    rows.map((row) => row.id),
-  );
-  const projectWorkspaceIds = rows
-    .filter((row) => usesInheritedProjectRuntimeServices(row))
+  const inheritedRows = rows.filter((row) => usesInheritedProjectRuntimeServices(row));
+  const projectWorkspaceIds = inheritedRows
     .map((row) => row.projectWorkspaceId)
     .filter((value): value is string => Boolean(value));
-  const projectRuntimeServices = await listCurrentRuntimeServicesForProjectWorkspaces(
-    db,
-    companyId,
-    [...new Set(projectWorkspaceIds)],
+  const uniqueProjectWorkspaceIds = [...new Set(projectWorkspaceIds)];
+  const [executionRuntimeServices, projectRuntimeServices, projectWorkspaceRows] = await Promise.all([
+    listCurrentRuntimeServicesForExecutionWorkspaces(
+      db,
+      companyId,
+      rows.map((row) => row.id),
+    ),
+    listCurrentRuntimeServicesForProjectWorkspaces(
+      db,
+      companyId,
+      uniqueProjectWorkspaceIds,
+    ),
+    uniqueProjectWorkspaceIds.length > 0
+      ? db
+          .select({
+            id: projectWorkspaces.id,
+            metadata: projectWorkspaces.metadata,
+          })
+          .from(projectWorkspaces)
+          .where(
+            and(
+              eq(projectWorkspaces.companyId, companyId),
+              inArray(projectWorkspaces.id, uniqueProjectWorkspaceIds),
+            ),
+          )
+      : Promise.resolve([]),
+  ]);
+  const projectRuntimeConfigByWorkspaceId = new Map(
+    projectWorkspaceRows.map((row) => [
+      row.id,
+      readProjectWorkspaceRuntimeConfig((row.metadata as Record<string, unknown> | null) ?? null)?.workspaceRuntime
+        ?? null,
+    ]),
+  );
+  const effectiveProjectRuntimeServices = new Map(
+    uniqueProjectWorkspaceIds.map((projectWorkspaceId) => [
+      projectWorkspaceId,
+      selectConfiguredRuntimeServiceRows(
+        projectRuntimeServices.get(projectWorkspaceId) ?? [],
+        projectRuntimeConfigByWorkspaceId.get(projectWorkspaceId) ?? null,
+      ),
+    ]),
   );
 
   return new Map(
-    rows.map((row) => [
-      row.id,
-      usesInheritedProjectRuntimeServices(row)
-        ? (projectRuntimeServices.get(row.projectWorkspaceId!) ?? [])
-        : (executionRuntimeServices.get(row.id) ?? []),
-    ]),
+    rows.map((row) => {
+      if (!usesInheritedProjectRuntimeServices(row)) {
+        return [row.id, executionRuntimeServices.get(row.id) ?? []] as const;
+      }
+
+      const workspaceRuntime = projectRuntimeConfigByWorkspaceId.get(row.projectWorkspaceId!) ?? null;
+      const executionScopedRows = selectConfiguredRuntimeServiceRows(
+        (executionRuntimeServices.get(row.id) ?? []).filter(
+          (runtimeService) => runtimeService.scopeType !== "project_workspace",
+        ),
+        workspaceRuntime,
+      );
+      const effectiveRows = [
+        ...(effectiveProjectRuntimeServices.get(row.projectWorkspaceId!) ?? []),
+        ...executionScopedRows,
+      ].sort(
+        (left, right) =>
+          (left.configIndex ?? Number.MAX_SAFE_INTEGER) -
+          (right.configIndex ?? Number.MAX_SAFE_INTEGER),
+      );
+      return [row.id, effectiveRows] as const;
+    }),
   );
 }
 
@@ -1738,8 +1796,13 @@ export function executionWorkspaceService(db: Db) {
             usesInheritedProjectRuntimeServices(lockedRow)
               ? and(
                   eq(workspaceRuntimeServices.companyId, lockedRow.companyId),
-                  eq(workspaceRuntimeServices.projectWorkspaceId, lockedRow.projectWorkspaceId!),
-                  eq(workspaceRuntimeServices.scopeType, "project_workspace"),
+                  or(
+                    and(
+                      eq(workspaceRuntimeServices.projectWorkspaceId, lockedRow.projectWorkspaceId!),
+                      eq(workspaceRuntimeServices.scopeType, "project_workspace"),
+                    ),
+                    eq(workspaceRuntimeServices.executionWorkspaceId, lockedRow.id),
+                  ),
                 )
               : and(
                   eq(workspaceRuntimeServices.companyId, lockedRow.companyId),
