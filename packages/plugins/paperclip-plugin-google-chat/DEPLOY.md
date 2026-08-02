@@ -129,10 +129,22 @@ Project: **vital-defender-490707-b6** ("Paperclip Seasonarts"), project number
    (or search "Chat API" → Manage → Configuration).
 2. **Connection settings / App URL:** select **HTTP endpoint URL** and paste the
    webhook URL from Step 3.
-3. **Authentication Audience:** select **Project Number**.
-   ⚠️ This must be **Project Number**, not "App URL" — the plugin verifies the
-   JWT audience equals `455778754146`. (That value is the `audience` default in
-   the plugin config; if you ever change the project, update both.)
+3. **Authentication Audience:** select **App URL**.
+   ⚠️ This must be **App URL**, not "Project Number". Two things depend on it:
+   - `expectedAudience` (plugin config) is checked against the JWT `aud` as an
+     *endpoint URL*, not a project number — see [manifest.ts](./src/manifest.ts).
+     Leaving it empty skips the audience check entirely; the signature and issuer
+     are still verified either way.
+   - Card buttons **self-configure** from the `aud` claim of each inbound request
+     (`learnCardActionUrl` in [worker.ts](./src/worker.ts)), and that learner only
+     accepts values matching `^https://`. With Project Number the `aud` is numeric,
+     so it is rejected and the button URL stays pinned to whatever host was
+     configured last — which is exactly how it stayed pointed at the MacBook Air
+     after the Mac mini migration.
+
+   > This step previously said "Project Number". That was correct for the original
+   > bring-up and is no longer how the plugin verifies. If you migrate hosts, change
+   > the App URL here and the buttons follow on the first message.
 4. Make sure the app is **Live/運作中** and the allowlist still includes
    `jay20020109@seasonart.org` and `claude_bot_08@seasonart.org`.
 5. Save. Changes take effect within a minute or so.
