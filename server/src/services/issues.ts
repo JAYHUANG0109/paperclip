@@ -3810,6 +3810,16 @@ async function countBlockedInboxIssues(dbOrTx: any, companyId: string, filters?:
   }, 0);
 }
 
+/**
+ * Issue columns that record how someone has arranged their own view rather than any
+ * change to the issue. A patch touching only these must not advance `updatedAt`,
+ * because `updatedAt` is what every task list uses as its recency sort key.
+ *
+ * Keep this to genuinely inert fields — anything a colleague would expect to see
+ * reflected as "this task moved" belongs in a normal patch.
+ */
+const ISSUE_VIEW_PREFERENCE_FIELDS = new Set<string>(["pinned"]);
+
 export function issueService(db: Db) {
   const instanceSettings = instanceSettingsService(db);
   const treeControlSvc = issueTreeControlService(db);
@@ -6606,12 +6616,26 @@ export function issueService(db: Db) {
         assertTransition(existing.status, issueData.status);
       }
 
+      // Pinning is shelf-arrangement by one viewer, not activity on the issue, so a
+      // patch that touches nothing else must leave `updatedAt` alone. Every task list
+      // sorts pinned-first and then by `updatedAt` desc (SidebarMyTasks.tsx,
+      // AgentDetail.tsx); bumping the timestamp here meant unpinning left the issue
+      // stuck at the very top anyway — no longer as "pinned" but as "most recently
+      // updated" — so a task could be pinned and never fall back into place.
+      const touchedFields = Object.keys(issueData);
+      const viewPreferenceOnly =
+        touchedFields.length > 0 &&
+        touchedFields.every((field) => ISSUE_VIEW_PREFERENCE_FIELDS.has(field)) &&
+        nextLabelIds === undefined &&
+        blockedByIssueIds === undefined;
+
+      const now = new Date();
       const patch: Partial<typeof issues.$inferInsert> = {
         ...issueData,
-        updatedAt: new Date(),
+        ...(viewPreferenceOnly ? {} : { updatedAt: now }),
       };
       if (existing.status !== "blocked" && issueData.status === "blocked") {
-        patch.blockedTransitionAt = patch.updatedAt;
+        patch.blockedTransitionAt = now;
         patch.blockedOwnerNotifiedAt = null;
       } else if (existing.status === "blocked" && issueData.status && issueData.status !== "blocked") {
         patch.unblockDescriptor = null;
