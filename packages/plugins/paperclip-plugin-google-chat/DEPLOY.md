@@ -183,7 +183,7 @@ Common causes:
 | `serviceAccountSecretRef` | `google-chat-service-account` | must match the secret name/key |
 | `echoMode` | `true` | bring-up echo; turn off when real routing lands |
 | `routingEnabled` | `false` | relay messages to agents instead of echoing |
-| `gateUnassigned` | `false` | when on, only assigned users get a reply (manage on the settings page) |
+| `gateUnassigned` | `true` | only assigned users get a reply (manage on the settings page) |
 | `unassignedMessage` | 請聯絡資訊部… | reply sent to unassigned senders |
 | `verifyInbound` | `true` | verify Google's signed JWT; keep on |
 | `audience` | `455778754146` | GCP project number for JWT audience |
@@ -247,9 +247,15 @@ reply.** This is enforced inside the plugin, independent of Google's allowlist:
   default).
 - An **unassigned** sender gets the `unassignedMessage` ("請聯絡資訊部…") and **no
   agent run is created**.
-- Controlled by config `gateUnassigned` (default **off** — a fresh install keeps
-  answering everyone via `defaultAgentUrlKey`). **Turn it on once you've added
-  assignments**, and definitely before making the bot org-wide visible.
+- Controlled by config `gateUnassigned`, default **on** — a fresh install answers
+  only assigned senders. Add assignments on the settings page before people start
+  messaging the bot, or set it to `false` to route everyone to `defaultAgentUrlKey`.
+
+  > This defaulted to **off** until 2026-08-02. Two things argued for closing it:
+  > an org-wide bot answering anyone who finds it is the wrong default, and the
+  > setting lives in `plugin_config` — so restoring a database snapshot from before
+  > someone turned it on silently reopens the bot. That happened during the Mac mini
+  > host migration. Now the safe behaviour is in code and a restore cannot undo it.
 
 Making the bot org-wide visible needs a Workspace admin — see
 [VISIBILITY-IT-HANDOFF.md](./VISIBILITY-IT-HANDOFF.md).

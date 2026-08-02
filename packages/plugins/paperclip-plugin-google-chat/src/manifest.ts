@@ -30,9 +30,18 @@ export const DEFAULT_CONFIG = {
   /** Access control: when true, only senders with an explicit email→agent
    *  assignment (managed on the Google Chat settings page) get a real response;
    *  unassigned senders receive `unassignedMessage` and no agent runs.
-   *  Defaults OFF so a fresh install keeps answering (everyone → default agent);
-   *  turn it ON once assignments exist, especially before going org-wide. */
-  gateUnassigned: false,
+   *
+   *  Defaults ON. The permissive default meant that anyone who could find the bot
+   *  reached `defaultAgentUrlKey` — fine during bring-up with a handful of testers,
+   *  wrong once the app is visible to a whole organisation. Closed-by-default also
+   *  survives a database restore: this setting lives in `plugin_config`, and a
+   *  restore to a snapshot predating the change silently reopens the bot, which is
+   *  exactly what happened during the 2026-08-02 host migration.
+   *
+   *  A fresh install therefore answers only assigned senders. Add assignments on
+   *  the Google Chat settings page, or set this to false to let everyone through
+   *  to the default agent. */
+  gateUnassigned: true,
   /** Reply sent to an unassigned sender when `gateUnassigned` is on. */
   unassignedMessage:
     "您好！您目前還沒有專屬的 AI 助理，請聯絡資訊部 (IT) 協助為您設定。\n\n" +
