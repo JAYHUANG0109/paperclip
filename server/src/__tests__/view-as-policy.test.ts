@@ -36,6 +36,40 @@ function target(over: Partial<ViewAsTarget> = {}): ViewAsTarget {
 }
 
 describe("mayUseViewAs", () => {
+  // The trap this closes: while view-as is active the actor IS the target, who
+  // is not permitted. Judging the swapped identity 403s the very endpoint that
+  // lists who you may switch to, so the control — and the way back — vanish and
+  // the real person is stranded in someone else's account.
+  it("keeps permitting the real user while they are viewing as someone", () => {
+    const stranded = viewer({
+      userEmail: "someone.else@seasonart.org",
+      isInstanceAdmin: false,
+      viewAs: {
+        realUserId: "real",
+        realUserEmail: "jay20020109@seasonart.org",
+        viewingUserId: "target",
+      },
+    } as never);
+
+    expect(mayUseViewAs(stranded)).toBe(true);
+  });
+
+  // ...but the provenance is not a skeleton key: an unpermitted real user does
+  // not become permitted just because a viewAs block is present.
+  it("still refuses when the real user is not on the allowlist", () => {
+    const forged = viewer({
+      userEmail: "someone.else@seasonart.org",
+      isInstanceAdmin: false,
+      viewAs: {
+        realUserId: "real",
+        realUserEmail: "nobody@seasonart.org",
+        viewingUserId: "target",
+      },
+    } as never);
+
+    expect(mayUseViewAs(forged)).toBe(false);
+  });
+
   it("allows the lead developer's signed-in session", () => {
     expect(mayUseViewAs(viewer())).toBe(true);
   });

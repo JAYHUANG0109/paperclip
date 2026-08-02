@@ -98,11 +98,25 @@ function normalizeEmail(email: unknown): string | null {
 
 /** Rail 4: allowlisted email, instance admin, board actor, real session. */
 export function mayUseViewAs(viewer: ViewAsViewer): boolean {
+  // Already viewing as someone: the actor has been swapped to the TARGET, who
+  // is normally not permitted. Judging the swapped identity would 403 the very
+  // request that lists who you may switch to, stranding the real person in
+  // another identity with no way back. The permission belongs to whoever
+  // started this — and the swap only happened because they passed this same
+  // check — so re-check against the recorded real email.
+  const provenance = (viewer as { viewAs?: { realUserEmail?: string | null } }).viewAs;
+  if (provenance) return isViewAsAllowedEmail(provenance.realUserEmail);
+
   if (viewer.type !== "board") return false;
   // A board API key is not a person; only an interactive session may view as.
   if (viewer.source !== "session") return false;
   if (!viewer.isInstanceAdmin) return false;
-  const email = normalizeEmail(viewer.userEmail);
+  return isViewAsAllowedEmail(viewer.userEmail);
+}
+
+/** The allowlist test, shared by both branches above. */
+function isViewAsAllowedEmail(rawEmail: string | null | undefined): boolean {
+  const email = normalizeEmail(rawEmail);
   if (!email) return false;
   return VIEW_AS_ALLOWED_EMAILS.some((allowed) => allowed.toLowerCase() === email);
 }

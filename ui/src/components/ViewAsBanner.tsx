@@ -85,13 +85,15 @@ export function ViewAsSwitcher() {
   const selection = useViewAsSelection();
   const users = useViewAsUsers();
 
-  // Not permitted, or already viewing as someone — the banner owns that state.
-  if (!users || users.length === 0 || selection) return null;
+  // Stays visible while viewing as someone, so you can switch straight to the
+  // next person instead of having to stop first — and so the control never
+  // disappears out from under you mid-session.
+  if (!users || users.length === 0) return null;
 
   return (
     <div className="mx-2 flex flex-col gap-1 rounded-lg border border-dashed border-border/70 px-2 py-2">
       <label htmlFor="view-as-sidebar-select" className="text-xs font-medium text-muted-foreground">
-        View as user
+        {selection ? `Viewing as ${selection.label}` : "View as user"}
       </label>
       <select
         id="view-as-sidebar-select"
@@ -102,26 +104,43 @@ export function ViewAsSwitcher() {
           if (user) switchTo({ userId: user.id, label: shortLabel(user) });
         }}
       >
-        <option value="">Select a user…</option>
+        <option value="">{selection ? "Switch to another user…" : "Select a user…"}</option>
         {[...users].sort((a, b) => label(a).localeCompare(label(b), undefined, { numeric: true })).map((user) => (
           <option key={user.id} value={user.id}>
             {label(user)}
           </option>
         ))}
       </select>
-      <p className="text-[11px] leading-snug text-muted-foreground">
-        See the platform as someone else, read-only. Only you can do this.
-      </p>
+      {selection ? (
+        <button
+          type="button"
+          className="rounded-md border border-border px-2 py-1 text-xs font-medium"
+          onClick={() => switchTo(null)}
+        >
+          Stop viewing as
+        </button>
+      ) : (
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          See the platform as someone else, read-only. Only you can do this.
+        </p>
+      )}
     </div>
   );
 }
 
 export function ViewAsBanner() {
   const selection = useViewAsSelection();
-  const users = useViewAsUsers();
 
-  if (!users) return null;
-  // Idle state now lives in the sidebar; the banner is for the active one.
+  // Idle state lives in the sidebar; the banner is for the active one.
+  //
+  // Deliberately does NOT depend on the permitted-users query. That query is
+  // authorized against the CURRENT actor, which during view-as is the person
+  // being viewed — normally not permitted — so it 403s and the banner vanished
+  // along with the only way out. Leaving someone stranded in another identity
+  // is far worse than rendering a bar we did not strictly need to.
+  //
+  // Nothing here needs permission anyway: stopping is clearing this tab's own
+  // sessionStorage and reloading.
   if (!selection) return null;
 
   return (
