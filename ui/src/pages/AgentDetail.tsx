@@ -1104,6 +1104,8 @@ export function AgentDetail() {
     return <Navigate to={`/agents/${canonicalAgentRef}/dashboard`} replace />;
   }
   const isPendingApproval = agent.status === "pending_approval";
+  const hasInvalidOrgChain = agent.orgChainHealth?.status === "invalid_org_chain";
+  const pausedEscalationWarning = !hasInvalidOrgChain ? agent.orgChainHealth?.escalationWarning ?? null : null;
   const showConfigActionBar = (activeView === "configuration" || activeView === "instructions") && (configDirty || configSaving);
   const showLeftAgentNotice = agentMembershipState === "left" && !dismissedLeftAgentIds.has(agent.id);
   const agentMembershipPending =
@@ -1145,6 +1147,36 @@ export function AgentDetail() {
           >
             ×
           </button>
+        </div>
+      ) : null}
+      {pausedEscalationWarning ? (
+        <div className="flex items-start gap-3 border border-amber-300/35 bg-amber-300/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0 space-y-1">
+            <p className="font-medium">Escalation path is paused</p>
+            <p className="text-amber-900/90 dark:text-amber-100/90">{pausedEscalationWarning}</p>
+          </div>
+        </div>
+      ) : null}
+      {hasInvalidOrgChain ? (
+        <div className="flex items-start gap-3 border border-amber-300/35 bg-amber-300/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0 space-y-1">
+            <p className="font-medium">Invalid reporting chain</p>
+            <p className="text-amber-900/90 dark:text-amber-100/90">
+              {agent.name} cannot accept tasks or start runs until its reporting chain is repaired.
+            </p>
+            <p className="break-words font-mono text-xs text-amber-900/80 dark:text-amber-100/80">
+              {formatOrgChainHealthPath(agent)}
+            </p>
+            {agent.orgChainHealth?.repairGuidance ? (
+              <p className="text-amber-900/85 dark:text-amber-100/85">{agent.orgChainHealth.repairGuidance}</p>
+            ) : (
+              <p className="text-amber-900/85 dark:text-amber-100/85">
+                Assign this agent to an active manager/root, or explicitly pause or terminate the affected agent/subtree.
+              </p>
+            )}
+          </div>
         </div>
       ) : null}
       {/* Header */}
