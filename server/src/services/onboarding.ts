@@ -21,7 +21,16 @@ export interface OnboardingState {
   stage: number;
   total: number;
   completedKeys: string[];
-  status: "in_progress" | "done";
+  /**
+   * `dismissed` is a THIRD terminal state, distinct from `done`.
+   *
+   * Someone who already knows the platform should be able to clear the card
+   * without pretending to have completed five tutorials. Keeping it separate
+   * from `done` means onboarding-completion stats stay honest — "how many people
+   * finished the tutorial" and "how many people got the card off their
+   * dashboard" are different questions and both are worth being able to answer.
+   */
+  status: "in_progress" | "done" | "dismissed";
   projectId?: string | null;
   issues?: Record<string, string>;
   startedAt?: string;
@@ -38,7 +47,7 @@ function readOnboarding(metadata: unknown): OnboardingState | null {
     stage: typeof s.stage === "number" ? s.stage : 1,
     total: s.total,
     completedKeys: (s.completedKeys as unknown[]).filter((k): k is string => typeof k === "string"),
-    status: s.status === "done" ? "done" : "in_progress",
+    status: s.status === "done" ? "done" : s.status === "dismissed" ? "dismissed" : "in_progress",
     projectId: typeof s.projectId === "string" ? s.projectId : null,
     issues: s.issues && typeof s.issues === "object"
       ? (s.issues as Record<string, string>)
@@ -117,6 +126,61 @@ export async function advanceOnboarding(
   return { advanced: true, completed: allDone };
 }
 
+/**
+ * Clear the onboarding card without completing it.
+ *
+ * For the people who already know the platform. Two things it deliberately does
+ * NOT do:
+ *
+ *   • It does not mark the 關卡 done. Nothing was completed, and recording
+ *     otherwise would corrupt the only signal telling us whether the tutorial
+ *     actually works for the people who need it.
+ *
+ *   • It does not delete anything. The 教學 project is archived, exactly as
+ *     completing would archive it, so the five issues stop cluttering the board
+ *     but remain there for anyone who changes their mind.
+ *
+ * Idempotent, and refuses to overturn a finished onboarding: dismissing after
+ * completing would downgrade a real `done` to `dismissed` and lose the fact.
+ */
+export async function dismissOnboardingForAgent(
+  db: Db,
+  agentId: string,
+): Promise<{ dismissed: boolean }> {
+  const agent = (await db
+    .select({ metadata: agents.metadata, companyId: agents.companyId })
+    .from(agents)
+    .where(eq(agents.id, agentId)))[0];
+  if (!agent) return { dismissed: false };
+
+  const state = readOnboarding(agent.metadata);
+  if (!state) return { dismissed: false };
+  if (state.status !== "in_progress") return { dismissed: false };
+
+  const nextState: OnboardingState = {
+    ...state,
+    status: "dismissed",
+    completedAt: new Date().toISOString(),
+  };
+
+  const md = (agent.metadata && typeof agent.metadata === "object")
+    ? (agent.metadata as Record<string, unknown>)
+    : {};
+  await db
+    .update(agents)
+    .set({ metadata: { ...md, onboarding: nextState }, updatedAt: new Date() })
+    .where(eq(agents.id, agentId));
+
+  if (state.projectId) {
+    await db
+      .update(projects)
+      .set({ archivedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(projects.id, state.projectId), eq(projects.companyId, agent.companyId)));
+  }
+
+  return { dismissed: true };
+}
+
 /** One 關卡 as the dashboard checklist needs it: the catalog title/desc plus
  *  whether this user has cleared it and whether it's the current (next) step. */
 export interface OnboardingStepView {
@@ -133,7 +197,16 @@ export interface OnboardingView {
   available: boolean;
   stage: number;
   total: number;
-  status: "in_progress" | "done";
+  /**
+   * `dismissed` is a THIRD terminal state, distinct from `done`.
+   *
+   * Someone who already knows the platform should be able to clear the card
+   * without pretending to have completed five tutorials. Keeping it separate
+   * from `done` means onboarding-completion stats stay honest — "how many people
+   * finished the tutorial" and "how many people got the card off their
+   * dashboard" are different questions and both are worth being able to answer.
+   */
+  status: "in_progress" | "done" | "dismissed";
   steps: OnboardingStepView[];
 }
 

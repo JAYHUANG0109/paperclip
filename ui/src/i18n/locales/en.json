@@ -8,7 +8,9 @@
     "save": "Save",
     "asanaPlaceholder": "Paste your Asana Personal Access Token",
     "asanaHelp": "Create a token at app.asana.com → My apps",
-    "asanaError": "Could not save your Asana token. Check it and try again."
+    "asanaError": "Could not save your Asana token. Check it and try again.",
+    "dismiss": "Skip",
+    "dismissHint": "Removes this card. The tutorial tasks are archived, not deleted."
   },
   "app": {
     "noCompanies": {

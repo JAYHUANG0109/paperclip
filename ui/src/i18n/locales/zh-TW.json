@@ -8,7 +8,9 @@
     "save": "儲存",
     "asanaPlaceholder": "貼上你的 Asana 個人存取權杖",
     "asanaHelp": "到 app.asana.com →「我的應用程式」建立權杖",
-    "asanaError": "無法儲存你的 Asana 權杖，請確認後再試一次。"
+    "asanaError": "無法儲存你的 Asana 權杖，請確認後再試一次。",
+    "dismiss": "略過",
+    "dismissHint": "移除這張卡片。教學任務會被封存，不會刪除。"
   },
   "app": {
     "noCompanies": {

@@ -43,7 +43,20 @@ export function OnboardingChecklist({ companyId }: { companyId: string }) {
   });
   const myAgentHref = myAgents?.[0] ? agentUrl(myAgents[0]) : null;
 
-  if (!data?.available || !data.steps || data.status === "done") return null;
+  /**
+   * Remove the card without completing it, for people who already know the
+   * platform. The tutorial project is archived rather than deleted, so it can be
+   * found again; nothing is marked as completed, because nothing was.
+   */
+  const dismiss = useMutation({
+    mutationFn: () => dashboardApi.dismissOnboarding(companyId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ONBOARDING_KEY(companyId) }),
+  });
+
+  // Show ONLY while in progress. Testing for `!== "in_progress"` rather than
+  // listing the terminal states means a future one hides the card by default,
+  // instead of leaving it stuck on someone's dashboard until anyone notices.
+  if (!data?.available || !data.steps || (data.status && data.status !== "in_progress")) return null;
 
   const done = data.steps.filter((s) => s.done).length;
   const total = data.total ?? data.steps.length;
@@ -60,6 +73,23 @@ export function OnboardingChecklist({ companyId }: { companyId: string }) {
           <span className="ml-auto text-xs text-muted-foreground tabular-nums">
             {t("onboardingGame.progress", { defaultValue: "{{done}}/{{total}} done", done, total })}
           </span>
+          {/* Two ways off the dashboard: finish the steps, or say you do not
+              need them. Quiet styling on purpose — it is an escape hatch, not
+              a competing call to action. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs text-muted-foreground"
+            disabled={dismiss.isPending}
+            onClick={() => dismiss.mutate()}
+            title={t("onboardingGame.dismissHint", {
+              defaultValue: "Removes this card. The tutorial tasks are archived, not deleted.",
+            })}
+          >
+            {dismiss.isPending
+              ? <Loader2 className="size-3 animate-spin" />
+              : t("onboardingGame.dismiss", { defaultValue: "Skip" })}
+          </Button>
         </div>
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
           <div

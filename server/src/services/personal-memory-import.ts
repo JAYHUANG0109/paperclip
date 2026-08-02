@@ -11,11 +11,34 @@
  * Skips are RETURNED, never swallowed. An importer that silently drops files
  * reads as "imported everything" when it did not.
  */
+import { normalizeMemoryCategory } from "@paperclipai/shared";
 
-/** Extensions stored as UTF-8 text. Everything else is base64 (`is_binary`). */
+/**
+ * Extensions stored as UTF-8 text. Everything else is base64 (`is_binary`).
+ *
+ * Getting this wrong is quiet and costly in one direction: a text file filed as
+ * binary is materialized correctly but never appears in the MEMORY.md index, so
+ * an agent never learns it exists. Anything plausibly prose belongs here.
+ */
 const TEXT_EXTENSIONS = new Set([
   ".md", ".markdown", ".txt", ".text", ".json", ".yaml", ".yml", ".csv", ".tsv",
   ".log", ".html", ".htm", ".xml", ".rst", ".org", ".ini", ".toml", ".env",
+  // A skill is markdown with frontmatter — the same shape as a memory file, and
+  // the most likely thing someone drags in from a skill folder.
+  ".skill", ".mdx", ".mdc", ".prompt",
+]);
+
+/**
+ * Archives, refused rather than stored.
+ *
+ * A .zip would otherwise sail through as a base64 blob: accepted, counted as
+ * imported, materialized to disk — and completely unreadable to the agent it
+ * was uploaded for, because nothing here unpacks it. "Imported 1 file" with no
+ * usable content is worse than a refusal, because the person believes it
+ * worked. Folder upload is the supported path and the message says so.
+ */
+const ARCHIVE_EXTENSIONS = new Set([
+  ".zip", ".gz", ".tgz", ".tar", ".bz2", ".xz", ".7z", ".rar",
 ]);
 
 /** Per-file ceiling. Memory is prose, not a media library. */
@@ -143,7 +166,10 @@ export function parseFrontmatter(text: string): {
   return { frontmatter, body: bodyStart === -1 ? "" : text.slice(bodyStart + 1) };
 }
 
-const KNOWN_TYPES = new Set(["user", "feedback", "project", "reference"]);
+function extensionOf(relativePath: string): string {
+  const match = /\.[^./]+$/.exec(relativePath);
+  return match ? match[0].toLowerCase() : "";
+}
 
 /** Parse one upload. Returns null with a reason when it must not be stored. */
 export function parseMemoryUpload(upload: MemoryUpload): ParsedMemory | SkippedMemory {
@@ -160,6 +186,12 @@ export function parseMemoryUpload(upload: MemoryUpload): ParsedMemory | SkippedM
       reason: `larger than ${Math.round(MAX_MEMORY_FILE_BYTES / 1024)}KB`,
     };
   }
+  if (ARCHIVE_EXTENSIONS.has(extensionOf(filePath))) {
+    return {
+      relativePath: filePath,
+      reason: "archives are not unpacked — use \"Import folder\" to upload its contents instead",
+    };
+  }
 
   if (!isTextPath(filePath)) {
     return {
@@ -174,12 +206,16 @@ export function parseMemoryUpload(upload: MemoryUpload): ParsedMemory | SkippedM
 
   const text = upload.content.toString("utf8");
   const { frontmatter, body } = parseFrontmatter(text);
-  const declaredType = frontmatter.type?.trim().toLowerCase();
 
   return {
     name: frontmatter.name?.trim() || memoryNameFromPath(filePath),
     description: frontmatter.description?.trim() ?? "",
-    memoryType: declaredType && KNOWN_TYPES.has(declaredType) ? declaredType : "project",
+    // One place decides what a category is. This used to hold its own hardcoded
+    // set, which silently went stale the moment the taxonomy grew — a file
+    // declaring `type: preference` imported as `project`, with nothing to say
+    // so. Deferring to the shared normalizer means the importer cannot drift
+    // from the write gate again, and legacy values still map forward.
+    memoryType: normalizeMemoryCategory(frontmatter.type),
     content: body,
     isBinary: false,
     filePath,

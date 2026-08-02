@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
@@ -74,6 +74,34 @@ export type AuthorizationAction =
   | "project:read"
   | "runtime:manage"
   | "secrets:read";
+
+/**
+ * The actions the 四季 member restriction applies to.
+ *
+ * ONE list, used in two places that must never disagree: the branch in
+ * `decide()` that consults `restrictedMemberCanRead`, and the exhaustive switch
+ * inside it. Before this existed the two were separate literals, so an action
+ * could be added to the gate and never decided — which is exactly how
+ * `secrets:read` came to be readable by a restricted member.
+ *
+ * Adding an action here is deliberately a breaking change: the code will not
+ * compile until `restrictedMemberCanRead` says what it means for someone who
+ * only sees their own corner of the company.
+ */
+export const RESTRICTABLE_ACTIONS = [
+  "agent:read",
+  "company_scope:read",
+  "issue:read",
+  "project:read",
+  "runtime:manage",
+  "secrets:read",
+] as const;
+
+export type RestrictableAction = (typeof RESTRICTABLE_ACTIONS)[number];
+
+export function isRestrictableAction(action: AuthorizationAction): action is RestrictableAction {
+  return (RESTRICTABLE_ACTIONS as readonly string[]).includes(action);
+}
 
 export type AuthorizationResource =
   | { type: "company"; companyId: string }
@@ -605,15 +633,57 @@ export function authorizationService(db: Db) {
     return visible;
   }
 
-  // Per-item visibility decision for a restricted member. Returns true=allow,
-  // false=deny; null=not applicable (fall through to upstream's logic).
+  /**
+   * Per-item visibility decision for a restricted member.
+   *
+   * TOTAL by construction: it returns a boolean for every action in
+   * `RESTRICTABLE_ACTIONS`, and the exhaustiveness check at the bottom makes
+   * adding an action to that list without deciding it a COMPILE error.
+   *
+   * That totality is the point of this function's shape. It used to return
+   * `boolean | null`, where `null` meant "fall through to the standard
+   * membership rule" — and the standard rule is *allow any active member*. So
+   * the effective policy was "a restricted member is denied only what somebody
+   * remembered to deny", and every action added to the gate list afterwards
+   * defaulted to company-wide. Three had accumulated: `project:read`,
+   * `runtime:manage` and `secrets:read`, the last of which resolves actual
+   * secret VALUES (services/secrets.ts).
+   *
+   * A default that fails open produces one new leak per feature and cannot be
+   * audited, because nothing records which actions were considered. Deciding
+   * every case explicitly costs one line per action and moves the discovery
+   * from production to the type checker.
+   */
   async function restrictedMemberCanRead(
-    action: string,
+    action: RestrictableAction,
     companyId: string,
     userId: string,
     resource: AuthorizationResource,
-  ): Promise<boolean | null> {
+  ): Promise<boolean> {
     if (action === "company_scope:read") return false; // force per-item filtering
+
+    /**
+     * Reading a secret VALUE, not a name. Never, for a restricted member.
+     *
+     * The whole premise of the restriction is that this person sees their own
+     * corner of the company; a shared credential is the opposite of that, and
+     * one leaked secret is not recoverable the way a leaked task title is.
+     * Privileged roles are unaffected — they never reach this function.
+     */
+    if (action === "secrets:read") return false;
+
+    /**
+     * Company-wide execution control (execution-workspaces runtime services).
+     *
+     * The resource here is the company, not a specific workspace, so there is
+     * nothing to scope this to — it is "start and stop runtime for the
+     * company". The issue-monitor call site returns early for board actors, so
+     * this denial does not touch a member managing their own task.
+     */
+    if (action === "runtime:manage") return false;
+
+    if (action === "project:read") return restrictedMemberCanReadProject(companyId, userId, resource);
+
     if (action === "agent:read") {
       const agentId = resource.type === "agent" ? resource.agentId : null;
       const visible = await getVisibleAgentIdsForUser(companyId, userId);
@@ -621,7 +691,13 @@ export function authorizationService(db: Db) {
     }
     if (action === "issue:read") {
       const issueId = resource.type === "issue" ? resource.issueId : null;
-      if (!issueId) return null;
+      // No issue named: the caller is asking whether this person reads issues at
+      // all, not whether they may read a particular one. Answering "no" here
+      // would close the task list entirely; the narrowing happens per item, and
+      // `company_scope:read` above already refuses the company-wide shortcut.
+      // This preserves the behaviour the old `null` fall-through produced, now
+      // stated rather than inherited.
+      if (!issueId) return true;
       const issue = await db
         .select({
           assigneeAgentId: issues.assigneeAgentId,
@@ -676,7 +752,90 @@ export function authorizationService(db: Db) {
         .limit(1);
       return participated.length > 0;
     }
-    return null; // project:read / runtime:manage / secrets:read → upstream's logic
+
+    // Exhaustiveness. If a new action joins RESTRICTABLE_ACTIONS without a
+    // branch above, `action` is no longer `never` and this line fails to
+    // compile — which is the entire mechanism. Do not replace it with a
+    // `return false`: a silent deny is easier to ship than a stated one, and
+    // the point is to force the decision to be made and written down.
+    const exhaustive: never = action;
+    void exhaustive;
+    return false;
+  }
+
+  /**
+   * Which projects a restricted member may read.
+   *
+   * Scoped rather than denied outright. `project:read` decides the project
+   * sidebar and every project page, so a blanket denial would empty the
+   * platform for exactly the people the restriction is meant to keep working
+   * normally — and a security change that makes the product unusable gets
+   * turned off, which protects nobody.
+   *
+   * A project is theirs if they own it, if they are an explicit member of it,
+   * or if they or one of their visible agents actually has work in it. That
+   * last clause is what makes this invisible in normal use: you see the
+   * projects you work in, and stop seeing the ones you never touch.
+   *
+   * A project-less resource is allowed: the caller is asking about "projects"
+   * in general rather than about one project, and the per-item filter
+   * (routes/projects.ts `filterProjectsForActor`) is what narrows the list.
+   */
+  async function restrictedMemberCanReadProject(
+    companyId: string,
+    userId: string,
+    resource: AuthorizationResource,
+  ): Promise<boolean> {
+    const projectId =
+      resource.type === "project"
+        ? resource.projectId ?? null
+        : resource.type === "issue"
+          ? resource.projectId ?? null
+          : null;
+    if (!projectId) return true;
+
+    const project = await db
+      .select({ ownerUserId: projects.ownerUserId })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
+      .then((rows) => rows[0] ?? null);
+    if (!project) return false;
+    if (project.ownerUserId === userId) return true;
+
+    const explicitMember = await db
+      .select({ one: sql<number>`1` })
+      .from(projectAccessMembers)
+      .where(
+        and(
+          eq(projectAccessMembers.projectId, projectId),
+          eq(projectAccessMembers.principalType, "user"),
+          eq(projectAccessMembers.principalId, userId),
+        ),
+      )
+      .limit(1);
+    if (explicitMember.length > 0) return true;
+
+    const visible = await getVisibleAgentIdsForUser(companyId, userId);
+    const agentIds = [...visible];
+    const worked = await db
+      .select({ one: sql<number>`1` })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, companyId),
+          eq(issues.projectId, projectId),
+          agentIds.length > 0
+            ? or(
+              eq(issues.assigneeUserId, userId),
+              eq(issues.createdByUserId, userId),
+              inArray(issues.assigneeAgentId, agentIds),
+              inArray(issues.createdByAgentId, agentIds),
+            )
+            : or(eq(issues.assigneeUserId, userId), eq(issues.createdByUserId, userId)),
+        ),
+      )
+      .limit(1);
+    return worked.length > 0;
   }
 
   // ---- Phase 5: project privacy ----
@@ -1945,17 +2104,15 @@ export function authorizationService(db: Db) {
         });
       }
       if (!permissionKey) {
-        if (
-          input.action === "agent:read" ||
-          input.action === "company_scope:read" ||
-          input.action === "issue:read" ||
-          input.action === "project:read" ||
-          input.action === "runtime:manage" ||
-          input.action === "secrets:read"
-        ) {
+        if (isRestrictableAction(input.action)) {
           const membership = await getActiveMembership(companyId, "user", input.actor.userId);
           // 四季 restriction (flag-gated): non-privileged members are scoped to
           // their visible agents / own issues instead of company-wide visibility.
+          //
+          // The decision is TOTAL — there is no third outcome that falls
+          // through to the company-wide allow below. That fall-through was the
+          // bug: it made "company-wide" the default for anything nobody had
+          // thought about yet.
           if (
             restrictAgentVisibilityEnabled() &&
             membership &&
@@ -1967,21 +2124,18 @@ export function authorizationService(db: Db) {
               input.actor.userId,
               input.resource,
             );
-            if (restricted === true) {
+            if (restricted) {
               return allow({
                 action: input.action,
                 reason: "allow_simple_company_member",
                 explanation: "Allowed: resource is within the restricted member's visible scope.",
               });
             }
-            if (restricted === false) {
-              return deny({
-                action: input.action,
-                reason: "deny_scope",
-                explanation: "Restricted member: resource is outside the visible agent/issue scope.",
-              });
-            }
-            // restricted === null → fall through to standard membership logic below
+            return deny({
+              action: input.action,
+              reason: "deny_scope",
+              explanation: "Restricted member: resource is outside the visible agent/issue scope.",
+            });
           }
           // Phase 5: project privacy gate (flag-gated).
           // Applied BEFORE the standard membership allow so private projects

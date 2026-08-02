@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MEMORY_CATEGORY_IDS } from "@paperclipai/shared";
 import {
   MAX_MEMORY_FILE_BYTES,
   decodeUploadPath,
@@ -197,5 +198,60 @@ describe("parseMemoryUploads", () => {
 
   it("returns empty results for an empty batch", () => {
     expect(parseMemoryUploads([])).toEqual({ memories: [], skipped: [] });
+  });
+});
+
+describe("what the importer accepts", () => {
+  const parse = (relativePath: string, content: string) =>
+    parseMemoryUpload({ relativePath, content: Buffer.from(content, "utf8") });
+
+  /**
+   * The importer used to carry its own hardcoded category set, which went stale
+   * the moment the taxonomy grew: a file declaring `type: preference` imported
+   * as `project`, silently. It now defers to the shared normalizer, so the two
+   * cannot drift again.
+   */
+  it("honours every category the write gate accepts", () => {
+    for (const id of MEMORY_CATEGORY_IDS) {
+      const parsed = parse("note.md", ["---", `type: ${id}`, "---", "", "body"].join("\n"));
+      expect("memoryType" in parsed && parsed.memoryType).toBe(id);
+    }
+  });
+
+  it("maps a legacy declared type forward rather than dropping it", () => {
+    const parsed = parse("note.md", ["---", "type: user", "---", "", "body"].join("\n"));
+
+    expect("memoryType" in parsed && parsed.memoryType).toBe("profile");
+  });
+
+  // Markdown with frontmatter — the same shape as a memory file, and the most
+  // likely thing dragged in from a skill folder. Stored as binary it would
+  // never reach the MEMORY.md index and no agent would learn it exists.
+  it("treats a .skill file as text", () => {
+    const parsed = parse("writing.skill", ["---", "name: writing", "---", "", "How to write."].join("\n"));
+
+    expect("isBinary" in parsed && parsed.isBinary).toBe(false);
+    expect("content" in parsed && parsed.content).toContain("How to write.");
+  });
+
+  /**
+   * Nothing here unpacks an archive, so storing one produces a base64 blob that
+   * is counted as imported and is unreadable to the agent it was uploaded for.
+   * A refusal naming the working alternative beats a success that is not one.
+   */
+  it("refuses an archive and says what to do instead", () => {
+    const parsed = parse("memories.zip", "PK-binary-ish");
+
+    expect("reason" in parsed && parsed.reason).toContain("Import folder");
+  });
+
+  it("still stores a real binary, so a PDF or an image round-trips", () => {
+    const parsed = parseMemoryUpload({
+      relativePath: "diagram.png",
+      content: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    });
+
+    expect("isBinary" in parsed && parsed.isBinary).toBe(true);
+    expect("filePath" in parsed && parsed.filePath).toBe("diagram.png");
   });
 });

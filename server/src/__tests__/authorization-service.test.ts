@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
@@ -2667,4 +2668,160 @@ describeEmbeddedPostgres("authorization service", () => {
       resource: { type: "company", companyId: company.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
   });
+
+  /**
+   * The restriction used to be an opt-in denylist.
+   *
+   * `restrictedMemberCanRead` returned `boolean | null`, and `null` meant "fall
+   * through to the standard membership rule" — which allows any active member.
+   * So a restricted member was denied only what somebody had remembered to
+   * deny, and every action added to the gate afterwards defaulted to
+   * company-wide. Three had accumulated by the time it was found, the worst
+   * being `secrets:read`, which resolves actual secret VALUES.
+   *
+   * These cases pin the inversion. They are written per action rather than as
+   * one loop because each one is a separate product decision, and a loop would
+   * let a future change quietly flip one without anybody reading a diff.
+   */
+  describe("四季 restriction (flag ON): actions default to denied", () => {
+    async function restrictedMember(label: string) {
+      process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY = "true";
+      const company = await createCompany(db, label);
+      const userId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: userId,
+        status: "active", membershipRole: "operator",
+      });
+      const joinedAgent = await createAgent(db, company.id);
+      await db.insert(agentMemberships).values({
+        companyId: company.id, agentId: joinedAgent.id, userId, state: "joined",
+      });
+      return {
+        company,
+        userId,
+        joinedAgent,
+        auth: authorizationService(db),
+        actor: { type: "board" as const, userId, source: "session" as const },
+      };
+    }
+
+    afterEach(() => {
+      delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+    });
+
+    /**
+     * The one that matters most. A shared credential is the opposite of "you
+     * see your own corner of the company", and a leaked secret is not
+     * recoverable the way a leaked task title is.
+     */
+    it("refuses secrets:read", async () => {
+      const { auth, actor, company } = await restrictedMember("RestrictSecrets");
+
+      await expect(auth.decide({
+        actor,
+        action: "secrets:read",
+        resource: { type: "company", companyId: company.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    it("refuses company-wide runtime:manage", async () => {
+      const { auth, actor, company } = await restrictedMember("RestrictRuntime");
+
+      await expect(auth.decide({
+        actor,
+        action: "runtime:manage",
+        resource: { type: "company", companyId: company.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    /**
+     * Project reads are SCOPED, not denied. A blanket denial would empty the
+     * sidebar for exactly the people the restriction is meant to leave working
+     * normally, and a security change that makes the product unusable gets
+     * switched off — which protects nobody.
+     */
+    it("hides a project the member has no work in", async () => {
+      const { auth, actor, company } = await restrictedMember("RestrictProjectHidden");
+      const project = await createProject(db, company.id, "hidden");
+
+      await expect(auth.decide({
+        actor,
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    it("shows a project the member's own agent has work in", async () => {
+      const { auth, actor, company, joinedAgent } = await restrictedMember("RestrictProjectVisible");
+      const project = await createProject(db, company.id, "visible");
+      await createIssue(db, company.id, { projectId: project.id, assigneeAgentId: joinedAgent.id });
+
+      await expect(auth.decide({
+        actor,
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    it("shows a project the member owns even with no tasks in it", async () => {
+      const { auth, actor, company, userId } = await restrictedMember("RestrictProjectOwned");
+      const project = await createProject(db, company.id, "owned");
+      await db.update(projects).set({ ownerUserId: userId }).where(eq(projects.id, project.id));
+
+      await expect(auth.decide({
+        actor,
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    // Asking "may I read projects at all" is not asking about one project; the
+    // per-item filter is what narrows the list. Answering no here would close
+    // the page rather than scope it.
+    it("allows a project-less read so the list can filter per item", async () => {
+      const { auth, actor, company } = await restrictedMember("RestrictProjectGeneric");
+
+      await expect(auth.decide({
+        actor,
+        action: "project:read",
+        resource: { type: "project", companyId: company.id, projectId: null },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    // Privileged roles never reach the restricted path at all — worth pinning,
+    // because a mistake here locks out the people who administer the company.
+    it("leaves an admin's secrets:read untouched", async () => {
+      process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY = "true";
+      const company = await createCompany(db, "RestrictAdminSecrets");
+      const adminId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: adminId,
+        status: "active", membershipRole: "admin",
+      });
+
+      await expect(authorizationService(db).decide({
+        actor: { type: "board", userId: adminId, source: "session" },
+        action: "secrets:read",
+        resource: { type: "company", companyId: company.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    // With the flag off nobody is restricted, and this whole path is inert.
+    it("changes nothing when the flag is off", async () => {
+      const company = await createCompany(db, "RestrictFlagOffSecrets");
+      const userId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: userId,
+        status: "active", membershipRole: "operator",
+      });
+      delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+
+      await expect(authorizationService(db).decide({
+        actor: { type: "board", userId, source: "session" },
+        action: "secrets:read",
+        resource: { type: "company", companyId: company.id },
+      })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+    });
+  });
+
 });

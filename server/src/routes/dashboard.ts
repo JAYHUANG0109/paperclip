@@ -37,7 +37,7 @@ import { logger } from "../middleware/logger.js";
 import { buildAsanaDigestBody, getAsanaTaskComments, getAsanaTaskDetail, postAsanaComment, setAsanaTaskCompleted, setAsanaApprovalStatus, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
 import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
 import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
-import { advanceOnboarding, getOnboardingForAgent } from "../services/onboarding.js";
+import { advanceOnboarding, dismissOnboardingForAgent, getOnboardingForAgent } from "../services/onboarding.js";
 import {
   getCalendarEventsForUser,
   createCalendarEventForUser,
@@ -1084,6 +1084,32 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     }
     const view = await getOnboardingForAgent(db, agentId);
     res.json(view ?? { available: false });
+  });
+
+  /**
+   * Clear the onboarding card without completing it.
+   *
+   * Self-scoped by the SAME resolution as the GET above, and deliberately has no
+   * agent id in the path: dismissing is a statement about your own dashboard, so
+   * there is no way to express "dismiss someone else's" and therefore no
+   * authorization question beyond company access.
+   */
+  router.post("/companies/:companyId/onboarding/me/dismiss", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId =
+      req.actor.type === "board"
+        ? req.actor.userId ?? null
+        : req.actor.type === "agent"
+          ? req.actor.onBehalfOfUserId ?? null
+          : null;
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.json({ dismissed: false });
+      return;
+    }
+    res.json(await dismissOnboardingForAgent(db, agentId));
   });
 
   // User-facing Asana connect (關卡 1): the human pastes their OWN Personal

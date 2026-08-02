@@ -115,7 +115,8 @@ export interface OnboardingView {
   available: boolean;
   stage?: number;
   total?: number;
-  status?: "in_progress" | "done";
+  /** `dismissed` means the user removed the card without completing it. */
+  status?: "in_progress" | "done" | "dismissed";
   steps?: OnboardingStepView[];
 }
 
@@ -189,6 +190,10 @@ export const dashboardApi = {
   // The logged-in user's 5-step onboarding (their own agent), for the dashboard checklist.
   onboarding: (companyId: string) =>
     api.get<OnboardingView>(`/companies/${companyId}/onboarding/me`),
+
+  /** Remove the onboarding card without completing it. */
+  dismissOnboarding: (companyId: string) =>
+    api.post<{ dismissed: boolean }>(`/companies/${companyId}/onboarding/me/dismiss`, {}),
   // User-facing Asana connect (關卡 1): store the caller's own Personal Access Token.
   connectAsana: (companyId: string, token: string) =>
     api.post<{ ok: boolean; error?: string }>(`/companies/${companyId}/connections/asana/me`, { token }),

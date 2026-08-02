@@ -6929,6 +6929,7 @@ for (const route of [
   ["get", "/api/companies/{companyId}/my-teams", "List the signed-in user's teams"],
   ["get", "/api/companies/{companyId}/my-visible-agents", "List agents visible to the signed-in user"],
   ["get", "/api/companies/{companyId}/onboarding/me", "Get the signed-in user's onboarding progress"],
+  ["post", "/api/companies/{companyId}/onboarding/me/dismiss", "Remove the onboarding card without completing it"],
   ["get", "/api/companies/{companyId}/shareable-teams", "List teams the signed-in user may share to"],
   ["post", "/api/companies/{companyId}/summaries/run", "Run company summary generation"],
 ] as const) {
