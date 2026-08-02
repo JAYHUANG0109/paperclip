@@ -28,83 +28,104 @@ function useViewAsSelection(): ViewAsSelection {
   return selection;
 }
 
-export function ViewAsBanner() {
-  const selection = useViewAsSelection();
+const label = (user: ViewAsUser) => user.email ?? user.name ?? user.id;
 
-  // A 403 here is the normal answer for almost everyone, so it must not retry
-  // or surface as an error — it simply means "no control for you".
-  const { data: users } = useQuery<ViewAsUser[]>({
+/**
+ * Switch identity with a full reload rather than by invalidating queries.
+ *
+ * Enumerating every place the previous identity could still be cached —
+ * react-query keys, component state, module-level memos — and getting all of
+ * them right is not a bet worth taking for a tool whose only job is showing
+ * you the truth about what someone sees. A reload is certain.
+ */
+function switchTo(selection: Parameters<typeof setViewAs>[0]) {
+  setViewAs(selection);
+  window.location.reload();
+}
+
+/**
+ * The permitted user list, or undefined for everyone else.
+ *
+ * A 403 here is the normal answer for almost everyone, so it must not retry or
+ * surface as an error — it simply means "no control for you". Both the banner
+ * and the sidebar picker share this one query key, so the request is made once.
+ */
+function useViewAsUsers() {
+  const { data } = useQuery<ViewAsUser[]>({
     queryKey: ["view-as-users"],
     queryFn: () => api.get<ViewAsUser[]>("/instance/view-as-users"),
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
+  return data;
+}
+
+/**
+ * The idle picker, in the sidebar where account-level controls belong.
+ *
+ * It used to live in the top banner, but an inert grey strip above the app
+ * chrome reads as part of the browser and went unnoticed. The banner now
+ * handles only the active state, where being impossible to miss is the point.
+ */
+export function ViewAsSwitcher() {
+  const selection = useViewAsSelection();
+  const users = useViewAsUsers();
+
+  // Not permitted, or already viewing as someone — the banner owns that state.
+  if (!users || users.length === 0 || selection) return null;
+
+  return (
+    <div className="mx-2 flex flex-col gap-1 rounded-lg border border-dashed border-border/70 px-2 py-2">
+      <label htmlFor="view-as-sidebar-select" className="text-xs font-medium text-muted-foreground">
+        View as user
+      </label>
+      <select
+        id="view-as-sidebar-select"
+        className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
+        value=""
+        onChange={(event) => {
+          const user = users.find((candidate) => candidate.id === event.target.value);
+          if (user) switchTo({ userId: user.id, label: label(user) });
+        }}
+      >
+        <option value="">Select a user…</option>
+        {users.map((user) => (
+          <option key={user.id} value={user.id}>
+            {label(user)}
+          </option>
+        ))}
+      </select>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        See the platform as someone else, read-only. Only you can do this.
+      </p>
+    </div>
+  );
+}
+
+export function ViewAsBanner() {
+  const selection = useViewAsSelection();
+  const users = useViewAsUsers();
 
   if (!users) return null;
-
-  const label = (user: ViewAsUser) => user.email ?? user.name ?? user.id;
-
-  /**
-   * Switch identity with a full reload rather than by invalidating queries.
-   *
-   * Enumerating every place the previous identity could still be cached —
-   * react-query keys, component state, module-level memos — and getting all of
-   * them right is not a bet worth taking for a tool whose only job is showing
-   * you the truth about what someone sees. A reload is certain.
-   */
-  const switchTo = (selection: Parameters<typeof setViewAs>[0]) => {
-    setViewAs(selection);
-    window.location.reload();
-  };
+  // Idle state now lives in the sidebar; the banner is for the active one.
+  if (!selection) return null;
 
   return (
     <div
       data-testid="view-as-banner"
-      className={
-        selection
-          ? "flex flex-wrap items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm"
-          : "flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2 text-sm"
-      }
+      className="flex flex-wrap items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm"
     >
-      {selection ? (
-        <>
-          <span className="font-medium">
-            Viewing as {selection.label} — read-only
-          </span>
-          <span className="text-muted-foreground">
-            Everything below is scoped to this person. Changes are refused while this is on.
-          </span>
-          <button
-            type="button"
-            className="ml-auto rounded-md border border-border px-2 py-1"
-            onClick={() => switchTo(null)}
-          >
-            Stop viewing as
-          </button>
-        </>
-      ) : (
-        <>
-          <label htmlFor="view-as-select" className="text-muted-foreground">
-            View as
-          </label>
-          <select
-            id="view-as-select"
-            className="rounded-md border border-border bg-background px-2 py-1"
-            value=""
-            onChange={(event) => {
-              const user = users.find((candidate) => candidate.id === event.target.value);
-              if (user) switchTo({ userId: user.id, label: label(user) });
-            }}
-          >
-            <option value="">Select a user…</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {label(user)}
-              </option>
-            ))}
-          </select>
-        </>
-      )}
+      <span className="font-medium">Viewing as {selection.label} — read-only</span>
+      <span className="text-muted-foreground">
+        Everything below is scoped to this person. Changes are refused while this is on.
+      </span>
+      <button
+        type="button"
+        className="ml-auto rounded-md border border-border px-2 py-1"
+        onClick={() => switchTo(null)}
+      >
+        Stop viewing as
+      </button>
     </div>
   );
 }

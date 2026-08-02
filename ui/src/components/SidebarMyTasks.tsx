@@ -56,9 +56,18 @@ export function SidebarMyTasks({
   if (!companyId || !agentId) return null;
   if (!tasks || tasks.length === 0) return null;
 
+  // Same ordering as the agent page: pinned first, then most-recently-updated.
+  // Taking the API's default order instead was the whole bug — same query, same
+  // agent, different slice, so the sidebar surfaced stale routine runs while
+  // the agent page showed the genuinely recent work.
+  const recent = [...tasks].sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
+
   return (
     <div className="flex flex-col">
-      {tasks.slice(0, MAX_TASKS).map((task) => (
+      {recent.slice(0, MAX_TASKS).map((task) => (
         <NavLink
           key={task.id}
           to={issueUrl(task)}
@@ -86,7 +95,7 @@ export function SidebarMyTasks({
           <span className="truncate">{task.title}</span>
         </NavLink>
       ))}
-      {tasks.length > MAX_TASKS ? (
+      {recent.length > MAX_TASKS ? (
         <NavLink
           to="/issues"
           className="mx-2 rounded-lg py-1.5 pl-8 pr-2 pointer-coarse:py-1 text-(length:--text-compact) text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"

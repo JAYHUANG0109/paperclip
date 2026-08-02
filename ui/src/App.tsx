@@ -32,8 +32,59 @@ import { NotFoundPage } from "./pages/NotFound";
 // lever on first-load speed; a Suspense boundary inside Layout shows a skeleton
 // in the content area (sidebar stays) while a page chunk streams in.
 // `lazyPage` unwraps our named page exports into the default export React.lazy expects.
+/**
+ * Guard key for the one-shot reload below. sessionStorage (not local) so it
+ * dies with the tab, and every access is wrapped because Safari throws on it
+ * in private browsing rather than returning null.
+ */
+const CHUNK_RELOAD_KEY = "paperclip:chunk-reload";
+
+function readChunkReloadGuard(): boolean {
+  try {
+    return window.sessionStorage.getItem(CHUNK_RELOAD_KEY) !== null;
+  } catch {
+    return true; // cannot track attempts → never auto-reload, to avoid a loop
+  }
+}
+
+function setChunkReloadGuard(value: boolean) {
+  try {
+    if (value) window.sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+    else window.sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+  } catch {
+    /* storage unavailable — the guard above already fails closed */
+  }
+}
+
+/**
+ * Lazily load a page, recovering from a chunk that no longer exists.
+ *
+ * Every deploy rewrites the hashed asset filenames, so a tab holding the old
+ * index.html asks for files that were deleted underneath it. The dynamic import
+ * rejects, React unmounts the tree, and the user gets a blank page with nothing
+ * explaining why — the failure mode reported after three deploys in one day.
+ *
+ * One reload fetches the current index.html and its current chunk names, which
+ * fixes it. The sessionStorage guard means a genuinely broken chunk reloads
+ * once and then surfaces the error, instead of pinning the tab in a refresh
+ * loop; a successful load clears the guard so a later deploy can heal too.
+ */
 function lazyPage<M, K extends keyof M>(loader: () => Promise<M>, key: K) {
-  return lazy(() => loader().then((m) => ({ default: m[key] as unknown as ComponentType })));
+  return lazy(() =>
+    loader()
+      .then((m) => {
+        setChunkReloadGuard(false);
+        return { default: m[key] as unknown as ComponentType };
+      })
+      .catch((error: unknown) => {
+        if (readChunkReloadGuard()) throw error; // already retried — show the error
+        setChunkReloadGuard(true);
+        window.location.reload();
+        // Never settles: the reload replaces this document, and resolving here
+        // would flash a broken frame first.
+        return new Promise<{ default: ComponentType }>(() => {});
+      }),
+  );
 }
 
 const Dashboard = lazyPage(() => import("./pages/Dashboard"), "Dashboard");

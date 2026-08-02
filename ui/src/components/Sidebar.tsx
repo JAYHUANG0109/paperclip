@@ -36,6 +36,7 @@ import { NavLink } from "@/lib/router";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarMyTasks } from "./SidebarMyTasks";
+import { ViewAsSwitcher } from "./ViewAsBanner";
 import { SidebarAgents } from "./SidebarAgents";
 import { SidebarChat } from "./SidebarChat";
 import { SidebarProjects } from "./SidebarProjects";
@@ -334,6 +335,12 @@ export function Sidebar() {
           <SidebarNavItem to="/activity" label={t("nav.activity", { defaultValue: "Activity" })} icon={History} />
           <SidebarNavItem to="/company/settings" label={t("nav.settings", { defaultValue: "Settings" })} icon={Settings} />
         </SidebarSection>
+
+        {/* "View as" lives here, beside the other account-level controls, and
+            renders only for the accounts the server permits. It used to be a
+            thin strip above the app chrome, where it read as part of the
+            browser and went unfound. */}
+        {rail ? null : <ViewAsSwitcher />}
 
         <PluginSlotOutlet
           slotTypes={["sidebarPanel"]}

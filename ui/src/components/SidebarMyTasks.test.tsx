@@ -50,6 +50,8 @@ function task(overrides: Record<string, unknown> = {}) {
     identifier: "PAP-1",
     title: "Ship the memory page",
     status: "in_progress",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    pinned: false,
     ...overrides,
   };
 }
@@ -106,6 +108,35 @@ describe("SidebarMyTasks", () => {
     await settle();
 
     expect(container.textContent).toContain("google sheets test");
+  });
+
+  // The agent page sorts pinned-first then most-recently-updated before
+  // slicing. Taking the API's default order instead surfaced stale routine
+  // runs while the agent page showed recent work - same query, same agent,
+  // different slice. Order must match or the two lists disagree again.
+  it("shows the most recently updated tasks first", async () => {
+    mockIssuesApi.list.mockResolvedValue([
+      task({ id: "old", title: "stale routine run", updatedAt: "2026-07-01T00:00:00.000Z" }),
+      task({ id: "new", title: "google slides test", updatedAt: "2026-08-02T00:00:00.000Z" }),
+    ]);
+    render({});
+    await settle();
+
+    const titles = Array.from(container.querySelectorAll("a")).map((a) => a.textContent);
+    expect(titles[0]).toContain("google slides test");
+    expect(titles[1]).toContain("stale routine run");
+  });
+
+  it("floats pinned tasks above newer unpinned ones", async () => {
+    mockIssuesApi.list.mockResolvedValue([
+      task({ id: "new", title: "newer task", updatedAt: "2026-08-02T00:00:00.000Z" }),
+      task({ id: "pin", title: "pinned task", updatedAt: "2026-01-01T00:00:00.000Z", pinned: true }),
+    ]);
+    render({});
+    await settle();
+
+    const titles = Array.from(container.querySelectorAll("a")).map((a) => a.textContent);
+    expect(titles[0]).toContain("pinned task");
   });
 
   // An unpaired user has no "own tasks"; querying with a null agent would fall
