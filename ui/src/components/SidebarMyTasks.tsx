@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "@/i18n";
 import { issuesApi } from "../api/issues";
@@ -25,6 +27,30 @@ import { cn, issueUrl } from "../lib/utils";
 /** Enough to be useful, short enough to stay a sidebar and not a page. */
 const MAX_TASKS = 6;
 
+/**
+ * Expanded by default — the list is the point, so it should be there without
+ * being asked for. The choice persists because a collapse the sidebar forgets
+ * on every reload is not really a collapse.
+ */
+const COLLAPSE_KEY = "paperclip:sidebar-my-tasks-collapsed";
+
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COLLAPSE_KEY) === "1";
+  } catch {
+    return false; // storage unavailable → keep the default, which is open
+  }
+}
+
+function writeCollapsed(collapsed: boolean) {
+  try {
+    if (collapsed) window.localStorage.setItem(COLLAPSE_KEY, "1");
+    else window.localStorage.removeItem(COLLAPSE_KEY);
+  } catch {
+    /* storage unavailable — the toggle still works for this session */
+  }
+}
+
 const STATUS_DOT: Record<string, string> = {
   in_progress: "bg-blue-500",
   in_review: "bg-purple-500",
@@ -44,6 +70,7 @@ export function SidebarMyTasks({
   rail?: boolean;
 }) {
   const { t } = useTranslation();
+  const [collapsed, setCollapsed] = useState(readCollapsed);
 
   const { data: tasks } = useQuery({
     queryKey: queryKeys.issues.listByAssignee(companyId!, agentId!),
@@ -65,9 +92,32 @@ export function SidebarMyTasks({
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
   });
 
+  const toggle = () => {
+    setCollapsed((current) => {
+      writeCollapsed(!current);
+      return !current;
+    });
+  };
+
   return (
     <div className="flex flex-col">
-      {recent.slice(0, MAX_TASKS).map((task) => (
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        className="mx-2 flex items-center gap-1.5 rounded-lg py-1 pl-8 pr-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
+      >
+        {collapsed ? (
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        )}
+        <span className="flex-1 truncate text-left">
+          {t("nav.myTasks", { defaultValue: "Recent" })}
+        </span>
+        <span className="shrink-0 tabular-nums">{Math.min(recent.length, MAX_TASKS)}</span>
+      </button>
+      {collapsed ? null : recent.slice(0, MAX_TASKS).map((task) => (
         <NavLink
           key={task.id}
           to={issueUrl(task)}
@@ -95,7 +145,7 @@ export function SidebarMyTasks({
           <span className="truncate">{task.title}</span>
         </NavLink>
       ))}
-      {recent.length > MAX_TASKS ? (
+      {!collapsed && recent.length > MAX_TASKS ? (
         <NavLink
           to="/issues"
           className="mx-2 rounded-lg py-1.5 pl-8 pr-2 pointer-coarse:py-1 text-(length:--text-compact) text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"

@@ -57,6 +57,11 @@ function task(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  try {
+    window.localStorage.clear();
+  } catch {
+    /* jsdom without storage — the component falls back to expanded */
+  }
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -162,6 +167,37 @@ describe("SidebarMyTasks", () => {
     await settle();
 
     expect(container.textContent).toBe("");
+  });
+
+  // Expanded by default: the list is the point, so it should be there without
+  // being asked for.
+  it("starts expanded", async () => {
+    render({});
+    await settle();
+
+    const header = container.querySelector('button[aria-expanded]');
+    expect(header?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.textContent).toContain("Ship the memory page");
+  });
+
+  it("collapses and expands on click, and remembers the choice", async () => {
+    render({});
+    await settle();
+
+    const header = container.querySelector("button[aria-expanded]") as HTMLButtonElement;
+    flushSync(() => header.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await settle();
+
+    expect(container.querySelector("button[aria-expanded]")?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.textContent).not.toContain("Ship the memory page");
+
+    // A collapse the sidebar forgets on reload is not really a collapse.
+    flushSync(() => root.unmount());
+    root = createRoot(container);
+    render({});
+    await settle();
+
+    expect(container.querySelector("button[aria-expanded]")?.getAttribute("aria-expanded")).toBe("false");
   });
 
   // The collapsed rail is icon-only; a list of titles cannot render there.
