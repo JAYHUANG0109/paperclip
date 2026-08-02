@@ -52,6 +52,10 @@ import { ONBOARDING_ORIGIN_KIND } from "./onboarding.js";
 import { parseIssueExecutionState } from "./issue-execution-policy.js";
 import { isProspectiveBlockedTransition } from "./routable-blocked.js";
 import { decisionQueueService } from "./decision-queues.js";
+import {
+  decisionRetentionService,
+  DEFAULT_DECISION_SHELF_DAYS,
+} from "./decision-retention.js";
 
 const ATTENTION_SOURCE_KINDS: AttentionSourceKind[] = [
   "approval",
@@ -136,6 +140,8 @@ type BlockingIssueSummary = {
 
 type AttentionListOptions = AttentionFeedQuery & {
   userId?: string | null;
+  /** Internal-only escape hatch for callers that need one stable, unpaginated feed snapshot. */
+  allowUnscopedAll?: boolean;
 };
 
 type AttentionServiceOptions = {
@@ -345,6 +351,11 @@ type CreateAttentionItemInput = Omit<AttentionItem,
   | "ruleKey"
   | "originAgentName"
   | "queues"
+  | "shelf"
+  | "retentionDays"
+  | "keep"
+  | "archivedAt"
+  | "retentionVersion"
   | "decideBy"
   | "decideByAttribution"
   | "snoozedUntil"
@@ -371,6 +382,11 @@ function createItem(input: CreateAttentionItemInput): AttentionItem {
     ruleKey: input.ruleKey ?? null,
     originAgentName: input.originAgentName ?? null,
     queues: [],
+    shelf: false,
+    retentionDays: DEFAULT_DECISION_SHELF_DAYS,
+    keep: false,
+    archivedAt: null,
+    retentionVersion: 0,
     decideBy: null,
     decideByAttribution: null,
     snoozedUntil: null,
@@ -480,7 +496,7 @@ function parseActivityBoundary(value: string | undefined, field: "activitySince"
   return parsed;
 }
 
-async function enrichAttentionItems(db: Db, companyId: string, items: AttentionItem[]) {
+async function enrichAttentionItems(db: Db, companyId: string, items: AttentionItem[], now: number) {
   if (items.length === 0) return items;
   const sourceIds = [...new Set(items.map((item) => item.subject.id))];
   const queueRows = await db
@@ -489,6 +505,7 @@ async function enrichAttentionItems(db: Db, companyId: string, items: AttentionI
       sourceId: decisionQueueItems.sourceId,
       key: decisionQueues.key,
       title: decisionQueues.title,
+      retentionDays: decisionQueues.retentionDays,
     })
     .from(decisionQueueItems)
     .innerJoin(decisionQueues, and(
@@ -501,11 +518,17 @@ async function enrichAttentionItems(db: Db, companyId: string, items: AttentionI
     ))
     .orderBy(asc(decisionQueues.title), asc(decisionQueues.key));
   const queuesBySource = new Map<string, AttentionQueueRef[]>();
+  const retentionDaysBySource = new Map<string, number[]>();
   for (const row of queueRows) {
     const key = sourceKey(row.sourceKind as AttentionSourceKind, row.sourceId);
     const queues = queuesBySource.get(key) ?? [];
     queues.push({ key: row.key, title: row.title });
     queuesBySource.set(key, queues);
+    if (row.retentionDays != null) {
+      const values = retentionDaysBySource.get(key) ?? [];
+      values.push(row.retentionDays);
+      retentionDaysBySource.set(key, values);
+    }
   }
 
   const triageRows = await db
@@ -530,7 +553,7 @@ async function enrichAttentionItems(db: Db, companyId: string, items: AttentionI
     .where(and(eq(agents.companyId, companyId), inArray(agents.id, agentIds)))
     .then((rows) => rows.map((row) => [row.id, row.name] as const)));
 
-  return items.map((item) => {
+  const enriched = items.map((item) => {
     const triage = triageBySource.get(itemSourceKey(item));
     const decideBy = triage?.decideBy === "date" ? triage.decideByDate : triage?.decideBy ?? null;
     const decideByAttribution: AttentionTriageAttribution | null = triage ? {
@@ -550,6 +573,21 @@ async function enrichAttentionItems(db: Db, companyId: string, items: AttentionI
       decideBy,
       decideByAttribution,
       snoozedUntil: triage?.snoozedUntil ? toIso(triage.snoozedUntil) : null,
+    };
+  });
+  const retentionBySource = await decisionRetentionService(db).syncItems(companyId, enriched);
+  return enriched.map((item) => {
+    const key = itemSourceKey(item);
+    const retention = retentionBySource.get(key);
+    const overrides = retentionDaysBySource.get(key) ?? [];
+    const retentionDays = overrides.length > 0 ? Math.min(...overrides) : DEFAULT_DECISION_SHELF_DAYS;
+    return {
+      ...item,
+      shelf: timestamp(item.activityAt) <= now - retentionDays * 86_400_000,
+      retentionDays,
+      keep: retention?.keep ?? false,
+      archivedAt: retention?.archivedAt ? toIso(retention.archivedAt) : null,
+      retentionVersion: retention?.version ?? 0,
     };
   });
 }
@@ -825,6 +863,9 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
   );
   return {
     list: async (companyId: string, options: AttentionListOptions = {}): Promise<AttentionFeed> => {
+      if (options.all && !options.queue && !options.allowUnscopedAll) {
+        throw badRequest("all requires a queue filter");
+      }
       const prefix = await companyPrefix(db, companyId);
       const dismissals = await dismissalByKey(db, companyId, options.userId);
       const includeDismissed = options.includeDismissed === true;
@@ -1618,7 +1659,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
 
       const collectedItems = [...deduped.values()].sort(compareAttentionItems);
       await decisionQueueService(db).materializeSeededQueues(companyId, collectedItems);
-      const enrichedItems = await enrichAttentionItems(db, companyId, collectedItems);
+      const enrichedItems = await enrichAttentionItems(db, companyId, collectedItems, now);
 
       const activitySince = parseActivityBoundary(options.activitySince, "activitySince");
       const activityUntil = parseActivityBoundary(options.activityUntil, "activityUntil");
@@ -1627,6 +1668,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
       }
       const queueKey = options.queue?.trim() || null;
       const visibleItems = enrichedItems.filter((item) => {
+        if (options.archived === true ? !item.archivedAt : Boolean(item.archivedAt)) return false;
         if (!includeDismissed && item.snoozedUntil && timestamp(item.snoozedUntil) > now) return false;
         const activity = timestamp(item.activityAt);
         if (activitySince != null && activity < activitySince) return false;
@@ -1642,20 +1684,30 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
           ? (left, right) => compareDecideItems(left, right, now)
           : compareAttentionItems)
         .map((item, index) => ({ ...item, rank: index + 1 }));
-      const limit = options.limit ?? ATTENTION_PAGE_DEFAULT_LIMIT;
-      if (!Number.isInteger(limit) || limit < 1 || limit > ATTENTION_PAGE_MAX_LIMIT) {
-        throw badRequest(`limit must be an integer between 1 and ${ATTENTION_PAGE_MAX_LIMIT}`);
+      let items: AttentionItem[];
+      let nextCursor: string | null;
+      if (options.all) {
+        if (options.cursor || options.limit !== undefined) {
+          throw badRequest("all cannot be combined with cursor or limit");
+        }
+        items = rankedItems;
+        nextCursor = null;
+      } else {
+        const limit = options.limit ?? ATTENTION_PAGE_DEFAULT_LIMIT;
+        if (!Number.isInteger(limit) || limit < 1 || limit > ATTENTION_PAGE_MAX_LIMIT) {
+          throw badRequest(`limit must be an integer between 1 and ${ATTENTION_PAGE_MAX_LIMIT}`);
+        }
+        let pageStart = 0;
+        if (options.cursor) {
+          const cursorItemId = decodeCursor(options.cursor, sort);
+          const cursorIndex = rankedItems.findIndex((item) => item.id === cursorItemId);
+          if (cursorIndex < 0) throw badRequest("Attention cursor no longer matches the filtered feed");
+          pageStart = cursorIndex + 1;
+        }
+        items = rankedItems.slice(pageStart, pageStart + limit);
+        const hasNextPage = pageStart + items.length < rankedItems.length;
+        nextCursor = hasNextPage && items.length > 0 ? encodeCursor(sort, items[items.length - 1]!) : null;
       }
-      let pageStart = 0;
-      if (options.cursor) {
-        const cursorItemId = decodeCursor(options.cursor, sort);
-        const cursorIndex = rankedItems.findIndex((item) => item.id === cursorItemId);
-        if (cursorIndex < 0) throw badRequest("Attention cursor no longer matches the filtered feed");
-        pageStart = cursorIndex + 1;
-      }
-      const items = rankedItems.slice(pageStart, pageStart + limit);
-      const hasNextPage = pageStart + items.length < rankedItems.length;
-      const nextCursor = hasNextPage && items.length > 0 ? encodeCursor(sort, items[items.length - 1]!) : null;
 
       if (options.userId) {
         const trainable: Array<{ sourceKind: "approval" | "interaction"; sourceId: string }> = [];

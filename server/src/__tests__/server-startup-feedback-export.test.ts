@@ -35,7 +35,11 @@ const {
     toolGateway: {},
   }) as never);
   const createBetterAuthInstanceMock = vi.fn(() => ({}));
-  const createDbMock = vi.fn(() => ({}) as never);
+  const createDbMock = vi.fn(() => ({
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({ where: vi.fn(async () => []) })),
+    })),
+  }) as never);
   const detectPortMock = vi.fn(async (port: number) => port);
   const deriveAuthTrustedOriginsMock = vi.fn(() => []);
   const resolveHeartbeatSchedulingSuppressionMock = vi.fn(() => ({
@@ -213,8 +217,15 @@ vi.mock("../services/index.js", () => ({
     agentMembershipsInserted: 0,
     humanGrantsInserted: 0,
   })),
+  attentionService: vi.fn(() => ({
+    list: vi.fn(async () => ({ items: [], nextCursor: null })),
+  })),
   decisionService: vi.fn(() => ({
     sweepExpired: vi.fn(async () => ({ expired: 0 })),
+  })),
+  decisionRetentionService: vi.fn(() => ({
+    autoArchive: vi.fn(async () => 0),
+    deliverNotifications: vi.fn(async () => ({ notifiedAgents: 0, delivered: 0 })),
   })),
   feedbackService: feedbackServiceFactoryMock,
   bootstrapExecutionPolicyFromEnv: vi.fn(async () => null),

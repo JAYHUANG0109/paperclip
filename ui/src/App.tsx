@@ -176,6 +176,7 @@ const ReviewQueue = lazyPage(() => import("./pages/Pipelines"), "ReviewQueue");
 const Learnings = lazyPage(() => import("./pages/Pipelines"), "Learnings");
 const PipelineSettings = lazyPage(() => import("./pages/PipelineSettings"), "PipelineSettings");
 const StatusCards = lazyPage(() => import("./pages/StatusCards"), "StatusCards");
+const DecisionQueuePage = lazyPage(() => import("./pages/DecisionQueuePage"), "DecisionQueuePage");
 const TrainingLibrary = lazyPage(() => import("./pages/Training"), "TrainingLibrary");
 const TrainingInspector = lazyPage(() => import("./pages/Training"), "TrainingInspector");
 import { useCompany } from "./context/CompanyContext";
@@ -375,6 +376,7 @@ function boardRoutes() {
         <Route path="artifacts" element={<Artifacts />} />
       </Route>
       <Route path="decisions" element={<WhatNeedsMe />} />
+      <Route path="decisions/queues/:key" element={<DecisionQueuePage />} />
       <Route path="decisions/training" element={<TrainingLibrary />} />
       <Route path="decisions/training/:id" element={<TrainingInspector />} />
       <Route path="training" element={<Navigate to="/decisions/training" replace />} />
