@@ -871,6 +871,29 @@ describe("renderPaperclipWakePrompt", () => {
     expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("never persist");
   });
 
+  // Reading memory was wired first; capture is what makes it accumulate. The
+  // agent has to be TOLD to save, or memory only ever grows by hand.
+  it("tells the agent to capture durable facts about its user", () => {
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Remember what will still matter next time");
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain(
+      "PUT /api/companies/{companyId}/users/{PAPERCLIP_MEMORY_USER_ID}/memories/{name}",
+    );
+    // Revising beats accumulating near-duplicates of the same fact.
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Reuse the existing slug");
+  });
+
+  // Capture without limits turns a private memory into a dossier. These are the
+  // constraints that keep it something a person would be glad to have.
+  it("bounds what may be captured", () => {
+    const template = DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE;
+    expect(template).toContain("not a log of what happened");
+    expect(template).toContain("Never save secrets");
+    expect(template).toContain("nothing about OTHER people");
+    expect(template).toContain("nothing you are only guessing at");
+    // The honesty check: it is written where the person can read it.
+    expect(template).toContain("visible to them on their Memory page");
+  });
+
   it("leaves the execution contract to the heartbeat template on fresh scoped wake prompts", () => {
     const prompt = renderPaperclipWakePrompt({
       reason: "issue_assigned",
