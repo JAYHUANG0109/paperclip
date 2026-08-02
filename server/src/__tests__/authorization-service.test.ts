@@ -14,6 +14,8 @@ import {
   issues,
   principalPermissionGrants,
   projects,
+  companySecrets,
+  companySecretBindings,
   userInboxAgentPolicies,
 } from "@paperclipai/db";
 import { LOW_TRUST_REVIEW_PRESET, type PermissionKey } from "@paperclipai/shared";
@@ -176,6 +178,11 @@ describeEmbeddedPostgres("authorization service", () => {
 
   afterEach(async () => {
     await db.delete(issueComments);
+    // Secret rows reference companies without a cascade, so they have to go
+    // before the company does or the whole teardown fails and takes the next
+    // several cases with it.
+    await db.delete(companySecretBindings);
+    await db.delete(companySecrets);
     await db.delete(userInboxAgentPolicies);
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
@@ -2945,14 +2952,110 @@ describeEmbeddedPostgres("authorization service", () => {
      * bound secrets during a normal run, so denying this wholesale would break
      * every restricted member's agent. It needs a per-secret decision first.
      */
-    it("does not yet restrict an agent's secrets:read", async () => {
-      const { auth, actor, company } = await scenario("AgentScopeSecrets");
+    /**
+     * Per-secret, not per-company.
+     *
+     * The first cut denied `secrets:read` outright for restricted members. Safe,
+     * and wrong in a way that would have surfaced as "the platform is broken":
+     * a shared credential is not theirs, but the token bound to their OWN agent
+     * plainly is — it is how that agent talks to Asana for them.
+     *
+     * Safe to narrow for agents because the run-time path already required a
+     * binding row before handing over a value, so "bound to an agent this user
+     * can see" is a superset of what it already permitted.
+     */
+    async function secretBoundTo(companyId: string, target: { type: "agent" | "project"; id: string }) {
+      const [secret] = await db
+        .insert(companySecrets)
+        .values({
+          companyId,
+          key: `KEY_${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+          name: `secret-${randomUUID()}`,
+        })
+        .returning();
+      await db.insert(companySecretBindings).values({
+        companyId,
+        secretId: secret!.id,
+        targetType: target.type,
+        targetId: target.id,
+        configPath: "env.SOME_TOKEN",
+      });
+      return secret!;
+    }
+
+    it("lets an agent read a secret bound to itself", async () => {
+      const { auth, actor, company, ownAgent } = await scenario("AgentSecretOwn");
+      const secret = await secretBoundTo(company.id, { type: "agent", id: ownAgent.id });
 
       await expect(auth.decide({
         actor,
         action: "secrets:read",
-        resource: { type: "company", companyId: company.id },
+        resource: { type: "secret", companyId: company.id, secretId: secret.id },
       })).resolves.toMatchObject({ allowed: true });
+    });
+
+    // The whole point: a credential in somebody else's corner of the company.
+    it("refuses a secret bound to an agent it cannot see", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentSecretStranger");
+      const secret = await secretBoundTo(company.id, { type: "agent", id: strangerAgent.id });
+
+      await expect(auth.decide({
+        actor,
+        action: "secrets:read",
+        resource: { type: "secret", companyId: company.id, secretId: secret.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    // A company-wide shared credential is bound to nobody in their scope.
+    it("refuses an unbound secret", async () => {
+      const { auth, actor, company } = await scenario("AgentSecretUnbound");
+      const [secret] = await db
+        .insert(companySecrets)
+        .values({ companyId: company.id, key: "SHARED_KEY", name: "shared" })
+        .returning();
+
+      await expect(auth.decide({
+        actor,
+        action: "secrets:read",
+        resource: { type: "secret", companyId: company.id, secretId: secret!.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    /**
+     * Listing one agent's own bindings. The caller filters to that agent itself,
+     * so there is no single secret to name — refusing this would stop an agent
+     * enumerating its own secrets, which is a legitimate thing to do.
+     */
+    it("lets an agent enumerate its own secrets without naming one", async () => {
+      const { auth, actor, company, ownAgent } = await scenario("AgentSecretList");
+
+      await expect(auth.decide({
+        actor,
+        action: "secrets:read",
+        resource: { type: "secret", companyId: company.id, targetAgentId: ownAgent.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    it("refuses enumerating another agent's secrets", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentSecretListOther");
+
+      await expect(auth.decide({
+        actor,
+        action: "secrets:read",
+        resource: { type: "secret", companyId: company.id, targetAgentId: strangerAgent.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    // "May I read secrets in general" has no per-secret answer, and for someone
+    // scoped to their own corner the honest response is no.
+    it("refuses a request that names neither a secret nor an agent", async () => {
+      const { auth, actor, company } = await scenario("AgentSecretUnnamed");
+
+      await expect(auth.decide({
+        actor,
+        action: "secrets:read",
+        resource: { type: "secret", companyId: company.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
     });
 
     it("changes nothing for agents when the flag is off", async () => {

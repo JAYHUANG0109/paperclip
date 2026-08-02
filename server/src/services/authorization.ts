@@ -5,6 +5,7 @@ import {
   agentMemberships,
   authUsers,
   companyMemberships,
+  companySecretBindings,
   heartbeatRuns,
   instanceUserRoles,
   activityLog,
@@ -105,6 +106,28 @@ export function isRestrictableAction(action: AuthorizationAction): action is Res
 
 export type AuthorizationResource =
   | { type: "company"; companyId: string }
+  /**
+   * A specific secret.
+   *
+   * `secrets:read` used to be decided against the whole company, which meant the
+   * only answers available were "all of them" or "none". Naming the secret is
+   * what makes "your own bound secrets, and nothing else" expressible.
+   *
+   * `secretId` stays optional so a caller asking the general question ("may this
+   * actor read secrets at all?") is still representable — the restricted rule
+   * treats an unnamed secret as unanswerable and refuses it.
+   *
+   * `targetAgentId` covers the one legitimate unnamed case: listing the secrets
+   * bound to ONE agent. That caller filters to that agent's own bindings itself,
+   * so the question is "may this person see this agent's secrets" rather than
+   * "which secret", and refusing it would break an agent enumerating its own.
+   */
+  | {
+      type: "secret";
+      companyId: string;
+      secretId?: string | null;
+      targetAgentId?: string | null;
+    }
   | { type: "agent"; companyId: string; agentId?: string | null }
   | { type: "project"; companyId: string; projectId?: string | null }
   | {
@@ -662,15 +685,7 @@ export function authorizationService(db: Db) {
   ): Promise<boolean> {
     if (action === "company_scope:read") return false; // force per-item filtering
 
-    /**
-     * Reading a secret VALUE, not a name. Never, for a restricted member.
-     *
-     * The whole premise of the restriction is that this person sees their own
-     * corner of the company; a shared credential is the opposite of that, and
-     * one leaked secret is not recoverable the way a leaked task title is.
-     * Privileged roles are unaffected — they never reach this function.
-     */
-    if (action === "secrets:read") return false;
+    if (action === "secrets:read") return restrictedMemberCanReadSecret(companyId, userId, resource);
 
     /**
      * Company-wide execution control (execution-workspaces runtime services).
@@ -760,6 +775,72 @@ export function authorizationService(db: Db) {
     // the point is to force the decision to be made and written down.
     const exhaustive: never = action;
     void exhaustive;
+    return false;
+  }
+
+  /**
+   * Which secrets a restricted member may read.
+   *
+   * Per-secret, not per-company. The first cut of this restriction denied
+   * `secrets:read` outright, which was safe but wrong in a way that would have
+   * been discovered as "the platform is broken": a shared credential is not
+   * theirs to read, but the token bound to their OWN agent plainly is — it is how
+   * their agent talks to Asana on their behalf.
+   *
+   * A secret is theirs if it is bound to an agent they can see, or to a project
+   * they can read. `company_secret_bindings.target_type/target_id` is the same
+   * table the runtime projection uses to decide what to hand a run, so this
+   * agrees with reality by construction rather than by a parallel rule.
+   *
+   * An unnamed secret is refused. "May you read secrets in general?" has no
+   * per-secret answer, and the honest response for someone scoped to their own
+   * corner is no — every real read names the secret it wants.
+   */
+  async function restrictedMemberCanReadSecret(
+    companyId: string,
+    userId: string,
+    resource: AuthorizationResource,
+  ): Promise<boolean> {
+    const secretId = resource.type === "secret" ? resource.secretId ?? null : null;
+    const targetAgentId = resource.type === "secret" ? resource.targetAgentId ?? null : null;
+
+    // Enumerating ONE agent's secrets. The caller restricts itself to that
+    // agent's bindings, so the only question left is whether this person may see
+    // that agent at all.
+    if (!secretId && targetAgentId) {
+      const visible = await getVisibleAgentIdsForUser(companyId, userId);
+      return visible.has(targetAgentId);
+    }
+
+    if (!secretId) return false;
+
+    const bindings = await db
+      .select({
+        targetType: companySecretBindings.targetType,
+        targetId: companySecretBindings.targetId,
+      })
+      .from(companySecretBindings)
+      .where(
+        and(
+          eq(companySecretBindings.companyId, companyId),
+          eq(companySecretBindings.secretId, secretId),
+        ),
+      );
+    if (bindings.length === 0) return false;
+
+    const agentTargets = bindings.filter((b) => b.targetType === "agent").map((b) => b.targetId);
+    if (agentTargets.length > 0) {
+      const visible = await getVisibleAgentIdsForUser(companyId, userId);
+      if (agentTargets.some((agentId) => visible.has(agentId))) return true;
+    }
+
+    const projectTargets = bindings.filter((b) => b.targetType === "project").map((b) => b.targetId);
+    for (const projectId of projectTargets) {
+      if (await restrictedMemberCanReadProject(companyId, userId, { type: "project", companyId, projectId })) {
+        return true;
+      }
+    }
+
     return false;
   }
 
@@ -2538,15 +2619,17 @@ export function authorizationService(db: Db) {
      * an agent reaches its user's world, never the acting user's and never the
      * company's.
      *
-     * Deliberately limited to the VISIBILITY actions. `secrets:read` and
-     * `runtime:manage` are left company-wide here even though the human branch
-     * denies them, and that asymmetry is intentional rather than an oversight:
-     * an agent resolves its own bound secrets during a normal run (its Asana
-     * token, for one), so a blanket denial would break every restricted member's
-     * agent the moment it shipped. Restricting those safely needs a per-SECRET
-     * decision — "this secret is bound to one of your agents" — which requires
-     * the resource to name the secret. Until that exists, denying here would
-     * trade a visibility leak for an outage, which is a worse trade.
+     * `secrets:read` is included, and safely, because the decision is now
+     * per-secret. The run-time path (`resolveSecretValueForAgentAccess`) already
+     * required a `company_secret_bindings` row for the agent before handing over
+     * a value, so "bound to an agent this user can see" is a superset of what
+     * that path already permits — an agent fetching its own token gets the same
+     * answer it got before. What changes is everything else: it can no longer
+     * reach a credential belonging to somebody else's corner of the company.
+     *
+     * `runtime:manage` stays company-wide for agents. Its resource is the company
+     * with nothing to scope on, and unlike secrets there is no binding table to
+     * consult — narrowing it needs a per-workspace resource first.
      *
      * `company_scope:read` is also excluded, for a different reason again. The
      * human branch denies it outright to FORCE per-item filtering, and that
@@ -2555,7 +2638,7 @@ export function authorizationService(db: Db) {
      * so denying it could quietly empty an agent's view of its own work rather
      * than narrowing it. It belongs in this set once each consumer is checked.
      */
-    const agentScopedVisibilityActions = ["agent:read", "issue:read", "project:read"] as const;
+    const agentScopedVisibilityActions = ["agent:read", "issue:read", "project:read", "secrets:read"] as const;
     if (
       restrictAgentVisibilityEnabled() &&
       (agentScopedVisibilityActions as readonly string[]).includes(input.action)

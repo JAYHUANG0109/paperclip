@@ -1238,7 +1238,9 @@ export function secretService(db: Db) {
     const decision = await authorization.decide({
       actor,
       action: "secrets:read",
-      resource: { type: "company", companyId },
+      // Names the secret, so the decision can be "your own bound secrets" rather
+      // than only "all secrets" or "none". See AuthorizationResource.secret.
+      resource: { type: "secret", companyId, secretId },
     });
     if (!decision.allowed) {
       throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
@@ -1290,7 +1292,9 @@ export function secretService(db: Db) {
         runId: context.heartbeatRunId,
       },
       action: "secrets:read",
-      resource: { type: "company", companyId },
+      // Names the secret, so the decision can be "your own bound secrets" rather
+      // than only "all secrets" or "none". See AuthorizationResource.secret.
+      resource: { type: "secret", companyId, secretId },
     });
     if (!decision.allowed) {
       throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
@@ -1444,7 +1448,9 @@ export function secretService(db: Db) {
         runId: context.heartbeatRunId,
       },
       action: "secrets:read",
-      resource: { type: "company", companyId },
+      // No single secret here: this lists the bindings for ONE agent and filters
+      // to them itself, so the question is whether the caller may see that agent.
+      resource: { type: "secret", companyId, targetAgentId: context.agentId },
     });
     if (!decision.allowed) throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
 
