@@ -36,6 +36,12 @@ import type { WorkspaceOperationRecorder } from "./workspace-operations.js";
 import { executionWorkspaceService, readExecutionWorkspaceConfig } from "./execution-workspaces.js";
 import { logActivity } from "./activity-log.js";
 import { readProjectWorkspaceRuntimeConfig } from "./project-workspace-runtime-config.js";
+import {
+  cleanupWorktreeInstanceArtifacts,
+  deriveWorktreeInstanceId,
+  readWorktreeInstancePointer,
+  type WorktreeInstancePointer,
+} from "./workspace-instance-cleanup.js";
 
 export function resolveShell(): string {
   const fallback = process.platform === "win32" ? "sh" : "/bin/sh";
@@ -3193,6 +3199,17 @@ export async function cleanupExecutionWorkspaceArtifacts(input: {
     workspace: input.workspace,
     projectWorkspaceCwd: input.projectWorkspace?.cwd ?? null,
   });
+  let worktreeInstancePointer: WorktreeInstancePointer | null = null;
+  let expectedWorktreeInstanceId: string | null = null;
+  if (input.workspace.providerType === "git_worktree" && workspacePath) {
+    expectedWorktreeInstanceId = deriveWorktreeInstanceId(workspacePath);
+    try {
+      // Capture the pointer before custom cleanup commands can remove the repo-local env file.
+      worktreeInstancePointer = await readWorktreeInstancePointer(workspacePath);
+    } catch (err) {
+      warnings.push(`Could not read worktree instance pointer: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
   const createdByRuntime = input.workspace.metadata?.createdByRuntime === true;
   const cleanupCommands = [
     input.cleanupCommand ?? null,
@@ -3225,6 +3242,21 @@ export async function cleanupExecutionWorkspaceArtifacts(input: {
       });
     } catch (err) {
       warnings.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (worktreeInstancePointer && workspacePath && expectedWorktreeInstanceId) {
+    try {
+      const result = await cleanupWorktreeInstanceArtifacts({
+        pointer: worktreeInstancePointer,
+        workspaceId: input.workspace.id,
+        workspacePath,
+        expectedInstanceId: expectedWorktreeInstanceId,
+        recorder: input.recorder,
+      });
+      if (result.status === "refused") warnings.push(result.warning);
+    } catch (err) {
+      warnings.push(`Failed to clean worktree instance: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
