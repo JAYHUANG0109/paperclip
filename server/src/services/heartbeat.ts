@@ -216,6 +216,7 @@ import {
 } from "./recovery/model-profile-hint.js";
 import { recoveryService } from "./recovery/service.js";
 import { productivityReviewService } from "./productivity-review.js";
+import { memoryDistillationService } from "./memory-distillation.js";
 import { resolveRequiredSuccessfulRunHandoffOnValidPath } from "./successful-run-handoff-state.js";
 import { taskWatchdogService } from "./task-watchdogs.js";
 import { withAgentStartLock } from "./agent-start-lock.js";
@@ -6644,6 +6645,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
   }
 
   const productivityReviews = productivityReviewService(db, { enqueueWakeup });
+  const memoryDistillations = memoryDistillationService(db, { enqueueWakeup });
   const taskWatchdogs = taskWatchdogService(db, { enqueueWakeup });
   let unsafeTextProjectionPromise: Promise<boolean> | null = null;
 
@@ -12590,6 +12592,17 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     return productivityReviews.reconcileProductivityReviews({ ...opts, issueCreatedAtGte: await getWorktreeExecutionCutoff() });
   }
 
+  /**
+   * Ask agents to update what they remember about the people they work for.
+   *
+   * The counterpart to `prepareRunMemory`: that projects memory INTO a run,
+   * this is what puts anything there in the first place without relying on an
+   * agent noticing mid-task. See memory-distillation.ts for why it batches.
+   */
+  async function reconcileMemoryDistillations(opts?: { now?: Date; companyId?: string }) {
+    return memoryDistillations.reconcileMemoryDistillations(opts);
+  }
+
   async function reconcileTaskWatchdogs(opts?: { companyId?: string | null; runId?: string | null }) {
     return taskWatchdogs.reconcileTaskWatchdogs({ ...opts, issueCreatedAtGte: await getWorktreeExecutionCutoff() });
   }
@@ -18138,6 +18151,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     scanSilentActiveRuns,
 
     reconcileProductivityReviews,
+
+    reconcileMemoryDistillations,
 
     reconcileTaskWatchdogs,
 

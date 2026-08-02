@@ -3361,8 +3361,14 @@ registry.registerPath({
 // ─── Personal memory ─────────────────────────────────────────────────────────
 for (const route of [
   ["get", "/api/companies/{companyId}/users/{userId}/memories", "List a user's personal memories"],
+  ["get", "/api/companies/{companyId}/users/{userId}/memories/stats", "Counts showing whether agents are writing memory"],
+  ["get", "/api/companies/{companyId}/users/{userId}/memories/seed", "Digest of past work for catching memory up"],
+  ["get", "/api/companies/{companyId}/users/{userId}/memories/deleted", "Recently deleted memories, still recoverable"],
+  ["get", "/api/companies/{companyId}/users/{userId}/memories/settings", "Read a user's memory switches"],
+  ["put", "/api/companies/{companyId}/users/{userId}/memories/settings", "Pause or resume agent memory capture"],
   ["put", "/api/companies/{companyId}/users/{userId}/memories/{name}", "Create or replace a personal memory"],
-  ["delete", "/api/companies/{companyId}/users/{userId}/memories/{name}", "Delete a personal memory"],
+  ["delete", "/api/companies/{companyId}/users/{userId}/memories/{name}", "Delete a personal memory (recoverable unless ?purge=true)"],
+  ["post", "/api/companies/{companyId}/users/{userId}/memories/{name}/restore", "Restore a deleted personal memory"],
   ["post", "/api/companies/{companyId}/users/{userId}/memories/import", "Import files or a folder into a user's memory"],
 ] as const) {
   registerCurrentRoute({ method: route[0], path: route[1], tags: ["memory"], summary: route[2] });

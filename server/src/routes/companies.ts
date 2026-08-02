@@ -193,6 +193,9 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(await artifacts.list(companyId, query, {
       issueConditions,
       userId: query.starred && req.actor.type === "board" ? req.actor.userId : undefined,
+      // A document you wrote is yours to see even when its issue is not — see
+      // the note on `documentIssueConditions` in the service.
+      visibilityUserId: req.actor.type === "board" ? req.actor.userId : undefined,
     }));
   });
 

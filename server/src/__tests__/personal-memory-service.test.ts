@@ -51,6 +51,8 @@ function memory(over: Partial<Row> = {}): Row {
     source: "manual",
     filePath: null,
     isBinary: false,
+    timesObserved: 1,
+    lastObservedAt: null,
     updatedAt: new Date("2026-08-01T00:00:00.000Z"),
     ...over,
   };
@@ -123,6 +125,46 @@ describe("materializeUserMemory", () => {
     const index = await fs.readFile(path.join(result.dir, "MEMORY.md"), "utf8");
     expect(index).toContain("[likes-dark-mode](likes-dark-mode.md)");
     expect(index).toContain("[uses-vim](uses-vim.md)");
+  });
+
+  /**
+   * The agent is told to read this index and open only what it needs, which it
+   * can only act on if the index says what kind of thing each entry is.
+   */
+  it("groups the index by category", async () => {
+    const db = createDb([
+      memory({ name: "writes-in-zh", memoryType: "preference", description: "language" }),
+      memory({ name: "campus-rota", memoryType: "reference", description: "a link" }),
+    ]);
+
+    const result = await materializeUserMemory(db, { companyId: COMPANY, userId: OWNER });
+    const index = await fs.readFile(path.join(result.dir, "MEMORY.md"), "utf8");
+
+    expect(index).toContain("## Preference");
+    expect(index).toContain("## Reference");
+    expect(index.indexOf("writes-in-zh")).toBeLessThan(index.indexOf("campus-rota"));
+  });
+
+  // Legacy rows carry pre-taxonomy values; they must still land under a heading
+  // rather than falling out of the index entirely.
+  it("files a pre-taxonomy type under its current heading", async () => {
+    const db = createDb([memory({ name: "is-a-teacher", memoryType: "user" })]);
+
+    const result = await materializeUserMemory(db, { companyId: COMPANY, userId: OWNER });
+    const index = await fs.readFile(path.join(result.dir, "MEMORY.md"), "utf8");
+
+    expect(index).toContain("## About me");
+    expect(index).toContain("is-a-teacher");
+  });
+
+  // Repetition is why an agent trusts a fact it did not just learn.
+  it("marks how many times a fact has been re-observed", async () => {
+    const db = createDb([memory({ name: "writes-in-zh", timesObserved: 4 })]);
+
+    const result = await materializeUserMemory(db, { companyId: COMPANY, userId: OWNER });
+    const index = await fs.readFile(path.join(result.dir, "MEMORY.md"), "utf8");
+
+    expect(index).toContain("seen 4×");
   });
 
   it("preserves an imported folder structure", async () => {

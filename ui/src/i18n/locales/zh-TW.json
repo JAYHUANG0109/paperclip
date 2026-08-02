@@ -6414,5 +6414,46 @@
     "aliasHint": "用來比對活動標題的名字（以逗號分隔）。標題含任一名字的活動會顯示為你的行程。",
     "aliasPlaceholder": "例如：黃睦傑, 睦傑, Jay",
     "aliasReset": "重設為預設值"
+  },
+  "memory": {
+    "title": "記憶",
+    "subtitle": "你的代理應該記住的事。只有你和你自己的代理看得到。",
+    "categoryLabel": "分類",
+    "category": {
+      "all": "全部",
+      "preference": "偏好",
+      "profile": "個人資料",
+      "project": "專案",
+      "feedback": "回饋",
+      "reference": "參考資料",
+      "expertise": "專長",
+      "workflow": "工作方式"
+    },
+    "timesObserved": "已記錄 {{count}} 次",
+    "noAgentWrites": "你的代理尚未在這裡儲存任何內容。",
+    "agentWrites": "其中 {{count}} 筆由你的代理儲存 · 最近一次 {{date}}",
+    "contentPlaceholder": "記住……",
+    "namePlaceholder": "簡短標籤（選填）",
+    "save": "記住",
+    "forget": "忘記",
+    "empty": "尚未記住任何事。",
+    "importFiles": "匯入檔案",
+    "importFolder": "匯入資料夾",
+    "seed": "從過去的工作補齊記憶",
+    "seedPending": "正在讀取你的紀錄……",
+    "seedNothing": "目前沒有可讀取的過往工作。",
+    "seedNoAgent": "你還沒有代理，因此沒有人能進行讀取。",
+    "strength": {
+      "confirmed": "已確認",
+      "core": "核心"
+    },
+    "captureOn": "讓我的代理儲存它們對我的了解",
+    "captureOff": "記憶擷取已暫停 — 你的代理不會再儲存新內容，但你仍然可以。",
+    "showDeleted": "最近刪除（{{count}}）",
+    "hideDeleted": "隱藏最近刪除",
+    "deletedWindow": "刪除的記憶可在 {{days}} 天內還原，之後會永久移除。代理在你刪除的當下就不再讀取它們。",
+    "noDeleted": "最近沒有刪除任何記憶。",
+    "restore": "還原",
+    "purge": "永久刪除"
   }
 }

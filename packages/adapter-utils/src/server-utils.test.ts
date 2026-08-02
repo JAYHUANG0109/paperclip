@@ -894,6 +894,36 @@ describe("renderPaperclipWakePrompt", () => {
     expect(template).toContain("visible to them on their Memory page");
   });
 
+  // Memory that cannot be filtered is a pile. Every write carries a category,
+  // so the prompt has to name the closed set rather than leave it to guesswork.
+  it("names every category a memory can be filed under", () => {
+    const template = DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE;
+    // Spelled out rather than imported from @paperclipai/shared, which this
+    // package does not depend on. The server test that owns both sides asserts
+    // these stay in step with the values the API actually enforces.
+    for (const id of ["preference", "profile", "project", "feedback", "reference"]) {
+      expect(template).toContain(`\`${id}\``);
+    }
+    expect(template).toContain("memoryType");
+  });
+
+  // Repetition is what separates a standing preference from a passing remark.
+  it("asks for what recurs rather than what merely happened", () => {
+    expect(DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE).toContain("Prefer what recurs");
+  });
+
+  /**
+   * The prompt is a request; the API is the rule. Telling the agent which rules
+   * exist is what turns a refusal into something it can act on instead of
+   * retrying the identical write — and it is why the two must not drift apart.
+   */
+  it("tells the agent the limits are enforced and what they are", () => {
+    const template = DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE;
+    expect(template).toContain("will refuse a write");
+    expect(template).toContain("A refusal is information");
+    expect(template).toContain("deduped");
+  });
+
   it("leaves the execution contract to the heartbeat template on fresh scoped wake prompts", () => {
     const prompt = renderPaperclipWakePrompt({
       reason: "issue_assigned",

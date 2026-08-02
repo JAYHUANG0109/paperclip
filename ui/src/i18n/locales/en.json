@@ -6414,5 +6414,37 @@
     "createEvent": "Create event",
     "writeAuthNeeded": "Google needs to be re-authorised before events can be created. Reconnect once, then try again.",
     "writerAclNeeded": "This account only has view access to that calendar. Change its sharing to \"Make changes to events\", or pick a calendar you can edit."
+  },
+  "memory": {
+    "categoryLabel": "Category",
+    "category": {
+      "all": "All",
+      "preference": "Preference",
+      "profile": "About me",
+      "project": "Project",
+      "feedback": "Feedback",
+      "reference": "Reference",
+      "expertise": "Expertise",
+      "workflow": "How we work"
+    },
+    "timesObserved": "seen {{count}}×",
+    "noAgentWrites": "Your agents have not saved anything here yet.",
+    "agentWrites": "Your agents saved {{count}} of these · last on {{date}}",
+    "seed": "Catch up from past work",
+    "seedPending": "Reading your history…",
+    "seedNothing": "There is no past work to read yet.",
+    "seedNoAgent": "You have no agent yet, so there is nothing to do the reading.",
+    "strength": {
+      "confirmed": "confirmed",
+      "core": "core"
+    },
+    "captureOn": "Let my agents save what they learn about me",
+    "captureOff": "Capture is paused — your agents will not save anything new. You still can.",
+    "showDeleted": "Recently deleted ({{count}})",
+    "hideDeleted": "Hide recently deleted",
+    "deletedWindow": "Deleted memories can be restored for {{days}} days, then they are gone for good. Agents stopped reading them the moment you deleted them.",
+    "noDeleted": "Nothing deleted recently.",
+    "restore": "Restore",
+    "purge": "Delete forever"
   }
 }

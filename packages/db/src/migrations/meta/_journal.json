@@ -1541,6 +1541,20 @@
       "when": 1785420021000,
       "tag": "9026_issues_title_provisional",
       "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1785420022000,
+      "tag": "9027_user_memories_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1785420023000,
+      "tag": "9028_user_memories_lifecycle",
+      "breakpoints": true
     }
   ]
 }

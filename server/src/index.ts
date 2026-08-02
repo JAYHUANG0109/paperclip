@@ -58,6 +58,7 @@ import {
   toolAccessService,
 } from "./services/index.js";
 import { queueIssueAssignmentWakeup } from "./services/issue-assignment-wakeup.js";
+import { purgeExpiredMemories } from "./services/personal-memory.js";
 import { resolveWorktreeRunExecutionActivationState } from "./services/instance-settings.js";
 import {
   parseAdapterRegistryEnv,
@@ -1200,6 +1201,23 @@ export async function startServer(): Promise<StartedServer> {
               const reviewed = await heartbeat.reconcileProductivityReviews();
               if (reviewed.created > 0 || reviewed.updated > 0 || reviewed.failed > 0) {
                 logger.warn({ ...reviewed }, "periodic productivity reconciliation created or updated review work");
+              }
+            })
+            .then(async () => {
+              // Personal memory's write half. Capture used to be a line in the
+              // agent prompt and nothing more; this is what actually causes it
+              // to happen, by asking for it as work once enough has accumulated.
+              const distilled = await heartbeat.reconcileMemoryDistillations();
+              if (distilled.created > 0 || distilled.failed > 0) {
+                logger.info({ ...distilled }, "periodic memory distillation created capture work");
+              }
+            })
+            .then(async () => {
+              // Tombstones past the recovery window. Without this, "deleted"
+              // quietly means "hidden", which is not what the owner clicked.
+              const purged = await purgeExpiredMemories(db);
+              if (purged.purged > 0) {
+                logger.info({ ...purged }, "purged personal memories past the recovery window");
               }
             })
             .catch((err) => {

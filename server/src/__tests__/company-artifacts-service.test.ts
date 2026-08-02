@@ -432,6 +432,94 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     expect(response.body).toEqual({ artifacts: [], nextCursor: null });
   });
 
+  /**
+   * The endpoint used to serve every artifact in the company to any member —
+   * including documents whose own text said they were not to be shared. These
+   * pin both halves of the fix: what a restricted member must not see, and what
+   * they must not LOSE. The first version of the restriction shipped without
+   * either, and quietly hid people's own documents.
+   */
+  describe("restricted members", () => {
+    /** A member with no company-wide scope: the case the restriction exists for. */
+    function restrictedApp(companyId: string, userId: string) {
+      const app = express();
+      app.use((req, _res, next) => {
+        req.actor = {
+          type: "board",
+          userId,
+          source: "session",
+          companyIds: [companyId],
+          memberships: [{ companyId, membershipRole: "viewer", status: "active" }],
+        };
+        next();
+      });
+      app.use("/api/companies", companyRoutes(db, createStorageService()));
+      app.use(errorHandler);
+      return app;
+    }
+
+    it("withholds artifacts hanging off tasks they have no claim on", async () => {
+      const { companyId } = await seedArtifacts();
+
+      const response = await request(restrictedApp(companyId, "stranger")).get(
+        `/api/companies/${companyId}/artifacts`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.artifacts).toEqual([]);
+    });
+
+    /**
+     * Authorship is its own claim; starring is not.
+     *
+     * Scoping documents purely by their issue meant a member lost their own
+     * plan the moment it hung off a task nobody had been assigned. Relaxing on
+     * a star instead would have been worse — anyone could have granted
+     * themselves a document by bookmarking it.
+     */
+    it("keeps a document the member wrote, but not one they merely starred", async () => {
+      const { companyId } = await seedArtifacts();
+      await db.insert(documentMemberships).values([
+        {
+          companyId,
+          // "Plan" — written by user-1.
+          documentId: "20202020-2020-4020-8020-202020202020",
+          userId: "user-1",
+          starredAt: new Date("2026-02-03T00:00:00.000Z"),
+        },
+        {
+          companyId,
+          // "Review Notes" — an agent wrote it, on a task user-1 has no claim on.
+          documentId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          userId: "user-1",
+          starredAt: new Date("2026-02-04T00:00:00.000Z"),
+        },
+      ]);
+
+      const response = await request(restrictedApp(companyId, "user-1")).get(
+        `/api/companies/${companyId}/artifacts?starred=true&limit=10`,
+      );
+
+      expect(response.status).toBe(200);
+      const titles = response.body.artifacts.map((artifact: { title: string }) => artifact.title);
+      expect(titles).toContain("Plan");
+      expect(titles).not.toContain("Review Notes");
+    });
+
+    // Authorship relaxes the issue check; it does not relax the tenant check.
+    it("does not reach another company's documents", async () => {
+      const { companyId, otherCompanyId } = await seedArtifacts();
+
+      const response = await request(restrictedApp(companyId, "user-1")).get(
+        `/api/companies/${companyId}/artifacts`,
+      );
+
+      const titles = response.body.artifacts.map((artifact: { title: string }) => artifact.title);
+      expect(titles).not.toContain("Other Company Plan");
+      expect(otherCompanyId).toBeTruthy();
+    });
+  });
+
   it("projects agent-created documents, direct attachments, and work products while excluding noisy sources", async () => {
     const { companyId } = await seedArtifacts();
     const storage = createStorageService({ "notes.txt": Buffer.from("Text file preview from an agent output.") });

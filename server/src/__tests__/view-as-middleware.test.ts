@@ -1,8 +1,8 @@
 import express from "express";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { authUsers, companyMemberships, instanceUserRoles } from "@paperclipai/db";
-import { actorMiddleware } from "../middleware/auth.js";
+import { actorMiddleware, resetViewAsAuditThrottle } from "../middleware/auth.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { VIEW_AS_HEADER } from "../services/view-as-policy.js";
 
@@ -25,6 +25,14 @@ const MEMBERSHIPS: Record<string, Array<{ companyId: string; membershipRole: str
 };
 
 type Captured = { table: unknown; values: unknown };
+
+/**
+ * The audit throttle is module state that survives between cases. Without this
+ * reset, whether a case sees an audit row depends on which earlier case in the
+ * file happened to use the same (viewer → viewed) pairing — a coupling that is
+ * invisible where it bites and makes a working throttle look like a lost row.
+ */
+beforeEach(() => resetViewAsAuditThrottle());
 
 function createDb(activity: Captured[]) {
   // The middleware filters by userId in SQL; the stub cannot read the where
@@ -203,6 +211,35 @@ describe("view-as middleware", () => {
         action: "user.viewed_as",
         entityId: MEMBER.id,
       });
+    });
+
+    /**
+     * A single page load is dozens of XHRs. Unthrottled this wrote hundreds of
+     * identical rows and made the activity feed unreadable, which defeats the
+     * point of auditing at all. Nothing covered the throttle until now, which is
+     * how a reset-less test file came to look like the bug.
+     */
+    it("writes one row per pairing per window, not one per request", async () => {
+      const activity: Captured[] = [];
+      const app = createApp(LEAD, activity);
+
+      await request(app).get("/probe").set(VIEW_AS_HEADER, MEMBER.id);
+      await request(app).get("/probe").set(VIEW_AS_HEADER, MEMBER.id);
+      await request(app).get("/probe").set(VIEW_AS_HEADER, MEMBER.id);
+
+      expect(activity).toHaveLength(1);
+    });
+
+    // Throttling must not lose a DIFFERENT person being viewed — that is a
+    // separate act, and the whole reason the log exists.
+    it("still records a switch to another user", async () => {
+      const activity: Captured[] = [];
+      const app = createApp(LEAD, activity);
+
+      await request(app).get("/probe").set(VIEW_AS_HEADER, MEMBER.id);
+      await request(app).get("/probe").set(VIEW_AS_HEADER, OTHER_ADMIN.id);
+
+      expect(activity).toHaveLength(2);
     });
 
     it("carries the real user through on the actor for downstream code", async () => {

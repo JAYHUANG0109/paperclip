@@ -320,7 +320,16 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
     list: async (
       companyId: string,
       rawQuery: Partial<CompanyArtifactsQuery> = {},
-      options: { issueConditions?: SQL[]; userId?: string } = {},
+      options: {
+        issueConditions?: SQL[];
+        userId?: string;
+        /**
+         * Whose authorship counts as a claim on a document, when
+         * `issueConditions` is restricting. Separate from `userId`, which only
+         * selects whose stars to read.
+         */
+        visibilityUserId?: string;
+      } = {},
     ): Promise<CompanyArtifactsResponse> => {
       const query = companyArtifactsQuerySchema.parse(rawQuery);
       const cursor = decodeCursor(query.cursor);
@@ -344,6 +353,30 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         isNull(issues.harnessKind),
         ...(options.issueConditions ?? []),
       ];
+
+      /**
+       * Document visibility, which is NOT the same as issue visibility.
+       *
+       * Most artifacts are things an agent produced while working an issue, so
+       * "may I see this?" is "may I see the issue". A document is different: a
+       * person can write one themselves, and scoping those by the issue meant a
+       * restricted member lost their OWN plan the moment it hung off a task
+       * nobody had been assigned. Authorship is its own claim.
+       *
+       * The hidden and harness checks stay outside the relaxation — those hide
+       * things from everyone and are not an authorization question.
+       */
+      const documentIssueConditions: SQL[] =
+        options.issueConditions?.length && options.visibilityUserId
+          ? [
+            isNull(issues.hiddenAt),
+            isNull(issues.harnessKind),
+            or(
+              and(...options.issueConditions),
+              eq(documents.createdByUserId, options.visibilityUserId),
+            ) as SQL,
+          ]
+          : issueConditions;
       const artifacts: CompanyArtifact[] = [];
       const artifactSortDates = new Map<string, string>();
       const workProductAttachmentIds = new Set<string>();
@@ -355,7 +388,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         const documentConditions: SQL[] = [
           eq(issueDocuments.companyId, companyId),
           eq(documents.companyId, companyId),
-          ...issueConditions,
+          ...documentIssueConditions,
           ...(query.starred
             ? [
               eq(documentMemberships.companyId, companyId),

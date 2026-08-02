@@ -1,5 +1,27 @@
 export { agentAdapterTypeSchema, optionalAgentAdapterTypeSchema } from "./adapter-type.js";
 export {
+  AGENT_MEMORY_MAX_CONTENT_CHARS,
+  AGENT_MEMORY_MAX_DESCRIPTION_CHARS,
+  AGENT_MEMORY_WRITES_PER_HOUR,
+  DEFAULT_MEMORY_CATEGORY,
+  MEMORY_CATEGORIES,
+  MEMORY_CATEGORY_IDS,
+  MEMORY_CATEGORY_LABELS,
+  MEMORY_RECOVERY_WINDOW_DAYS,
+  MEMORY_STRENGTH_THRESHOLDS,
+  RESERVED_MEMORY_NAMES,
+  isMemoryCategory,
+  isReservedMemoryName,
+  memoryStrength,
+  normalizeMemoryCategory,
+  normalizeMemoryForComparison,
+  screenMemoryWrite,
+  type MemoryCategory,
+  type MemoryScreenClass,
+  type MemoryScreenVerdict,
+  type MemoryStrength,
+} from "./memory-classification.js";
+export {
   PROVISIONAL_TITLE_FALLBACK,
   PROVISIONAL_TITLE_MAX_CHARS,
   deriveProvisionalIssueTitle,

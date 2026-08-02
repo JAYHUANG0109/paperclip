@@ -11,19 +11,32 @@
  * someone else's memory is a decision the access rule makes, not an accident of
  * which id happened to be in scope.
  */
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import type { Db } from "@paperclipai/db";
 import { forbidden, notFound } from "../errors.js";
 import { assertCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import {
   deletePersonalMemory,
+  getMemorySettings,
+  listDeletedPersonalMemories,
   listPersonalMemories,
   materializeUserMemory,
+  personalMemoryStats,
   requesterForAgent,
+  restorePersonalMemory,
+  setMemorySettings,
   upsertPersonalMemory,
+  type MemoryRecord,
+  type MemoryWriteRefusal,
 } from "../services/personal-memory.js";
-import type { MemoryRequester } from "../services/personal-memory-access.js";
+import { canReadPersonalMemory, type MemoryRequester } from "../services/personal-memory-access.js";
+import {
+  buildMemorySeedDigest,
+  countExistingMemories,
+  renderMemorySeedTask,
+  seedIsWorthwhile,
+} from "../services/memory-seed.js";
 import { MAX_MEMORY_FILE_BYTES, parseMemoryUploads } from "../services/personal-memory-import.js";
 
 /** Ceiling on files per import. Bounds one request, not the store. */
@@ -50,24 +63,143 @@ export function personalMemoryRoutes(db: Db) {
     return { kind: "user", userId, isAdmin: isPrivilegedMemberViewer(req, companyId, true) };
   }
 
+  /**
+   * Turn a refusal into a response.
+   *
+   * `forbidden` is the only one that hides itself: "you may not write this
+   * person's memory" and "this person has none" must not be tellable apart by
+   * someone probing for who exists. The rest are the writer's own mistake and
+   * are stated plainly, because a caller that cannot see why it was refused
+   * will simply retry the same write.
+   */
+  function refuse(res: Response, refusal: MemoryWriteRefusal): void {
+    if (refusal.reason === "forbidden") throw notFound("Memory not found");
+    const status = refusal.reason === "rate_limited" ? 429 : 422;
+    res.status(status).json({ error: refusal.message, reason: refusal.reason, screenClass: refusal.screenClass });
+  }
+
+  /**
+   * One shape for a memory, used by every reader.
+   *
+   * Content is withheld for binary entries — an imported PNG's base64 is not
+   * something any caller of this API wants inlined in a list response.
+   */
+  function present(memory: MemoryRecord) {
+    return {
+      name: memory.name,
+      description: memory.description,
+      memoryType: memory.memoryType,
+      content: memory.isBinary ? null : memory.content,
+      source: memory.source,
+      filePath: memory.filePath,
+      isBinary: memory.isBinary,
+      // Repetition is why an agent-written fact is trusted, so the owner sees
+      // it rather than it staying an internal ranking signal.
+      timesObserved: memory.timesObserved,
+      lastObservedAt: memory.lastObservedAt,
+      createdAt: memory.createdAt,
+      updatedAt: memory.updatedAt,
+      deletedAt: memory.deletedAt,
+    };
+  }
+
   router.get("/companies/:companyId/users/:userId/memories", async (req, res) => {
     const companyId = req.params.companyId as string;
     const ownerUserId = req.params.userId as string;
     assertCompanyAccess(req, companyId);
     const requester = await resolveRequester(req, companyId);
     const memories = await listPersonalMemories(db, { companyId, requester, ownerUserId });
-    res.json(
-      memories.map((memory) => ({
-        name: memory.name,
-        description: memory.description,
-        memoryType: memory.memoryType,
-        content: memory.isBinary ? null : memory.content,
-        source: memory.source,
-        filePath: memory.filePath,
-        isBinary: memory.isBinary,
-        updatedAt: memory.updatedAt,
-      })),
-    );
+    res.json(memories.map(present));
+  });
+
+  /**
+   * Recently deleted memories, and the switches.
+   *
+   * Both are the owner's control surface rather than their content, which is
+   * why they sit beside the list rather than in it. Deleted entries are read
+   * under the same rule as live ones — an admin who may read a person's memory
+   * may see what they removed, and nobody else can.
+   */
+  router.get("/companies/:companyId/users/:userId/memories/deleted", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+    if (!canReadPersonalMemory({ ownerUserId }, requester)) throw notFound("Memory not found");
+    const memories = await listDeletedPersonalMemories(db, { companyId, requester, ownerUserId });
+    res.json(memories.map(present));
+  });
+
+  router.get("/companies/:companyId/users/:userId/memories/settings", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+    if (!canReadPersonalMemory({ ownerUserId }, requester)) throw notFound("Memory not found");
+    res.json(await getMemorySettings(db, { companyId, userId: ownerUserId }));
+  });
+
+  /**
+   * Pause or resume capture.
+   *
+   * Write-gated, not read-gated: an admin may read someone's memory, but
+   * deciding whether that person's agents get to learn about them is theirs.
+   * `setMemorySettings` also refuses agents outright — an agent that could turn
+   * its own leash off is not on a leash.
+   */
+  router.put("/companies/:companyId/users/:userId/memories/settings", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.captureEnabled !== "boolean") {
+      res.status(400).json({ error: "captureEnabled must be a boolean" });
+      return;
+    }
+
+    const settings = await setMemorySettings(db, {
+      companyId,
+      ownerUserId,
+      requester,
+      captureEnabled: body.captureEnabled,
+    });
+    if (!settings) throw notFound("Memory not found");
+    res.json(settings);
+  });
+
+  /**
+   * Take a deleted memory back.
+   *
+   * A POST on the deleted entry rather than a PUT of its content: the owner is
+   * asking for what was there, not supplying it again, and re-uploading would
+   * lose the observation count that made the entry trustworthy.
+   */
+  router.post("/companies/:companyId/users/:userId/memories/:name/restore", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+
+    const restored = await restorePersonalMemory(db, {
+      companyId,
+      ownerUserId,
+      requester,
+      name: req.params.name as string,
+    });
+    if (!restored.ok) {
+      // "Not yours" and "no such memory" stay indistinguishable; a name clash is
+      // the caller's own situation and is worth explaining.
+      if (restored.reason === "name_taken") {
+        res.status(409).json({ error: restored.message, reason: restored.reason });
+        return;
+      }
+      throw notFound("Memory not found");
+    }
+
+    await materializeUserMemory(db, { companyId, userId: ownerUserId });
+    res.json(present(restored.memory));
   });
 
   router.put("/companies/:companyId/users/:userId/memories/:name", async (req, res) => {
@@ -82,27 +214,87 @@ export function personalMemoryRoutes(db: Db) {
       return;
     }
 
-    const saved = await upsertPersonalMemory(db, {
+    const result = await upsertPersonalMemory(db, {
       companyId,
       ownerUserId,
       requester,
       name: req.params.name as string,
       description: typeof body.description === "string" ? body.description : "",
-      memoryType: typeof body.memoryType === "string" ? body.memoryType : "project",
+      memoryType: typeof body.memoryType === "string" ? body.memoryType : undefined,
       content: body.content,
       // Provenance is derived from the actor, never accepted from the body — a
-      // caller must not be able to label its own write as something else.
+      // caller must not be able to label its own write as something else. The
+      // screen is asymmetric between agents and owners, so this is load-bearing.
       source: requester.kind === "agent" ? "agent" : "manual",
       createdByAgentId: requester.kind === "agent" ? requester.agentId : null,
     });
 
-    // A refused write is indistinguishable from a missing owner on purpose:
-    // "you may not write this person's memory" and "this person has none"
-    // should not be tellable apart by someone probing for who exists.
-    if (!saved) throw notFound("Memory not found");
+    if (!result.ok) {
+      refuse(res, result);
+      return;
+    }
 
     await materializeUserMemory(db, { companyId, userId: ownerUserId });
-    res.json({ name: saved.name, updatedAt: saved.updatedAt });
+    // `deduped` tells a writer its fact was already held under another name, so
+    // it stops trying to add it. Silently succeeding would teach it nothing.
+    res.json({
+      name: result.memory.name,
+      memoryType: result.memory.memoryType,
+      timesObserved: result.memory.timesObserved,
+      deduped: result.deduped,
+      updatedAt: result.memory.updatedAt,
+    });
+  });
+
+  /**
+   * Is memory actually being written?
+   *
+   * Exists so that question has an answer other than "watch the page for a few
+   * days". Capture is asked for in the agent prompt, and a prompt can quietly
+   * fail to land; these counts show whether it did.
+   */
+  router.get("/companies/:companyId/users/:userId/memories/stats", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+    const stats = await personalMemoryStats(db, { companyId, ownerUserId, requester });
+    if (!stats) throw notFound("Memory not found");
+    res.json(stats);
+  });
+
+  /**
+   * The brief for catching memory up on work already done.
+   *
+   * Returns the digest and the task text; it does NOT create the task and does
+   * not write a single memory. Creating the task is the caller's move, and the
+   * distillation happens on a normal agent run through the normal write gate —
+   * so a backfill cannot slip past the category rules, the screen or the limits
+   * that every other memory has to satisfy.
+   */
+  router.get("/companies/:companyId/users/:userId/memories/seed", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+
+    // Reading someone's whole work history is at least as revealing as reading
+    // their memory, so it is gated on the same rule rather than a weaker one.
+    if (!canReadPersonalMemory({ ownerUserId }, requester)) throw notFound("Memory not found");
+
+    const digest = await buildMemorySeedDigest(db, { companyId, userId: ownerUserId });
+    const task = renderMemorySeedTask(digest);
+    const existingMemories = await countExistingMemories(db, { companyId, userId: ownerUserId });
+
+    res.json({
+      worthwhile: seedIsWorthwhile(digest),
+      existingMemories,
+      totalIssues: digest.totalIssues,
+      completedIssues: digest.completedIssues,
+      agentNames: digest.agentNames,
+      projects: digest.projectCounts,
+      task,
+    });
   });
 
   /**
@@ -156,17 +348,30 @@ export function personalMemoryRoutes(db: Db) {
         isBinary: memory.isBinary,
         createdByAgentId: requester.kind === "agent" ? requester.agentId : null,
       });
-      // A refusal here is the access rule, not the file: the requester may not
+      // `forbidden` is the access rule, not the file: the requester may not
       // write this owner's memory at all, so stop rather than reporting every
-      // file individually.
-      if (!saved) throw notFound("Memory not found");
-      imported.push(saved.name);
+      // file individually. Anything else is about THIS file — a document
+      // carrying a key, say — and belongs in `skipped` beside the paths the
+      // parser refused, so a partial import still reads as partial.
+      if (!saved.ok) {
+        if (saved.reason === "forbidden") throw notFound("Memory not found");
+        refused.push({ relativePath: memory.filePath, reason: saved.message });
+        continue;
+      }
+      imported.push(saved.memory.name);
     }
 
     await materializeUserMemory(db, { companyId, userId: ownerUserId });
     res.json({ imported, skipped: refused });
   });
 
+  /**
+   * Delete a memory — recoverable for 30 days unless `?purge=true`.
+   *
+   * Purge is opt-in rather than the default because deleting is what people do
+   * when memory gets something wrong, and they do it in a hurry. The recovery
+   * view is where "delete forever" belongs: by then the decision is deliberate.
+   */
   router.delete("/companies/:companyId/users/:userId/memories/:name", async (req, res) => {
     const companyId = req.params.companyId as string;
     const ownerUserId = req.params.userId as string;
@@ -178,6 +383,7 @@ export function personalMemoryRoutes(db: Db) {
       ownerUserId,
       requester,
       name: req.params.name as string,
+      purge: req.query.purge === "true",
     });
     if (!deleted) throw notFound("Memory not found");
 

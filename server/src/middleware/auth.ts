@@ -73,6 +73,18 @@ function clearViewAsAudit(realUserId: string, viewedUserId: string) {
   viewAsAuditedAt.delete(viewAsAuditKey(realUserId, viewedUserId));
 }
 
+/**
+ * Forget every throttled pairing.
+ *
+ * Exists for tests: the window is module state, so a case asserting that a
+ * view-as is audited silently depends on no earlier case in the file having
+ * used the same pairing. That coupling is invisible at the call site and made a
+ * correct implementation look broken.
+ */
+export function resetViewAsAuditThrottle(): void {
+  viewAsAuditedAt.clear();
+}
+
 async function resolveViewAsTarget(db: Db, userId: string): Promise<ViewAsTarget | null> {
   const [user] = await db
     .select({ id: authUsers.id, email: authUsers.email, name: authUsers.name })

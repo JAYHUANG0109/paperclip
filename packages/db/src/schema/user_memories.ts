@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, boolean, timestamp, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agents } from "./agents.js";
 import { companies } from "./companies.js";
 
@@ -45,7 +46,14 @@ export const userMemories = pgTable(
     name: text("name").notNull(),
     /** One-line summary, used to judge relevance during recall. */
     description: text("description").notNull().default(""),
-    /** user | feedback | project | reference. Free text; unknown values sort last. */
+    /**
+     * The category: preference | profile | project | feedback | reference.
+     *
+     * Text rather than an enum so a value written before the set was closed
+     * still reads back. `normalizeMemoryCategory` in @paperclipai/shared is the
+     * one place that maps legacy and near-miss values forward, and every write
+     * goes through it — do not re-derive the set here.
+     */
     memoryType: text("memory_type").notNull().default("project"),
     /** UTF-8 markdown body, or base64 when `is_binary` (imported assets). */
     content: text("content").notNull(),
@@ -69,18 +77,67 @@ export const userMemories = pgTable(
     sha256: text("sha256"),
     /** The agent that wrote this, when one did. Provenance only, not authority. */
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    /**
+     * How many times an agent has arrived at this fact. Repetition is what
+     * separates a standing preference from a one-off remark, so it is shown to
+     * the owner and available to rank on. Only agent writes bump it — an owner
+     * editing their own text is correcting, not confirming.
+     */
+    timesObserved: integer("times_observed").notNull().default(1),
+    /** Last agent confirmation, as distinct from `updated_at`, which also moves on manual edits. */
+    lastObservedAt: timestamp("last_observed_at", { withTimezone: true }),
+    /**
+     * Soft delete, with a recovery window (`MEMORY_RECOVERY_WINDOW_DAYS`).
+     *
+     * Deleting is what people do when memory gets something wrong, and they do
+     * it fast — a window makes that safe to do freely, which is what keeps the
+     * page honest. Every read filters on `deleted_at is null`; the ONE place
+     * that does not is the recovery view. Materialization filters too, so a
+     * deleted memory stops reaching agents immediately rather than in 30 days.
+     */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     /** The hot path: every read is "this owner's memories in this company". */
     companyUserIdx: index("user_memories_company_user_idx").on(table.companyId, table.userId),
-    /** One memory per slug per owner. */
-    companyUserNameUq: uniqueIndex("user_memories_company_user_name_uq").on(
-      table.companyId,
-      table.userId,
-      table.name,
-    ),
+    /**
+     * One LIVE memory per slug per owner.
+     *
+     * Partial on `deleted_at is null` deliberately: a deleted row must not keep
+     * reserving its own name, or re-saving a fact that was deleted last month
+     * fails on a constraint instead of simply coming back.
+     */
+    companyUserNameUq: uniqueIndex("user_memories_company_user_name_uq")
+      .on(table.companyId, table.userId, table.name)
+      .where(sql`${table.deletedAt} is null`),
     companySourceIdx: index("user_memories_source_idx").on(table.companyId, table.source),
   }),
 );
+
+/**
+ * Per-owner memory switches.
+ *
+ * Scoped by (company, user) to match `user_memories` and `agent_memberships`;
+ * a user in two companies pauses capture in one without touching the other.
+ *
+ * Absence of a row means enabled. Capture is on by default, and a person who
+ * has never opened their Memory page must not need a row to exist before their
+ * agents can remember anything — so readers coalesce a missing row to `true`
+ * rather than treating it as unset.
+ */
+export const userMemorySettings = pgTable("user_memory_settings", {
+  companyId: uuid("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  /**
+   * Whether AGENTS may write. The owner can always write their own memory —
+   * pausing is about what gets inferred about you, not about your own notes.
+   */
+  captureEnabled: boolean("capture_enabled").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.companyId, table.userId] }),
+}));
