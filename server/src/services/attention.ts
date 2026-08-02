@@ -38,6 +38,7 @@ import type {
 import { PRODUCTIVITY_REVIEW_ORIGIN_KIND } from "./productivity-review.js";
 import { budgetService } from "./budgets.js";
 import { issueService } from "./issues.js";
+import { ONBOARDING_ORIGIN_KIND } from "./onboarding.js";
 import { parseIssueExecutionState } from "./issue-execution-policy.js";
 import { isProspectiveBlockedTransition } from "./routable-blocked.js";
 
@@ -590,7 +591,32 @@ export function attentionService(db: Db) {
       const now = Date.now();
       const collected: AttentionItem[] = [];
 
+      /**
+       * The 上手教學 關卡, which must never reach this feed.
+       *
+       * They are deliberately blocker-chained — 關卡 2 is blocked by 關卡 1 so the
+       * tutorial unlocks in order — and the blocked-dependency source reads that
+       * as a stalled chain needing a human. The result was every single user
+       * opening 待決議 to two HIGH "Blocked dependency" items about their own
+       * tutorial, which is both wrong (nothing is stalled; that is the design)
+       * and the loudest thing on the page.
+       *
+       * Excluded by origin at the one choke point every source goes through,
+       * rather than by patching the blocked-issue query: the same tasks would
+       * otherwise reappear through approvals or interactions the moment the
+       * tutorial grew a step that used them. The dashboard checklist is the UI
+       * for onboarding, and it already shows exactly this progress.
+       */
+      const onboardingIssueIds = new Set(
+        (await db
+          .select({ id: issues.id })
+          .from(issues)
+          .where(and(eq(issues.companyId, companyId), eq(issues.originKind, ONBOARDING_ORIGIN_KIND)))
+        ).map((row) => row.id),
+      );
+
       const add = (item: AttentionItem) => {
+        if (item.subject.kind === "issue" && onboardingIssueIds.has(item.subject.id)) return;
         const dismissal = activeDismissalState(dismissals, item.dismissalKey, item.activityAt, now);
         if (!includeDismissed && dismissal?.isActive) return;
         collected.push({ ...item, dismissal });

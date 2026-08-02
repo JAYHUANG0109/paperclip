@@ -912,6 +912,60 @@ describeEmbeddedPostgres("attention service", () => {
     expect(items[0]).toMatchObject({ sourceKind: "blocker_attention", whyNow: "Approve the exception" });
   });
 
+  /**
+   * The 上手教學 關卡 are blocker-chained ON PURPOSE — 關卡 2 is blocked by 關卡 1 so
+   * the tutorial unlocks in order. The blocked-dependency source read that as a
+   * stalled chain needing a human, so every single user opened 待決議 to two HIGH
+   * "Blocked dependency" items about their own tutorial. Nothing was stalled;
+   * that is the design, and the dashboard checklist already shows the progress.
+   */
+  it("keeps onboarding 關卡 out of the feed even though they are blocked by design", async () => {
+    const { companyId } = await seedCompany("ATO");
+    const onboardingIssueId = await insertIssue({
+      companyId,
+      identifier: "ATO-2",
+      title: "關卡 2｜建立你的第一個任務",
+      status: "blocked",
+      originKind: "onboarding",
+      unblockDescriptor: { owner: "board", action: "Finish 關卡 1" },
+      blockedTransitionAt: new Date("2026-07-23T18:30:00.000Z"),
+    });
+
+    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+
+    expect(feed.items.some((item) => item.subject.kind === "issue" && item.subject.id === onboardingIssueId)).toBe(false);
+  });
+
+  // The exclusion is by origin, so ordinary blocked work is untouched by it.
+  it("still surfaces a normal blocked issue alongside onboarding", async () => {
+    const { companyId } = await seedCompany("ATO2");
+    await insertIssue({
+      companyId,
+      identifier: "ATO2-1",
+      title: "關卡 5｜做一支你的技能",
+      status: "blocked",
+      originKind: "onboarding",
+      unblockDescriptor: { owner: "board", action: "Finish 關卡 4" },
+      blockedTransitionAt: new Date("2026-07-23T18:30:00.000Z"),
+    });
+    const realIssueId = await insertIssue({
+      companyId,
+      identifier: "ATO2-2",
+      title: "Real work that is genuinely stuck",
+      status: "blocked",
+      unblockDescriptor: { owner: "board", action: "Approve the exception" },
+      blockedTransitionAt: new Date("2026-07-23T18:30:00.000Z"),
+    });
+
+    const feed = await attentionService(db).list(companyId, { userId: "board-user" });
+    const issueIds = new Set(feed.items.filter((i) => i.subject.kind === "issue").map((i) => i.subject.id));
+
+    // A blocked issue can legitimately raise more than one item (legacy blocker
+    // plus unblock descriptor), so this asserts presence, not a count.
+    expect(issueIds.has(realIssueId)).toBe(true);
+    expect(issueIds.size).toBe(1);
+  });
+
   it("keeps legacy blocker attention visible for pre-rollout blocked issues", async () => {
     const { companyId } = await seedCompany("ATP");
     const issueId = await insertIssue({

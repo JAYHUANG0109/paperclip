@@ -247,6 +247,16 @@ export async function getOnboardingForAgent(
   };
 }
 
+/**
+ * Marks the 關卡 issues as tutorial machinery.
+ *
+ * A constant rather than a literal because two places now depend on agreeing:
+ * this creates them, and the attention feed excludes them (their blocker chain
+ * is intentional, not a stalled dependency needing a human). A typo in either
+ * copy would silently put everyone's tutorial back on their decisions page.
+ */
+export const ONBOARDING_ORIGIN_KIND = "onboarding";
+
 export const ONBOARDING_PROJECT_NAME = "🎓 上手教學｜Onboarding";
 export const ONBOARDING_SKILL_SLUG = "onboarding-game-guide";
 
@@ -332,7 +342,7 @@ export async function seedOnboardingForAgent(
         description: k.desc,
         status: "backlog",
         assigneeAgentId: agentId,
-        originKind: "onboarding",
+        originKind: ONBOARDING_ORIGIN_KIND,
         originId: `onboarding:${agentId}:${k.key}`,
       })
       .returning({ id: issues.id }))[0]!;

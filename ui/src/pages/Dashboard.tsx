@@ -240,12 +240,13 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {error && (
-        isRestrictedView ? (
-          <p className="text-sm text-muted-foreground">{t("dashboard.restrictedOverview")}</p>
-        ) : (
-          <p className="text-sm text-destructive">{error.message}</p>
-        )
+      {/* A restricted view is the NORMAL state for most people, so it says
+          nothing. Announcing "the org-wide overview is for admins" on every load
+          tells them about a thing they cannot have and did not ask for, on the
+          page they use daily. Their own agents render below either way. A real
+          error still surfaces. */}
+      {error && !isRestrictedView && (
+        <p className="text-sm text-destructive">{error.message}</p>
       )}
 
       {hasNoAgents && (
