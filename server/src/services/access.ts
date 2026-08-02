@@ -785,6 +785,7 @@ export function accessService(db: Db) {
     // List endpoints need the SET of visible agents to build a SQL filter;
     // `decide` answers one resource at a time, which cannot page or group.
     getVisibleAgentIdsForUser: authorization.getVisibleAgentIdsForUser,
+    issueIsRelevantToUser: authorization.issueIsRelevantToUser,
     canUser,
     hasPermission,
     getMembership,

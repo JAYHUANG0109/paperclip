@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  resolveConfiguredCwdPreference,
   applyPaperclipWorkspaceEnv,
   appendWithByteCap,
   buildPersistentSkillSnapshot,
@@ -2517,5 +2518,111 @@ describe("appendWithByteCap", () => {
     expect(output).not.toContain("\uFFFD");
     expect(Buffer.from(output, "utf8").toString("utf8")).toBe(output);
     expect(Buffer.byteLength(output, "utf8")).toBeLessThanOrEqual(7);
+  });
+});
+
+describe("resolveConfiguredCwdPreference", () => {
+  /**
+   * The bug this exists to prevent, in one case.
+   *
+   * An agent carried a configured cwd under a home directory that does not
+   * exist on this host (one character off, pointing at a developer checkout).
+   * It won over a perfectly good resolved workspace, and then every run died at
+   * `ensureAbsoluteDirectory` — while the log line above it announced the
+   * fallback workspace it was about to discard.
+   */
+  it("keeps the resolved workspace when the configured cwd cannot be used", async () => {
+    const workspaceCwd = await fs.mkdtemp(path.join(os.tmpdir(), "pc-ws-"));
+
+    const result = await resolveConfiguredCwdPreference({
+      workspaceCwd,
+      configuredCwd: "/Users/definitely-not-a-user-on-this-host/Desktop/repo",
+      workspaceSource: "agent_home",
+    });
+
+    expect(result.useConfigured).toBe(false);
+    // The warning has to name the stale path, or the operator cannot clean it up.
+    expect(result.warning).toContain("/Users/definitely-not-a-user-on-this-host/Desktop/repo");
+    expect(result.warning).toContain(workspaceCwd);
+  });
+
+  it("honours a configured cwd that is usable", async () => {
+    const configuredCwd = await fs.mkdtemp(path.join(os.tmpdir(), "pc-cfg-"));
+
+    const result = await resolveConfiguredCwdPreference({
+      workspaceCwd: "/tmp/some-workspace",
+      configuredCwd,
+      workspaceSource: "agent_home",
+    });
+
+    expect(result).toEqual({ useConfigured: true, warning: null });
+  });
+
+  // Creatable counts as usable — it is what the adapter would do next anyway.
+  it("honours a configured cwd that does not exist yet but can be created", async () => {
+    const parent = await fs.mkdtemp(path.join(os.tmpdir(), "pc-new-"));
+    const configuredCwd = path.join(parent, "nested", "workspace");
+
+    const result = await resolveConfiguredCwdPreference({
+      workspaceCwd: "/tmp/some-workspace",
+      configuredCwd,
+      workspaceSource: "agent_home",
+    });
+
+    expect(result.useConfigured).toBe(true);
+    expect(result.warning).toBeNull();
+  });
+
+  /**
+   * Only `agent_home` is overridable. A project checkout or a resumed session
+   * workspace was chosen for a reason, and a configured cwd must not quietly
+   * pull the run out of it.
+   */
+  it("never overrides a project or session workspace", async () => {
+    for (const workspaceSource of ["project", "task_session", "worktree"]) {
+      const result = await resolveConfiguredCwdPreference({
+        workspaceCwd: "/tmp/resolved",
+        configuredCwd: "/tmp",
+        workspaceSource,
+      });
+
+      expect(result).toEqual({ useConfigured: false, warning: null });
+    }
+  });
+
+  it("does nothing when no cwd is configured", async () => {
+    const result = await resolveConfiguredCwdPreference({
+      workspaceCwd: "/tmp/resolved",
+      configuredCwd: "",
+      workspaceSource: "agent_home",
+    });
+
+    expect(result).toEqual({ useConfigured: false, warning: null });
+  });
+
+  /**
+   * With nothing to fall back to there is no better option, so the original
+   * hard failure is the honest outcome — a warning the caller cannot act on
+   * would just hide it.
+   */
+  it("still prefers an unusable configured cwd when there is no workspace to fall back to", async () => {
+    const result = await resolveConfiguredCwdPreference({
+      workspaceCwd: "",
+      configuredCwd: "/Users/nobody-here/repo",
+      workspaceSource: "agent_home",
+    });
+
+    expect(result).toEqual({ useConfigured: true, warning: null });
+  });
+
+  it("rejects a relative configured cwd rather than resolving it against the process", async () => {
+    const result = await resolveConfiguredCwdPreference({
+      workspaceCwd: "/tmp/resolved",
+      configuredCwd: "relative/path",
+      workspaceSource: "agent_home",
+    });
+
+    expect(result.useConfigured).toBe(false);
+    expect(result.warning).toContain("relative/path");
   });
 });

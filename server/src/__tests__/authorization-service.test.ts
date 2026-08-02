@@ -2824,4 +2824,147 @@ describeEmbeddedPostgres("authorization service", () => {
     });
   });
 
+  /**
+   * The restriction applied to AGENT actors.
+   *
+   * The same hole as the human one and wider, because agents are what actually
+   * make the API calls in bulk: a member's personal assistant could read every
+   * other person's tasks and every project in the company.
+   *
+   * Half of these cases assert that something is NOT restricted. That is the
+   * important half — scoping an infrastructure agent to an empty set would break
+   * the automation everyone depends on, and it is the failure that would look
+   * like "the platform is broken" rather than "authorization is strict".
+   */
+  describe("四季 restriction (flag ON): agent actors are scoped to their mapped user", () => {
+    afterEach(() => {
+      delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+    });
+
+    async function scenario(label: string, opts: { membershipRole?: string; mapped?: boolean } = {}) {
+      process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY = "true";
+      const company = await createCompany(db, label);
+      const userId = `user-${randomUUID()}`;
+      await db.insert(companyMemberships).values({
+        companyId: company.id, principalType: "user", principalId: userId,
+        status: "active", membershipRole: opts.membershipRole ?? "operator",
+      });
+      const ownAgent = await createAgent(db, company.id);
+      const strangerAgent = await createAgent(db, company.id);
+      if (opts.mapped !== false) {
+        await db.insert(agentMemberships).values({
+          companyId: company.id, agentId: ownAgent.id, userId, state: "joined",
+        });
+      }
+      return {
+        company,
+        userId,
+        ownAgent,
+        strangerAgent,
+        auth: authorizationService(db),
+        actor: {
+          type: "agent" as const,
+          agentId: ownAgent.id,
+          companyId: company.id,
+          source: "agent_key" as const,
+        },
+      };
+    }
+
+    it("hides another person's agent from a restricted member's agent", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentScopeHidden");
+
+      await expect(auth.decide({
+        actor,
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: strangerAgent.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    it("still lets it read itself", async () => {
+      const { auth, actor, company, ownAgent } = await scenario("AgentScopeSelf");
+
+      await expect(auth.decide({
+        actor,
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: ownAgent.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    it("hides a task belonging to nobody it works for", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentScopeIssue");
+      const strangersIssue = await createIssue(db, company.id, { assigneeAgentId: strangerAgent.id });
+
+      await expect(auth.decide({
+        actor,
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: strangersIssue.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    it("still shows a task assigned to itself", async () => {
+      const { auth, actor, company, ownAgent } = await scenario("AgentScopeOwnIssue");
+      const ownIssue = await createIssue(db, company.id, { assigneeAgentId: ownAgent.id });
+
+      await expect(auth.decide({
+        actor,
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: ownIssue.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    /**
+     * Infrastructure agents (系統自動化, built-ins) map to nobody. There is no
+     * person's world to scope them to, and scoping them to an empty set would
+     * silently break every automation on the platform.
+     */
+    it("leaves an agent that maps to nobody company-wide", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentScopeUnmapped", { mapped: false });
+
+      await expect(auth.decide({
+        actor,
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: strangerAgent.id },
+      })).resolves.toMatchObject({ allowed: true, reason: "allow_company_agent" });
+    });
+
+    // Narrowing an admin's agent below the admin's own reach would be incoherent.
+    it("leaves a privileged user's agent company-wide", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentScopeAdmin", { membershipRole: "admin" });
+
+      await expect(auth.decide({
+        actor,
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: strangerAgent.id },
+      })).resolves.toMatchObject({ allowed: true, reason: "allow_company_agent" });
+    });
+
+    /**
+     * Deliberately still company-wide, and this test exists so the decision is
+     * recorded rather than looking like an omission. An agent resolves its own
+     * bound secrets during a normal run, so denying this wholesale would break
+     * every restricted member's agent. It needs a per-secret decision first.
+     */
+    it("does not yet restrict an agent's secrets:read", async () => {
+      const { auth, actor, company } = await scenario("AgentScopeSecrets");
+
+      await expect(auth.decide({
+        actor,
+        action: "secrets:read",
+        resource: { type: "company", companyId: company.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    it("changes nothing for agents when the flag is off", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentScopeFlagOff");
+      delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+
+      await expect(auth.decide({
+        actor,
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: strangerAgent.id },
+      })).resolves.toMatchObject({ allowed: true, reason: "allow_company_agent" });
+    });
+  });
+
 });

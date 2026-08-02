@@ -764,6 +764,53 @@ export function authorizationService(db: Db) {
   }
 
   /**
+   * The restriction as it applies to an AGENT actor, via its mapped user.
+   *
+   * Returns null for "not applicable — keep company-wide visibility", which is
+   * the right answer in three genuinely different situations:
+   *
+   *   • The agent maps to nobody. Infrastructure and built-ins (系統自動化) have
+   *     no person's world to be scoped to, and scoping them to an empty set
+   *     would silently break the automation everyone depends on.
+   *
+   *   • The agent maps to SEVERAL people. There is no single scope to apply and
+   *     picking one would be a guess about whose data this agent may see.
+   *
+   *   • The mapped user is privileged. Their own reach is company-wide, so
+   *     narrowing their agent below their own access would be incoherent.
+   *
+   * Everything else delegates to `restrictedMemberCanRead` — one policy, two
+   * actor types. Two copies of this rule would drift, and the drift would be
+   * invisible until someone noticed an agent seeing more than its owner.
+   */
+  async function restrictedAgentActorCanRead(
+    action: RestrictableAction,
+    companyId: string,
+    actorAgentId: string,
+    resource: AuthorizationResource,
+  ): Promise<boolean | null> {
+    const memberships = await db
+      .select({ userId: agentMemberships.userId })
+      .from(agentMemberships)
+      .where(
+        and(
+          eq(agentMemberships.companyId, companyId),
+          eq(agentMemberships.agentId, actorAgentId),
+          eq(agentMemberships.state, "joined"),
+        ),
+      );
+
+    const userIds = [...new Set(memberships.map((row) => row.userId).filter(Boolean))];
+    if (userIds.length !== 1) return null;
+    const mappedUserId = userIds[0] as string;
+
+    const membership = await getActiveMembership(companyId, "user", mappedUserId);
+    if (!membership || isPrivilegedCompanyRole(membership.membershipRole)) return null;
+
+    return restrictedMemberCanRead(action, companyId, mappedUserId, resource);
+  }
+
+  /**
    * Which projects a restricted member may read.
    *
    * Scoped rather than denied outright. `project:read` decides the project
@@ -2481,6 +2528,59 @@ export function authorizationService(db: Db) {
       }
     }
 
+    /**
+     * The 四季 restriction, applied to AGENT actors.
+     *
+     * The same hole as the human one and wider, because agents are what
+     * actually make the API calls: a member's personal assistant could read
+     * every other person's tasks and every project in the company. Scoped by the
+     * agent's MAPPED USER, which is the ownership rule the whole platform uses —
+     * an agent reaches its user's world, never the acting user's and never the
+     * company's.
+     *
+     * Deliberately limited to the VISIBILITY actions. `secrets:read` and
+     * `runtime:manage` are left company-wide here even though the human branch
+     * denies them, and that asymmetry is intentional rather than an oversight:
+     * an agent resolves its own bound secrets during a normal run (its Asana
+     * token, for one), so a blanket denial would break every restricted member's
+     * agent the moment it shipped. Restricting those safely needs a per-SECRET
+     * decision — "this secret is bound to one of your agents" — which requires
+     * the resource to name the secret. Until that exists, denying here would
+     * trade a visibility leak for an outage, which is a worse trade.
+     *
+     * `company_scope:read` is also excluded, for a different reason again. The
+     * human branch denies it outright to FORCE per-item filtering, and that
+     * works because the list endpoints humans hit all filter per item. Agents
+     * reach some of those endpoints by paths that have not been shown to filter,
+     * so denying it could quietly empty an agent's view of its own work rather
+     * than narrowing it. It belongs in this set once each consumer is checked.
+     */
+    const agentScopedVisibilityActions = ["agent:read", "issue:read", "project:read"] as const;
+    if (
+      restrictAgentVisibilityEnabled() &&
+      (agentScopedVisibilityActions as readonly string[]).includes(input.action)
+    ) {
+      const scoped = await restrictedAgentActorCanRead(
+        input.action as RestrictableAction,
+        companyId,
+        actorAgentId,
+        input.resource,
+      );
+      if (scoped !== null) {
+        return scoped
+          ? allow({
+            action: input.action,
+            reason: "allow_company_agent",
+            explanation: "Allowed: resource is within the mapped user's visible scope.",
+          })
+          : deny({
+            action: input.action,
+            reason: "deny_scope",
+            explanation: "Restricted member's agent: resource is outside the mapped user's visible scope.",
+          });
+      }
+    }
+
     if (
       input.action === "agent:read" ||
       input.action === "company_scope:read" ||
@@ -2838,6 +2938,24 @@ export function authorizationService(db: Db) {
      * which cannot page or group correctly.
      */
     getVisibleAgentIdsForUser,
+    /**
+     * Is this issue part of this person's own world?
+     *
+     * The same question the restriction answers, asked for RELEVANCE rather than
+     * for permission — and the distinction matters. An admin MAY see everything;
+     * that does not mean everything belongs on their to-decide list. Sorting
+     * through other people's pending approvals is how a queue stops being read.
+     *
+     * Deliberately the same code path as the restriction, so "what a restricted
+     * member can see" and "what is relevant to me" can never drift into two
+     * different notions of ownership.
+     */
+    issueIsRelevantToUser: (companyId: string, userId: string, issueId: string) =>
+      restrictedMemberCanRead("issue:read", companyId, userId, {
+        type: "issue",
+        companyId,
+        issueId,
+      }),
     /** Whether the flag that narrows members to their own scope is on. */
     restrictAgentVisibilityEnabled,
   };

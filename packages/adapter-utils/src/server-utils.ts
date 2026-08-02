@@ -2375,6 +2375,84 @@ export function ensurePathInEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...env, PATH: defaultPathForPlatform() };
 }
 
+/**
+ * Whether a path can serve as a working directory on THIS host.
+ *
+ * Attempts creation, because that is what the adapter is about to do anyway —
+ * a directory that does not exist yet but can be made is usable. Returns a
+ * boolean rather than throwing: callers use this to CHOOSE between candidates,
+ * and an exception would make "the first option is unavailable" indistinguishable
+ * from "something is broken".
+ */
+export async function workingDirectoryIsUsable(cwd: string): Promise<boolean> {
+  if (!cwd || !path.isAbsolute(cwd)) return false;
+  try {
+    await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Decide whether an agent's CONFIGURED cwd should override the workspace the
+ * harness resolved for this run.
+ *
+ * ─── Why this exists ───
+ *
+ * Every local adapter had the same three lines: when the resolved workspace is
+ * the agent's own home (i.e. no project or prior session gave us one) and the
+ * agent has a configured `cwd`, prefer the configured one. Reasonable — except
+ * nothing checked that the configured path was usable, so a stale value took
+ * precedence over a perfectly good workspace and then failed the run at
+ * `ensureAbsoluteDirectory`.
+ *
+ * That is not hypothetical. An agent on this deployment carried
+ * `/Users/seasonart/Desktop/paperclip/paperclip` — a developer checkout under a
+ * home directory that does not exist here (one character off) — and every run
+ * died at startup while the log line directly above announced the correct
+ * fallback workspace it was about to throw away.
+ *
+ * A configured cwd is a preference. The resolved workspace is a guarantee. When
+ * the preference cannot be honoured, taking the guarantee and saying so is
+ * strictly better than failing: the agent still works, and the operator gets a
+ * warning naming the exact stale path to clean up.
+ *
+ * The session path already worked this way (it stats a saved session cwd and
+ * degrades with a warning), which is why stale SESSION rows were harmless while
+ * a stale CONFIG value was fatal. This closes that asymmetry, in one place, for
+ * every adapter.
+ */
+export async function resolveConfiguredCwdPreference(input: {
+  /** Where the harness resolved this run's workspace. */
+  workspaceCwd: string;
+  /** The agent's stored `adapter_config.cwd`, if any. */
+  configuredCwd: string;
+  /** How the workspace was resolved; only `agent_home` is overridable. */
+  workspaceSource: string;
+}): Promise<{ useConfigured: boolean; warning: string | null }> {
+  const wantsConfigured =
+    input.workspaceSource === "agent_home" && input.configuredCwd.length > 0;
+  if (!wantsConfigured) return { useConfigured: false, warning: null };
+
+  if (await workingDirectoryIsUsable(input.configuredCwd)) {
+    return { useConfigured: true, warning: null };
+  }
+
+  // Only warn when there is actually somewhere else to go. With no resolved
+  // workspace the caller has no alternative, and letting it proceed to the
+  // original hard failure is more honest than a warning it cannot act on.
+  if (!input.workspaceCwd) return { useConfigured: true, warning: null };
+
+  return {
+    useConfigured: false,
+    warning:
+      `Configured working directory "${input.configuredCwd}" is not usable on this host. ` +
+      `Using the resolved workspace "${input.workspaceCwd}" for this run. ` +
+      `Clear or correct the agent's configured cwd to silence this.`,
+  };
+}
+
 export async function ensureAbsoluteDirectory(
   cwd: string,
   opts: { createIfMissing?: boolean } = {},

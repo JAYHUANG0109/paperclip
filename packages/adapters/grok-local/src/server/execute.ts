@@ -25,6 +25,7 @@ import {
   buildInvocationEnvForLogs,
   buildPaperclipEnv,
   ensureAbsoluteDirectory,
+  resolveConfiguredCwdPreference,
   ensurePathInEnv,
   joinPromptSections,
   materializePaperclipSkillCopy,
@@ -222,7 +223,19 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       )
     : [];
   const configuredCwd = asString(config.cwd, "");
-  const useConfiguredInsteadOfAgentHome = workspaceSource === "agent_home" && configuredCwd.length > 0;
+  // A configured cwd is a preference; the resolved workspace is a guarantee.
+  // When the preference is not usable on this host we take the guarantee and
+  // warn, instead of failing the run over a stale path. See
+  // resolveConfiguredCwdPreference for why this is shared across adapters.
+  const configuredCwdPreference = await resolveConfiguredCwdPreference({
+    workspaceCwd,
+    configuredCwd,
+    workspaceSource,
+  });
+  const useConfiguredInsteadOfAgentHome = configuredCwdPreference.useConfigured;
+  if (configuredCwdPreference.warning) {
+    await onLog("stderr", `[paperclip] ${configuredCwdPreference.warning}\n`);
+  }
   const effectiveWorkspaceCwd = useConfiguredInsteadOfAgentHome ? "" : workspaceCwd;
   const cwd = effectiveWorkspaceCwd || configuredCwd || process.cwd();
   let effectiveExecutionCwd = adapterExecutionTargetRemoteCwd(executionTarget, cwd);

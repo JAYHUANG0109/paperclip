@@ -18,42 +18,68 @@ export function attentionRoutes(db: Db) {
       return;
     }
 
+    const userId = req.actor.userId;
     const includeDismissed = req.query.includeDismissed === "true";
     const feed = await svc.list(companyId, {
-      userId: req.actor.userId,
+      userId,
       includeDismissed,
     });
 
-    // The service takes a userId, but only to resolve dismissals — it never
-    // scoped WHICH decisions you see, so every member got the same company-wide
-    // feed. A decision is about an issue, so "may I see this decision" is "may
-    // I see its issue".
-    //
-    // Only for actors without company scope; owners/admins keep the full feed.
+    /**
+     * 待決議 answers exactly one question: what needs ME?
+     *
+     * Two different questions used to be conflated here:
+     *
+     *   PERMISSION — may I see this decision? A decision is about an issue, so
+     *   that is "may I see its issue". Non-negotiable, and still enforced below.
+     *
+     *   RELEVANCE — does this need me? Previously anyone with company scope got
+     *   the company-wide feed, which is what made the page unusable for exactly
+     *   the people with the most reports: an admin or a campus head opened it and
+     *   saw every pending approval in the company, with the two things actually
+     *   waiting on them buried inside. A queue nobody can read is a queue where
+     *   real decisions sit.
+     *
+     * So it is scoped to the caller's own world for EVERYONE, privileged or not,
+     * with no company-wide mode. There is deliberately no `scope=all` escape
+     * hatch: 收件匣 already is the oversight view, and a second one here would
+     * just be two places showing the same thing while neither reliably answers
+     * "what is waiting on me".
+     *
+     * Being permitted to see something is not a reason to put it on someone's
+     * list.
+     */
     const companyScope = await access.decide({
       actor: req.actor,
       action: "company_scope:read",
       resource: { type: "company", companyId },
     });
-    if (companyScope.allowed) {
-      res.json(feed);
-      return;
-    }
 
-    // One decision per distinct issue: a feed repeats the same issue across
+    // One verdict per distinct issue: a feed repeats the same issue across
     // several items, and re-deciding each time turns a page load into hundreds
     // of queries.
     const verdicts = new Map<string, Promise<boolean>>();
-    const mayRead = (issueId: string) => {
+    const keepIssue = (issueId: string) => {
       const cached = verdicts.get(issueId);
       if (cached) return cached;
-      const pending = access
-        .decide({
-          actor: req.actor,
-          action: "issue:read",
-          resource: { type: "issue", companyId, issueId },
-        })
-        .then((decision) => decision.allowed);
+      const pending = (async () => {
+        // Permission first — it is the floor, and a caller who may not read the
+        // issue must not see it whatever the scope.
+        if (!companyScope.allowed) {
+          const decision = await access.decide({
+            actor: req.actor,
+            action: "issue:read",
+            resource: { type: "issue", companyId, issueId },
+          });
+          if (!decision.allowed) return false;
+        }
+        // Then relevance. `null` means the rule could not judge this issue, and
+        // an unjudgeable item is not evidence that it needs you — so it stays
+        // out. Anything wrongly hidden is still reachable through 收件匣 and the
+        // task itself; the cost of being wrong here is a click, not a loss.
+        const relevant = await access.issueIsRelevantToUser(companyId, userId, issueId);
+        return relevant === true;
+      })();
       verdicts.set(issueId, pending);
       return pending;
     };
@@ -63,7 +89,7 @@ export function attentionRoutes(db: Db) {
         // Anything not anchored to an issue cannot be scoped by this rule, so
         // withhold it rather than guess — silence is recoverable, a leak is not.
         if (item.subject.kind !== "issue") return false;
-        return mayRead(item.subject.id);
+        return keepIssue(item.subject.id);
       }),
     );
     const items = feed.items.filter((_, index) => keep[index]);
