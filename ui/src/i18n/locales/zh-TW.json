@@ -54,7 +54,10 @@
     "leaderboard": "排行榜",
     "bounties": "懸賞看板",
     "office": "虛擬辦公室",
-    "decisions": "待決議"
+    "decisions": "待決議",
+    "memory": "記憶",
+    "myTasks": "近期",
+    "myTasksSeeAll": "查看全部任務"
   },
   "sort": {
     "top": "置頂",

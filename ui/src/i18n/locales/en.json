@@ -54,7 +54,10 @@
     "leaderboard": "Leaderboard",
     "bounties": "Bounties",
     "office": "Virtual Office",
-    "decisions": "Decisions"
+    "decisions": "Decisions",
+    "memory": "Memory",
+    "myTasks": "Recent",
+    "myTasksSeeAll": "See all tasks"
   },
   "sort": {
     "top": "Top",

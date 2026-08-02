@@ -37,6 +37,42 @@ function hashToken(token: string) {
  * row. Using the same source of truth is what makes the resulting view an
  * honest answer to "what does this person see?".
  */
+/**
+ * One audit row per (real user → viewed user) per window, rather than one per
+ * request. A single page load is dozens of XHRs; unthrottled this wrote
+ * hundreds of identical rows and made the company activity feed unreadable,
+ * which defeats the point of auditing at all.
+ *
+ * In-memory on purpose: a process restart re-audits, which errs toward MORE
+ * logging rather than less.
+ */
+const VIEW_AS_AUDIT_WINDOW_MS = 10 * 60 * 1000;
+const viewAsAuditedAt = new Map<string, number>();
+
+function viewAsAuditKey(realUserId: string, viewedUserId: string) {
+  return `${realUserId}\u0000${viewedUserId}`;
+}
+
+function shouldAuditViewAs(realUserId: string, viewedUserId: string): boolean {
+  const key = viewAsAuditKey(realUserId, viewedUserId);
+  const now = Date.now();
+  const last = viewAsAuditedAt.get(key);
+  if (last !== undefined && now - last < VIEW_AS_AUDIT_WINDOW_MS) return false;
+  viewAsAuditedAt.set(key, now);
+  // Bound the map: this only ever holds the few people permitted to view as.
+  if (viewAsAuditedAt.size > 512) {
+    for (const [k, at] of viewAsAuditedAt) {
+      if (now - at >= VIEW_AS_AUDIT_WINDOW_MS) viewAsAuditedAt.delete(k);
+    }
+  }
+  return true;
+}
+
+/** Undo the claim so a failed write is retried rather than silently skipped. */
+function clearViewAsAudit(realUserId: string, viewedUserId: string) {
+  viewAsAuditedAt.delete(viewAsAuditKey(realUserId, viewedUserId));
+}
+
 async function resolveViewAsTarget(db: Db, userId: string): Promise<ViewAsTarget | null> {
   const [user] = await db
     .select({ id: authUsers.id, email: authUsers.email, name: authUsers.name })
@@ -289,8 +325,15 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
               return;
             }
             req.actor = buildViewAsActor(req.actor, target);
-            // Audited against the REAL user, every request. Failing to write
-            // the audit row must not silently grant an unlogged view.
+            // Audited against the REAL user. Once per pairing per window, not
+            // once per request: a single page is dozens of XHRs, and writing a
+            // row for each buried the company activity feed under hundreds of
+            // identical "viewed as" entries. The security question an audit
+            // answers is "did X view as Y, and when" — that survives
+            // throttling, and a readable log is one someone will actually read.
+            // Failing to write must still refuse, so an unlogged view is never
+            // granted.
+            if (shouldAuditViewAs(userId, target.userId)) {
             try {
               await db.insert(activityLog).values({
                 companyId: target.companyIds[0] ?? null,
@@ -308,9 +351,11 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
                 },
               });
             } catch (err) {
+              clearViewAsAudit(userId, target.userId); // let the next request retry
               logger.error({ err, realUserId: userId, viewAsTargetId }, "Failed to audit view-as; refusing");
               next(forbidden("View-as refused: could not record the audit entry"));
               return;
+            }
             }
           }
           next();

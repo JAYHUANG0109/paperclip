@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Router, type Request } from "express";
-import { and, count as countFn, eq } from "drizzle-orm";
+import { and, count as countFn, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@paperclipai/db";
-import { agents as agentsTable } from "@paperclipai/db";
+import { agents as agentsTable, issues as issuesTable } from "@paperclipai/db";
 import {
   DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION,
   companyArtifactsQuerySchema,
@@ -154,7 +154,44 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const query = companyArtifactsQuerySchema.parse(req.query);
+
+    // Artifacts are documents and work products hanging off issues, so "may I
+    // see this artifact" is exactly "may I see its issue". Without this the
+    // endpoint served every artifact in the company to any member — including
+    // ones whose own text says they are not to be shared.
+    //
+    // Filtered in SQL through the service's issueConditions hook rather than
+    // post-filtered, because dropping rows after the fact would corrupt paging
+    // and grouping: a page of 20 could come back with 3, and group counts
+    // would still describe artifacts the viewer cannot open.
+    const companyScope = await access.decide({
+      actor: req.actor,
+      action: "company_scope:read",
+      resource: { type: "company", companyId },
+    });
+
+    let issueConditions: SQL[] | undefined;
+    if (!companyScope.allowed) {
+      const userId = req.actor.type === "board" ? req.actor.userId : null;
+      if (userId) {
+        const visibleAgentIds = await access.getVisibleAgentIdsForUser(companyId, userId);
+        const clauses: SQL[] = [
+          eq(issuesTable.assigneeUserId, userId),
+          eq(issuesTable.createdByUserId, userId),
+        ];
+        if (visibleAgentIds.size > 0) {
+          clauses.push(inArray(issuesTable.assigneeAgentId, [...visibleAgentIds]));
+        }
+        issueConditions = [or(...clauses) as SQL];
+      } else {
+        // No company scope and no user to scope BY (an agent or key actor):
+        // fail closed rather than fall through to company-wide.
+        issueConditions = [sql`false`];
+      }
+    }
+
     res.json(await artifacts.list(companyId, query, {
+      issueConditions,
       userId: query.starred && req.actor.type === "board" ? req.actor.userId : undefined,
     }));
   });

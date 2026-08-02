@@ -782,6 +782,9 @@ export function accessService(db: Db) {
   return {
     isInstanceAdmin,
     decide,
+    // List endpoints need the SET of visible agents to build a SQL filter;
+    // `decide` answers one resource at a time, which cannot page or group.
+    getVisibleAgentIdsForUser: authorization.getVisibleAgentIdsForUser,
     canUser,
     hasPermission,
     getMembership,

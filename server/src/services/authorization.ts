@@ -7,6 +7,7 @@ import {
   companyMemberships,
   heartbeatRuns,
   instanceUserRoles,
+  activityLog,
   issueComments,
   issues,
   principalPermissionGrants,
@@ -624,6 +625,7 @@ export function authorizationService(db: Db) {
       const issue = await db
         .select({
           assigneeAgentId: issues.assigneeAgentId,
+          createdByAgentId: issues.createdByAgentId,
           assigneeUserId: issues.assigneeUserId,
           createdByUserId: issues.createdByUserId,
         })
@@ -632,11 +634,47 @@ export function authorizationService(db: Db) {
         .then((rows) => rows[0] ?? null);
       if (!issue) return false;
       if (issue.assigneeUserId === userId || issue.createdByUserId === userId) return true;
-      if (issue.assigneeAgentId) {
-        const visible = await getVisibleAgentIdsForUser(companyId, userId);
-        return visible.has(issue.assigneeAgentId);
-      }
-      return false;
+
+      const visible = await getVisibleAgentIdsForUser(companyId, userId);
+      if (visible.size === 0) return false;
+      if (issue.assigneeAgentId && visible.has(issue.assigneeAgentId)) return true;
+      // A task your agent raised is yours to see — this is the Google Chat
+      // case, where the agent files the task and is not its assignee.
+      if (issue.createdByAgentId && visible.has(issue.createdByAgentId)) return true;
+
+      // Otherwise fall back to participation: your agent commented on it or
+      // acted on it. Requiring ASSIGNMENT left people staring at an empty task
+      // page while their agent page listed the same work, because onboarding
+      // and chat-raised tasks are participated in rather than assigned.
+      //
+      // One extra query, and only for issues the cheap checks did not settle.
+      const agentIds = [...visible];
+      const participated = await db
+        .select({ one: sql<number>`1` })
+        .from(issues)
+        .where(
+          and(
+            eq(issues.id, issueId),
+            eq(issues.companyId, companyId),
+            sql`(
+              EXISTS (
+                SELECT 1 FROM ${issueComments}
+                WHERE ${issueComments.issueId} = ${issues.id}
+                  AND ${issueComments.companyId} = ${companyId}
+                  AND ${issueComments.authorAgentId} IN ${agentIds}
+              )
+              OR EXISTS (
+                SELECT 1 FROM ${activityLog}
+                WHERE ${activityLog.companyId} = ${companyId}
+                  AND ${activityLog.entityType} = 'issue'
+                  AND ${activityLog.entityId} = ${issues.id}::text
+                  AND ${activityLog.agentId} IN ${agentIds}
+              )
+            )`,
+          ),
+        )
+        .limit(1);
+      return participated.length > 0;
     }
     return null; // project:read / runtime:manage / secrets:read → upstream's logic
   }
@@ -2639,5 +2677,14 @@ export function authorizationService(db: Db) {
     decide,
     decidePrincipalGrant,
     canActorSeeRoutineByScope,
+    /**
+     * The agents a user can see: the ones they have joined, plus everything
+     * reporting transitively to those. Exposed because list endpoints need the
+     * SET to build a SQL filter — `decide` answers one resource at a time,
+     * which cannot page or group correctly.
+     */
+    getVisibleAgentIdsForUser,
+    /** Whether the flag that narrows members to their own scope is on. */
+    restrictAgentVisibilityEnabled,
   };
 }
