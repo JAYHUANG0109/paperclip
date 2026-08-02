@@ -69,6 +69,9 @@ export type AuthorizationAction =
   | "agent:read"
   | "agent:wake"
   | "company_scope:read"
+  | "decision_queue:manage"
+  | "decision_queue:read"
+  | "decision_triage:manage"
   | "issue:comment"
   | "issue:mutate"
   | "issue:read"
@@ -92,6 +95,12 @@ export type AuthorizationAction =
 export const RESTRICTABLE_ACTIONS = [
   "agent:read",
   "company_scope:read",
+  // Decision queues/triage are restrictable for the same reason the reads are: an
+  // agent-scoped actor must not see another agent's queue. Upstream listed these
+  // inline at the call site; this fork keeps one source of truth, so they go here.
+  "decision_queue:manage",
+  "decision_queue:read",
+  "decision_triage:manage",
   "issue:read",
   "project:read",
   "runtime:manage",
@@ -202,6 +211,9 @@ function permissionForAction(action: AuthorizationAction): PermissionKey | null 
     action === "agent:read" ||
     action === "agent:wake" ||
     action === "company_scope:read" ||
+    action === "decision_queue:manage" ||
+    action === "decision_queue:read" ||
+    action === "decision_triage:manage" ||
     action === "issue:read" ||
     action === "project:read" ||
     action === "runtime:manage" ||
@@ -716,6 +728,33 @@ export function authorizationService(db: Db) {
     }
 
     if (action === "project:read") return restrictedMemberCanReadProject(companyId, userId, resource);
+
+    /**
+     * Decision queues and triage, scoped per item rather than at this gate.
+     *
+     * The routes only ever ask the company-level question -- assertDecisionAccess
+     * passes `{ type: "company" }`, never a queue or decision -- so there is nothing
+     * here to narrow against, and denying would close the desk even for decisions
+     * raised by the member's OWN agents.
+     *
+     * The narrowing is real, one layer down: decisionQueueService.visibleItems
+     * filters every row through canReadDecisionSource, which resolves the item to
+     * its issue and asks `issue:read` -- restricted above to visible agents and own
+     * issues. Items with no issue (join requests, unlinked approvals, budget
+     * incidents) additionally require a board actor plus `company_scope:read`,
+     * which this function refuses. So a scoped member sees their agents' proposals
+     * and nothing else.
+     *
+     * Same shape as the `issue:read` branch below: allow the general question,
+     * narrow per item. Revisit if a route ever authorizes a NAMED queue or decision.
+     */
+    if (
+      action === "decision_queue:read" ||
+      action === "decision_queue:manage" ||
+      action === "decision_triage:manage"
+    ) {
+      return true;
+    }
 
     if (action === "agent:read") {
       const agentId = resource.type === "agent" ? resource.agentId : null;
@@ -1562,6 +1601,9 @@ export function authorizationService(db: Db) {
 
     if (
       input.action === "company_scope:read" ||
+      input.action === "decision_queue:manage" ||
+      input.action === "decision_queue:read" ||
+      input.action === "decision_triage:manage" ||
       input.action === "agent_config:read" ||
       input.action === "agent_config:update" ||
       input.action === "skill_config:update" ||
@@ -1733,6 +1775,9 @@ export function authorizationService(db: Db) {
 
     if (
       input.action === "company_scope:read" ||
+      input.action === "decision_queue:manage" ||
+      input.action === "decision_queue:read" ||
+      input.action === "decision_triage:manage" ||
       input.action === "agent:read" ||
       input.action === "agent:wake" ||
       input.action === "project:read" ||
@@ -1799,6 +1844,9 @@ export function authorizationService(db: Db) {
 
     if (
       input.action === "company_scope:read" ||
+      input.action === "decision_queue:manage" ||
+      input.action === "decision_queue:read" ||
+      input.action === "decision_triage:manage" ||
       input.action === "agent:read" ||
       input.action === "agent:wake" ||
       input.action === "project:read" ||
@@ -2163,6 +2211,7 @@ export function authorizationService(db: Db) {
           if (
             input.action === "agent:read" ||
             input.action === "company_scope:read" ||
+            input.action === "decision_queue:read" ||
             input.action === "issue:read" ||
             input.action === "project:read"
           ) {
@@ -2173,7 +2222,12 @@ export function authorizationService(db: Db) {
             });
           }
           if (
-            (input.action === "issue:comment" || input.action === "issue:mutate") &&
+            (
+              input.action === "issue:comment" ||
+              input.action === "issue:mutate" ||
+              input.action === "decision_queue:manage" ||
+              input.action === "decision_triage:manage"
+            ) &&
             membership.membershipRole !== "viewer"
           ) {
             return allow({
@@ -2322,7 +2376,10 @@ export function authorizationService(db: Db) {
           // Mirroring the tasks:assign carve-out above, viewers keep the
           // read-only visibility actions but not the privileged ones.
           const requiresNonViewer =
-            input.action === "runtime:manage" || input.action === "secrets:read";
+            input.action === "runtime:manage" ||
+            input.action === "secrets:read" ||
+            input.action === "decision_queue:manage" ||
+            input.action === "decision_triage:manage";
           if (membership && (!requiresNonViewer || membership.membershipRole !== "viewer")) {
             return allow({
               action: input.action,
@@ -2400,7 +2457,7 @@ export function authorizationService(db: Db) {
       if (skillTestDecision) return skillTestDecision;
     }
 
-    if (input.actor.source === "agent_key" && input.actor.keyScope?.kind === "task_bridge") {
+    if (input.actor.keyScope?.kind === "task_bridge") {
       const keyId = input.actor.keyId ?? null;
       if (!keyId) {
         return deny({
@@ -2446,6 +2503,7 @@ export function authorizationService(db: Db) {
         input.action === "agent:read" ||
         input.action === "agent:wake" ||
         input.action === "company_scope:read" ||
+        input.action === "decision_queue:read" ||
         input.action === "issue:comment" ||
         input.action === "issue:read" ||
         input.action === "project:read" ||
@@ -2685,6 +2743,7 @@ export function authorizationService(db: Db) {
     if (
       input.action === "agent:read" ||
       input.action === "company_scope:read" ||
+      input.action === "decision_queue:read" ||
       input.action === "issue:read" ||
       input.action === "project:read" ||
       input.action === "runtime:manage" ||
@@ -2694,6 +2753,21 @@ export function authorizationService(db: Db) {
         action: input.action,
         reason: "allow_company_agent",
         explanation: "Allowed by standard same-company agent visibility.",
+      });
+    }
+
+    if (input.action === "decision_queue:manage" || input.action === "decision_triage:manage") {
+      if (!isSimpleAssignableAgentStatus(actorAgent.status)) {
+        return deny({
+          action: input.action,
+          reason: "deny_missing_membership",
+          explanation: "Actor agent is not active in the target company.",
+        });
+      }
+      return allow({
+        action: input.action,
+        reason: "allow_company_agent",
+        explanation: "Allowed for an active standard-scope company agent.",
       });
     }
 
