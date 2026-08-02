@@ -28,7 +28,21 @@ function useViewAsSelection(): ViewAsSelection {
   return selection;
 }
 
-const label = (user: ViewAsUser) => user.email ?? user.name ?? user.id;
+/**
+ * Name first — you know your colleagues by name, not by the address their
+ * account happens to use. The email trails it only to disambiguate two people
+ * with the same name, and stands alone when no name is set.
+ */
+const label = (user: ViewAsUser) => {
+  const name = user.name?.trim();
+  const email = user.email?.trim();
+  if (name && email) return `${name} · ${email}`;
+  return name || email || user.id;
+};
+
+/** What the banner says while active: the name alone, kept short. */
+const shortLabel = (user: ViewAsUser) =>
+  user.name?.trim() || user.email?.trim() || user.id;
 
 /**
  * Switch identity with a full reload rather than by invalidating queries.
@@ -85,11 +99,11 @@ export function ViewAsSwitcher() {
         value=""
         onChange={(event) => {
           const user = users.find((candidate) => candidate.id === event.target.value);
-          if (user) switchTo({ userId: user.id, label: label(user) });
+          if (user) switchTo({ userId: user.id, label: shortLabel(user) });
         }}
       >
         <option value="">Select a user…</option>
-        {users.map((user) => (
+        {[...users].sort((a, b) => label(a).localeCompare(label(b), undefined, { numeric: true })).map((user) => (
           <option key={user.id} value={user.id}>
             {label(user)}
           </option>

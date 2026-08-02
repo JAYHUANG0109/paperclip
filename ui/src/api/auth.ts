@@ -1,3 +1,4 @@
+import { getViewAs, getViewAsUserId } from "@/lib/view-as";
 import {
   authSessionSchema,
   currentUserProfileSchema,
@@ -140,6 +141,37 @@ async function authPatch<T>(path: string, body: Record<string, unknown>, parse: 
   return parse(payload);
 }
 
+/**
+ * Re-point a session at the user being viewed.
+ *
+ * `/api/auth/get-session` is better-auth's own route: it reads the session
+ * cookie and answers with the REAL account, and it never sees Paperclip's
+ * view-as header. Components derive `currentUserId` from this session to decide
+ * what counts as "mine", so without this override "view as" would scope the
+ * server's data to the target while the client still highlighted the viewer's
+ * own rows — a view that is neither person's, which is worse than either.
+ *
+ * The real identity is not hidden: the amber banner names it for as long as
+ * view-as is on, and the server independently enforces read-only.
+ */
+function applyViewAsToSession(session: AuthSession | null): AuthSession | null {
+  const viewAsUserId = getViewAsUserId();
+  if (!session || !viewAsUserId) return session;
+  const viewing = getViewAs();
+  return {
+    ...session,
+    user: session.user
+      ? {
+          ...session.user,
+          id: viewAsUserId,
+          name: viewing?.label ?? session.user.name,
+          email: viewing?.label ?? session.user.email,
+        }
+      : session.user,
+    session: session.session ? { ...session.session, userId: viewAsUserId } : session.session,
+  };
+}
+
 export const authApi = {
   getSession: async (): Promise<AuthSession | null> => {
     const res = await fetch("/api/auth/get-session", {
@@ -152,9 +184,9 @@ export const authApi = {
       throw new Error(`Failed to load session (${res.status})`);
     }
     const direct = toSession(payload);
-    if (direct) return direct;
+    if (direct) return applyViewAsToSession(direct);
     const nested = payload && typeof payload === "object" ? toSession((payload as Record<string, unknown>).data) : null;
-    return nested;
+    return applyViewAsToSession(nested);
   },
 
   signInEmail: async (input: { email: string; password: string }) => {
