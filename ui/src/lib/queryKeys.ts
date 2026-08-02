@@ -133,9 +133,9 @@ export const queryKeys = {
     search: (companyId: string, q: string, projectId?: string, limit?: number) =>
       ["issues", companyId, "search", q, projectId ?? "__all-projects__", limit ?? "__no-limit__"] as const,
     listAssignedToMe: (companyId: string) => ["issues", companyId, "assigned-to-me"] as const,
-    /** Open tasks on one agent — the sidebar's per-user "my tasks" list. */
+    /** Recent tasks one agent took part in — the sidebar's "my tasks" list. */
     listByAssignee: (companyId: string, agentId: string) =>
-      ["issues", companyId, "by-assignee", agentId] as const,
+      ["issues", companyId, "by-participant", agentId] as const,
     listMineByMe: (companyId: string) => ["issues", companyId, "mine-by-me"] as const,
     listTouchedByMe: (companyId: string) => ["issues", companyId, "touched-by-me"] as const,
     listUnreadTouchedByMe: (companyId: string) => ["issues", companyId, "unread-touched-by-me"] as const,

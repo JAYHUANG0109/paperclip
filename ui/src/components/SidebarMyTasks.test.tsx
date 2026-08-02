@@ -71,13 +71,13 @@ describe("SidebarMyTasks", () => {
   // The whole point: the list is keyed on the viewer's own agent, so two people
   // in one company see different tasks. A query that forgot the filter would
   // show everyone the same list.
-  it("asks only for tasks assigned to this user's agent", async () => {
+  it("asks only for this user's agent's tasks", async () => {
     render({ agentId: "agent-1" });
     await settle();
 
     expect(mockIssuesApi.list).toHaveBeenCalledWith(
       "company-1",
-      expect.objectContaining({ assigneeAgentId: "agent-1" }),
+      expect.objectContaining({ participantAgentId: "agent-1" }),
     );
   });
 
@@ -88,13 +88,24 @@ describe("SidebarMyTasks", () => {
     expect(container.textContent).toContain("Ship the memory page");
   });
 
-  it("requests only open work", async () => {
+  // The agent page's "Recent Tasks" uses participantAgentId with no status
+  // filter. Constraining the sidebar to open work made the two lists disagree,
+  // which reads as "these aren't my tasks".
+  it("matches the agent page: recent tasks, not just open ones", async () => {
     render({});
     await settle();
 
-    const filters = mockIssuesApi.list.mock.calls[0]![1] as { status: string };
-    expect(filters.status).not.toContain("done");
-    expect(filters.status).toContain("in_progress");
+    const filters = mockIssuesApi.list.mock.calls[0]![1] as Record<string, unknown>;
+    expect(filters.status).toBeUndefined();
+    expect(filters.participantAgentId).toBe("agent-1");
+  });
+
+  it("shows finished tasks too", async () => {
+    mockIssuesApi.list.mockResolvedValue([task({ status: "done", title: "google sheets test" })]);
+    render({});
+    await settle();
+
+    expect(container.textContent).toContain("google sheets test");
   });
 
   // An unpaired user has no "own tasks"; querying with a null agent would fall
