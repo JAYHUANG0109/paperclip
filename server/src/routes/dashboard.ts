@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentMemberships, routines as routinesTable } from "@paperclipai/db";
+import { agents, agentMemberships, routines as routinesTable } from "@paperclipai/db";
 import { dashboardService } from "../services/dashboard.js";
 import { notificationService } from "../services/notifications.js";
 import {
@@ -37,6 +37,8 @@ import { logger } from "../middleware/logger.js";
 import { buildAsanaDigestBody, getAsanaTaskComments, getAsanaTaskDetail, postAsanaComment, setAsanaTaskCompleted, setAsanaApprovalStatus, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
 import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
 import { storeAsanaTokenForAgent, storeOdooCredentialsForAgent } from "../services/agent-connections.js";
+import { readToken as readAsanaToken } from "../services/agent-asana.js";
+import { readOdooConnectionStatus } from "../services/agent-odoo.js";
 import { advanceOnboarding, dismissOnboardingForAgent, getOnboardingForAgent } from "../services/onboarding.js";
 import {
   getCalendarEventsForUser,
@@ -1171,6 +1173,33 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
     } catch (e) {
       res.status(400).json({ ok: false, error: (e as Error).message });
     }
+  });
+
+  // Connection status for the caller's own agent, powering the persistent
+  // Connections card. Returns whether Asana / Odoo are connected (a key is
+  // stored) plus non-secret identifiers to show — never the keys themselves.
+  router.get("/companies/:companyId/connections/me", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    if (!userId) {
+      res.status(403).json({ error: "Sign in to view your connections." });
+      return;
+    }
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.json({ agentLinked: false, asana: { connected: false }, odoo: { connected: false } });
+      return;
+    }
+    const row = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
+    const asana = readAsanaToken(row, companyId, agentId);
+    const odoo = readOdooConnectionStatus(row, companyId, agentId);
+    res.json({
+      agentLinked: true,
+      asana: { connected: asana !== null, defaultWorkspace: asana?.defaultWorkspace ?? null },
+      odoo: { connected: odoo.connected, login: odoo.login, url: odoo.url, db: odoo.db },
+    });
   });
 
   // User-facing Odoo connect: the human pastes their OWN Odoo login + read-only

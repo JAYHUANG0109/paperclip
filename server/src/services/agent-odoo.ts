@@ -13,6 +13,8 @@
  * authenticates on exactly one of them — hardcoding `eip` for everyone silently
  * breaks the staging users, which is how the 3 agents broke the first time.
  */
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { logger } from "../middleware/logger.js";
 
 /**
@@ -50,6 +52,41 @@ export function isValidOdooApiKey(key: string): boolean {
 export function maskOdooKey(key: string): string {
   const s = key ?? "";
   return s.length >= 8 ? `${s.slice(0, 3)}…${s.slice(-4)}` : "…";
+}
+
+/**
+ * Read-only connection status for the Connections UI — mirrors agent-asana's
+ * readToken, but NEVER returns the key (only whether one is present, plus the
+ * login/url/db so the card can show "connected as …"). Resolves the file from
+ * the agent's ODOO_CONNECTION_PATH env pointer, else the per-agent default path.
+ */
+export function readOdooConnectionStatus(
+  row: { adapterConfig?: unknown } | undefined,
+  companyId: string,
+  agentId: string,
+): { connected: boolean; login: string | null; url: string | null; db: string | null } {
+  const notConnected = { connected: false, login: null, url: null, db: null };
+  let path: string | null = null;
+  const env = (row?.adapterConfig as { env?: Record<string, unknown> } | null)?.env;
+  const ptr = env?.ODOO_CONNECTION_PATH as { value?: string } | string | undefined;
+  if (ptr && typeof ptr === "object" && typeof ptr.value === "string") path = ptr.value;
+  else if (typeof ptr === "string") path = ptr;
+  if (!path) {
+    path = `${homedir()}/.paperclip/instances/default/companies/${companyId}/agents/${agentId}/odoo-connection.json`;
+  }
+  try {
+    const cfg = JSON.parse(readFileSync(path, "utf8")) as {
+      login?: string;
+      connections?: Array<{ url?: string; db?: string; apiKey?: string }>;
+    };
+    const conns = cfg.connections ?? [];
+    const hasKey = conns.some((c) => (c.apiKey ?? "").trim().length > 0);
+    if (!hasKey) return notConnected;
+    const first = conns.find((c) => (c.apiKey ?? "").trim()) ?? conns[0];
+    return { connected: true, login: (cfg.login ?? "").trim() || null, url: first?.url ?? null, db: first?.db ?? null };
+  } catch {
+    return notConnected;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -128,6 +128,7 @@ import { ActionCard, ActionCardMobile, BindingsTable } from "@/components/action
 import { PriorityIcon } from "@/components/PriorityIcon";
 import { agentStatusDot, agentStatusDotDefault } from "@/lib/status-colors";
 import { EntityRow } from "@/components/EntityRow";
+import { ConnectionRow } from "@/components/ConnectionsCard";
 import { EmptyState } from "@/components/EmptyState";
 import { MetricCard } from "@/components/MetricCard";
 import { FilterBar, type FilterValue } from "@/components/FilterBar";
@@ -2065,6 +2066,32 @@ export function DesignGuide() {
           + <span className="font-mono">InlineBanner</span> to render the loading / setup /
           pending-approval / paused / ready states of a feature that depends on a built-in agent.
         </p>
+      </Section>
+
+      <Section title="Connections">
+        <p className="text-sm text-muted-foreground">
+          The persistent Connections card lets a user paste/update their own Asana + Odoo keys at any
+          time. <span className="font-mono">&lt;ConnectionsCard&gt;</span> fetches live status, so it is
+          data-driven; the reusable presentational piece is{" "}
+          <span className="font-mono">&lt;ConnectionRow&gt;</span> — a status dot + name + detail line with
+          an expandable paste form. Keys are write-only; a connected row shows only non-secret identifiers.
+        </p>
+        <SubSection title="States">
+          <div className="max-w-md space-y-2">
+            <ConnectionRow name="Asana" connected detail="Connected" loading={false}>
+              {() => <p className="text-xs text-muted-foreground">Paste field expands here.</p>}
+            </ConnectionRow>
+            <ConnectionRow name="Odoo" connected detail="Connected as you@seasonart.org · eip" loading={false}>
+              {() => <p className="text-xs text-muted-foreground">Login + API-key fields expand here.</p>}
+            </ConnectionRow>
+            <ConnectionRow name="Odoo" connected={false} detail="Not connected" loading={false}>
+              {() => <p className="text-xs text-muted-foreground">Login + API-key fields expand here.</p>}
+            </ConnectionRow>
+            <ConnectionRow name="Asana" connected={false} detail="Checking…" loading>
+              {() => null}
+            </ConnectionRow>
+          </div>
+        </SubSection>
       </Section>
     </div>
   );
