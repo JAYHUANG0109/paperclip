@@ -675,6 +675,21 @@ function scopeAllowsTool(scope: Record<string, unknown> | null, ctx: ToolAccessC
   return selectorMatches(scope, ctx);
 }
 
+/**
+ * Thrown when a tool call cannot be recorded because the access context is not valid —
+ * which in practice means the call was refused. Carries the refusal so callers can answer
+ * with the real HTTP status and reason code instead of a generic server error.
+ */
+export class ToolAccessContextInvalidError extends Error {
+  readonly decision: ToolAccessDecision;
+
+  constructor(decision: ToolAccessDecision) {
+    super(decision.explanation || "Tool access context is not valid for this call.");
+    this.name = "ToolAccessContextInvalidError";
+    this.decision = decision;
+  }
+}
+
 export function toolAccessPolicyService(db: Db) {
   async function listPolicies(companyId: string) {
     return db
@@ -1370,7 +1385,14 @@ export function toolAccessPolicyService(db: Db) {
 
   async function recordInvocation(input: ToolAccessDecisionInput, accessDecision: ToolAccessDecision) {
     const loaded = await loadContext(input);
-    if (!loaded.ok) throw new Error("Cannot record invocation for invalid tool access context");
+    // A refused call has no context to record against, but the refusal itself is the
+    // answer the caller needs. This used to throw a bare Error, which surfaced to agents
+    // as HTTP 500 "Cannot record invocation for invalid tool access context" — no reason
+    // code, no explanation. Agents reading that concluded the server or the plugin worker
+    // was broken and reported it as an environment failure, when the truth was a plain
+    // policy denial (`deny_default`: no tool profile grants the tool). Carry the decision
+    // so the gateway can answer with the real status and reason.
+    if (!loaded.ok) throw new ToolAccessContextInvalidError(loaded.decision);
     const { ctx, redaction } = loaded;
     const argumentsHash = redaction.summary.sha256 ?? sha256(input.request.arguments ?? {});
     const idempotencyKey = input.request.idempotencyKey

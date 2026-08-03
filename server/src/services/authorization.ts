@@ -688,14 +688,32 @@ export function authorizationService(db: Db) {
     if (action === "secrets:read") return restrictedMemberCanReadSecret(companyId, userId, resource);
 
     /**
-     * Company-wide execution control (execution-workspaces runtime services).
+     * Runtime control, scoped to the project the workspace belongs to.
      *
-     * The resource here is the company, not a specific workspace, so there is
-     * nothing to scope this to — it is "start and stop runtime for the
-     * company". The issue-monitor call site returns early for board actors, so
-     * this denial does not touch a member managing their own task.
+     * When the caller names a project this is the same question as reading it:
+     * a member who works in a project may start and stop the runtime for its
+     * workspaces, and may not touch anybody else's. That reuses the project rule
+     * rather than inventing a second notion of "your work".
+     *
+     * A caller that names no project is asking the company-wide question, which
+     * for someone scoped to their own corner is refused — there is no such thing
+     * as "all the runtime in the company" that belongs to them.
      */
-    if (action === "runtime:manage") return false;
+    if (action === "runtime:manage") {
+      if (resource.type === "project" && resource.projectId) {
+        return restrictedMemberCanReadProject(companyId, userId, resource);
+      }
+      /**
+       * An agent's own runtime. The issue-monitor path asks this, and its own
+       * check below is narrower still — only the ASSIGNEE agent or a board user
+       * gets through — so the question here is just "is this an agent in your
+       * world", which is the same visibility rule used everywhere else.
+       */
+      if (resource.type === "agent" && resource.agentId) {
+        return (await getVisibleAgentIdsForUser(companyId, userId)).has(resource.agentId);
+      }
+      return false;
+    }
 
     if (action === "project:read") return restrictedMemberCanReadProject(companyId, userId, resource);
 
@@ -2627,9 +2645,9 @@ export function authorizationService(db: Db) {
      * answer it got before. What changes is everything else: it can no longer
      * reach a credential belonging to somebody else's corner of the company.
      *
-     * `runtime:manage` stays company-wide for agents. Its resource is the company
-     * with nothing to scope on, and unlike secrets there is no binding table to
-     * consult — narrowing it needs a per-workspace resource first.
+     * `runtime:manage` is included now that the execution-workspace routes name
+     * the workspace's PROJECT instead of the bare company. An agent may control
+     * runtime in a project its user works in, and nowhere else.
      *
      * `company_scope:read` is also excluded, for a different reason again. The
      * human branch denies it outright to FORCE per-item filtering, and that
@@ -2638,7 +2656,7 @@ export function authorizationService(db: Db) {
      * so denying it could quietly empty an agent's view of its own work rather
      * than narrowing it. It belongs in this set once each consumer is checked.
      */
-    const agentScopedVisibilityActions = ["agent:read", "issue:read", "project:read", "secrets:read"] as const;
+    const agentScopedVisibilityActions = ["agent:read", "issue:read", "project:read", "secrets:read", "runtime:manage"] as const;
     if (
       restrictAgentVisibilityEnabled() &&
       (agentScopedVisibilityActions as readonly string[]).includes(input.action)
