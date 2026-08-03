@@ -22,7 +22,7 @@ import {
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
-import { fetchRuntimeAccounts } from "../services/runtime-accounts.js";
+import { fetchRuntimeAccounts, setRuntimeAccountPin } from "../services/runtime-accounts.js";
 import {
   mayViewRuntimeAccounts,
   runtimeAccountViewerReason,
@@ -326,7 +326,79 @@ export function costRoutes(
 
     const viewerReason = runtimeAccountViewerReason(viewer);
     const results = await fetchRuntimeAccounts(db, companyId);
-    res.json(results.map((result) => ({ ...result, viewerReason })));
+    res.json(results.map((result) => ({ ...result, viewerReason, canSwitch: true })));
+  });
+
+  // Pin runs to one pooled account, or clear the pin to return to automatic
+  // rotation. Same audience as reading the accounts, per the operator request:
+  // whoever can see which account is in use can also choose it. The pin is a
+  // preference, not an override — a quota-limited pin is still rotated past so
+  // agents keep working, and is resumed when its window resets.
+  router.post("/companies/:companyId/costs/runtime-accounts/pin", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const company = await companies.getById(companyId);
+    if (!company) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+
+    const isInstanceAdmin = req.actor.source === "local_implicit" || req.actor.isInstanceAdmin === true;
+    const userId = req.actor.userId ?? null;
+    const [membership, email, hasExplicitGrant] = await Promise.all([
+      userId ? access.getMembership(companyId, "user", userId) : Promise.resolve(null),
+      userId ? access.getUserEmail(userId) : Promise.resolve(null),
+      userId
+        ? access.hasPermission(companyId, "user", userId, "runtime:view_accounts")
+        : Promise.resolve(false),
+    ]);
+    const viewer = {
+      isInstanceAdmin,
+      membershipRole: membership?.membershipRole ?? null,
+      email,
+      hasExplicitGrant,
+    };
+    if (!mayViewRuntimeAccounts(viewer)) {
+      throw forbidden("Missing permission: runtime:view_accounts");
+    }
+
+    const rawDir = req.body?.dir;
+    if (rawDir != null && typeof rawDir !== "string") {
+      throw badRequest("dir must be a string path, or null to clear the pin");
+    }
+    const requested = typeof rawDir === "string" ? rawDir.trim() : "";
+
+    const outcome = await setRuntimeAccountPin(db, companyId, requested || null);
+    if (outcome.kind === "unknown_dir") {
+      throw badRequest(
+        `${requested} is not one of this company's configured Claude accounts`,
+      );
+    }
+    if (outcome.kind === "unsupported") {
+      throw badRequest("No adapter on this instance supports account pinning");
+    }
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: requested ? "runtime_account.pinned" : "runtime_account.pin_cleared",
+      entityType: "runtime_account",
+      // The pool is the entity; a cleared pin still names it.
+      entityId: requested || "pool",
+      details: {
+        dir: requested || null,
+        viewerReason: runtimeAccountViewerReason(viewer),
+        persisted: outcome.persisted,
+      },
+    });
+
+    const viewerReason = runtimeAccountViewerReason(viewer);
+    const results = await fetchRuntimeAccounts(db, companyId);
+    res.json(results.map((result) => ({ ...result, viewerReason, canSwitch: true })));
   });
 
   router.get("/companies/:companyId/budgets/overview", async (req, res) => {

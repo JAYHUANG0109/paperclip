@@ -33,6 +33,8 @@ export interface RuntimeAccountPoolEntry {
   orgName: string | null;
   /** false when the directory has no usable credentials */
   loggedIn: boolean;
+  /** true when an operator pinned runs to this account */
+  pinned: boolean;
 }
 
 /** which provider account the platform is currently running on */
@@ -50,6 +52,10 @@ export interface RuntimeAccountsResult {
   agentCount: number;
   /** why the caller was allowed to see this, for auditability */
   viewerReason: string | null;
+  /** operator-pinned credential dir, or null when rotation is fully automatic */
+  pinnedDir: string | null;
+  /** true when the caller may change the pinned account, not just see it */
+  canSwitch: boolean;
   /** set when the pool could not be described */
   error?: string | null;
 }

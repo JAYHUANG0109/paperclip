@@ -18,6 +18,7 @@ import { companyRoutes } from "./routes/companies.js";
 import { companySkillRoutes } from "./routes/company-skills.js";
 import { bountyRoutes } from "./routes/bounties.js";
 import { leaderboardService } from "./services/leaderboard.js";
+import { ensureClaudeAccountPinFileEnv } from "./services/runtime-accounts.js";
 import { progressionNotifications } from "./services/office-progression.js";
 import { summaryService } from "./services/summaries.js";
 import { asanaDigestPingService } from "./services/asana-digest-ping.js";
@@ -291,6 +292,11 @@ export async function createApp(
 ) {
   const app = express();
   app.locals.paperclipDb = db;
+
+  // Tell the Claude adapter where the operator's pinned-account file lives, before
+  // anything can run a heartbeat. The adapter treats an unset var as "no pin", so
+  // doing this later would silently ignore the pin for early runs.
+  ensureClaudeAccountPinFileEnv();
 
   // Gzip responses. Without this the server sent the ~14 MB JS bundle uncompressed,
   // which timed out on phones / slower links behind the Tailscale funnel ("load failed").

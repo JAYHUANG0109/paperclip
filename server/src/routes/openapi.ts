@@ -2985,6 +2985,18 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
+  path: "/api/companies/{companyId}/costs/runtime-accounts/pin",
+  tags: ["costs"],
+  summary: "Pin runs to one pooled provider account, or clear the pin",
+  request: {
+    params: z.object({ companyId: z.string() }),
+    body: jsonBody(z.object({ dir: z.string().nullable() })),
+  },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "post",
   path: "/api/companies/{companyId}/cost-events",
   tags: ["costs"],
   summary: "Record a cost event",

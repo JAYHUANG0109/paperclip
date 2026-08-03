@@ -20,7 +20,7 @@ export async function describeClaudeRuntimeAccounts(
   agentCount = 0,
 ): Promise<RuntimeAccountsResult> {
   const pool = mergeClaudeAccountPools(configuredPools);
-  const { activeDir, entries } = describeClaudeAccountPool(pool);
+  const { activeDir, pinnedDir, entries } = describeClaudeAccountPool(pool);
 
   const readIdentity = async (dir: string): Promise<ClaudeAccountIdentity | null> => {
     const status = await readClaudeAuthStatus(dir);
@@ -45,7 +45,9 @@ export async function describeClaudeRuntimeAccounts(
     activeResolved: activeDir != null,
     entries: resolved,
     agentCount,
-    // The route fills this in — the adapter has no view of the caller.
+    pinnedDir,
+    // The route fills these in — the adapter has no view of the caller.
     viewerReason: null,
+    canSwitch: false,
   };
 }
