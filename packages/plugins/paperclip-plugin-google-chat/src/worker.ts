@@ -11,8 +11,10 @@ import {
   mintAccessToken,
   parseServiceAccountKey
 } from "./google-auth.js";
-import { extractCardClick, extractInboundMessage, extractSpaceRef, type InboundMessage, sendMessage, splitFirstImage } from "./chat.js";
-import { rememberDmTarget, resolveDmSpace } from "./dm.js";
+import { extractCardClick, extractInboundMessage, extractSpaceRef, type InboundMessage, sendMessage, splitFirstImage,
+  listSpaceHumanMemberIds,
+} from "./chat.js";
+import { getDmTarget, rememberDmTarget, resolveDmSpace } from "./dm.js";
 import { learnSpaceFromApi, listKnownSpaces, rememberSpace, resolveSpaceName } from "./spaces.js";
 import {
   type AgentAssignment,
@@ -596,6 +598,44 @@ async function fetchAgentRecentTasks(
  * null when the agent is unpaired or the owner has never DM'd the bot (Google
  * won't let an app open a fresh DM), in which case we simply don't forward.
  */
+/**
+ * Refuse a group post unless the agent's own person is a member of the target space.
+ * Returns an error string to hand back to the agent, or null when the post may proceed.
+ */
+async function assertOwnerInSpace(
+  ctx: PluginContext,
+  config: GoogleChatConfig,
+  agentId: string,
+  companyId: string,
+  spaceName: string
+): Promise<string | null> {
+  const assignment = await getAssignmentByAgentId(ctx, agentId);
+  const email = assignment?.email?.trim().toLowerCase();
+  if (!email) {
+    return "我還沒有對應的負責人，因此無法確認你是否屬於這個群組，暫不發送。請先在 Paperclip 的 Google Chat 設定頁把這支代理人指派給某位同事。";
+  }
+  const known = await getDmTarget(ctx, email);
+  const userName = known?.userName;
+  if (!userName) {
+    return `我還無法確認 ${email} 是否在這個群組裡（Google 不會把群組成員的 email 給應用程式，我需要先認得這個人的 Chat 識別碼）。請 ${email} 先私訊 SeasonartsAI 一次，之後就能確認並發送。`;
+  }
+  let token: string;
+  try {
+    token = await getAccessToken(ctx, config);
+  } catch {
+    return "無法取得 Google Chat 憑證，暫不發送。";
+  }
+  const fetchImpl = (url: string, init?: RequestInit) => ctx.http.fetch(url, init);
+  const members = await listSpaceHumanMemberIds(fetchImpl, token, spaceName);
+  if (members === null) {
+    return "無法讀取這個群組的成員名單，因此無法確認你是否屬於這個群組，暫不發送。";
+  }
+  if (!members.includes(userName)) {
+    return `你的負責人 ${email} 不在這個群組裡，因此我不會代為發送。代理人只能發送到其負責人已加入的群組。`;
+  }
+  return null;
+}
+
 async function resolveOwnerDmTarget(
   ctx: PluginContext,
   config: GoogleChatConfig,
@@ -978,6 +1018,18 @@ const plugin = definePlugin({
               : `找不到符合「${space}」的群組空間，而且我還沒被加入任何群組。請先把 SeasonartsAI 機器人加入該群組，再試一次。`
           };
         }
+
+        // Every agent shares one bot identity, so without this check any agent could post
+        // into any room the bot happens to belong to — including rooms its own person is
+        // not in. An agent speaks for one person; it may only post where that person is
+        // already a participant.
+        //
+        // App auth can read a space roster but Google returns opaque numeric ids, never
+        // emails, so we compare against the id learned for that person from their own
+        // inbound messages (dm-space:<email>.userName). No id means we cannot prove
+        // membership, and unprovable must fail closed.
+        const membershipCheck = await assertOwnerInSpace(ctx, config, runCtx.agentId, runCtx.companyId, spaceName);
+        if (membershipCheck) return { error: membershipCheck };
         // Attribution: name the sending agent, since all agents share the one bot.
         let label = "Paperclip 助理";
         try {

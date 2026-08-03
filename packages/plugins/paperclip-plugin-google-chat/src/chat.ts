@@ -397,3 +397,46 @@ export async function getSpace(
   const body = (await res.json()) as { name?: string; displayName?: string; spaceType?: string; type?: string };
   return { name: body.name ?? spaceName, displayName: body.displayName, spaceType: body.spaceType ?? body.type };
 }
+
+/**
+ * List the HUMAN member ids of a space, as `users/{numeric id}` strings.
+ *
+ * App auth (`chat.bot`) is enough to read the roster of a space the bot belongs to, but
+ * Google does NOT return member emails to an app — only opaque numeric ids. So callers
+ * must compare against an id they already learned for the person, which the plugin keeps
+ * per email under `dm-space:<email>.userName` from inbound messages.
+ *
+ * Returns null when the roster cannot be read at all (bot removed, space gone, API error).
+ * Callers must treat null as "cannot verify" and refuse, never as "allowed".
+ */
+export async function listSpaceHumanMemberIds(
+  fetchImpl: FetchLike,
+  accessToken: string,
+  spaceName: string
+): Promise<string[] | null> {
+  const ids: string[] = [];
+  let pageToken: string | undefined;
+  // Bounded: a handful of pages is plenty for a school group, and an unbounded loop here
+  // would let one bad space stall every send.
+  for (let page = 0; page < 10; page += 1) {
+    const url = new URL(`https://chat.googleapis.com/v1/${spaceName}/members`);
+    url.searchParams.set("pageSize", "100");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const res = await fetchImpl(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      memberships?: { member?: { name?: string; type?: string } }[];
+      nextPageToken?: string;
+    };
+    for (const m of body.memberships ?? []) {
+      const name = m.member?.name;
+      if (name && m.member?.type === "HUMAN") ids.push(name);
+    }
+    pageToken = body.nextPageToken || undefined;
+    if (!pageToken) break;
+  }
+  return ids;
+}
