@@ -90,6 +90,17 @@ import { isBedrockModelId } from "./models.js";
 import { prepareClaudePromptBundle } from "./prompt-cache.js";
 import { buildClaudeExecutionPermissionArgs } from "./permissions.js";
 import { getQuotaWindowsForEnv } from "./quota.js";
+import {
+  CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS,
+  chooseClaudeAccountDirForRun,
+  claudeAccountRotationApplies,
+  isBedrockAuth,
+  markClaudeAccountCoolingDown,
+  parseClaudeAccountConfigDirs,
+  resolveClaudeBillingType,
+  resolveClaudeQuotaSwitchThreshold,
+  resetClaudeAccountRotationStateForTests,
+} from "./account-rotation.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 import {
   createClaudeAcpExecutor,
@@ -111,116 +122,17 @@ let claudeQuotaProbeInFlight: {
   task: Promise<ProviderQuotaResult>;
 } | null = null;
 let claudeHostAccountSwitchInFlight: Promise<RunProcessResult> | null = null;
-// Sticky pointer into the account-rotation pool: which credential dir the last
-// run settled on. We start each rotation probe here so we stay on one account
-// until it crosses the quota threshold, then advance — instead of re-probing
-// the whole pool every heartbeat.
-let activeClaudeAccountDir: string | null = null;
 
-// Reactive quota tracking. On this host, Claude credentials live in the macOS
-// Keychain (no per-dir token file) and there is no non-interactive `claude
-// usage` command, so the proactive CLI `/usage` scrape is unreliable (it hangs /
-// times out) — it cannot tell whether an account is over quota. Instead we learn
-// each account's state from the GROUND TRUTH: when a real run returns a
-// provider-quota / rate-limit error we mark that credential dir as cooling down
-// until its quota window resets, and rotation skips cooling accounts. Map value
-// is the epoch-ms the dir becomes usable again.
-const claudeAccountCooldownUntil = new Map<string, number>();
-const CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS = 60 * 60 * 1000; // 1h fallback when no reset time is known
-
-export function claudeAccountIsCoolingDown(dir: string, now: number): boolean {
-  const until = claudeAccountCooldownUntil.get(dir);
-  if (until == null) return false;
-  if (until <= now) {
-    claudeAccountCooldownUntil.delete(dir);
-    return false;
-  }
-  return true;
-}
-
-/** Mark a credential dir as quota-limited until `until` (epoch ms). */
-export function markClaudeAccountCoolingDown(dir: string, until: number): void {
-  const existing = claudeAccountCooldownUntil.get(dir);
-  // Keep the latest (furthest-out) reset we know about.
-  if (existing == null || until > existing) claudeAccountCooldownUntil.set(dir, until);
-}
-
-/**
- * Parse the configured account-rotation pool (`config.claudeAccountConfigDirs`)
- * into an ordered, de-duplicated list of absolute credential directories. Each
- * dir is a separately pre-authenticated Claude account (its own subscription
- * pool). Accepts newline / comma / semicolon separated paths, and expands a
- * leading `~`.
- */
-export function parseClaudeAccountConfigDirs(raw: unknown): string[] {
-  if (typeof raw !== "string") return [];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const partRaw of raw.split(/[\n,;]+/)) {
-    const part = partRaw.trim();
-    if (!part) continue;
-    const expanded = part === "~" || part.startsWith("~/") || part.startsWith("~\\")
-      ? path.join(os.homedir(), part.slice(1).replace(/^[/\\]+/, ""))
-      : part;
-    const resolved = path.resolve(expanded);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      out.push(resolved);
-    }
-  }
-  return out;
-}
-
-export interface ClaudeAccountSelection {
-  dir: string;
-  usedPercent: number | null;
-  rotated: boolean;
-  exhausted: boolean;
-}
-
-/**
- * Pick which pre-authenticated Claude account to run on, quota-aware and
- * hands-off. Starts at `activeDir` (sticky) and walks the pool, wrapping, so a
- * reset account earlier in the pool becomes reusable. Returns the first account
- * under `thresholdPercent`; if none are known-healthy it prefers an account
- * whose quota couldn't be read over a known-full one; if every account is
- * known to be at/over the threshold it sticks with the start account and marks
- * `exhausted` so the caller can warn. Pure except for the injected probe — unit
- * tested in execute.account-rotation.test.ts.
- */
-export async function selectHealthyClaudeAccountDir(input: {
-  pool: string[];
-  thresholdPercent: number;
-  activeDir: string | null;
-  probeUsedPercent: (dir: string) => Promise<number | null>;
-}): Promise<ClaudeAccountSelection | null> {
-  const { pool, thresholdPercent, activeDir, probeUsedPercent } = input;
-  if (pool.length === 0) return null;
-  const activeIdx = activeDir ? pool.indexOf(activeDir) : -1;
-  const startIdx = activeIdx >= 0 ? activeIdx : 0;
-  let firstUnknown: string | null = null;
-  for (let i = 0; i < pool.length; i++) {
-    const dir = pool[(startIdx + i) % pool.length]!;
-    let used: number | null = null;
-    try {
-      used = await probeUsedPercent(dir);
-    } catch {
-      used = null;
-    }
-    if (used == null) {
-      if (firstUnknown == null) firstUnknown = dir;
-      continue;
-    }
-    if (used < thresholdPercent) {
-      return { dir, usedPercent: used, rotated: dir !== activeDir, exhausted: false };
-    }
-  }
-  if (firstUnknown != null) {
-    return { dir: firstUnknown, usedPercent: null, rotated: firstUnknown !== activeDir, exhausted: false };
-  }
-  const stick = pool[startIdx]!;
-  return { dir: stick, usedPercent: null, rotated: false, exhausted: true };
-}
+// The rotation pool itself now lives in ./account-rotation.js so the ACP lane
+// can share one pool state with this lane. Re-exported here because callers and
+// tests have imported these from ./execute.js since before the split.
+export {
+  claudeAccountIsCoolingDown,
+  markClaudeAccountCoolingDown,
+  parseClaudeAccountConfigDirs,
+  selectHealthyClaudeAccountDir,
+  type ClaudeAccountSelection,
+} from "./account-rotation.js";
 
 const executeClaudeAcp = createClaudeAcpExecutor();
 
@@ -272,35 +184,11 @@ function buildLoginResult(input: {
   };
 }
 
-function hasNonEmptyEnvValue(env: Record<string, string>, key: string): boolean {
-  const raw = env[key];
-  return typeof raw === "string" && raw.trim().length > 0;
-}
-
-function isBedrockAuth(env: Record<string, string>): boolean {
-  return (
-    env.CLAUDE_CODE_USE_BEDROCK === "1" ||
-    env.CLAUDE_CODE_USE_BEDROCK === "true" ||
-    hasNonEmptyEnvValue(env, "ANTHROPIC_BEDROCK_BASE_URL")
-  );
-}
-
-function resolveClaudeBillingType(env: Record<string, string>): "api" | "subscription" | "metered_api" {
-  if (isBedrockAuth(env)) return "metered_api";
-  return hasNonEmptyEnvValue(env, "ANTHROPIC_API_KEY") ? "api" : "subscription";
-}
-
 function maxQuotaUsedPercent(windows: Array<{ usedPercent?: number | null }>): number | null {
   const values = windows
     .map((window) => window.usedPercent)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   return values.length > 0 ? Math.max(...values) : null;
-}
-
-function resolveClaudeQuotaSwitchThreshold(config: Record<string, unknown>): number {
-  const raw = asNumber(config.quotaSwitchThresholdPercent, 95);
-  if (!Number.isFinite(raw) || raw <= 0) return 95;
-  return Math.min(100, Math.max(1, raw));
 }
 
 function claudeHostAuthKey(env: NodeJS.ProcessEnv): string {
@@ -414,6 +302,7 @@ export function resetClaudeQuotaSwitchStateForTests(): void {
   claudeQuotaCache = null;
   claudeQuotaProbeInFlight = null;
   claudeHostAccountSwitchInFlight = null;
+  resetClaudeAccountRotationStateForTests();
 }
 
 async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<ClaudeRuntimeConfig> {
@@ -810,21 +699,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       // runner needed: we just point CLAUDE_CONFIG_DIR at the next healthy
       // account for this run.
       try {
-        const nowMs = Date.now();
-        const selection = await selectHealthyClaudeAccountDir({
-          pool: accountRotationPool,
-          thresholdPercent: quotaSwitchThresholdPercent,
-          activeDir: activeClaudeAccountDir,
-          // Reactive, not proactive: a dir counts as "over threshold" only while
-          // it is cooling down from a real provider-quota error (see the
-          // post-run handler that calls markClaudeAccountCoolingDown). This
-          // avoids the unreliable interactive `/usage` scrape entirely.
-          probeUsedPercent: async (dir) =>
-            claudeAccountIsCoolingDown(dir, nowMs) ? 100 : 0,
-        });
+        const chosen = await chooseClaudeAccountDirForRun({ config });
+        const selection = chosen?.selection ?? null;
         if (selection) {
           runClaudeConfigDir = selection.dir;
-          activeClaudeAccountDir = selection.dir;
           env.CLAUDE_CONFIG_DIR = selection.dir;
           loggedEnv = { ...loggedEnv, CLAUDE_CONFIG_DIR: selection.dir };
           if (selection.exhausted) {

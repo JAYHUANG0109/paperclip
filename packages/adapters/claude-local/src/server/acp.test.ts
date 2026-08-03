@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AdapterExecutionContext, AdapterInvocationMeta } from "@paperclipai/adapter-utils";
 import { runChildProcess } from "@paperclipai/adapter-utils/server-utils";
 import {
@@ -13,6 +13,7 @@ import {
   resolveClaudeExecutionEngineForRun,
   testClaudeAcpEnvironment,
 } from "./acp.js";
+import { resetClaudeAccountRotationStateForTests } from "./account-rotation.js";
 
 // A local stand-in for a sandbox runner: runs the managed-runtime staging
 // scripts (mkdir/tar/find) as real child processes so the remote ACP lane can
@@ -918,5 +919,110 @@ describe("resolveClaudeAcpBillingIdentity", () => {
         executionTarget: { kind: "remote", transport: "sandbox", remoteCwd: "/work" },
       } as never).billingType,
     ).toBe("subscription");
+  });
+});
+
+// The ACP lane is the DEFAULT engine, and it used to return before ever
+// reaching the rotation code in execute.ts — so `claudeAccountConfigDirs` was
+// dead config and every agent shared the one default-keychain account. These
+// cover the hook that fixes that.
+describe("claude_local ACP lane account rotation", () => {
+  const pool = "/acct/a, /acct/b, /acct/c";
+
+  beforeEach(() => {
+    resetClaudeAccountRotationStateForTests();
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.CLAUDE_CODE_USE_BEDROCK;
+    delete process.env.ANTHROPIC_BEDROCK_BASE_URL;
+    delete process.env.CLAUDE_CONFIG_DIR;
+  });
+
+  afterEach(() => {
+    resetClaudeAccountRotationStateForTests();
+  });
+
+  async function runOnce(input: {
+    config?: Record<string, unknown>;
+    events?: FakeRuntimeEvent[];
+    terminal?: FakeRuntimeTurnResult;
+  } = {}) {
+    const root = await makeTempRoot("paperclip-claude-acp-rotate-");
+    const meta: AdapterInvocationMeta[] = [];
+    const logs: string[] = [];
+    const execute = createClaudeAcpExecutor({
+      createRuntime: (options: FakeRuntimeOptions) =>
+        new FakeRuntime(options, input.events, input.terminal) as never,
+    });
+    const result = await execute(buildContext(root, {
+      config: {
+        engine: "acp",
+        cwd: root,
+        stateDir: path.join(root, "state"),
+        promptTemplate: "Do the assigned work.",
+        claudeAccountConfigDirs: pool,
+        ...input.config,
+      },
+      onLog: async (_stream: "stdout" | "stderr", chunk: string) => {
+        logs.push(chunk);
+      },
+      onMeta: async (payload: AdapterInvocationMeta) => {
+        meta.push(payload);
+      },
+    }));
+    return { result, configDir: meta[0]?.env?.CLAUDE_CONFIG_DIR, logs: logs.join("") };
+  }
+
+  it("points the run at the first pooled account", async () => {
+    const { configDir } = await runOnce();
+    expect(configDir).toBe(path.resolve("/acct/a"));
+  });
+
+  it("leaves CLAUDE_CONFIG_DIR alone when no pool is configured", async () => {
+    const { configDir } = await runOnce({ config: { claudeAccountConfigDirs: "" } });
+    expect(configDir).toBeUndefined();
+  });
+
+  it("honors an operator-pinned CLAUDE_CONFIG_DIR over the pool", async () => {
+    const { configDir } = await runOnce({ config: { env: { CLAUDE_CONFIG_DIR: "/operator/pinned" } } });
+    expect(configDir).toBe("/operator/pinned");
+  });
+
+  it("does not rotate when autoSwitchAccountOnQuota is off", async () => {
+    const { configDir } = await runOnce({ config: { autoSwitchAccountOnQuota: false } });
+    expect(configDir).toBeUndefined();
+  });
+
+  it("does not rotate for API-key billing, which has no subscription quota", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    const { configDir } = await runOnce();
+    expect(configDir).toBeUndefined();
+  });
+
+  it("cools the account down on a provider quota error and rotates the next run", async () => {
+    const quota = await runOnce({
+      events: [{
+        type: "text_delta",
+        text: "Claude usage limit reached. Your limit will reset at 3pm.",
+        stream: "output",
+        tag: "agent_message_chunk",
+      }],
+      terminal: { status: "failed", stopReason: "refusal" },
+    });
+    expect(quota.configDir).toBe(path.resolve("/acct/a"));
+    expect(quota.result.errorCode).toBe("provider_quota");
+    expect(quota.result.errorFamily).toBe("provider_quota");
+    expect(quota.logs).toContain("cooling it down");
+
+    // Next heartbeat must skip the cooling account rather than retry it.
+    const next = await runOnce();
+    expect(next.configDir).toBe(path.resolve("/acct/b"));
+    expect(next.logs).toContain("Rotated Claude account to");
+  });
+
+  it("stays on the same account across runs while it is healthy", async () => {
+    expect((await runOnce()).configDir).toBe(path.resolve("/acct/a"));
+    const second = await runOnce();
+    expect(second.configDir).toBe(path.resolve("/acct/a"));
+    expect(second.logs).not.toContain("Rotated Claude account to");
   });
 });
