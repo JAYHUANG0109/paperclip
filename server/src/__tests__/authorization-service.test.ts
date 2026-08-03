@@ -3058,6 +3058,75 @@ describeEmbeddedPostgres("authorization service", () => {
       })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
     });
 
+    /**
+     * Runtime control, scoped by the workspace's project.
+     *
+     * I had recorded this as "nothing to scope against". That was wrong: every
+     * execution-workspace call site already held the workspace row, and a
+     * workspace belongs to a project — the resource was simply under-describing
+     * what the caller knew. Same shape as the secrets bug.
+     */
+    it("lets an agent control runtime in a project its user works in", async () => {
+      const { auth, actor, company, ownAgent } = await scenario("AgentRuntimeOwn");
+      const project = await createProject(db, company.id, "runtime-own");
+      await createIssue(db, company.id, { projectId: project.id, assigneeAgentId: ownAgent.id });
+
+      await expect(auth.decide({
+        actor,
+        action: "runtime:manage",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    it("refuses runtime in a project it has nothing to do with", async () => {
+      const { auth, actor, company } = await scenario("AgentRuntimeOther");
+      const project = await createProject(db, company.id, "runtime-other");
+
+      await expect(auth.decide({
+        actor,
+        action: "runtime:manage",
+        resource: { type: "project", companyId: company.id, projectId: project.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    /**
+     * The outage this nearly caused. The issue-monitor path names the assignee
+     * agent, not a project, and its own check is narrower still — only the
+     * assignee agent passes. Answering "no" to an agent about ITSELF would have
+     * broken monitor management for every restricted member's agent.
+     */
+    it("lets an agent manage the runtime of an agent it can see", async () => {
+      const { auth, actor, company, ownAgent } = await scenario("AgentRuntimeSelf");
+
+      await expect(auth.decide({
+        actor,
+        action: "runtime:manage",
+        resource: { type: "agent", companyId: company.id, agentId: ownAgent.id },
+      })).resolves.toMatchObject({ allowed: true });
+    });
+
+    it("refuses runtime for an agent it cannot see", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentRuntimeStranger");
+
+      await expect(auth.decide({
+        actor,
+        action: "runtime:manage",
+        resource: { type: "agent", companyId: company.id, agentId: strangerAgent.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
+    // There is no such thing as "all the runtime in the company" belonging to
+    // someone scoped to their own corner.
+    it("refuses a company-wide runtime request", async () => {
+      const { auth, actor, company } = await scenario("AgentRuntimeCompany");
+
+      await expect(auth.decide({
+        actor,
+        action: "runtime:manage",
+        resource: { type: "company", companyId: company.id },
+      })).resolves.toMatchObject({ allowed: false, reason: "deny_scope" });
+    });
+
     it("changes nothing for agents when the flag is off", async () => {
       const { auth, actor, company, strangerAgent } = await scenario("AgentScopeFlagOff");
       delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;

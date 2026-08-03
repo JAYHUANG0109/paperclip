@@ -1705,10 +1705,16 @@ async function assertCanManageIssueMonitor(
 ) {
   if (!monitorChanged) return;
   if (req.actor.type === "board") return;
+  // Names the assignee agent rather than the whole company: the check below is
+  // narrower still (only the assignee agent gets through), so the useful question
+  // here is whether that agent is in the actor's world — not whether the actor
+  // may control every runtime in the company.
   const runtimeDecision = await accessSvc.decide({
     actor: req.actor,
     action: "runtime:manage",
-    resource: { type: "company", companyId },
+    resource: assigneeAgentId
+      ? { type: "agent", companyId, agentId: assigneeAgentId }
+      : { type: "company", companyId },
   });
   if (!runtimeDecision.allowed) {
     throw forbidden(runtimeDecision.explanation, authorizationDeniedDetails(runtimeDecision));

@@ -61,11 +61,31 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
     return false;
   }
 
-  async function assertRuntimeManageAllowed(req: Request, res: Response, companyId: string) {
+  /**
+   * Runtime control is scoped to the workspace's PROJECT, not the company.
+   *
+   * Every caller already holds the workspace row, and a workspace belongs to a
+   * project — so "may this actor start and stop runtime here" is answerable as
+   * "may they work in that project". Passing the bare company id instead threw
+   * that away and made the only possible answers "all workspaces" or "none",
+   * which is why a restricted member's agent could stop runtime for work it has
+   * nothing to do with.
+   *
+   * `projectId` is optional so a caller without one degrades to the old
+   * company-level question rather than silently failing closed.
+   */
+  async function assertRuntimeManageAllowed(
+    req: Request,
+    res: Response,
+    companyId: string,
+    projectId?: string | null,
+  ) {
     const decision = await access.decide({
       actor: req.actor,
       action: "runtime:manage",
-      resource: { type: "company", companyId },
+      resource: projectId
+        ? { type: "project", companyId, projectId }
+        : { type: "company", companyId },
     });
     if (decision.allowed) return true;
     res.status(403).json({ error: "Runtime service control is outside this actor's authorization boundary" });
@@ -147,7 +167,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
 
     const existing = await getAccessibleResource(req, res, svc.getById(id), "Execution workspace not found");
     if (!existing) return;
-    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId))) return;
+    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId, existing.projectId))) return;
 
     await assertCanManageExecutionWorkspaceRuntimeServices(db, req, {
       companyId: existing.companyId,
@@ -486,7 +506,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
     const existing = await getAccessibleResource(req, res, svc.getById(id), "Execution workspace not found");
     if (!existing) return;
     assertBoard(req);
-    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId))) return;
+    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId, existing.projectId))) return;
 
     const actor = getActorInfo(req);
     const result = await svc.reconcileExecutionWorkspaceBranch(id, {
@@ -574,7 +594,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
     const id = req.params.id as string;
     const existing = await getAccessibleResource(req, res, svc.getById(id), "Execution workspace not found");
     if (!existing) return;
-    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId))) return;
+    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId, existing.projectId))) return;
     assertNoAgentHostWorkspaceCommandMutation(
       req,
       collectExecutionWorkspaceCommandPaths({
