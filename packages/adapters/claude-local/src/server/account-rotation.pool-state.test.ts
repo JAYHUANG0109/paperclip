@@ -1,12 +1,16 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   chooseClaudeAccountDirForRun,
   describeClaudeAccountPool,
+  getPinnedClaudeAccountDir,
   markClaudeAccountCoolingDown,
   mergeClaudeAccountPools,
   resetClaudeAccountRotationStateForTests,
   resolveClaudeAccountIdentity,
+  setPinnedClaudeAccountDir,
   type ClaudeAccountIdentity,
 } from "./account-rotation.js";
 
@@ -64,7 +68,98 @@ describe("describeClaudeAccountPool", () => {
   });
 
   it("returns an empty pool unchanged", () => {
-    expect(describeClaudeAccountPool([])).toEqual({ activeDir: null, entries: [] });
+    expect(describeClaudeAccountPool([])).toEqual({ activeDir: null, pinnedDir: null, entries: [] });
+  });
+});
+
+// An operator pin is a PREFERENCE, not an override: preferred while healthy,
+// walked past while quota-limited so agents keep working, and resumed the moment
+// its window resets. These pin that contract.
+describe("pinned account", () => {
+  const config = { claudeAccountConfigDirs: "/acct/a, /acct/b, /acct/c" };
+  let pinFile: string;
+
+  beforeEach(() => {
+    pinFile = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-pin-")),
+      "claude-account-pin.json",
+    );
+    process.env.PAPERCLIP_CLAUDE_ACCOUNT_PIN_FILE = pinFile;
+    resetClaudeAccountRotationStateForTests();
+  });
+
+  afterEach(() => {
+    delete process.env.PAPERCLIP_CLAUDE_ACCOUNT_PIN_FILE;
+  });
+
+  it("sends runs to the pinned account instead of the pool head", async () => {
+    setPinnedClaudeAccountDir(C);
+    const chosen = await chooseClaudeAccountDirForRun({ config });
+    expect(chosen?.selection.dir).toBe(C);
+  });
+
+  it("persists the pin so it survives a restart", async () => {
+    expect(setPinnedClaudeAccountDir(B).persisted).toBe(true);
+    // Simulate a fresh process: state cleared, same pin file on disk.
+    resetClaudeAccountRotationStateForTests();
+    expect(getPinnedClaudeAccountDir()).toBe(B);
+    expect((await chooseClaudeAccountDirForRun({ config }))?.selection.dir).toBe(B);
+  });
+
+  it("walks past a quota-limited pin so agents keep working", async () => {
+    setPinnedClaudeAccountDir(B);
+    markClaudeAccountCoolingDown(B, Date.now() + 60 * 60 * 1000);
+    const chosen = await chooseClaudeAccountDirForRun({ config });
+    expect(chosen?.selection.dir).toBe(C);
+    // The pin itself is untouched — it is a preference, not a one-shot.
+    expect(getPinnedClaudeAccountDir()).toBe(B);
+  });
+
+  it("returns to the pin once its quota window resets", async () => {
+    setPinnedClaudeAccountDir(B);
+    markClaudeAccountCoolingDown(B, Date.now() + 1_000);
+    expect((await chooseClaudeAccountDirForRun({ config }))?.selection.dir).toBe(C);
+    // Cooldown expires; the walk restarts at the pin, so B is picked up again.
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect((await chooseClaudeAccountDirForRun({ config }))?.selection.dir).toBe(B);
+  });
+
+  it("clearing the pin returns to automatic rotation from the pool head", async () => {
+    setPinnedClaudeAccountDir(C);
+    expect((await chooseClaudeAccountDirForRun({ config }))?.selection.dir).toBe(C);
+    setPinnedClaudeAccountDir(null);
+    expect(getPinnedClaudeAccountDir()).toBeNull();
+    resetClaudeAccountRotationStateForTests();
+    process.env.PAPERCLIP_CLAUDE_ACCOUNT_PIN_FILE = pinFile;
+    expect((await chooseClaudeAccountDirForRun({ config }))?.selection.dir).toBe(A);
+  });
+
+  it("ignores a pin naming a dir outside the pool", async () => {
+    setPinnedClaudeAccountDir("/acct/not-in-pool");
+    const chosen = await chooseClaudeAccountDirForRun({ config });
+    expect(chosen?.selection.dir).toBe(A);
+  });
+
+  it("marks the pinned entry, and never shows a cooling pin as in use", () => {
+    setPinnedClaudeAccountDir(B);
+    let state = describeClaudeAccountPool([A, B, C]);
+    expect(state.pinnedDir).toBe(B);
+    expect(state.entries.find((e) => e.dir === B)?.pinned).toBe(true);
+    expect(state.entries.find((e) => e.dir === B)?.active).toBe(true);
+
+    markClaudeAccountCoolingDown(B, Date.now() + 60 * 60 * 1000);
+    state = describeClaudeAccountPool([A, B, C]);
+    expect(state.entries.find((e) => e.dir === B)?.pinned).toBe(true);
+    expect(state.entries.find((e) => e.dir === B)?.active).toBe(false);
+    expect(state.entries.find((e) => e.active)?.dir).toBe(A);
+  });
+
+  it("reports not-persisted when no pin file is configured", () => {
+    delete process.env.PAPERCLIP_CLAUDE_ACCOUNT_PIN_FILE;
+    resetClaudeAccountRotationStateForTests();
+    expect(setPinnedClaudeAccountDir(B).persisted).toBe(false);
+    // Still applies to this process so the operator's click is not silently lost.
+    expect(getPinnedClaudeAccountDir()).toBe(B);
   });
 });
 

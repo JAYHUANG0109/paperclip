@@ -4,6 +4,10 @@ import { cn } from "@/lib/utils";
 interface RuntimeAccountCardProps {
   result: RuntimeAccountsResult;
   loading?: boolean;
+  /** Pin runs to a dir, or null to return to automatic rotation. */
+  onPin?: (dir: string | null) => void;
+  pinPending?: boolean;
+  pinError?: string | null;
 }
 
 /** Trailing path segment — the pool entry's short name, e.g. "acct2". */
@@ -57,9 +61,16 @@ function entryState(entry: RuntimeAccountPoolEntry): {
  * card says which account the NEXT run would use rather than implying a
  * confirmed one.
  */
-export function RuntimeAccountCard({ result, loading = false }: RuntimeAccountCardProps) {
+export function RuntimeAccountCard({
+  result,
+  loading = false,
+  onPin,
+  pinPending = false,
+  pinError = null,
+}: RuntimeAccountCardProps) {
   const active = result.entries.find((entry) => entry.active) ?? null;
   const hasPool = result.entries.length > 0;
+  const canSwitch = result.canSwitch && !!onPin;
 
   return (
     <div className="border border-border px-4 py-4">
@@ -121,10 +132,35 @@ export function RuntimeAccountCard({ result, loading = false }: RuntimeAccountCa
             ) : null}
           </div>
 
-          <div className="mt-4 space-y-2">
-            <div className="text-(length:--text-micro) font-semibold uppercase tracking-(--tracking-caps) text-muted-foreground">
-              Rotation pool
+          {pinError ? (
+            <div className="mt-4 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {pinError}
             </div>
+          ) : null}
+
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-(length:--text-micro) font-semibold uppercase tracking-(--tracking-caps) text-muted-foreground">
+                Rotation pool
+              </div>
+              {canSwitch && result.pinnedDir ? (
+                <button
+                  type="button"
+                  disabled={pinPending}
+                  onClick={() => onPin?.(null)}
+                  className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  Back to automatic
+                </button>
+              ) : null}
+            </div>
+            {canSwitch ? (
+              <div className="text-xs text-muted-foreground">
+                {result.pinnedDir
+                  ? "Pinned to one account. If it runs out of quota, Paperclip rotates on and returns here when it resets."
+                  : "Rotating automatically. Choose an account to pin runs to it."}
+              </div>
+            ) : null}
             {result.entries.map((entry) => {
               const state = entryState(entry);
               return (
@@ -148,9 +184,27 @@ export function RuntimeAccountCard({ result, loading = false }: RuntimeAccountCa
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="text-xs font-medium text-foreground">{state.label}</div>
+                      <div className="flex items-center justify-end gap-2">
+                        {entry.pinned ? (
+                          <span className="border border-border px-1.5 py-0.5 text-(length:--text-nano) font-semibold uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
+                            Pinned
+                          </span>
+                        ) : null}
+                        <div className="text-xs font-medium text-foreground">{state.label}</div>
+                      </div>
                       {state.detail ? (
                         <div className="mt-0.5 text-xs text-muted-foreground">{state.detail}</div>
+                      ) : null}
+                      {canSwitch && !entry.pinned ? (
+                        <button
+                          type="button"
+                          disabled={pinPending || !entry.loggedIn}
+                          onClick={() => onPin?.(entry.dir)}
+                          title={entry.loggedIn ? undefined : "This directory has no usable credentials"}
+                          className="mt-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
+                        >
+                          Use this account
+                        </button>
                       ) : null}
                     </div>
                   </div>

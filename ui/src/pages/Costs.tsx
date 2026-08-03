@@ -384,6 +384,14 @@ export function Costs() {
     return map;
   }, [runtimeAccountsData]);
 
+  const pinRuntimeAccount = useMutation({
+    mutationFn: (dir: string | null) => costsApi.pinRuntimeAccount(companyId, dir),
+    onSuccess: (updated) => {
+      // The route returns the fresh pool, so seed the cache instead of refetching.
+      queryClient.setQueryData(queryKeys.usageRuntimeAccounts(companyId), updated);
+    },
+  });
+
   const byProvider = useMemo(() => {
     const map = new Map<string, CostByProviderModel[]>();
     for (const row of providerData ?? []) {
@@ -1045,7 +1053,17 @@ export function Costs() {
                               quotaLoading={quotaLoading}
                             />
                             {runtimeAccounts ? (
-                              <RuntimeAccountCard result={runtimeAccounts} loading={runtimeAccountsLoading} />
+                              <RuntimeAccountCard
+                                result={runtimeAccounts}
+                                loading={runtimeAccountsLoading}
+                                onPin={(dir) => pinRuntimeAccount.mutate(dir)}
+                                pinPending={pinRuntimeAccount.isPending}
+                                pinError={
+                                  pinRuntimeAccount.error instanceof Error
+                                    ? pinRuntimeAccount.error.message
+                                    : null
+                                }
+                              />
                             ) : null}
                           </div>
                         );
@@ -1072,7 +1090,17 @@ export function Costs() {
                         quotaLoading={quotaLoading}
                       />
                       {runtimeAccounts ? (
-                        <RuntimeAccountCard result={runtimeAccounts} loading={runtimeAccountsLoading} />
+                        <RuntimeAccountCard
+                          result={runtimeAccounts}
+                          loading={runtimeAccountsLoading}
+                          onPin={(dir) => pinRuntimeAccount.mutate(dir)}
+                          pinPending={pinRuntimeAccount.isPending}
+                          pinError={
+                            pinRuntimeAccount.error instanceof Error
+                              ? pinRuntimeAccount.error.message
+                              : null
+                          }
+                        />
                       ) : null}
                     </TabsContent>
                   );

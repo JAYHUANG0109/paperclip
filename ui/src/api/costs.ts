@@ -55,6 +55,12 @@ export const costsApi = {
    */
   runtimeAccounts: (companyId: string) =>
     api.get<RuntimeAccountsResult[]>(`/companies/${companyId}/costs/runtime-accounts`),
+  /** Pin runs to one pooled account, or pass null to return to automatic rotation. */
+  pinRuntimeAccount: (companyId: string, dir: string | null) =>
+    api.post<RuntimeAccountsResult[]>(
+      `/companies/${companyId}/costs/runtime-accounts/pin`,
+      { dir },
+    ),
 };
 
 function dateParamsWithLimit(from?: string, to?: string, limit?: number): string {

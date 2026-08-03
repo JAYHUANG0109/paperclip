@@ -349,6 +349,7 @@ export interface RuntimeAccountPoolEntry {
   subscriptionType: string | null;
   orgName: string | null;
   loggedIn: boolean;
+  pinned: boolean;
 }
 
 /** result for one provider from describeRuntimeAccounts() */
@@ -358,6 +359,8 @@ export interface RuntimeAccountsResult {
   entries: RuntimeAccountPoolEntry[];
   agentCount: number;
   viewerReason: string | null;
+  pinnedDir: string | null;
+  canSwitch: boolean;
   error?: string | null;
 }
 
@@ -461,6 +464,13 @@ export interface ServerAdapterModule {
   describeRuntimeAccounts?: (
     configuredPools: string[],
   ) => Promise<RuntimeAccountsResult>;
+  /**
+   * Optional: pin runs to one pooled account, or pass null to return to
+   * automatic rotation. The caller has already validated that `dir` is one of
+   * the configured pool entries. Returns whether the choice was persisted —
+   * false means it applies to this process only and will not survive a restart.
+   */
+  setRuntimeAccountPin?: (dir: string | null) => { persisted: boolean };
   /**
    * Optional: detect the currently configured model from local config files.
    * Returns the detected model/provider and the config source, or null if

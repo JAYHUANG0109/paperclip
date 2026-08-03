@@ -19,6 +19,7 @@ import {
   sessionCodec as claudeSessionCodec,
   getQuotaWindows as claudeGetQuotaWindows,
   describeClaudeRuntimeAccounts,
+  setPinnedClaudeAccountDir,
   getConfigSchema as getClaudeConfigSchema,
 } from "@paperclipai/adapter-claude-local/server";
 import {
@@ -212,6 +213,7 @@ const claudeLocalAdapter: ServerAdapterModule = {
   getConfigSchema: getClaudeConfigSchema,
   getQuotaWindows: claudeGetQuotaWindows,
   describeRuntimeAccounts: describeClaudeRuntimeAccounts,
+  setRuntimeAccountPin: setPinnedClaudeAccountDir,
 };
 
 const acpxLocalAdapter: ServerAdapterModule = {

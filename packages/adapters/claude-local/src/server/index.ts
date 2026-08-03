@@ -19,9 +19,12 @@ export {
 export {
   describeClaudeAccountPool,
   getActiveClaudeAccountDir,
+  getPinnedClaudeAccountDir,
+  hydratePinnedClaudeAccountDir,
   mergeClaudeAccountPools,
   parseClaudeAccountConfigDirs,
   resolveClaudeAccountIdentity,
+  setPinnedClaudeAccountDir,
   type ClaudeAccountIdentity,
   type ClaudeAccountPoolEntry,
 } from "./account-rotation.js";

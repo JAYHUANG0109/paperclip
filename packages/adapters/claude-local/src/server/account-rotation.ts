@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { asBoolean, asNumber } from "@paperclipai/adapter-utils/server-utils";
@@ -187,10 +188,17 @@ export async function chooseClaudeAccountDirForRun(input: {
   if (pool.length === 0) return null;
   const thresholdPercent = resolveClaudeQuotaSwitchThreshold(input.config);
   const nowMs = input.now ?? Date.now();
+  // An operator pin becomes the START of the walk rather than a hard override.
+  // That gives exactly the behavior asked for: the pinned account is preferred,
+  // a quota-limited pin is temporarily walked past so agents keep working, and
+  // because the walk restarts at the pin every run it is picked back up the
+  // moment its window resets. A pin naming a dir outside the pool is ignored.
+  const pinned = getPinnedClaudeAccountDir();
+  const startDir = pinned && pool.includes(pinned) ? pinned : activeClaudeAccountDir;
   const selection = await selectHealthyClaudeAccountDir({
     pool,
     thresholdPercent,
-    activeDir: activeClaudeAccountDir,
+    activeDir: startDir,
     probeUsedPercent: async (dir) => (claudeAccountIsCoolingDown(dir, nowMs) ? 100 : 0),
   });
   if (!selection) return null;
@@ -200,6 +208,65 @@ export async function chooseClaudeAccountDirForRun(input: {
 
 export function getActiveClaudeAccountDir(): string | null {
   return activeClaudeAccountDir;
+}
+
+/**
+ * Operator-chosen account, or null for fully automatic rotation.
+ *
+ * Persisted to a file (not the DB) because it names a HOST path — the credential
+ * directories live on the machine running Paperclip, the same scope as the file
+ * itself — and because losing it degrades safely to automatic rotation. The path
+ * comes from PAPERCLIP_CLAUDE_ACCOUNT_PIN_FILE, which the server sets at boot;
+ * with no env var there is no pin and rotation is automatic.
+ */
+let pinnedClaudeAccountDir: string | null = null;
+let pinHydrated = false;
+
+function pinFilePath(): string | null {
+  const raw = process.env.PAPERCLIP_CLAUDE_ACCOUNT_PIN_FILE;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+/** Load the pin from disk once per process, so it survives a restart. */
+export function hydratePinnedClaudeAccountDir(): string | null {
+  if (pinHydrated) return pinnedClaudeAccountDir;
+  pinHydrated = true;
+  const file = pinFilePath();
+  if (!file) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const dir = parsed.dir;
+    pinnedClaudeAccountDir = typeof dir === "string" && dir.trim() ? path.resolve(dir.trim()) : null;
+  } catch {
+    // Missing or unreadable pin file simply means "no pin".
+    pinnedClaudeAccountDir = null;
+  }
+  return pinnedClaudeAccountDir;
+}
+
+export function getPinnedClaudeAccountDir(): string | null {
+  return hydratePinnedClaudeAccountDir();
+}
+
+/**
+ * Pin runs to `dir`, or pass null to return to automatic rotation. Writing the
+ * file is best-effort: an unwritable path still changes the live pin for this
+ * process rather than failing the operator's action outright.
+ */
+export function setPinnedClaudeAccountDir(dir: string | null): { persisted: boolean } {
+  hydratePinnedClaudeAccountDir();
+  pinnedClaudeAccountDir = dir ? path.resolve(dir) : null;
+  // Move the sticky pointer too, so the change is visible before the next run.
+  if (pinnedClaudeAccountDir) activeClaudeAccountDir = pinnedClaudeAccountDir;
+  const file = pinFilePath();
+  if (!file) return { persisted: false };
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ dir: pinnedClaudeAccountDir }, null, 2), { mode: 0o600 });
+    return { persisted: true };
+  } catch {
+    return { persisted: false };
+  }
 }
 
 /** When `dir` becomes usable again, or null if it is not cooling down. */
@@ -214,6 +281,8 @@ export interface ClaudeAccountPoolEntry {
   active: boolean;
   /** ISO timestamp this account becomes usable again, or null when healthy. */
   coolingDownUntil: string | null;
+  /** True when an operator pinned runs to this account. */
+  pinned: boolean;
 }
 
 /**
@@ -228,17 +297,33 @@ export interface ClaudeAccountPoolEntry {
 export function describeClaudeAccountPool(
   pool: string[],
   now = Date.now(),
-): { activeDir: string | null; entries: ClaudeAccountPoolEntry[] } {
+): { activeDir: string | null; pinnedDir: string | null; entries: ClaudeAccountPoolEntry[] } {
   const activeDir = activeClaudeAccountDir;
-  const effectiveActive = activeDir ?? pool[0] ?? null;
+  const pinnedDir = getPinnedClaudeAccountDir();
+  // Mirror the run-time choice: a healthy pin is what the next run uses, and a
+  // cooling pin is walked past — so the card never claims a quota-limited
+  // account is the one in use.
+  const usable = (dir: string | null): string | null =>
+    dir != null && pool.includes(dir) && !claudeAccountIsCoolingDown(dir, now) ? dir : null;
+  const effectiveActive =
+    usable(pinnedDir)
+    // Only trust the sticky pointer if it is still healthy — after a quota hit it
+    // still names the account that just failed, and reporting that as "in use"
+    // would contradict what the next run will actually do.
+    ?? usable(activeDir)
+    ?? pool.find((dir) => !claudeAccountIsCoolingDown(dir, now))
+    ?? pool[0]
+    ?? null;
   return {
     activeDir,
+    pinnedDir,
     entries: pool.map((dir) => {
       const until = claudeAccountCooldownUntilMs(dir, now);
       return {
         dir,
         active: dir === effectiveActive,
         coolingDownUntil: until != null ? new Date(until).toISOString() : null,
+        pinned: dir === pinnedDir,
       };
     }),
   };
@@ -248,6 +333,8 @@ export function resetClaudeAccountRotationStateForTests(): void {
   activeClaudeAccountDir = null;
   claudeAccountCooldownUntil.clear();
   claudeAccountIdentityCache.clear();
+  pinnedClaudeAccountDir = null;
+  pinHydrated = false;
 }
 
 // `claude auth status` is a subprocess per directory (~1s each), and the answer
