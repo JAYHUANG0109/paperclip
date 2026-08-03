@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   ODOO_FALLBACK_URL,
   ODOO_OFFICIAL_URL,
@@ -9,6 +12,7 @@ import {
   maskOdooKey,
   parseAuthenticateResponse,
   probeOdoo,
+  readOdooConnectionStatus,
   resolveOdooTarget,
 } from "./agent-odoo.js";
 
@@ -103,6 +107,41 @@ describe("resolveOdooTarget", () => {
     const { target, attempts } = await resolveOdooTarget("a0000807@seasonart.org", "k".repeat(20), { fetchImpl });
     expect(target).toBeNull();
     expect(attempts).toHaveLength(4); // 2 hosts × 2 databases
+  });
+});
+
+describe("readOdooConnectionStatus", () => {
+  const dirs: string[] = [];
+  const tmpFile = (obj: unknown) => {
+    const dir = mkdtempSync(join(tmpdir(), "odoo-status-"));
+    dirs.push(dir);
+    const p = join(dir, "odoo-connection.json");
+    writeFileSync(p, JSON.stringify(obj));
+    return p;
+  };
+  const rowWith = (p: string) => ({ adapterConfig: { env: { ODOO_CONNECTION_PATH: { value: p } } } });
+  afterEach(() => {
+    while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+  });
+
+  it("reports connected with login/url/db but never the key", () => {
+    const p = tmpFile({
+      login: "jay@seasonart.org",
+      connections: [{ url: ODOO_OFFICIAL_URL, db: "eip", apiKey: "k".repeat(20) }],
+    });
+    const s = readOdooConnectionStatus(rowWith(p), "c", "a");
+    expect(s).toEqual({ connected: true, login: "jay@seasonart.org", url: ODOO_OFFICIAL_URL, db: "eip" });
+    expect(JSON.stringify(s)).not.toContain("k".repeat(20));
+  });
+
+  it("reports not-connected when the file has no key", () => {
+    const p = tmpFile({ login: "jay@seasonart.org", connections: [{ url: ODOO_OFFICIAL_URL, db: "eip", apiKey: "" }] });
+    expect(readOdooConnectionStatus(rowWith(p), "c", "a")).toMatchObject({ connected: false });
+  });
+
+  it("reports not-connected when no file exists at the pointer", () => {
+    const s = readOdooConnectionStatus(rowWith("/no/such/odoo-connection.json"), "c", "a");
+    expect(s).toEqual({ connected: false, login: null, url: null, db: null });
   });
 });
 

@@ -20,6 +20,13 @@ export interface AsanaDigestTask {
 
 export type AsanaApprovalStatus = "pending" | "approved" | "rejected" | "changes_requested";
 
+/** Connection status for the caller's own agent (persistent Connections card). */
+export interface ConnectionsStatus {
+  agentLinked: boolean;
+  asana: { connected: boolean; defaultWorkspace?: string | null };
+  odoo: { connected: boolean; login?: string | null; url?: string | null; db?: string | null };
+}
+
 export interface AsanaDigest {
   generatedAt: string | null;
   daily: AsanaDigestTask[];
@@ -205,6 +212,9 @@ export const dashboardApi = {
       `/companies/${companyId}/connections/odoo/me`,
       { login, apiKey },
     ),
+  // Persistent Connections card: is Asana / Odoo connected for the caller's agent.
+  connections: (companyId: string) =>
+    api.get<ConnectionsStatus>(`/companies/${companyId}/connections/me`),
   asanaDigest: (companyId: string) => api.get<AsanaDigest>(`/companies/${companyId}/asana-digest/me`),
   completeAsanaTask: (companyId: string, gid: string, completed: boolean) =>
     api.post<{ ok: boolean; confirmed: boolean; digest: AsanaDigest | null }>(

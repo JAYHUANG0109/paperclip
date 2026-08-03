@@ -17,6 +17,7 @@ import { MetricCard } from "../components/MetricCard";
 import { AsanaTasksSection } from "../components/AsanaTasksSection";
 import { MyScheduleSection } from "../components/MyScheduleSection";
 import { OnboardingChecklist } from "../components/OnboardingChecklist";
+import { ConnectionsCard } from "../components/ConnectionsCard";
 import { FounderDigestSection } from "../components/FounderDigestSection";
 import { TaskSummaryCard } from "../components/TaskSummaryCard";
 import { EmptyState } from "../components/EmptyState";
@@ -272,6 +273,11 @@ export function Dashboard() {
           user-facing Asana token form. Sits at the very top so a new user lands
           straight on it. */}
       <OnboardingChecklist companyId={selectedCompanyId!} />
+
+      {/* Persistent Connections card: paste/update the caller's own Asana + Odoo
+          keys at any time (not only during onboarding). Renders nothing until the
+          signed-in user has their own linked agent. */}
+      <ConnectionsCard companyId={selectedCompanyId!} />
 
       {/* Founder daily console (創辦人每日行事曆) — 4 priority blocks + founder
           status bar. Founder-only (Jay + 創辦人); renders nothing for everyone
