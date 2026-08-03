@@ -55,7 +55,7 @@ import { logActivity, type LogActivityInput } from "./activity-log.js";
 import { secretService } from "./secrets.js";
 import { mcpHttpRequestHeaders, parseMcpHttpResponseBody } from "./mcp-http.js";
 import { assertPublicRemoteHttpEndpoint, parseRemoteHttpEndpoint } from "./remote-http-endpoint-guard.js";
-import { toolAccessPolicyService } from "./tool-access-policy.js";
+import { ToolAccessContextInvalidError, toolAccessPolicyService } from "./tool-access-policy.js";
 import { issueThreadInteractionService } from "./issue-thread-interactions.js";
 import {
   createToolRuntimeSupervisor,
@@ -1813,6 +1813,32 @@ export function createToolGatewayService(
       },
       consumeRateLimit: input.consumeRateLimit === true,
     };
+  }
+
+  /**
+   * Record an invocation, converting a refused-context error into the policy refusal it
+   * actually represents. Without this, a plain denial (e.g. `deny_default` — no tool
+   * profile grants the tool) reached agents as HTTP 500 with no reason attached, and they
+   * reported it as a broken plugin worker or a missing endpoint rather than a permissions
+   * decision they could ask an operator to change.
+   */
+  async function recordInvocationOrRaisePolicyError(
+    decisionInput: Parameters<typeof policyService.recordInvocation>[0],
+    accessDecision: ToolAccessDecision,
+    toolName: string,
+  ) {
+    try {
+      return await policyService.recordInvocation(decisionInput, accessDecision);
+    } catch (error) {
+      if (!(error instanceof ToolAccessContextInvalidError)) throw error;
+      const decision = error.decision;
+      throw new ToolGatewayHttpError(
+        policyErrorStatus(decision),
+        decision.explanation,
+        decision.reasonCode,
+        { tool: toolName, decision: decision.decision, matchedPolicyIds: decision.matchedPolicyIds },
+      );
+    }
   }
 
   function policyErrorStatus(decision: ToolAccessDecision) {
@@ -4976,7 +5002,7 @@ export function createToolGatewayService(
         consumeRateLimit: true,
       });
       const accessDecision = await policyService.decide(decisionInput);
-      const recorded = await policyService.recordInvocation(decisionInput, accessDecision);
+      const recorded = await recordInvocationOrRaisePolicyError(decisionInput, accessDecision, input.toolName);
       await policyService.writeAudit(decisionInput, accessDecision);
       const invocationId = recorded.invocation.id;
 
@@ -5679,7 +5705,7 @@ export function createToolGatewayService(
           consumeRateLimit: true,
         });
         const accessDecision = await policyService.decide(decisionInput);
-        const recorded = await policyService.recordInvocation(decisionInput, accessDecision);
+        const recorded = await recordInvocationOrRaisePolicyError(decisionInput, accessDecision, input.tool);
         await policyService.writeAudit(decisionInput, accessDecision);
         invocationId = recorded.invocation.id;
         if (recorded.replayed) {
@@ -6020,7 +6046,7 @@ export function createToolGatewayService(
         consumeRateLimit: true,
       });
       const accessDecision = await policyService.decide(decisionInput);
-      const recorded = await policyService.recordInvocation(decisionInput, accessDecision);
+      const recorded = await recordInvocationOrRaisePolicyError(decisionInput, accessDecision, input.tool);
       await policyService.writeAudit(decisionInput, accessDecision);
       invocationId = recorded.invocation.id;
 
