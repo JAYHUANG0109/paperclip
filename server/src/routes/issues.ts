@@ -4,6 +4,7 @@ import multer from "multer";
 import { z } from "zod";
 import { and, asc, desc, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
+import { contentDispositionHeader } from "../http/content-disposition.js";
 import {
   activityLog,
   agents,
@@ -11152,15 +11153,7 @@ export function issueRoutes(
     const disposition = parseBooleanQuery(req.query.download)
       ? "attachment"
       : isInlineAttachmentContentType(responseContentType) ? "inline" : "attachment";
-    // HTTP headers must be ASCII, but filenames can contain non-ASCII (e.g. CJK).
-    // Provide an ASCII-only fallback plus an RFC 5987 UTF-8 encoded name; sending
-    // a raw non-ASCII filename throws ERR_INVALID_CHAR and 500s the download.
-    const asciiFallback = filename.replace(/[^\x20-\x7E]/g, "_").replaceAll("\"", "");
-    const encodedName = encodeURIComponent(filename);
-    res.setHeader(
-      "Content-Disposition",
-      `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`,
-    );
+    res.setHeader("Content-Disposition", contentDispositionHeader(disposition, filename));
 
     object.stream.on("error", (err) => {
       next(err);

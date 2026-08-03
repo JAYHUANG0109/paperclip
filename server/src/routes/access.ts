@@ -59,6 +59,7 @@ import {
   badRequest,
   tooManyRequests
 } from "../errors.js";
+import { contentDispositionHeader } from "../http/content-disposition.js";
 import {
   createInviteRateLimiter,
   type InviteRateLimiter,
@@ -3507,7 +3508,7 @@ export function accessRoutes(
       res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
     }
     const filename = logoAsset.originalFilename ?? "company-logo";
-    res.setHeader("Content-Disposition", `inline; filename=\"${filename.replaceAll("\"", "")}\"`);
+    res.setHeader("Content-Disposition", contentDispositionHeader("inline", filename));
 
     object.stream.on("error", (err) => {
       next(err);

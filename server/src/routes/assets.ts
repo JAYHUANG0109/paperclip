@@ -8,6 +8,7 @@ import type { StorageService } from "../storage/types.js";
 import { assetService, logActivity } from "../services/index.js";
 import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
 import { assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
+import { contentDispositionHeader } from "../http/content-disposition.js";
 const SVG_CONTENT_TYPE = "image/svg+xml";
 const ALLOWED_COMPANY_LOGO_CONTENT_TYPES = new Set([
   "image/png",
@@ -325,8 +326,9 @@ export function assetRoutes(db: Db, storage: StorageService) {
     if (responseContentType === SVG_CONTENT_TYPE) {
       res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
     }
-    const filename = asset.originalFilename ?? "asset";
-    res.setHeader("Content-Disposition", `inline; filename=\"${filename.replaceAll("\"", "")}\"`);
+    // A non-ASCII filename here used to throw ERR_INVALID_CHAR and 500 the
+    // response, which for an <img src> is a silently broken thumbnail.
+    res.setHeader("Content-Disposition", contentDispositionHeader("inline", asset.originalFilename));
 
     object.stream.on("error", (err) => {
       next(err);
