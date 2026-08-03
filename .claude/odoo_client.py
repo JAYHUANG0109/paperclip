@@ -17,9 +17,16 @@ Per-user auth model (mirrors asana_client.py):
         }
   - The API key acts AS that Odoo user, so Odoo enforces their real permissions.
   - Connections are tried IN ORDER: the first that authenticates wins ("主站→備援"
-    auto-switch). The official site is https://eip.seasonarts.ltd (db `eip`);
-    https://seasonart-test.aiuptop.com is the備援. Note: the db is `eip` even
-    though the hostname historically read `test-eip`.
+    auto-switch). The official site is https://eip.seasonarts.ltd;
+    https://seasonart-test.aiuptop.com is the 備援. That official host serves TWO
+    databases — `eip` (production) and `test-eip` (staging) — and a given user's
+    key authenticates on exactly one of them, so `db` is per-user, never assumed.
+    The server picks it with a live auth probe when it writes this file
+    (server/src/services/agent-odoo.ts).
+  - The API key comes from the env var ODOO_API_KEY when set (the responsible
+    user's UI-managed "My secrets" value, injected into every run) and otherwise
+    from the connection file. With ODOO_API_KEY plus ODOO_LOGIN/ODOO_URL/ODOO_DB
+    set, no connection file is needed at all.
   - NEVER hardcode a key here and NEVER use someone else's key. Keys are masked
     (last 4 chars) in every message this script prints.
 
@@ -124,9 +131,30 @@ def _resolve_config_path(explicit=None):
     return None
 
 
+def _config_from_env():
+    """A run env alone is enough when the server injected ODOO_API_KEY (the user's
+    "My secrets" value) plus the login/target it stored. Returns None if not."""
+    key = (os.environ.get("ODOO_API_KEY") or "").strip()
+    login = (os.environ.get("ODOO_LOGIN") or "").strip()
+    if not key or not login:
+        return None
+    url = (os.environ.get("ODOO_URL") or "https://eip.seasonarts.ltd").strip()
+    db = (os.environ.get("ODOO_DB") or "").strip()
+    if not db:
+        return None
+    return {
+        "login": login,
+        "readOnly": (os.environ.get("ODOO_ALLOW_WRITES") or "").strip().lower() not in ("1", "true", "yes"),
+        "connections": [{"name": "env", "url": url, "db": db, "apiKey": key}],
+    }
+
+
 def _load_config(explicit=None):
     path = _resolve_config_path(explicit)
     if not path:
+        env_cfg = _config_from_env()
+        if env_cfg:
+            return env_cfg, env_cfg["login"], env_cfg["connections"], "<env>"
         _fail("no Odoo connection file. Set ODOO_CONNECTION_PATH, or place "
               ".claude/odoo-connection.json in the workspace. Ask the user for "
               "their Odoo login + API key; do not proceed without it.", 3)
@@ -196,16 +224,18 @@ def connect(config_path=None, allow_writes=False):
     file_read_only = bool(cfg.get("readOnly", True))  # default read-only
     read_only = file_read_only and not allow_writes
     context = ssl.create_default_context()
-    # A key can live on the connection or at the top level; fall back to any
-    # non-empty key in the file so one shared key covers all connections.
-    any_key = (cfg.get("apiKey") or "").strip() or next(
+    # Key precedence: the run env (the user's UI-managed "My secrets" value, so a
+    # rotation there wins over a stale file), then the file's top-level key, then
+    # any non-empty per-connection key so one key covers all connections.
+    env_key = (os.environ.get("ODOO_API_KEY") or "").strip()
+    any_key = env_key or (cfg.get("apiKey") or "").strip() or next(
         (c.get("apiKey").strip() for c in conns if (c.get("apiKey") or "").strip()), ""
     )
     errors = []
     for c in conns:
         url = (c.get("url") or "").strip()
         db = (c.get("db") or "").strip()
-        key = (c.get("apiKey") or "").strip() or any_key
+        key = env_key or (c.get("apiKey") or "").strip() or any_key
         label = c.get("name") or url
         if not url or not db:
             errors.append(f"{label}: missing url/db"); continue

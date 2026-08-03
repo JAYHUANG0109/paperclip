@@ -1033,6 +1033,25 @@ export async function resolveExecutionRunAdapterConfig(input: {
     } catch {
       /* best-effort; the ASANA_TOKEN_PATH file remains the fallback */
     }
+    // Same treatment for Odoo: the responsible user's per-user ODOO_API_KEY
+    // becomes the run's key, so rotating it in "My secrets" takes effect on the
+    // next run without rewriting per-agent connection files. odoo_client.py
+    // prefers this env key and falls back to the key inside the connection file.
+    // Key literal mirrors ODOO_USER_SECRET_KEY in agent-odoo.ts (kept inline to
+    // avoid a hot-path import cycle).
+    try {
+      const odoo = await input.secretsSvc.resolveUserSecretValue(input.companyId, {
+        definitionKey: "ODOO_API_KEY",
+        responsibleUserId: input.responsibleUserId,
+        required: false,
+      });
+      if (odoo?.value) {
+        resolvedConfig.env = { ...parseObject(resolvedConfig.env), ODOO_API_KEY: odoo.value };
+        secretKeys.add("ODOO_API_KEY");
+      }
+    } catch {
+      /* best-effort; the ODOO_CONNECTION_PATH file remains the fallback */
+    }
   }
   // Pre-dispatch credential gate for codex_local: a managed Codex home with no
   // usable auth.json and an empty OPENAI_API_KEY would dispatch a run that

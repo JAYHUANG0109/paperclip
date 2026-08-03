@@ -36,7 +36,7 @@ import { randomUUID } from "node:crypto";
 import { logger } from "../middleware/logger.js";
 import { buildAsanaDigestBody, getAsanaTaskComments, getAsanaTaskDetail, postAsanaComment, setAsanaTaskCompleted, setAsanaApprovalStatus, resolveFounderPostTargetGid, autoPostFounderAiComments, buildFounderDigestPrep } from "../services/agent-asana.js";
 import { CONSOLE_ASANA_LAYOUT } from "../services/founder-digest-consoles.js";
-import { storeAsanaTokenForAgent } from "../services/agent-connections.js";
+import { storeAsanaTokenForAgent, storeOdooCredentialsForAgent } from "../services/agent-connections.js";
 import { advanceOnboarding, dismissOnboardingForAgent, getOnboardingForAgent } from "../services/onboarding.js";
 import {
   getCalendarEventsForUser,
@@ -1168,6 +1168,62 @@ export function dashboardRoutes(db: Db, options: { restrictVisibility?: boolean 
         await advanceOnboarding(db, { agentId: req.actor.agentId, key: "setup" });
       } catch { /* onboarding advance is best-effort */ }
       res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: (e as Error).message });
+    }
+  });
+
+  // User-facing Odoo connect: the human pastes their OWN Odoo login + read-only
+  // API key. Same canonical path as the agent-actor endpoint below — probes which
+  // database the key belongs to (eip vs test-eip), writes the connection file,
+  // wires ODOO_CONNECTION_PATH, and mirrors the per-user ODOO_API_KEY secret.
+  router.post("/companies/:companyId/connections/odoo/me", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    if (!userId) {
+      res.status(403).json({ error: "Sign in to connect your Odoo key." });
+      return;
+    }
+    const email = await emailForUserId(db, userId);
+    const agentId = await resolveOwnAgentId(db, companyId, email);
+    if (!agentId) {
+      res.status(404).json({ error: "No agent is linked to your account yet." });
+      return;
+    }
+    try {
+      const stored = await storeOdooCredentialsForAgent(db, companyId, agentId, {
+        login: typeof req.body?.login === "string" ? req.body.login : email ?? "",
+        apiKey: typeof req.body?.apiKey === "string" ? req.body.apiKey : "",
+        readOnly: req.body?.readOnly !== false,
+        url: typeof req.body?.url === "string" ? req.body.url : null,
+        db: typeof req.body?.db === "string" ? req.body.db : null,
+      });
+      res.json({ ok: true, url: stored.url, db: stored.db });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: (e as Error).message });
+    }
+  });
+
+  // The agent stores its OWN Odoo credentials here, the moment its user provides
+  // them — file + env pointer + per-user secret in one step, so onboarding can
+  // never leave a key "saved in chat" or "saved but not wired".
+  router.post("/companies/:companyId/connections/odoo", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type !== "agent" || !req.actor.agentId || req.actor.companyId !== companyId) {
+      res.status(403).json({ error: "Only the owning agent may store its Odoo key." });
+      return;
+    }
+    try {
+      const stored = await storeOdooCredentialsForAgent(db, companyId, req.actor.agentId, {
+        login: typeof req.body?.login === "string" ? req.body.login : "",
+        apiKey: typeof req.body?.apiKey === "string" ? req.body.apiKey : "",
+        readOnly: req.body?.readOnly !== false,
+        url: typeof req.body?.url === "string" ? req.body.url : null,
+        db: typeof req.body?.db === "string" ? req.body.db : null,
+      });
+      res.json({ ok: true, url: stored.url, db: stored.db });
     } catch (e) {
       res.status(400).json({ ok: false, error: (e as Error).message });
     }
