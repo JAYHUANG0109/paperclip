@@ -1025,4 +1025,62 @@ describe("claude_local ACP lane account rotation", () => {
     expect(second.configDir).toBe(path.resolve("/acct/a"));
     expect(second.logs).not.toContain("Rotated Claude account to");
   });
+
+  // The whole pool is driven by recognizing a real subscription-limit message:
+  // if the wording does not match, the account never cools down and rotation
+  // silently never fires. These pin the actual strings Claude Code emits for
+  // each limit window against the real executor + real classifier, so the link
+  // is covered without waiting for a production account to genuinely run out.
+  const REAL_QUOTA_MESSAGES: Array<[string, string]> = [
+    ["5h window", "Claude usage limit reached. Your limit will reset at 3pm (America/Los_Angeles)."],
+    ["session limit", "You've hit your session limit. Resets at 10:00 PM."],
+    ["5-hour phrasing", "5-hour limit reached ∙ resets 4am"],
+    ["weekly window", "Weekly limit reached ∙ resets Monday at 9am"],
+    ["extra usage", "You are out of extra usage. Extra usage resets at 12am."],
+  ];
+
+  for (const [label, message] of REAL_QUOTA_MESSAGES) {
+    it(`recognizes the real "${label}" limit message and rotates off that account`, async () => {
+      const hit = await runOnce({
+        events: [{ type: "text_delta", text: message, stream: "output", tag: "agent_message_chunk" }],
+        terminal: { status: "failed", stopReason: "refusal" },
+      });
+      expect(hit.configDir).toBe(path.resolve("/acct/a"));
+      expect(hit.result.errorCode).toBe("provider_quota");
+      expect((await runOnce()).configDir).toBe(path.resolve("/acct/b"));
+    });
+  }
+
+  // The counterpart guard: a transient upstream blip must NOT burn an account
+  // for an hour. 429 / rate_limit_error deliberately route to the retry
+  // classifier, not the quota pool.
+  it("does not cool an account down for a transient 429 rate-limit blip", async () => {
+    const blip = await runOnce({
+      events: [{
+        type: "text_delta",
+        text: 'API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"Number of requests has exceeded your rate limit"}}',
+        stream: "output",
+        tag: "agent_message_chunk",
+      }],
+      terminal: { status: "failed", stopReason: "refusal" },
+    });
+    expect(blip.result.errorCode).not.toBe("provider_quota");
+    // Still on the same account next run — nothing was cooled down.
+    expect((await runOnce()).configDir).toBe(path.resolve("/acct/a"));
+  });
+
+  it("carries the provider's reset time through as retryNotBefore", async () => {
+    const hit = await runOnce({
+      events: [{
+        type: "text_delta",
+        text: "Claude usage limit reached. Your limit will reset at 11pm (America/Los_Angeles).",
+        stream: "output",
+        tag: "agent_message_chunk",
+      }],
+      terminal: { status: "failed", stopReason: "refusal" },
+    });
+    expect(hit.result.errorCode).toBe("provider_quota");
+    expect(hit.result.retryNotBefore).toBeTruthy();
+    expect(new Date(hit.result.retryNotBefore!).getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
 });

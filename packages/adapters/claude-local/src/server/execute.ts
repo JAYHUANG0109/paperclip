@@ -707,49 +707,17 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           loggedEnv = { ...loggedEnv, CLAUDE_CONFIG_DIR: selection.dir };
           if (selection.exhausted) {
             // Every pooled account is cooling down from a quota error and none
-            // has reset yet. We can't silently make progress — open a browser
-            // login so a human can add/refresh a fresh account, and return a
-            // typed errorCode so the server notifies the responsible people over
-            // Google Chat. The in-flight singleton inside
-            // runHostClaudeAccountSwitch stops concurrent heartbeats from each
-            // opening their own login prompt.
+            // has reset yet. We deliberately do NOT run Claude's sign-out/sign-in
+            // flow here (it did until this was removed): `claude auth logout`
+            // destroys a working pooled credential, and on a headless runner the
+            // follow-up browser login can never complete — so the "recovery"
+            // permanently subtracted an account from the pool. Run on the stuck
+            // account instead and let the provider's own quota error surface,
+            // which re-arms its cooldown. Matches the ACP lane.
             await onLog(
               "stderr",
-              `[paperclip] All ${accountRotationPool.length} Claude accounts in the rotation pool are quota-limited; opening a browser login so a fresh account can be added.\n`,
+              `[paperclip] All ${accountRotationPool.length} Claude accounts in the rotation pool are quota-limited; running on ${selection.dir} anyway. Add or refresh an account to restore throughput.\n`,
             );
-            const switchTimeoutSec = Math.max(30, asNumber(config.quotaAccountSwitchTimeoutSec, 300));
-            const switchProc = await runHostClaudeAccountSwitch({
-              runId,
-              command,
-              cwd,
-              env,
-              timeoutSec: switchTimeoutSec,
-              graceSec,
-              onLog,
-            });
-            const switchLoginMeta = detectClaudeLoginRequired({
-              parsed: null,
-              stdout: switchProc.stdout,
-              stderr: switchProc.stderr,
-            });
-            return {
-              exitCode: switchProc.exitCode ?? 1,
-              signal: switchProc.signal,
-              timedOut: switchProc.timedOut,
-              errorCode: "claude_account_switch_required",
-              errorMessage: `All ${accountRotationPool.length} Claude accounts in the rotation pool are quota-limited; a browser login is required to add or refresh an account.`,
-              errorMeta: switchLoginMeta.loginUrl ? { loginUrl: switchLoginMeta.loginUrl } : undefined,
-              resultJson: {
-                poolExhausted: true,
-                poolSize: accountRotationPool.length,
-                quotaSwitchThresholdPercent,
-                responsibleUserEmail: asString(config.assignedUserEmail, "") || null,
-                loginUrl: switchLoginMeta.loginUrl ?? null,
-                stdout: switchProc.stdout,
-                stderr: switchProc.stderr,
-              },
-              clearSession: true,
-            };
           } else if (selection.rotated) {
             // Force a fresh session: the prior session belongs to the old account.
             accountSwitchedForQuota = true;
