@@ -1320,6 +1320,8 @@ export type {
   FieldDef,
   QuotaWindow,
   ProviderQuotaResult,
+  RuntimeAccountPoolEntry,
+  RuntimeAccountsResult,
 } from "./types/index.js";
 export {
   COMPANY_SEARCH_EXTRACT_KINDS,

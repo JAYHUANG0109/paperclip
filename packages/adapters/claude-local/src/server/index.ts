@@ -17,8 +17,19 @@ export {
   isClaudeUnknownSessionError,
 } from "./parse.js";
 export {
+  describeClaudeAccountPool,
+  getActiveClaudeAccountDir,
+  mergeClaudeAccountPools,
+  parseClaudeAccountConfigDirs,
+  resolveClaudeAccountIdentity,
+  type ClaudeAccountIdentity,
+  type ClaudeAccountPoolEntry,
+} from "./account-rotation.js";
+export { describeClaudeRuntimeAccounts } from "./runtime-accounts.js";
+export {
   getQuotaWindows,
   readClaudeAuthStatus,
+  type ClaudeAuthStatus,
   readClaudeToken,
   fetchClaudeQuota,
   fetchClaudeCliQuota,

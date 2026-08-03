@@ -8,6 +8,7 @@ import type {
   CostWindowSpendRow,
   FinanceEvent,
   QuotaWindow,
+  RuntimeAccountsResult,
 } from "@paperclipai/shared";
 import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Coins, DollarSign, ReceiptText } from "lucide-react";
 import { budgetsApi } from "../api/budgets";
@@ -23,6 +24,7 @@ import { Identity } from "../components/Identity";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { ProviderQuotaCard } from "../components/ProviderQuotaCard";
+import { RuntimeAccountCard } from "../components/RuntimeAccountCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
@@ -363,6 +365,24 @@ export function Costs() {
     refetchInterval: 300_000,
     staleTime: 60_000,
   });
+
+  // Gated to the admin tier / 資訊部 / runtime:view_accounts holders. A 403 here
+  // means "not for you", so the card is hidden rather than shown as an error —
+  // hence no retry and no error surface.
+  const { data: runtimeAccountsData, isLoading: runtimeAccountsLoading } = useQuery({
+    queryKey: queryKeys.usageRuntimeAccounts(companyId),
+    queryFn: () => costsApi.runtimeAccounts(companyId),
+    enabled: !!selectedCompanyId && mainTab === "providers",
+    refetchInterval: 300_000,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const runtimeAccountsByProvider = useMemo(() => {
+    const map = new Map<string, RuntimeAccountsResult>();
+    for (const entry of runtimeAccountsData ?? []) map.set(entry.provider, entry);
+    return map;
+  }, [runtimeAccountsData]);
 
   const byProvider = useMemo(() => {
     const map = new Map<string, CostByProviderModel[]>();
@@ -1007,43 +1027,56 @@ export function Costs() {
                     <p className="text-sm text-muted-foreground">{t("costs.noCostEventsPeriod")}</p>
                   ) : (
                     <div className="grid gap-4 md:grid-cols-2">
-                      {providers.map((provider) => (
-                        <ProviderQuotaCard
-                          key={provider}
-                          provider={provider}
-                          rows={byProvider.get(provider) ?? []}
-                          budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                          totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
-                          weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
-                          windowRows={windowSpendByProvider.get(provider) ?? []}
-                          showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
-                          quotaWindows={quotaWindowsByProvider.get(provider) ?? []}
-                          quotaError={quotaErrorsByProvider.get(provider) ?? null}
-                          quotaSource={quotaSourcesByProvider.get(provider) ?? null}
-                          quotaLoading={quotaLoading}
-                        />
-                      ))}
+                      {providers.map((provider) => {
+                        const runtimeAccounts = runtimeAccountsByProvider.get(provider) ?? null;
+                        return (
+                          <div key={provider} className="space-y-4">
+                            <ProviderQuotaCard
+                              provider={provider}
+                              rows={byProvider.get(provider) ?? []}
+                              budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
+                              totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                              weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
+                              windowRows={windowSpendByProvider.get(provider) ?? []}
+                              showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
+                              quotaWindows={quotaWindowsByProvider.get(provider) ?? []}
+                              quotaError={quotaErrorsByProvider.get(provider) ?? null}
+                              quotaSource={quotaSourcesByProvider.get(provider) ?? null}
+                              quotaLoading={quotaLoading}
+                            />
+                            {runtimeAccounts ? (
+                              <RuntimeAccountCard result={runtimeAccounts} loading={runtimeAccountsLoading} />
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </TabsContent>
 
-                {providers.map((provider) => (
-                  <TabsContent key={provider} value={provider} className="mt-4">
-                    <ProviderQuotaCard
-                      provider={provider}
-                      rows={byProvider.get(provider) ?? []}
-                      budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                      totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
-                      weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
-                      windowRows={windowSpendByProvider.get(provider) ?? []}
-                      showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
-                      quotaWindows={quotaWindowsByProvider.get(provider) ?? []}
-                      quotaError={quotaErrorsByProvider.get(provider) ?? null}
-                      quotaSource={quotaSourcesByProvider.get(provider) ?? null}
-                      quotaLoading={quotaLoading}
-                    />
-                  </TabsContent>
-                ))}
+                {providers.map((provider) => {
+                  const runtimeAccounts = runtimeAccountsByProvider.get(provider) ?? null;
+                  return (
+                    <TabsContent key={provider} value={provider} className="mt-4 space-y-4">
+                      <ProviderQuotaCard
+                        provider={provider}
+                        rows={byProvider.get(provider) ?? []}
+                        budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
+                        totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                        weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
+                        windowRows={windowSpendByProvider.get(provider) ?? []}
+                        showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
+                        quotaWindows={quotaWindowsByProvider.get(provider) ?? []}
+                        quotaError={quotaErrorsByProvider.get(provider) ?? null}
+                        quotaSource={quotaSourcesByProvider.get(provider) ?? null}
+                        quotaLoading={quotaLoading}
+                      />
+                      {runtimeAccounts ? (
+                        <RuntimeAccountCard result={runtimeAccounts} loading={runtimeAccountsLoading} />
+                      ) : null}
+                    </TabsContent>
+                  );
+                })}
               </Tabs>
             </>
           )}

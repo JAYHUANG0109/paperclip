@@ -202,7 +202,116 @@ export function getActiveClaudeAccountDir(): string | null {
   return activeClaudeAccountDir;
 }
 
+/** When `dir` becomes usable again, or null if it is not cooling down. */
+export function claudeAccountCooldownUntilMs(dir: string, now: number): number | null {
+  if (!claudeAccountIsCoolingDown(dir, now)) return null;
+  return claudeAccountCooldownUntil.get(dir) ?? null;
+}
+
+export interface ClaudeAccountPoolEntry {
+  dir: string;
+  /** True for the account the next local subscription run would use. */
+  active: boolean;
+  /** ISO timestamp this account becomes usable again, or null when healthy. */
+  coolingDownUntil: string | null;
+}
+
+/**
+ * Snapshot of the rotation pool for operator-facing surfaces.
+ *
+ * `activeDir` is null until the first local subscription run of this server
+ * process has picked an account — the sticky pointer is in-process state, not
+ * persisted, so it resets on restart and the pool starts again at its head.
+ * Callers should present a null active dir as "the next run will use the first
+ * entry", not as "no account configured".
+ */
+export function describeClaudeAccountPool(
+  pool: string[],
+  now = Date.now(),
+): { activeDir: string | null; entries: ClaudeAccountPoolEntry[] } {
+  const activeDir = activeClaudeAccountDir;
+  const effectiveActive = activeDir ?? pool[0] ?? null;
+  return {
+    activeDir,
+    entries: pool.map((dir) => {
+      const until = claudeAccountCooldownUntilMs(dir, now);
+      return {
+        dir,
+        active: dir === effectiveActive,
+        coolingDownUntil: until != null ? new Date(until).toISOString() : null,
+      };
+    }),
+  };
+}
+
 export function resetClaudeAccountRotationStateForTests(): void {
   activeClaudeAccountDir = null;
   claudeAccountCooldownUntil.clear();
+  claudeAccountIdentityCache.clear();
+}
+
+// `claude auth status` is a subprocess per directory (~1s each), and the answer
+// only changes when someone re-authenticates. Cache it so an operator refreshing
+// the Costs page does not spawn a probe per pool entry per request.
+const CLAUDE_ACCOUNT_IDENTITY_TTL_MS = 5 * 60 * 1000;
+const claudeAccountIdentityCache = new Map<
+  string,
+  { at: number; value: ClaudeAccountIdentity }
+>();
+
+export interface ClaudeAccountIdentity {
+  email: string | null;
+  subscriptionType: string | null;
+  orgName: string | null;
+  loggedIn: boolean;
+}
+
+const UNKNOWN_IDENTITY: ClaudeAccountIdentity = {
+  email: null,
+  subscriptionType: null,
+  orgName: null,
+  loggedIn: false,
+};
+
+/**
+ * Resolve which account a credential directory holds, memoized.
+ *
+ * `readIdentity` is injected so this stays unit-testable without spawning the
+ * Claude CLI; production passes the `claude auth status --json` reader.
+ */
+export async function resolveClaudeAccountIdentity(
+  dir: string,
+  readIdentity: (dir: string) => Promise<ClaudeAccountIdentity | null>,
+  now = Date.now(),
+): Promise<ClaudeAccountIdentity> {
+  const cached = claudeAccountIdentityCache.get(dir);
+  if (cached && now - cached.at < CLAUDE_ACCOUNT_IDENTITY_TTL_MS) return cached.value;
+  let value: ClaudeAccountIdentity;
+  try {
+    value = (await readIdentity(dir)) ?? UNKNOWN_IDENTITY;
+  } catch {
+    value = UNKNOWN_IDENTITY;
+  }
+  // Only a successful read is worth caching — a transient failure should not
+  // pin "logged out" for the whole TTL.
+  if (value.loggedIn) claudeAccountIdentityCache.set(dir, { at: now, value });
+  return value;
+}
+
+/**
+ * Merge the pools configured across agents into one ordered, de-duplicated
+ * pool. Agents normally share one pool string; when they disagree, every
+ * configured directory still shows up exactly once, in first-seen order.
+ */
+export function mergeClaudeAccountPools(configuredPools: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of configuredPools) {
+    for (const dir of parseClaudeAccountConfigDirs(raw)) {
+      if (seen.has(dir)) continue;
+      seen.add(dir);
+      out.push(dir);
+    }
+  }
+  return out;
 }

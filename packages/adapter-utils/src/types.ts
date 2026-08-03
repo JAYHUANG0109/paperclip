@@ -340,6 +340,27 @@ export interface ProviderQuotaResult {
   windows: QuotaWindow[];
 }
 
+/** one credential directory in an adapter's account-rotation pool */
+export interface RuntimeAccountPoolEntry {
+  dir: string;
+  active: boolean;
+  coolingDownUntil: string | null;
+  email: string | null;
+  subscriptionType: string | null;
+  orgName: string | null;
+  loggedIn: boolean;
+}
+
+/** result for one provider from describeRuntimeAccounts() */
+export interface RuntimeAccountsResult {
+  provider: string;
+  activeResolved: boolean;
+  entries: RuntimeAccountPoolEntry[];
+  agentCount: number;
+  viewerReason: string | null;
+  error?: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Adapter config schema — declarative UI config for external adapters
 // ---------------------------------------------------------------------------
@@ -430,6 +451,16 @@ export interface ServerAdapterModule {
    * without knowing provider-specific credential paths or API shapes.
    */
   getQuotaWindows?: () => Promise<ProviderQuotaResult>;
+  /**
+   * Optional: describe the credential-rotation pool this adapter is running on,
+   * so operators can answer "which provider account is the platform using right
+   * now?". Takes the configured pools (raw `claudeAccountConfigDirs`-style
+   * strings from agent configs) because the pool lives in agent config, not in
+   * the adapter. Read-only — it never switches accounts.
+   */
+  describeRuntimeAccounts?: (
+    configuredPools: string[],
+  ) => Promise<RuntimeAccountsResult>;
   /**
    * Optional: detect the currently configured model from local config files.
    * Returns the detected model/provider and the config source, or null if

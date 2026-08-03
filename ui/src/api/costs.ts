@@ -11,6 +11,7 @@ import type {
   FinanceByKind,
   FinanceEvent,
   ProviderQuotaResult,
+  RuntimeAccountsResult,
 } from "@paperclipai/shared";
 import { api } from "./client";
 
@@ -47,6 +48,13 @@ export const costsApi = {
     api.get<CostWindowSpendRow[]>(`/companies/${companyId}/costs/window-spend`),
   quotaWindows: (companyId: string) =>
     api.get<ProviderQuotaResult[]>(`/companies/${companyId}/costs/quota-windows`),
+  /**
+   * Which provider account the platform is running on. 403s for members without
+   * runtime:view_accounts — callers should treat that as "hide the card", not an
+   * error worth surfacing.
+   */
+  runtimeAccounts: (companyId: string) =>
+    api.get<RuntimeAccountsResult[]>(`/companies/${companyId}/costs/runtime-accounts`),
 };
 
 function dateParamsWithLimit(from?: string, to?: string, limit?: number): string {

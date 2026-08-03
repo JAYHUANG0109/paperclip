@@ -1,6 +1,7 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
+  authUsers,
   companyMemberships,
   instanceUserRoles,
   issues,
@@ -81,6 +82,16 @@ export function accessService(db: Db) {
       action: permissionKey,
       resource: { type: "company", companyId },
     }).then((decision) => decision.allowed);
+  }
+
+  /** The user's login email, or null when unknown. */
+  async function getUserEmail(userId: string | null | undefined): Promise<string | null> {
+    if (!userId) return null;
+    const rows = await db
+      .select({ email: authUsers.email })
+      .from(authUsers)
+      .where(eq(authUsers.id, userId));
+    return rows[0]?.email ?? null;
   }
 
   async function decide(input: {
@@ -789,6 +800,7 @@ export function accessService(db: Db) {
     canUser,
     hasPermission,
     getMembership,
+    getUserEmail,
     getMemberById,
     ensureMembership,
     listMembers,
