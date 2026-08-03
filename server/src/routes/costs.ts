@@ -22,6 +22,12 @@ import {
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
+import { fetchRuntimeAccounts } from "../services/runtime-accounts.js";
+import {
+  mayViewRuntimeAccounts,
+  runtimeAccountViewerReason,
+} from "../services/runtime-account-visibility.js";
+import { forbidden } from "../errors.js";
 import { badRequest } from "../errors.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
@@ -283,6 +289,44 @@ export function costRoutes(
     }
     const results = await fetchAllQuotaWindows();
     res.json(results);
+  });
+
+  // Which provider account the platform is running on right now. Read-only, and
+  // visible to a narrower audience than the quota windows above: the account
+  // EMAIL is personally identifying, so it is gated to the admin tier, 資訊部,
+  // and explicit runtime:view_accounts holders rather than every company member.
+  router.get("/companies/:companyId/costs/runtime-accounts", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const company = await companies.getById(companyId);
+    if (!company) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+
+    const isInstanceAdmin = req.actor.source === "local_implicit" || req.actor.isInstanceAdmin === true;
+    const userId = req.actor.userId ?? null;
+    const [membership, email, hasExplicitGrant] = await Promise.all([
+      userId ? access.getMembership(companyId, "user", userId) : Promise.resolve(null),
+      userId ? access.getUserEmail(userId) : Promise.resolve(null),
+      userId
+        ? access.hasPermission(companyId, "user", userId, "runtime:view_accounts")
+        : Promise.resolve(false),
+    ]);
+    const viewer = {
+      isInstanceAdmin,
+      membershipRole: membership?.membershipRole ?? null,
+      email,
+      hasExplicitGrant,
+    };
+    if (!mayViewRuntimeAccounts(viewer)) {
+      throw forbidden("Missing permission: runtime:view_accounts");
+    }
+
+    const viewerReason = runtimeAccountViewerReason(viewer);
+    const results = await fetchRuntimeAccounts(db, companyId);
+    res.json(results.map((result) => ({ ...result, viewerReason })));
   });
 
   router.get("/companies/:companyId/budgets/overview", async (req, res) => {

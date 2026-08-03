@@ -969,6 +969,11 @@ export const PERMISSION_KEYS = [
   "tasks:manage_active_checkouts",
   "pipelines:write",
   "joins:approve",
+  // Read-only visibility into which provider account the platform is currently
+  // running on (Claude credential-rotation pool). Separate from
+  // tools:manage_runtime so IT/ops people can see the account in use without
+  // being granted runtime control.
+  "runtime:view_accounts",
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 

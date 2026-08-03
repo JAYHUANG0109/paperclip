@@ -2971,6 +2971,18 @@ for (const segment of costSummaryPaths) {
   });
 }
 
+// Registered separately from costSummaryPaths above: unlike the cost reports,
+// this one 403s for members outside the admin tier / 資訊部 / explicit
+// runtime:view_accounts holders, because it exposes provider account emails.
+registry.registerPath({
+  method: "get",
+  path: "/api/companies/{companyId}/costs/runtime-accounts",
+  tags: ["costs"],
+  summary: "Which provider account the platform is currently running on",
+  request: { params: z.object({ companyId: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
+});
+
 registry.registerPath({
   method: "post",
   path: "/api/companies/{companyId}/cost-events",

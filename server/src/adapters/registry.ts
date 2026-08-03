@@ -18,6 +18,7 @@ import {
   testEnvironment as claudeTestEnvironment,
   sessionCodec as claudeSessionCodec,
   getQuotaWindows as claudeGetQuotaWindows,
+  describeClaudeRuntimeAccounts,
   getConfigSchema as getClaudeConfigSchema,
 } from "@paperclipai/adapter-claude-local/server";
 import {
@@ -210,6 +211,7 @@ const claudeLocalAdapter: ServerAdapterModule = {
   agentConfigurationDoc: claudeAgentConfigurationDoc,
   getConfigSchema: getClaudeConfigSchema,
   getQuotaWindows: claudeGetQuotaWindows,
+  describeRuntimeAccounts: describeClaudeRuntimeAccounts,
 };
 
 const acpxLocalAdapter: ServerAdapterModule = {

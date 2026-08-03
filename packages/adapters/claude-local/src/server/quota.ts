@@ -106,17 +106,27 @@ async function readClaudeTokenFromFile(credPath: string): Promise<string | null>
   return typeof token === "string" && token.length > 0 ? token : null;
 }
 
-interface ClaudeAuthStatus {
+export interface ClaudeAuthStatus {
   loggedIn: boolean;
   authMethod: string | null;
   subscriptionType: string | null;
+  email: string | null;
+  orgName: string | null;
 }
 
-export async function readClaudeAuthStatus(): Promise<ClaudeAuthStatus | null> {
+/**
+ * Read `claude auth status --json`, optionally for one credential directory.
+ *
+ * Claude Code namespaces its credential store per CLAUDE_CONFIG_DIR, so passing
+ * a `configDir` is what makes "which account is THIS pool entry?" answerable —
+ * each dir reports its own account. Without one this reads the host default.
+ */
+export async function readClaudeAuthStatus(configDir?: string): Promise<ClaudeAuthStatus | null> {
   try {
-    const { stdout } = await execFileAsync("claude", ["auth", "status"], {
-      env: process.env,
-      timeout: 5_000,
+    const env = configDir ? { ...process.env, CLAUDE_CONFIG_DIR: configDir } : process.env;
+    const { stdout } = await execFileAsync("claude", ["auth", "status", "--json"], {
+      env,
+      timeout: 10_000,
       maxBuffer: 1024 * 1024,
     });
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
@@ -124,6 +134,8 @@ export async function readClaudeAuthStatus(): Promise<ClaudeAuthStatus | null> {
       loggedIn: parsed.loggedIn === true,
       authMethod: typeof parsed.authMethod === "string" ? parsed.authMethod : null,
       subscriptionType: typeof parsed.subscriptionType === "string" ? parsed.subscriptionType : null,
+      email: typeof parsed.email === "string" ? parsed.email : null,
+      orgName: typeof parsed.orgName === "string" ? parsed.orgName : null,
     };
   } catch {
     return null;

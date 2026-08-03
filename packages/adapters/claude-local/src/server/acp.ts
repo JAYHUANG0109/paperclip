@@ -14,6 +14,7 @@ import {
   parseLocalProcessNetworkScope,
 } from "@paperclipai/adapter-utils/local-process-sandbox";
 import {
+  adapterExecutionTargetIsRemote,
   ensureAdapterExecutionTargetCommandResolvable,
   readAdapterExecutionTarget,
   resolveAdapterExecutionTargetCwd,
@@ -38,6 +39,14 @@ import {
   materializeRemoteClaudeConfig,
   prepareClaudeConfigSeed,
 } from "./claude-config.js";
+import {
+  CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS,
+  chooseClaudeAccountDirForRun,
+  claudeAccountRotationApplies,
+  markClaudeAccountCoolingDown,
+  resolveClaudeBillingType,
+} from "./account-rotation.js";
+import { extractClaudeRetryNotBefore, isClaudeProviderQuotaError } from "./parse.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRootDir = path.resolve(moduleDir, "../..");
@@ -280,6 +289,71 @@ function withClaudeAcpDefaults(options: ClaudeAcpExecutorOptions): AcpxEngineExe
   };
 }
 
+/** Cap on the log text we retain for post-run quota classification. */
+const ACP_QUOTA_LOG_TAIL_LIMIT = 64 * 1024;
+
+/**
+ * Point this ACP run at a pooled Claude credential dir, quota-aware.
+ *
+ * The CLI lane does this inline in `execute.ts`; the ACP lane returns long
+ * before that code, so without this hook `claudeAccountConfigDirs` is dead
+ * config for every ACP agent (which is the default engine) and every agent
+ * silently shares the one default-keychain account.
+ *
+ * We inject through `config.env` rather than mutating a process env: the acpx
+ * engine forwards adapter env to the spawned agent AND folds it into the
+ * session fingerprint, so a rotation correctly invalidates the warm session
+ * instead of resuming the previous account's conversation.
+ */
+async function applyClaudeAccountRotationToAcpConfig(
+  ctx: AdapterExecutionContext,
+  config: Record<string, unknown>,
+): Promise<string | null> {
+  const envConfig = parseObject(config.env);
+  const effectiveEnv: Record<string, string> = {};
+  for (const [key, value] of Object.entries({ ...process.env, ...envConfig })) {
+    if (typeof value === "string") effectiveEnv[key] = value;
+  }
+  // An operator who pinned CLAUDE_CONFIG_DIR by hand outranks the pool.
+  if (typeof effectiveEnv.CLAUDE_CONFIG_DIR === "string" && effectiveEnv.CLAUDE_CONFIG_DIR.trim()) {
+    return null;
+  }
+  const executionTarget = readAdapterExecutionTarget({
+    executionTarget: ctx.executionTarget,
+    legacyRemoteExecution: ctx.executionTransport?.remoteExecution,
+  });
+  if (
+    !claudeAccountRotationApplies({
+      config,
+      executionTargetIsRemote: adapterExecutionTargetIsRemote(executionTarget),
+      billingType: resolveClaudeBillingType(effectiveEnv),
+    })
+  ) {
+    return null;
+  }
+  const chosen = await chooseClaudeAccountDirForRun({ config });
+  if (!chosen) return null;
+  const { selection, pool } = chosen;
+  config.env = { ...envConfig, CLAUDE_CONFIG_DIR: selection.dir };
+  if (selection.rotated) {
+    await ctx.onLog(
+      "stdout",
+      `[paperclip] Rotated Claude account to ${selection.dir} because the prior account is quota-limited. Starting this heartbeat with a fresh session.\n`,
+    );
+  }
+  if (selection.exhausted) {
+    // Unlike the CLI lane we do NOT run `claude auth logout` + `auth login`
+    // here: on a headless runner that flow cannot complete and it destroys a
+    // working pooled credential. Run against the stuck account instead and let
+    // the provider's own quota error surface (and re-arm the cooldown).
+    await ctx.onLog(
+      "stderr",
+      `[paperclip] All ${pool.length} Claude accounts in the rotation pool are quota-limited; running on ${selection.dir} anyway. Add or refresh an account to restore throughput.\n`,
+    );
+  }
+  return selection.dir;
+}
+
 export function createClaudeAcpExecutor(options: ClaudeAcpExecutorOptions = {}): ClaudeAcpExecutor {
   let executor: ClaudeAcpExecutor | null = null;
   return async (ctx) => {
@@ -289,10 +363,51 @@ export function createClaudeAcpExecutor(options: ClaudeAcpExecutorOptions = {}):
       currentExecutor = createAcpxEngineExecutor(withClaudeAcpDefaults(options));
       executor = currentExecutor;
     }
-    return currentExecutor({
-      ...ctx,
-      config: buildClaudeAcpConfig(ctx.config),
-    });
+    const config = buildClaudeAcpConfig(ctx.config);
+    const runClaudeConfigDir = await applyClaudeAccountRotationToAcpConfig(ctx, config);
+
+    // The ACP result carries no stdout/stderr, and the acpx engine classifies
+    // turn failures generically (acpx_turn_failed), so a provider quota error
+    // is only visible in the message text. Tee the log stream to recognize it
+    // and cool the account down — the pool is driven entirely by these marks.
+    let logTail = "";
+    const teedCtx: AdapterExecutionContext = runClaudeConfigDir
+      ? {
+          ...ctx,
+          onLog: async (stream, chunk) => {
+            logTail = `${logTail}${chunk}`.slice(-ACP_QUOTA_LOG_TAIL_LIMIT);
+            await ctx.onLog(stream, chunk);
+          },
+        }
+      : ctx;
+
+    const result = await currentExecutor({ ...teedCtx, config });
+    if (runClaudeConfigDir) {
+      const quotaInput = { parsed: null, stdout: logTail, stderr: "", errorMessage: result.errorMessage ?? null };
+      if (isClaudeProviderQuotaError(quotaInput)) {
+        const retryNotBefore = extractClaudeRetryNotBefore(quotaInput);
+        markClaudeAccountCoolingDown(
+          runClaudeConfigDir,
+          retryNotBefore ? retryNotBefore.getTime() : Date.now() + CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS,
+        );
+        await ctx.onLog(
+          "stderr",
+          `[paperclip] Claude account ${runClaudeConfigDir} hit its quota; cooling it down so the next heartbeat rotates to another pooled account.\n`,
+        );
+        // Overrides the engine's generic `acpx_turn_failed`: the server routes
+        // quota failures (backoff, notifications) off this code, so the
+        // specific classification has to win over the generic one.
+        return {
+          ...result,
+          errorCode: "provider_quota",
+          errorFamily: "provider_quota",
+          ...(retryNotBefore && !result.retryNotBefore
+            ? { retryNotBefore: retryNotBefore.toISOString() }
+            : {}),
+        };
+      }
+    }
+    return result;
   };
 }
 

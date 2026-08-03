@@ -35,6 +35,8 @@ export type {
   ServerAdapterModule,
   QuotaWindow,
   ProviderQuotaResult,
+  RuntimeAccountPoolEntry,
+  RuntimeAccountsResult,
   TranscriptEntry,
   StdoutLineParser,
   CLIAdapterModule,

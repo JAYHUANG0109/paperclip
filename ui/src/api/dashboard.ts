@@ -197,6 +197,14 @@ export const dashboardApi = {
   // User-facing Asana connect (關卡 1): store the caller's own Personal Access Token.
   connectAsana: (companyId: string, token: string) =>
     api.post<{ ok: boolean; error?: string }>(`/companies/${companyId}/connections/asana/me`, { token }),
+  // User-facing Odoo connect: store the caller's own login + read-only API key.
+  // The server probes which database the key belongs to (eip vs test-eip) and
+  // echoes back where it landed.
+  connectOdoo: (companyId: string, login: string, apiKey: string) =>
+    api.post<{ ok: boolean; url?: string; db?: string; error?: string }>(
+      `/companies/${companyId}/connections/odoo/me`,
+      { login, apiKey },
+    ),
   asanaDigest: (companyId: string) => api.get<AsanaDigest>(`/companies/${companyId}/asana-digest/me`),
   completeAsanaTask: (companyId: string, gid: string, completed: boolean) =>
     api.post<{ ok: boolean; confirmed: boolean; digest: AsanaDigest | null }>(
