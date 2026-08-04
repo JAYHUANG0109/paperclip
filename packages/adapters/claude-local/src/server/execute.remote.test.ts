@@ -418,6 +418,10 @@ describe("claude remote execution", () => {
         taskKey: null,
       },
       config: {
+        // Pinned: with no engine the adapter auto-selects ACP, whose executor is not
+        // mocked in this file, so it tries to start a real ACP session and never returns.
+        // These cases are about the CLI lane's rotation and quota behaviour.
+        engine: "cli",
         command: "claude",
         cwd: workspaceDir,
         accountConfigDirs: [
@@ -510,6 +514,10 @@ describe("claude remote execution", () => {
         taskKey: null,
       },
       config: {
+        // Pinned: with no engine the adapter auto-selects ACP, whose executor is not
+        // mocked in this file, so it tries to start a real ACP session and never returns.
+        // These cases are about the CLI lane's rotation and quota behaviour.
+        engine: "cli",
         command: "claude",
         cwd: workspaceDir,
         quotaSwitchThresholdPercent: 95,
@@ -616,6 +624,10 @@ describe("claude remote execution", () => {
         taskKey: null,
       },
       config: {
+        // Pinned: with no engine the adapter auto-selects ACP, whose executor is not
+        // mocked in this file, so it tries to start a real ACP session and never returns.
+        // These cases are about the CLI lane's rotation and quota behaviour.
+        engine: "cli",
         command: "claude",
         cwd: workspaceDir,
         quotaSwitchThresholdPercent: 95,

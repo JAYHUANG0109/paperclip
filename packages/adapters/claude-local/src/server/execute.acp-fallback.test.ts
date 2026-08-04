@@ -6,6 +6,7 @@ const {
   executeClaudeAcp,
   resolveAdapterExecutionTargetCommandForLogs,
   runAdapterExecutionTargetProcess,
+  getQuotaWindowsForEnv,
 } = vi.hoisted(() => ({
   ensureAdapterExecutionTargetCommandResolvable: vi.fn(async () => undefined),
   ensureAdapterExecutionTargetRuntimeCommandInstalled: vi.fn(async () => undefined),
@@ -13,6 +14,12 @@ const {
     throw new Error('Transform failed with 1 error: execute.ts:818:0: ERROR: Unexpected "<<"');
   }),
   resolveAdapterExecutionTargetCommandForLogs: vi.fn(async () => "claude"),
+  getQuotaWindowsForEnv: vi.fn(async () => ({
+    provider: "anthropic",
+    source: "test",
+    ok: true,
+    windows: [{ label: "Current session", usedPercent: 10, resetsAt: null, valueLabel: null, detail: null }],
+  })),
   runAdapterExecutionTargetProcess: vi.fn(async () => ({
     exitCode: 0,
     signal: null,
@@ -36,6 +43,15 @@ const {
     startedAt: new Date().toISOString(),
   })),
 }));
+
+vi.mock("./quota.js", async () => {
+  const actual = await vi.importActual<typeof import("./quota.js")>("./quota.js");
+  // Left unmocked, the CLI lane runs the REAL probe, which shells out to `claude`
+  // with a 25s budget (captureClaudeCliUsageText). The test blew its own 5s timeout
+  // while that subprocess was still running, so the failure read as a hang in the
+  // ACP fallback path — it was not; the fallback works.
+  return { ...actual, getQuotaWindowsForEnv };
+});
 
 vi.mock("./acp.js", () => ({
   createClaudeAcpExecutor: () => executeClaudeAcp,
