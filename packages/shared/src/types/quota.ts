@@ -35,6 +35,12 @@ export interface RuntimeAccountPoolEntry {
   loggedIn: boolean;
   /** true when an operator pinned runs to this account */
   pinned: boolean;
+  /**
+   * Provider-reported usage windows for THIS account (5h, 7d, per-model), or null
+   * when they could not be read — logged out, token expired, no keychain access, or
+   * the provider's usage endpoint moved. Null means "unknown", never "0% used".
+   */
+  quotaWindows: QuotaWindow[] | null;
 }
 
 /** which provider account the platform is currently running on */

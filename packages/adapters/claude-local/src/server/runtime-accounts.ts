@@ -5,7 +5,7 @@ import {
   resolveClaudeAccountIdentity,
   type ClaudeAccountIdentity,
 } from "./account-rotation.js";
-import { readClaudeAuthStatus } from "./quota.js";
+import { fetchClaudeQuotaForConfigDir, readClaudeAuthStatus } from "./quota.js";
 
 /**
  * Read-only answer to "which Claude account is Paperclip running on right now?".
@@ -35,8 +35,14 @@ export async function describeClaudeRuntimeAccounts(
 
   const resolved = await Promise.all(
     entries.map(async (entry) => {
-      const identity = await resolveClaudeAccountIdentity(entry.dir, readIdentity);
-      return { ...entry, ...identity };
+      // Identity and usage are independent: an account can report who it is but fail
+      // to report usage (expired token, endpoint moved), and that must not blank out
+      // the row. Fetched together so one slow account does not serialize the others.
+      const [identity, quotaWindows] = await Promise.all([
+        resolveClaudeAccountIdentity(entry.dir, readIdentity),
+        fetchClaudeQuotaForConfigDir(entry.dir),
+      ]);
+      return { ...entry, ...identity, quotaWindows };
     }),
   );
 

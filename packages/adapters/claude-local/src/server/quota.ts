@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -149,13 +150,71 @@ function describeClaudeSubscriptionAuth(status: ClaudeAuthStatus | null): string
     : "Claude is logged in via claude.ai";
 }
 
-export async function readClaudeToken(): Promise<string | null> {
-  const configDir = claudeConfigDir();
+/**
+ * Keychain service name Claude Code stores a config dir's credentials under.
+ *
+ * On macOS the credentials are NOT in the config directory — there is no
+ * `.credentials.json` on a keychain-backed host — they are a generic-password item
+ * named `Claude Code-credentials-<first 8 hex of sha256(configDir)>`. Verified
+ * against this host: ~/.claude → e958dcbf, ~/.claude-accounts/acct2 → 4427fe70,
+ * ~/.claude-accounts/acct3 → e6ff66e9, matching the items in the login keychain.
+ *
+ * The unsuffixed `Claude Code-credentials` also exists on older installs, so the
+ * caller falls back to it for the default dir only.
+ */
+function keychainServiceForConfigDir(configDir: string): string {
+  const digest = crypto.createHash("sha256").update(configDir).digest("hex").slice(0, 8);
+  return `Claude Code-credentials-${digest}`;
+}
+
+/** Pull an access token out of a keychain item, or null when unreadable. */
+async function readClaudeTokenFromKeychain(service: string): Promise<string | null> {
+  try {
+    // Shelling out to /usr/bin/security is deliberate: the keychain item's ACL is
+    // granted to that binary, so this succeeds without a GUI prompt. A native
+    // keychain binding would be a different caller and would prompt — which in a
+    // launchd service means hanging forever.
+    const { stdout } = await execFileAsync(
+      "/usr/bin/security",
+      ["find-generic-password", "-s", service, "-w"],
+      { timeout: 8_000, maxBuffer: 1024 * 64 },
+    );
+    const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>;
+    const oauth = parsed["claudeAiOauth"];
+    const holder = (typeof oauth === "object" && oauth !== null ? oauth : parsed) as Record<string, unknown>;
+    const expiresAt = holder["expiresAt"];
+    // An expired token would just earn a 401; report "unknown" instead of noise.
+    if (typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt <= Date.now()) return null;
+    const token = holder["accessToken"];
+    return typeof token === "string" && token.length > 0 ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Access token for one credential directory, or null when it cannot be read.
+ *
+ * Files first because they need no subprocess; keychain second because that is
+ * where a normally-provisioned macOS host actually keeps them.
+ */
+export async function readClaudeTokenForConfigDir(configDir: string): Promise<string | null> {
   for (const filename of [".credentials.json", "credentials.json"]) {
     const token = await readClaudeTokenFromFile(path.join(configDir, filename));
     if (token) return token;
   }
+  const fromKeychain = await readClaudeTokenFromKeychain(keychainServiceForConfigDir(configDir));
+  if (fromKeychain) return fromKeychain;
+  // Legacy single-account installs kept an unsuffixed item; only the host default
+  // dir could plausibly own it, so do not offer it to pooled dirs.
+  if (path.resolve(configDir) === path.resolve(claudeConfigDir())) {
+    return readClaudeTokenFromKeychain("Claude Code-credentials");
+  }
   return null;
+}
+
+export async function readClaudeToken(): Promise<string | null> {
+  return readClaudeTokenForConfigDir(claudeConfigDir());
 }
 
 interface AnthropicUsageWindow {
@@ -557,4 +616,47 @@ export async function getQuotaWindowsForEnv(env: NodeJS.ProcessEnv): Promise<Pro
     error: errors[0] ?? "no local claude auth token",
     windows: [],
   };
+}
+
+/**
+ * Per-config-dir usage windows, cached briefly.
+ *
+ * The Costs page polls, and each miss costs a keychain read plus a round trip to
+ * Anthropic, so results are held for CLAUDE_QUOTA_CACHE_MS. Failures are cached too
+ * (as null) so a logged-out or rate-limited account does not get retried on every
+ * page render.
+ */
+const CLAUDE_QUOTA_CACHE_MS = 60_000;
+const quotaByConfigDir = new Map<string, { at: number; windows: QuotaWindow[] | null }>();
+
+/**
+ * Usage windows for one credential directory, or null when they cannot be read.
+ *
+ * Null is the normal answer in several ordinary situations — the dir is logged out,
+ * its token expired, the host has no keychain access, or Anthropic changed the
+ * endpoint. Callers must render "no data" rather than treating null as zero usage:
+ * `/api/oauth/usage` is not a published API and will eventually move.
+ */
+export async function fetchClaudeQuotaForConfigDir(configDir: string): Promise<QuotaWindow[] | null> {
+  const key = path.resolve(configDir);
+  const cached = quotaByConfigDir.get(key);
+  if (cached && Date.now() - cached.at < CLAUDE_QUOTA_CACHE_MS) return cached.windows;
+
+  let windows: QuotaWindow[] | null = null;
+  try {
+    const token = await readClaudeTokenForConfigDir(key);
+    if (token) {
+      const fetched = await fetchClaudeQuota(token);
+      windows = fetched.length > 0 ? fetched : null;
+    }
+  } catch {
+    windows = null;
+  }
+  quotaByConfigDir.set(key, { at: Date.now(), windows });
+  return windows;
+}
+
+/** Test seam: drop the usage cache so a test can observe a fresh read. */
+export function resetClaudeQuotaCacheForTests(): void {
+  quotaByConfigDir.clear();
 }

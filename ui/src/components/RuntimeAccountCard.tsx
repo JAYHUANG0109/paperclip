@@ -1,7 +1,65 @@
-import type { RuntimeAccountPoolEntry, RuntimeAccountsResult } from "@paperclipai/shared";
+import type { QuotaWindow, RuntimeAccountPoolEntry, RuntimeAccountsResult } from "@paperclipai/shared";
 import type { TFunction } from "i18next";
 import { useTranslation } from "@/i18n";
 import { cn } from "@/lib/utils";
+
+/** Threshold colours per the design guide's budget bar: green <60, yellow 60-85, red >85. */
+function barColorClass(usedPercent: number): string {
+  if (usedPercent > 85) return "bg-red-400";
+  if (usedPercent >= 60) return "bg-yellow-400";
+  return "bg-green-400";
+}
+
+function resetsAtText(resetsAt: string, t: TFunction): string | null {
+  const minutes = Math.round((new Date(resetsAt).getTime() - Date.now()) / 60_000);
+  if (Number.isNaN(minutes) || minutes <= 0) return null;
+  if (minutes < 60) return t("runtimeAccount.quota.inMinutes", { minutes, defaultValue: "{{minutes}}m" });
+  const hours = Math.floor(minutes / 60);
+  return hours < 24
+    ? t("runtimeAccount.quota.inHours", { hours, defaultValue: "{{hours}}h" })
+    : t("runtimeAccount.quota.inDays", { days: Math.floor(hours / 24), defaultValue: "{{days}}d" });
+}
+
+/**
+ * Provider-reported usage windows for one account.
+ *
+ * Renders nothing when `windows` is null — that means "could not read", not "0% used",
+ * and a 0%-looking bar would be a lie. Windows the provider reported without a
+ * percentage (credit-style rows) are skipped for the same reason.
+ */
+function QuotaBars({ windows, t }: { windows: QuotaWindow[] | null; t: TFunction }) {
+  const usable = (windows ?? []).filter((w) => typeof w.usedPercent === "number");
+  if (usable.length === 0) return null;
+  return (
+    <div className="mt-2.5 space-y-1.5 border-t border-border pt-2.5">
+      {usable.map((w) => {
+        const pct = Math.max(0, Math.min(100, w.usedPercent as number));
+        const resets = w.resetsAt ? resetsAtText(w.resetsAt, t) : null;
+        return (
+          <div key={w.label}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-xs text-muted-foreground">{w.label}</span>
+              <span className="shrink-0 text-xs tabular-nums text-foreground">
+                {pct}%
+                {resets ? (
+                  <span className="ml-1.5 text-muted-foreground">
+                    {t("runtimeAccount.quota.resetsIn", { value: resets, defaultValue: "resets in {{value}}" })}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn("h-full rounded-full", barColorClass(pct))}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 interface RuntimeAccountCardProps {
   result: RuntimeAccountsResult;
@@ -255,6 +313,7 @@ export function RuntimeAccountCard({
                       ) : null}
                     </div>
                   </div>
+                  <QuotaBars windows={entry.quotaWindows} t={t} />
                 </div>
               );
             })}
