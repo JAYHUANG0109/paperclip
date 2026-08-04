@@ -39,6 +39,15 @@ export type MemoryStats = {
 
 export type MemorySettings = { captureEnabled: boolean };
 
+/** One import/paste action, for the batch-history view. */
+export type MemoryImportBatch = {
+  batchId: string;
+  count: number;
+  source: string;
+  createdAt: string;
+  sample: string;
+};
+
 export type MemoryImportResult = {
   imported: string[];
   /** Files the server refused, with why. Always shown — a partial import must
@@ -79,8 +88,15 @@ export const memoryApi = {
     companyId: string,
     userId: string,
     name: string,
-    body: { content: string; description?: string; memoryType?: MemoryCategory | string; observedAt?: string | null },
+    body: { content: string; description?: string; memoryType?: MemoryCategory | string; observedAt?: string | null; importBatchId?: string | null },
   ) => api.put<{ name: string; updatedAt: string }>(`${base(companyId, userId)}/${encodeURIComponent(name)}`, body),
+
+  /** Import history — the batches created by paste/file imports. */
+  importBatches: (companyId: string, userId: string) =>
+    api.get<MemoryImportBatch[]>(`${base(companyId, userId)}/import-batches`),
+
+  deleteImportBatches: (companyId: string, userId: string, batchIds: string[]) =>
+    api.post<{ deleted: number }>(`${base(companyId, userId)}/import-batches/delete`, { batchIds }),
 
   /** Recently deleted entries, still recoverable. */
   deleted: (companyId: string, userId: string) =>

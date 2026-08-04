@@ -1555,6 +1555,13 @@
       "when": 1785420023000,
       "tag": "9028_user_memories_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1785420024000,
+      "tag": "9029_user_memory_import_batch",
+      "breakpoints": true
     }
   ]
 }

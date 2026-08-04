@@ -67,6 +67,12 @@ export const userMemories = pgTable(
      */
     source: text("source").notNull().default("manual"),
     /**
+     * Groups all memories created in a single import/paste action, so the UI can
+     * show import history and select/delete a whole batch. Null for entries not
+     * created via an import (typed one-offs, agent writes).
+     */
+    importBatchId: text("import_batch_id"),
+    /**
      * Relative path within the owner's memory directory, preserved on import so
      * a folder round-trips with its structure intact. Null for entries created
      * in the UI, which materialize as `<name>.md`.

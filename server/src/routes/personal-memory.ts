@@ -17,9 +17,11 @@ import type { Db } from "@paperclipai/db";
 import { forbidden, notFound } from "../errors.js";
 import { assertCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import {
+  deleteImportBatches,
   deletePersonalMemory,
   getMemorySettings,
   listDeletedPersonalMemories,
+  listImportBatches,
   listPersonalMemories,
   materializeUserMemory,
   personalMemoryStats,
@@ -110,6 +112,27 @@ export function personalMemoryRoutes(db: Db) {
     const requester = await resolveRequester(req, companyId);
     const memories = await listPersonalMemories(db, { companyId, requester, ownerUserId });
     res.json(memories.map(present));
+  });
+
+  // Import history: the batches created by paste/file imports, so the owner can
+  // review and select/delete whole batches at once.
+  router.get("/companies/:companyId/users/:userId/memories/import-batches", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+    res.json(await listImportBatches(db, { companyId, requester, ownerUserId }));
+  });
+
+  router.post("/companies/:companyId/users/:userId/memories/import-batches/delete", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const ownerUserId = req.params.userId as string;
+    assertCompanyAccess(req, companyId);
+    const requester = await resolveRequester(req, companyId);
+    const raw = (req.body ?? {}) as { batchIds?: unknown };
+    const batchIds = Array.isArray(raw.batchIds) ? raw.batchIds.filter((x): x is string => typeof x === "string") : [];
+    const deleted = await deleteImportBatches(db, { companyId, requester, ownerUserId, batchIds });
+    res.json({ deleted });
   });
 
   /**
@@ -231,6 +254,7 @@ export function personalMemoryRoutes(db: Db) {
       observedAt: typeof body.observedAt === "string" && !Number.isNaN(Date.parse(body.observedAt))
         ? new Date(body.observedAt)
         : null,
+      importBatchId: typeof body.importBatchId === "string" && body.importBatchId.trim() ? body.importBatchId.trim() : null,
     });
 
     if (!result.ok) {

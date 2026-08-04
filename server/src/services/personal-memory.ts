@@ -228,6 +228,8 @@ export async function upsertPersonalMemory(
     /** The fact's own date (e.g. from an imported "[2024-11-28] - …"), used to
      *  seed recency so old imported facts read cold rather than hot. */
     observedAt?: Date | null;
+    /** Groups entries from one import/paste action for batch history. */
+    importBatchId?: string | null;
   },
 ): Promise<MemoryWriteResult> {
   if (!canWritePersonalMemory({ ownerUserId: input.ownerUserId }, input.requester)) {
@@ -333,6 +335,7 @@ export async function upsertPersonalMemory(
     byteSize: Buffer.byteLength(content, isBinary ? "base64" : "utf8"),
     sha256: createHash("sha256").update(content).digest("hex"),
     createdByAgentId: input.createdByAgentId ?? null,
+    importBatchId: input.importBatchId ?? null,
     // Recency date: the imported fact's own date if given, else "now" for an
     // agent observation, else null (a freshly-typed note has no prior date).
     lastObservedAt: input.observedAt ?? (authoredBy === "agent" ? now : null),
@@ -667,6 +670,63 @@ export async function deletePersonalMemory(
   // restart its recovery window, or a UI that retries would keep it alive.
   await db.update(userMemories).set({ deletedAt: new Date() }).where(and(owns, liveMemory()));
   return true;
+}
+
+/** One import/paste action, for the batch-history view. */
+export type ImportBatch = {
+  batchId: string;
+  count: number;
+  source: string;
+  createdAt: Date;
+  sample: string;
+};
+
+/** List this owner's live import batches, newest first. */
+export async function listImportBatches(
+  db: Db,
+  input: { companyId: string; ownerUserId: string; requester: MemoryRequester },
+): Promise<ImportBatch[]> {
+  if (!canReadPersonalMemory({ ownerUserId: input.ownerUserId }, input.requester)) return [];
+  const rows = await db
+    .select({
+      batchId: userMemories.importBatchId,
+      count: sql<number>`count(*)::int`,
+      createdAt: sql<Date>`min(${userMemories.createdAt})`,
+      source: sql<string>`min(${userMemories.source})`,
+      sample: sql<string>`min(${userMemories.content})`,
+    })
+    .from(userMemories)
+    .where(and(
+      eq(userMemories.companyId, input.companyId),
+      eq(userMemories.userId, input.ownerUserId),
+      isNotNull(userMemories.importBatchId),
+      liveMemory(),
+    ))
+    .groupBy(userMemories.importBatchId)
+    .orderBy(desc(sql`min(${userMemories.createdAt})`));
+  return rows
+    .filter((r): r is typeof r & { batchId: string } => Boolean(r.batchId))
+    .map((r) => ({ batchId: r.batchId, count: r.count, source: r.source, createdAt: r.createdAt, sample: (r.sample ?? "").slice(0, 120) }));
+}
+
+/** Soft-delete every live memory in the given batches. Returns how many. */
+export async function deleteImportBatches(
+  db: Db,
+  input: { companyId: string; ownerUserId: string; requester: MemoryRequester; batchIds: string[] },
+): Promise<number> {
+  if (!canWritePersonalMemory({ ownerUserId: input.ownerUserId }, input.requester)) return 0;
+  if (input.batchIds.length === 0) return 0;
+  const res = await db
+    .update(userMemories)
+    .set({ deletedAt: new Date() })
+    .where(and(
+      eq(userMemories.companyId, input.companyId),
+      eq(userMemories.userId, input.ownerUserId),
+      inArray(userMemories.importBatchId, input.batchIds),
+      liveMemory(),
+    ))
+    .returning({ id: userMemories.id });
+  return res.length;
 }
 
 /**
