@@ -624,6 +624,21 @@ export const updateIssueSchema = createIssueBaseSchema.omit({
 export type UpdateIssue = z.infer<typeof updateIssueSchema>;
 export type IssueExecutionWorkspaceSettings = z.infer<typeof issueExecutionWorkspaceSettingsSchema>;
 
+export const stalledReviewDecisionSchema = z.object({
+  action: z.enum(["approve", "request_changes", "send_back"]),
+  note: multilineTextSchema.pipe(z.string().min(1)).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (value.action === "request_changes" && !value.note?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["note"],
+      message: "Request changes requires a note",
+    });
+  }
+});
+
+export type StalledReviewDecision = z.infer<typeof stalledReviewDecisionSchema>;
+
 export const checkoutIssueSchema = z.object({
   agentId: z.string().uuid(),
   expectedStatuses: z.array(z.enum(ISSUE_STATUSES)).nonempty(),

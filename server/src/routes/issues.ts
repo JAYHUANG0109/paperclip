@@ -66,6 +66,7 @@ import {
   rejectIssueThreadInteractionSchema,
   restoreIssueDocumentRevisionSchema,
   respondIssueThreadInteractionSchema,
+  stalledReviewDecisionSchema,
   submitIssueThreadInteractionVerdictsSchema,
   updateIssueWorkProductSchema,
   updateDocumentAnnotationThreadSchema,
@@ -136,6 +137,12 @@ import {
 } from "../services/index.js";
 import { buildPlanReviewContext } from "../services/plan-review-context.js";
 import { runReadPrivateSource } from "../services/private-source-runs.js";
+import {
+  decideIssueReviewPathRecovery,
+  ISSUE_REVIEW_PATH_LOST_WAKE_REASON,
+  isReviewPathRecoveryIdempotencyConflict,
+  REVIEW_PATH_RECOVERY_INSTRUCTION,
+} from "../services/recovery/review-path-recovery.js";
 import { hydrateSuccessfulRunHandoffLiveness } from "../services/successful-run-handoff-state.js";
 import {
   TASK_WATCHDOG_ORIGIN_KIND,
@@ -186,6 +193,7 @@ import {
   readAcceptedPlanConfirmationTarget,
 } from "../services/issues.js";
 import { authorizationDeniedDetails } from "../services/authorization.js";
+import { stalledReviewDecisionService } from "../services/stalled-review-decisions.js";
 import { environmentService } from "../services/environments.js";
 import { environmentRuntimeService } from "../services/environment-runtime.js";
 import { redactSensitiveText } from "../redaction.js";
@@ -1767,6 +1775,17 @@ async function assertCanManageIssueMonitor(
   throw forbidden("Only the assignee agent or a board user can manage issue monitors");
 }
 
+// True when the agent is the participant of the currently pending execution-policy
+// stage. Such an agent owns the stage's signoff, so its `in_review -> done` PATCH is
+// a stage advance rather than a self-approval of its own work.
+function isPendingExecutionStageParticipant(executionState: unknown, agentId: string | null | undefined) {
+  if (!agentId) return false;
+  const state = parseIssueExecutionState(executionState);
+  if (state?.status !== "pending") return false;
+  const participant = state.currentParticipant;
+  return participant?.type === "agent" && participant.agentId === agentId;
+}
+
 function summarizeIssueMonitor(
   issue: {
     monitorNextCheckAt?: Date | null;
@@ -1971,9 +1990,10 @@ function buildRequestItemVerdictsWakeIdempotencyKey(args: {
   return `request_item_verdicts:${args.issueId}:${args.interactionId}:${bucket}`;
 }
 
-function queueResolvedInteractionContinuationWakeup(input: {
+async function queueResolvedInteractionContinuationWakeup(input: {
+  db: Db;
   heartbeat: ReturnType<typeof heartbeatService>;
-  issue: { id: string; assigneeAgentId: string | null; status: string };
+  issue: { id: string; companyId: string; assigneeAgentId: string | null; status: string };
   interaction: {
     id: string;
     kind: string;
@@ -1991,16 +2011,34 @@ function queueResolvedInteractionContinuationWakeup(input: {
   newlyResolvedItemIds?: string[];
   idempotencyKey?: string | null;
 }) {
-  if (
-    input.interaction.continuationPolicy !== "wake_assignee"
-    && input.interaction.continuationPolicy !== "wake_assignee_on_accept"
-  ) return;
-  if (
-    input.interaction.continuationPolicy === "wake_assignee_on_accept"
-    && input.interaction.status !== "accepted"
-  ) return;
-  if (input.interaction.status === "expired") return;
   if (!input.issue.assigneeAgentId || isClosedIssueStatus(input.issue.status)) return;
+
+  const reviewPathLost = input.issue.status === "in_review"
+    && (await issueService(input.db)
+      .listReviewAttention(input.issue.companyId, [input.issue])
+      .then((attention) => attention.get(input.issue.id)?.state === "stalled")
+      .catch((err) => {
+        logger.warn(
+          { err, issueId: input.issue.id, interactionId: input.interaction.id },
+          "failed to classify review path after issue interaction resolution",
+        );
+        return false;
+      }));
+  const continuationPolicyAllowsWake =
+    input.interaction.continuationPolicy === "wake_assignee"
+    || (
+      input.interaction.continuationPolicy === "wake_assignee_on_accept"
+      && input.interaction.status === "accepted"
+    );
+  if (!continuationPolicyAllowsWake && !reviewPathLost) return;
+  if (input.interaction.status === "expired" && !reviewPathLost) return;
+  const reviewPathContext = reviewPathLost
+    ? {
+        reviewPathLost: true,
+        reviewPathConsumedRef: input.interaction.id,
+        reviewPathInstruction: REVIEW_PATH_RECOVERY_INSTRUCTION,
+      }
+    : null;
 
   const forceFreshSession = input.forceFreshSession === true;
   const workspaceRefreshReason = readNonEmptyString(input.workspaceRefreshReason);
@@ -2041,6 +2079,7 @@ function queueResolvedInteractionContinuationWakeup(input: {
       ...(checkboxSelection ? { checkboxSelection } : {}),
       ...(toolAction ? { toolAction } : {}),
       ...(itemVerdicts ? { itemVerdicts, newlyResolvedItemIds } : {}),
+      ...(reviewPathContext ?? {}),
       mutation: "interaction",
     },
     idempotencyKey: input.idempotencyKey ?? `interaction:${input.interaction.id}:${input.interaction.status}`,
@@ -2058,6 +2097,7 @@ function queueResolvedInteractionContinuationWakeup(input: {
       ...(checkboxSelection ? { checkboxSelection } : {}),
       ...(toolAction ? { toolAction } : {}),
       ...(itemVerdicts ? { itemVerdicts, newlyResolvedItemIds } : {}),
+      ...(reviewPathContext ?? {}),
       wakeReason: "issue_commented",
       source: input.source,
       ...(forceFreshSession ? { forceFreshSession: true } : {}),
@@ -2271,6 +2311,7 @@ function toCompactIssue(issue: any): CompactIssue {
     ...(issue.labels ? { labels: issue.labels } : {}),
     ...(issue.blockedBy ? { blockedBy: issue.blockedBy } : {}),
     ...(issue.blockerAttention ? { blockerAttention: issue.blockerAttention } : {}),
+    ...(issue.reviewAttention ? { reviewAttention: issue.reviewAttention } : {}),
     ...(issue.blockedInboxAttention !== undefined ? { blockedInboxAttention: issue.blockedInboxAttention } : {}),
     ...(issue.productivityReview ? { productivityReview: issue.productivityReview } : {}),
     ...(issue.scheduledRetry ? { scheduledRetry: issue.scheduledRetry } : {}),
@@ -2667,6 +2708,10 @@ export function issueRoutes(
       agentId: string,
       options: Parameters<ReturnType<typeof heartbeatService>["wakeup"]>[1],
     ) => ReturnType<ReturnType<typeof heartbeatService>["wakeup"]>;
+    stalledReviewDecisionEnqueueWakeup?: (
+      agentId: string,
+      options: Parameters<ReturnType<typeof heartbeatService>["wakeup"]>[1],
+    ) => ReturnType<ReturnType<typeof heartbeatService>["wakeup"]>;
     issueListDiagnostics?: IssueListDiagnostics;
     approveToolActionRequest?: (input: {
       companyId: string;
@@ -2683,6 +2728,7 @@ export function issueRoutes(
   const heartbeat = heartbeatService(db, {
     pluginWorkerManager: opts.pluginWorkerManager,
   });
+  const enqueueStalledReviewDecisionWakeup = opts.stalledReviewDecisionEnqueueWakeup ?? heartbeat.wakeup;
   const enqueueRecoveryActionWakeup = opts.recoveryActionEnqueueWakeup ?? heartbeat.wakeup;
   const feedback = feedbackService(db);
   const companiesSvc = companyService(db);
@@ -3467,6 +3513,77 @@ export function issueRoutes(
         },
       });
     }
+  }
+
+  async function queueExpiredInteractionReviewPathRecovery(input: {
+    issue: IssueRouteSnapshot;
+    interactions: Array<{ id: string }>;
+    actor: ReturnType<typeof getActorInfo>;
+    source: string;
+  }) {
+    if (
+      input.interactions.length === 0
+      || input.issue.status !== "in_review"
+      || !input.issue.assigneeAgentId
+    ) {
+      return null;
+    }
+
+    const reviewAttention = await svc
+      .listReviewAttention(input.issue.companyId, [input.issue])
+      .then((attention) => attention.get(input.issue.id));
+    if (!reviewAttention || reviewAttention.state !== "stalled") return null;
+
+    const interactionIds = [...new Set(input.interactions.map((interaction) => interaction.id))].sort();
+    const consumedPathRef = interactionIds.length === 1
+      ? interactionIds[0]!
+      : `interactions:${interactionIds.join(",")}`;
+    const decision = decideIssueReviewPathRecovery({
+      issueId: input.issue.id,
+      sourceRunId: input.actor.runId,
+      assigneeAgentId: input.issue.assigneeAgentId,
+      contextSnapshot: {
+        source: input.source,
+        reviewPathConsumedRef: consumedPathRef,
+      },
+      reviewAttention,
+      existingWake: false,
+    });
+    if (decision.kind !== "enqueue") return null;
+
+    const recoveryRun = await heartbeat.wakeup(input.issue.assigneeAgentId, {
+      source: "automation",
+      triggerDetail: "system",
+      reason: ISSUE_REVIEW_PATH_LOST_WAKE_REASON,
+      idempotencyKey: decision.idempotencyKey,
+      payload: decision.payload,
+      contextSnapshot: decision.contextSnapshot,
+      requestedByActorType: input.actor.actorType,
+      requestedByActorId: input.actor.actorId,
+    }).catch((error: unknown) => {
+      if (isReviewPathRecoveryIdempotencyConflict(error)) return null;
+      throw error;
+    });
+    if (!recoveryRun) return null;
+
+    await logActivity(db, {
+      companyId: input.issue.companyId,
+      actorType: "system",
+      actorId: "issue_route",
+      agentId: input.issue.assigneeAgentId,
+      runId: input.actor.runId,
+      action: "issue.review_path_recovery_queued",
+      entityType: "issue",
+      entityId: input.issue.id,
+      details: {
+        source: input.source,
+        recoveryRunId: recoveryRun.id,
+        consumedPathRef,
+        recoveryAttempt: 1,
+        maxRecoveryAttempts: 1,
+      },
+    });
+    return recoveryRun;
   }
 
   function parseDateQuery(value: unknown, field: string) {
@@ -5638,6 +5755,7 @@ export function issueRoutes(
       wakeComment,
       relations,
       blockerAttention,
+      reviewAttention,
       productivityReview,
       scheduledRetry,
       attachments,
@@ -5652,6 +5770,7 @@ export function issueRoutes(
         wakeCommentId ? svc.getComment(wakeCommentId) : null,
         svc.getRelationSummaries(issue.id),
         svc.listBlockerAttention(issue.companyId, [issue]).then((map) => map.get(issue.id) ?? null),
+        svc.listReviewAttention(issue.companyId, [issue]).then((map) => map.get(issue.id) ?? null),
         svc.listProductivityReviews(issue.companyId, [issue.id]).then((map) => map.get(issue.id) ?? null),
         svc.getCurrentScheduledRetry(issue.id),
         svc.listAttachments(issue.id),
@@ -5702,6 +5821,7 @@ export function issueRoutes(
         status: issue.status,
         workMode: issue.workMode,
         ...(blockerAttention ? { blockerAttention } : {}),
+        ...(reviewAttention ? { reviewAttention } : {}),
         productivityReview,
         scheduledRetry,
         activeRecoveryAction: revalidatedActiveRecoveryAction,
@@ -5912,6 +6032,7 @@ export function issueRoutes(
       documentPayload,
       relations,
       blockerAttention,
+      reviewAttention,
       productivityReview,
       referenceSummary,
       successfulRunHandoffStates,
@@ -5926,6 +6047,7 @@ export function issueRoutes(
       documentsSvc.getIssueDocumentPayload(issue),
       svc.getRelationSummaries(issue.id),
       svc.listBlockerAttention(issue.companyId, [issue]).then((map) => map.get(issue.id) ?? null),
+      svc.listReviewAttention(issue.companyId, [issue]).then((map) => map.get(issue.id) ?? null),
       svc.listProductivityReviews(issue.companyId, [issue.id]).then((map) => map.get(issue.id) ?? null),
       issueReferencesSvc.listIssueReferenceSummary(issue.id),
       listSuccessfulRunHandoffStates(db, issue.companyId, [issue.id]),
@@ -5962,6 +6084,7 @@ export function issueRoutes(
       goalId: goal?.id ?? issue.goalId,
       ancestors,
       ...(blockerAttention ? { blockerAttention } : {}),
+      ...(reviewAttention ? { reviewAttention } : {}),
       productivityReview,
       successfulRunHandoff: successfulRunHandoffStates.get(issue.id) ?? null,
       scheduledRetry,
@@ -6685,6 +6808,12 @@ export function issueRoutes(
         actor,
         source: "issue.document_updated",
       });
+      await queueExpiredInteractionReviewPathRecovery({
+        issue,
+        interactions: expiredInteractions,
+        actor,
+        source: "issue.document_updated",
+      });
     }
 
     await revalidateActiveSourceRecoveryAfterCommittedWrite({
@@ -6901,6 +7030,12 @@ export function issueRoutes(
         actor,
         source: "issue.document_restored",
       });
+      await queueExpiredInteractionReviewPathRecovery({
+        issue,
+        interactions: expiredInteractions,
+        actor,
+        source: "issue.document_restored",
+      });
 
       await revalidateActiveSourceRecoveryAfterCommittedWrite({
         issue,
@@ -6972,6 +7107,12 @@ export function issueRoutes(
       },
     );
     await logExpiredRequestConfirmations({
+      issue,
+      interactions: expiredInteractions,
+      actor,
+      source: "issue.document_deleted",
+    });
+    await queueExpiredInteractionReviewPathRecovery({
       issue,
       interactions: expiredInteractions,
       actor,
@@ -8214,11 +8355,143 @@ export function issueRoutes(
     res.json(result);
   });
 
+  router.post(
+    "/issues/:id/stalled-review-decision",
+    validate(stalledReviewDecisionSchema),
+    async (req, res) => {
+      const id = req.params.id as string;
+      const issue = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
+      if (!issue) return;
+      assertBoard(req);
+
+      if (req.actor.source !== "local_implicit") {
+        const userId = req.actor.userId?.trim();
+        const membership = userId
+          ? await db
+              .select({ membershipRole: companyMemberships.membershipRole })
+              .from(companyMemberships)
+              .where(and(
+                eq(companyMemberships.companyId, issue.companyId),
+                eq(companyMemberships.principalType, "user"),
+                eq(companyMemberships.principalId, userId),
+                eq(companyMemberships.status, "active"),
+              ))
+              .then((rows) => rows[0] ?? null)
+          : null;
+        if (!membership?.membershipRole || membership.membershipRole === "viewer") {
+          throw forbidden("Active non-viewer company membership required");
+        }
+      }
+
+      const actor = getActorInfo(req);
+      const result = await stalledReviewDecisionService(db).decide({
+        issueId: issue.id,
+        companyId: issue.companyId,
+        action: req.body.action,
+        note: req.body.note,
+        actor: {
+          userId: actor.actorId,
+          runId: actor.runId,
+        },
+      });
+
+      // The decision transaction has already committed the status change. The
+      // remaining side effects (comment sync, resume wake) are best-effort: a
+      // transient failure must not fail the request, because the decision
+      // cannot be retried once the issue has left `in_review`, which would
+      // permanently strand the resume signal. This mirrors the issue-update
+      // wake dispatch, and the issue lands durably in `todo`/`done` regardless.
+      //
+      // Reviewed and accepted as best-effort rather than transactional (PAP-16101):
+      // `enqueueWakeup` writes a durable `agent_wakeup_requests` row, so the wake
+      // is scheduler-driven the moment that insert lands, and the catch below only
+      // covers a transient insert failure. In that narrow window the issue is in
+      // `todo` *still assigned* — an active status the normal liveness sweep picks
+      // up — so the worst case is a delayed resume, not the invisible
+      // `in_review`-with-zero-paths zombie this contract exists to kill. Making
+      // only this path transactional would also diverge from every other route's
+      // post-commit dispatch. `wakeQueued` is returned so callers can see the
+      // difference.
+      if (result.comment) {
+        try {
+          await issueReferencesSvc.syncComment(result.comment.id);
+          await externalObjectsSvc.syncCommentSafely(result.comment.id);
+        } catch (err) {
+          logger.warn(
+            { err, issueId: result.issue.id, commentId: result.comment.id },
+            "failed to sync stalled-review decision comment",
+          );
+        }
+      }
+
+      let wakeQueued = false;
+      if (req.body.action !== "approve" && result.issue.assigneeAgentId) {
+        const userAuthoredNote = result.comment
+          ? { commentId: result.comment.id, authorUserId: actor.actorId }
+          : undefined;
+        try {
+          const wake = await enqueueStalledReviewDecisionWakeup(result.issue.assigneeAgentId, {
+            source: "automation",
+            triggerDetail: "system",
+            reason: "issue_status_changed",
+            idempotencyKey: `stalled-review-decision:${result.issue.id}:${req.body.action}`,
+            requestedByActorType: "user",
+            requestedByActorId: actor.actorId,
+            payload: {
+              issueId: result.issue.id,
+              mutation: "stalled_review_decision",
+              reviewDecision: req.body.action,
+              resumeIntent: true,
+              ...(userAuthoredNote ? { userAuthoredNote } : {}),
+            },
+            contextSnapshot: {
+              issueId: result.issue.id,
+              taskId: result.issue.id,
+              source: "issue.stalled_review_decision",
+              wakeReason: "issue_status_changed",
+              reviewDecision: req.body.action,
+              resumeIntent: true,
+              ...(userAuthoredNote ? { userAuthoredNote } : {}),
+            },
+          });
+          wakeQueued = wake !== null;
+        } catch (err) {
+          logger.warn(
+            { err, issueId: result.issue.id, agentId: result.issue.assigneeAgentId },
+            "failed to enqueue stalled-review decision resume wake",
+          );
+        }
+      }
+
+      res.json({
+        issue: result.issue,
+        action: req.body.action,
+        comment: result.comment,
+        wakeQueued,
+      });
+    },
+  );
+
   router.patch("/issues/:id", validate(updateIssueRouteSchema), async (req, res) => {
     const id = req.params.id as string;
     const existing = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
     if (!existing) return;
     assertNoAgentHostWorkspaceCommandMutation(req, collectIssueWorkspaceCommandPaths(req.body));
+    // An agent may not rubber-stamp its own `in_review` work as `done` — approving
+    // is the board's/reviewer's call (PAP-16080 §4.4). Execution-policy signoff is
+    // the explicit exception: there, the policy reassigns the issue to each stage's
+    // participant, so the current reviewer/approver *is* the assignee and their
+    // `done` PATCH is a stage advance governed by
+    // `applyIssueExecutionPolicyTransition`, not a self-approval.
+    if (
+      req.actor.type === "agent"
+      && existing.status === "in_review"
+      && req.body.status === "done"
+      && existing.assigneeAgentId === req.actor.agentId
+      && !isPendingExecutionStageParticipant(existing.executionState, req.actor.agentId)
+    ) {
+      throw forbidden("Agents cannot approve their own in-review work");
+    }
     if (req.actor.type === "agent" && req.body.onBehalfOfUserId != null) {
       await auditAgentIssueCommentAttributionSpoof({
         db,
@@ -9127,6 +9400,7 @@ export function issueRoutes(
     }
 
     let comment = null;
+    let lostReviewPathRef: string | null = null;
     if (commentBody) {
       const commentReferenceSummaryBefore = updateReferenceSummaryAfter
         ?? await issueReferencesSvc.listIssueReferenceSummary(issue.id);
@@ -9204,6 +9478,17 @@ export function issueRoutes(
         actor,
         source: "issue.comment",
       });
+      if (issue.status === "in_review" && expiredInteractions.length > 0) {
+        const reviewAttention = await svc
+          .listReviewAttention(issue.companyId, [issue])
+          .then((map) => map.get(issue.id));
+        if (reviewAttention?.state === "stalled") {
+          const expiredInteractionIds = expiredInteractions.map((interaction) => interaction.id).sort();
+          lostReviewPathRef = expiredInteractionIds.length === 1
+            ? expiredInteractionIds[0]!
+            : `interactions:${expiredInteractionIds.join(",")}`;
+        }
+      }
 
     } else if (updateReferenceSummaryAfter) {
       issueResponse = {
@@ -9223,6 +9508,11 @@ export function issueRoutes(
       req.body.status !== undefined;
     const statusChangedFromClosedToTodo =
       isClosedIssueStatus(existing.status) &&
+      issue.status === "todo" &&
+      req.body.status !== undefined;
+    const userResumedFromReviewToTodo =
+      actor.actorType === "user" &&
+      existing.status === "in_review" &&
       issue.status === "todo" &&
       req.body.status !== undefined;
     const previousExecutionState = parseIssueExecutionState(existing.executionState);
@@ -9333,7 +9623,12 @@ export function issueRoutes(
 
       if (
         !assigneeChanged &&
-        (statusChangedFromBacklog || statusChangedFromBlockedToTodo || statusChangedFromClosedToTodo) &&
+        (
+          statusChangedFromBacklog ||
+          statusChangedFromBlockedToTodo ||
+          statusChangedFromClosedToTodo ||
+          userResumedFromReviewToTodo
+        ) &&
         issue.assigneeAgentId
       ) {
         addWakeup(issue.assigneeAgentId, {
@@ -9375,6 +9670,13 @@ export function issueRoutes(
               ...(reopened ? { reopenedFrom: reopenFromStatus } : {}),
               ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
               ...(interruptedRunId ? { interruptedRunId } : {}),
+              ...(lostReviewPathRef
+                ? {
+                    reviewPathLost: true,
+                    reviewPathConsumedRef: lostReviewPathRef,
+                    reviewPathInstruction: REVIEW_PATH_RECOVERY_INSTRUCTION,
+                  }
+                : {}),
             },
             requestedByActorType: actor.actorType,
             requestedByActorId: actor.actorId,
@@ -9388,6 +9690,13 @@ export function issueRoutes(
               ...(reopened ? { reopenedFrom: reopenFromStatus } : {}),
               ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
               ...(interruptedRunId ? { interruptedRunId } : {}),
+              ...(lostReviewPathRef
+                ? {
+                    reviewPathLost: true,
+                    reviewPathConsumedRef: lostReviewPathRef,
+                    reviewPathInstruction: REVIEW_PATH_RECOVERY_INSTRUCTION,
+                  }
+                : {}),
             },
           });
         }
@@ -9869,6 +10178,12 @@ export function issueRoutes(
       actor,
       source: "issue.interactions.catchup_superseded_by_comment",
     });
+    await queueExpiredInteractionReviewPathRecovery({
+      issue,
+      interactions: supersededInteractions,
+      actor,
+      source: "issue.interactions.catchup_superseded_by_comment",
+    });
     const closedIssueInteractions = await interactionSvc.expirePendingInteractionsForTerminalIssue(issue, {
       agentId: actor.agentId,
       userId: actor.actorType === "user" ? actor.actorId : null,
@@ -10118,9 +10433,10 @@ export function issueRoutes(
         interaction.status === "accepted" &&
         acceptedPlanTarget?.issueId === issue.id &&
         acceptedPlanTarget.key === "plan";
-      queueResolvedInteractionContinuationWakeup({
+      await queueResolvedInteractionContinuationWakeup({
+        db,
         heartbeat,
-        issue: continuationWakeIssue,
+        issue: { ...continuationWakeIssue, companyId: issue.companyId },
         interaction: continuationInteraction,
         actor,
         source: "issue.interaction.accept",
@@ -10180,7 +10496,8 @@ export function issueRoutes(
         },
       });
 
-      queueResolvedInteractionContinuationWakeup({
+      await queueResolvedInteractionContinuationWakeup({
+        db,
         heartbeat,
         issue,
         interaction,
@@ -10236,7 +10553,8 @@ export function issueRoutes(
         },
       });
 
-      queueResolvedInteractionContinuationWakeup({
+      await queueResolvedInteractionContinuationWakeup({
+        db,
         heartbeat,
         issue,
         interaction,
@@ -10303,7 +10621,8 @@ export function issueRoutes(
       });
 
       if (newlyResolvedItemIds.length > 0) {
-        queueResolvedInteractionContinuationWakeup({
+        await queueResolvedInteractionContinuationWakeup({
+          db,
           heartbeat,
           issue,
           interaction,
@@ -10359,7 +10678,8 @@ export function issueRoutes(
       });
 
       if (actor.agentId !== issue.assigneeAgentId) {
-        queueResolvedInteractionContinuationWakeup({
+        await queueResolvedInteractionContinuationWakeup({
+          db,
           heartbeat,
           issue,
           interaction,
@@ -10412,7 +10732,8 @@ export function issueRoutes(
         },
       });
 
-      queueResolvedInteractionContinuationWakeup({
+      await queueResolvedInteractionContinuationWakeup({
+        db,
         heartbeat,
         issue,
         interaction,
@@ -11074,6 +11395,18 @@ export function issueRoutes(
       actor,
       source: "issue.comment",
     });
+    let lostReviewPathRef: string | null = null;
+    if (currentIssue.status === "in_review" && expiredInteractions.length > 0) {
+      const reviewAttention = await svc
+        .listReviewAttention(currentIssue.companyId, [currentIssue])
+        .then((map) => map.get(currentIssue.id));
+      if (reviewAttention?.state === "stalled") {
+        const expiredInteractionIds = expiredInteractions.map((interaction) => interaction.id).sort();
+        lostReviewPathRef = expiredInteractionIds.length === 1
+          ? expiredInteractionIds[0]!
+          : `interactions:${expiredInteractionIds.join(",")}`;
+      }
+    }
 
     await revalidateActiveSourceRecoveryAfterCommittedWrite({
       issue: currentIssue,
@@ -11194,6 +11527,13 @@ export function issueRoutes(
               mutation: "comment",
               ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
               ...(interruptedRunId ? { interruptedRunId } : {}),
+              ...(lostReviewPathRef
+                ? {
+                    reviewPathLost: true,
+                    reviewPathConsumedRef: lostReviewPathRef,
+                    reviewPathInstruction: REVIEW_PATH_RECOVERY_INSTRUCTION,
+                  }
+                : {}),
             },
             requestedByActorType: actor.actorType,
             requestedByActorId: actor.actorId,
@@ -11206,6 +11546,13 @@ export function issueRoutes(
               wakeReason: "issue_commented",
               ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
               ...(interruptedRunId ? { interruptedRunId } : {}),
+              ...(lostReviewPathRef
+                ? {
+                    reviewPathLost: true,
+                    reviewPathConsumedRef: lostReviewPathRef,
+                    reviewPathInstruction: REVIEW_PATH_RECOVERY_INSTRUCTION,
+                  }
+                : {}),
             },
           });
         }

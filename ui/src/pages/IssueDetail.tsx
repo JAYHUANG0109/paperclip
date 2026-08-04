@@ -80,6 +80,7 @@ import { IssueScheduledRetryCard } from "../components/IssueScheduledRetryCard";
 import { IssueProperties } from "../components/IssueProperties";
 import { PendingDecisionStrip } from "../components/PendingDecisionStrip";
 import { IssueMonitorBanner } from "../components/IssueMonitorBanner";
+import { IssueReviewPanel } from "../components/IssueReviewPanel";
 import { IssueRunLedger } from "../components/IssueRunLedger";
 import { IssueWorkspaceCard } from "../components/IssueWorkspaceCard";
 import type { MentionOption } from "../components/MarkdownEditor";
@@ -3882,6 +3883,8 @@ export function IssueDetail() {
         />
 
         <PendingDecisionStrip companyId={issue.companyId} issueId={issue.id} />
+
+        <IssueReviewPanel issue={issue} />
 
         <InlineEditor
           value={issue.description ?? ""}
