@@ -1,9 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, LoaderCircle, Save, Trash2, UserRoundPen } from "lucide-react";
+import { Camera, Check, Copy, KeyRound, LoaderCircle, Save, Trash2, UserRoundPen } from "lucide-react";
 import type { AuthSession, CurrentUserProfile, UpdateCurrentUserProfile } from "@paperclipai/shared";
 import { useTranslation } from "@/i18n";
 import { authApi } from "@/api/auth";
+import { boardKeysApi, type BoardApiKeyWithToken } from "@/api/board-keys";
 import { assetsApi } from "@/api/assets";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
@@ -275,7 +276,141 @@ export function ProfileSettings() {
         <Card className="rounded-(--rad-28) border-border/70 p-6">
           <InboxAgentPolicyControl companyId={selectedCompanyId} />
         </Card>
+
+        <Card className="rounded-(--rad-28) border-border/70 p-6">
+          <PersonalApiKeys />
+        </Card>
       </section>
+    </div>
+  );
+}
+
+/**
+ * Personal (user/board) API keys. A key here authenticates API calls AS the
+ * signed-in user — her permissions, her audit trail — so her own tools (e.g.
+ * Claude) can drive the platform on her behalf, including editing an agent's
+ * harness that a narrow agent key cannot. The token shows once; holders act as
+ * her, so revoke is the control.
+ */
+function PersonalApiKeys() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [justCreated, setJustCreated] = useState<BoardApiKeyWithToken | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const keysQuery = useQuery({
+    queryKey: ["board-api-keys"],
+    queryFn: () => boardKeysApi.list(),
+    retry: false,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => boardKeysApi.create({ name: name.trim() || "personal" }),
+    onSuccess: (key) => {
+      setError(null);
+      setJustCreated(key);
+      setCopied(false);
+      setName("");
+      queryClient.invalidateQueries({ queryKey: ["board-api-keys"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : t("settings.apiKeys.createFailed", { defaultValue: "無法建立金鑰，請稍後再試。" })),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (keyId: string) => boardKeysApi.revoke(keyId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-api-keys"] }),
+    onError: (e) => setError(e instanceof Error ? e.message : t("settings.apiKeys.revokeFailed", { defaultValue: "無法撤銷金鑰。" })),
+  });
+
+  async function copyToken() {
+    if (!justCreated) return;
+    try {
+      await navigator.clipboard.writeText(justCreated.token);
+      setCopied(true);
+    } catch { /* clipboard may be blocked; the token stays visible to copy manually */ }
+  }
+
+  const keys = keysQuery.data ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <KeyRound className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-sm font-semibold">{t("settings.apiKeys.title", { defaultValue: "API 金鑰（個人）" })}</h2>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("settings.apiKeys.subtitle", {
+          defaultValue: "以你的身分呼叫 Paperclip API — 擁有你在介面上的全部權限（包含編輯代理人的技能與指示）。持有金鑰者即以你的身分操作，請妥善保管；不需要時請撤銷。",
+        })}
+      </p>
+
+      {error ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{error}</div>
+      ) : null}
+
+      {justCreated ? (
+        <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+          <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+            {t("settings.apiKeys.copyNow", { defaultValue: "已建立金鑰 — 請立即複製，將不會再次顯示。" })}
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded bg-background px-2 py-1.5 font-mono text-xs">{justCreated.token}</code>
+            <Button type="button" size="sm" variant="secondary" className="h-8 shrink-0 gap-1" onClick={copyToken}>
+              {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              {copied ? t("settings.apiKeys.copied", { defaultValue: "已複製" }) : t("settings.apiKeys.copy", { defaultValue: "複製" })}
+            </Button>
+          </div>
+          <button type="button" className="text-[11px] text-muted-foreground hover:underline" onClick={() => setJustCreated(null)}>
+            {t("settings.apiKeys.dismiss", { defaultValue: "關閉" })}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="flex gap-2">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={120}
+          placeholder={t("settings.apiKeys.namePlaceholder", { defaultValue: "金鑰名稱（例如：我的 Claude）" })}
+          className="h-9"
+          onKeyDown={(e) => { if (e.key === "Enter" && !createMutation.isPending) createMutation.mutate(); }}
+        />
+        <Button type="button" className="h-9 shrink-0 gap-1" disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>
+          {createMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
+          {t("settings.apiKeys.create", { defaultValue: "建立" })}
+        </Button>
+      </div>
+
+      {keys.length > 0 ? (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {keys.map((k) => (
+            <li key={k.id} className="flex items-center gap-2 px-3 py-2">
+              <KeyRound className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-sm">{k.name}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {k.lastUsedAt
+                  ? t("settings.apiKeys.lastUsed", { defaultValue: "最近使用 {{date}}", date: new Date(k.lastUsedAt).toLocaleDateString() })
+                  : t("settings.apiKeys.neverUsed", { defaultValue: "尚未使用" })}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 shrink-0 gap-1 text-xs text-destructive hover:text-destructive"
+                disabled={revokeMutation.isPending}
+                onClick={() => revokeMutation.mutate(k.id)}
+              >
+                <Trash2 className="size-3.5" />
+                {t("settings.apiKeys.revoke", { defaultValue: "撤銷" })}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted-foreground">{t("settings.apiKeys.none", { defaultValue: "尚無個人金鑰。" })}</p>
+      )}
     </div>
   );
 }
