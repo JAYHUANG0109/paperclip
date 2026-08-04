@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Avatar, AvatarFallback } from "./ui/avatar";
 import type { Issue } from "@paperclipai/shared";
 import { Columns3 } from "lucide-react";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
@@ -39,6 +40,7 @@ function issueTrailingGridTemplate(columns: InboxIssueColumn[]): string {
   return columns
     .map((column) => {
       if (column === "assignee") return "minmax(6rem, 8rem)";
+      if (column === "kickedOffBy") return "minmax(6rem, 9rem)";
       if (column === "project") return "minmax(4.5rem, 7rem)";
       if (column === "workspace") return "minmax(6rem, 9rem)";
       if (column === "parent") return "minmax(3.5rem, 5.5rem)";
@@ -125,6 +127,7 @@ export function InboxIssueMetaLeading({
   issue,
   isLive,
   subtreeLiveCount = 0,
+  showSubtreeLiveChip = true,
   showStatus = true,
   showIdentifier = true,
   statusSlot,
@@ -133,6 +136,11 @@ export function InboxIssueMetaLeading({
   issue: Issue;
   isLive: boolean;
   subtreeLiveCount?: number;
+  /**
+   * Suppress the "N live below" chip. Callers whose status glyph already conveys
+   * descendant liveness pass false, so the same fact is not stated twice in one row.
+   */
+  showSubtreeLiveChip?: boolean;
   showStatus?: boolean;
   showIdentifier?: boolean;
   statusSlot?: ReactNode;
@@ -182,7 +190,7 @@ export function InboxIssueMetaLeading({
           </span>
         </span>
       )}
-      {!isLive && subtreeLiveCount > 0 && (
+      {showSubtreeLiveChip && !isLive && subtreeLiveCount > 0 && (
         <span
           className={cn(
             "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 sm:gap-1.5 sm:px-2",
@@ -221,6 +229,9 @@ export function InboxIssueTrailingColumns({
   parentTitle,
   assigneeContent,
   onFilterWorkspace,
+  creatorAgentName,
+  creatorUserName,
+  viaAgentName,
 }: {
   issue: Issue;
   columns: InboxIssueColumn[];
@@ -236,6 +247,15 @@ export function InboxIssueTrailingColumns({
   parentTitle: string | null;
   assigneeContent?: ReactNode;
   onFilterWorkspace?: (workspaceId: string) => void;
+  /** Display name of the agent that created the issue, resolved by the caller. */
+  creatorAgentName?: string | null;
+  /**
+   * Display name of the PERSON behind the issue — the responsible user when there is one,
+   * otherwise the creating user. Resolved by the caller, which owns the user directory.
+   */
+  creatorUserName?: string | null;
+  /** Agent that acted for the responsible user, shown as secondary context. */
+  viaAgentName?: string | null;
 }) {
   const { t } = useTranslation();
   const activityText = timeAgo(issue.lastActivityAt ?? issue.lastExternalCommentAt ?? issue.updatedAt);
@@ -247,6 +267,36 @@ export function InboxIssueTrailingColumns({
       style={{ gridTemplateColumns: issueTrailingGridTemplate(columns) }}
     >
       {columns.map((column) => {
+        if (column === "kickedOffBy") {
+          // Who is answerable for this issue existing. The responsible user WINS over the
+          // creating agent: when an agent files work on someone's behalf, the person is
+          // who a colleague needs, and the agent is only how it happened. A routine
+          // execution has no creator at all but still carries a responsible user, which is
+          // the case that used to render as nothing.
+          const person = issue.responsibleUserId || issue.createdByUserId ? creatorUserName ?? null : null;
+          const agentOnly = !person && issue.createdByAgentId ? creatorAgentName ?? null : null;
+          const label = person ?? agentOnly;
+          if (!label) {
+            return <span key={column} className="min-w-0 truncate text-muted-foreground">—</span>;
+          }
+          const via = person && viaAgentName ? viaAgentName : null;
+          return (
+            <span key={column} className="flex min-w-0 items-center gap-1.5">
+              <Avatar size="xs" shape={person ? "circle" : "square"}>
+                <AvatarFallback>{label.slice(0, 1).toUpperCase()}</AvatarFallback>
+              </Avatar>
+              <span className="min-w-0 truncate">
+                {label}
+                {via ? (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    {t("issueColumns.viaAgent", { name: via, defaultValue: "via {{name}}" })}
+                  </span>
+                ) : null}
+              </span>
+            </span>
+          );
+        }
         if (column === "assignee") {
           if (assigneeContent) {
             return <span key={column} className="min-w-0">{assigneeContent}</span>;

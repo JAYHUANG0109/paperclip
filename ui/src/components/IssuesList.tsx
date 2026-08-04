@@ -2000,6 +2000,21 @@ export function IssuesList({
                               assigneeUserName={assigneeUserLabel}
                               assigneeUserAvatarUrl={assigneeUserProfile?.image ?? null}
                               currentUserId={currentUserId}
+                              // "Kicked off by" attribution. The person is preferred over
+                              // the agent: when an agent files work on someone's behalf,
+                              // the colleague reading this row needs the human, and the
+                              // agent is only how it happened (shown as "via …").
+                              creatorAgentName={agentName(issue.createdByAgentId)}
+                              creatorUserName={
+                                companyUserLabelMap.get(
+                                  issue.responsibleUserId ?? issue.createdByUserId ?? "",
+                                ) ?? null
+                              }
+                              viaAgentName={
+                                issue.responsibleUserId && issue.createdByAgentId
+                                  ? agentName(issue.createdByAgentId)
+                                  : null
+                              }
                               parentIdentifier={parentIssue?.identifier ?? null}
                               parentTitle={parentIssue?.title ?? null}
                               assigneeContent={(
