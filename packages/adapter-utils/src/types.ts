@@ -356,6 +356,15 @@ export interface RuntimeAccountPoolEntry {
   orgName: string | null;
   loggedIn: boolean;
   pinned: boolean;
+  /**
+   * Provider-reported usage windows for THIS account, or null when unreadable —
+   * logged out, expired token, or the provider's usage endpoint moved. Null means
+   * "unknown", never "0% used".
+   *
+   * Declared identically in packages/shared/src/types/quota.ts; the server bridges
+   * both packages, so the two MUST stay in sync or it fails to compile.
+   */
+  quotaWindows: QuotaWindow[] | null;
 }
 
 /** result for one provider from describeRuntimeAccounts() */
