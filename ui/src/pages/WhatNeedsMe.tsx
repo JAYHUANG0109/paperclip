@@ -46,6 +46,7 @@ import { IssueGroupHeader } from "../components/IssueGroupHeader";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { useTranslation } from "@/i18n";
 
 const SEVERITY_LABELS: Record<string, string> = {
   critical: "Critical",
@@ -80,6 +81,7 @@ function findScrollContainer(element: HTMLElement | null): HTMLElement | null {
 }
 
 export function WhatNeedsMe() {
+  const { t } = useTranslation();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -412,7 +414,7 @@ export function WhatNeedsMe() {
   const activeFilterCount = countActiveAttentionFilters(filters);
 
   if (!selectedCompanyId) {
-    return <p className="text-sm text-muted-foreground">Select a company first.</p>;
+    return <p className="text-sm text-muted-foreground">{t("whatNeedsMe.selectCompany", { defaultValue: "Select a company first." })}</p>;
   }
 
   if (isLoading) {
@@ -805,10 +807,11 @@ function Curtain({
 }
 
 function CaughtUpNote({ filtered }: { filtered: boolean }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-xl border border-dashed border-border py-10 text-center">
       <p className="text-sm font-medium text-foreground">
-        {filtered ? "No decisions match your filters." : "You're all caught up."}
+        {filtered ? t("whatNeedsMe.noMatch", { defaultValue: "No decisions match your filters." }) : t("whatNeedsMe.caughtUp", { defaultValue: "You're all caught up." })}
       </p>
       {filtered && (
         <p className="mt-1 text-xs text-muted-foreground">Adjust or clear the filters to see the rest.</p>
@@ -818,12 +821,13 @@ function CaughtUpNote({ filtered }: { filtered: boolean }) {
 }
 
 function ZeroState() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
       <div className="mb-4 rounded-full bg-green-500/10 p-4">
         <CheckCircle2 className="h-10 w-10 text-green-500" />
       </div>
-      <p className="text-lg font-semibold text-foreground">You're all caught up</p>
+      <p className="text-lg font-semibold text-foreground">{t("whatNeedsMe.caughtUpTitle", { defaultValue: "You're all caught up" })}</p>
       <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
         <Inbox className="h-4 w-4" />
         Nothing needs a decision from you right now.

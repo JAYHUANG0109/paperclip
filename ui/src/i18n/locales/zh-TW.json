@@ -5907,7 +5907,8 @@
     "agentCount": "{{count}} 位代理人",
     "pickCharacter": "選擇造型",
     "people": "人物",
-    "animals": "動物"
+    "animals": "動物",
+    "fitToScreen": "縮放至適合畫面"
   },
   "asana": {
     "myTasks": "我的任務 (Asana)",
@@ -6318,7 +6319,13 @@
     "alsoProduced": "也產出了",
     "fileDetailsUnavailable": "檔案詳細資料無法使用",
     "openFile": "開啟 {{filename}}",
-    "downloadFile": "下載 {{filename}}"
+    "downloadFile": "下載 {{filename}}",
+    "degradedMeta": "此檔案的中繼資料無法取得——無法在此播放或下載。",
+    "primary": "主要",
+    "open": "開啟",
+    "openInDrive": "在你的 Google Drive 開啟",
+    "drive": "雲端硬碟",
+    "download": "下載"
   },
   "routineSections": {
     "runs": {
@@ -6630,5 +6637,16 @@
     "wholeCampus": "整個 {{name}}",
     "crossCampus": "跨校 / 全校區",
     "deptAllCampuses": "{{name}}（全校區）"
+  },
+  "whatNeedsMe": {
+    "selectCompany": "請先選擇一間公司。",
+    "noMatch": "沒有符合篩選條件的待決議。",
+    "caughtUp": "你都處理完了。",
+    "caughtUpTitle": "你都處理完了"
+  },
+  "agentSkillsTab": {
+    "enabled": "已在此代理人啟用",
+    "available": "技能庫中可用",
+    "emptyLibrary": "公司技能庫中沒有技能"
   }
 }

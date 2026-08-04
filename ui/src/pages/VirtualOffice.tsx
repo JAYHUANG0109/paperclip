@@ -219,7 +219,7 @@ export function VirtualOffice() {
             <button
               type="button"
               onClick={() => setUserZoom(null)}
-              title="Fit to screen"
+              title={t("office.fitToScreen", { defaultValue: "Fit to screen" })}
               className="inline-flex h-7 items-center justify-center rounded-md border border-border bg-background px-2.5 text-xs font-bold text-foreground transition-colors hover:bg-accent"
             >FIT</button>
             <button
