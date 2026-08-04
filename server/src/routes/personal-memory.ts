@@ -227,6 +227,10 @@ export function personalMemoryRoutes(db: Db) {
       // screen is asymmetric between agents and owners, so this is load-bearing.
       source: requester.kind === "agent" ? "agent" : "manual",
       createdByAgentId: requester.kind === "agent" ? requester.agentId : null,
+      // Optional fact date (from an imported "[date] - …") to seed recency.
+      observedAt: typeof body.observedAt === "string" && !Number.isNaN(Date.parse(body.observedAt))
+        ? new Date(body.observedAt)
+        : null,
     });
 
     if (!result.ok) {

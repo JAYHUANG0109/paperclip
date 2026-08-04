@@ -79,7 +79,7 @@ export const memoryApi = {
     companyId: string,
     userId: string,
     name: string,
-    body: { content: string; description?: string; memoryType?: MemoryCategory | string },
+    body: { content: string; description?: string; memoryType?: MemoryCategory | string; observedAt?: string | null },
   ) => api.put<{ name: string; updatedAt: string }>(`${base(companyId, userId)}/${encodeURIComponent(name)}`, body),
 
   /** Recently deleted entries, still recoverable. */

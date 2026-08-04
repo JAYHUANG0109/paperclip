@@ -225,6 +225,9 @@ export async function upsertPersonalMemory(
     filePath?: string | null;
     isBinary?: boolean;
     createdByAgentId?: string | null;
+    /** The fact's own date (e.g. from an imported "[2024-11-28] - …"), used to
+     *  seed recency so old imported facts read cold rather than hot. */
+    observedAt?: Date | null;
   },
 ): Promise<MemoryWriteResult> {
   if (!canWritePersonalMemory({ ownerUserId: input.ownerUserId }, input.requester)) {
@@ -330,7 +333,9 @@ export async function upsertPersonalMemory(
     byteSize: Buffer.byteLength(content, isBinary ? "base64" : "utf8"),
     sha256: createHash("sha256").update(content).digest("hex"),
     createdByAgentId: input.createdByAgentId ?? null,
-    lastObservedAt: authoredBy === "agent" ? now : null,
+    // Recency date: the imported fact's own date if given, else "now" for an
+    // agent observation, else null (a freshly-typed note has no prior date).
+    lastObservedAt: input.observedAt ?? (authoredBy === "agent" ? now : null),
     updatedAt: now,
   };
 

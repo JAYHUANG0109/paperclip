@@ -46,7 +46,7 @@ export function Memory() {
     memoryType: MemoryCategory | "auto";
   }>({ name: "", description: "", content: "", memoryType: "auto" });
   // Preview of a pasted multi-entry dump before it lands (auto-split + categorized).
-  const [preview, setPreview] = useState<Array<{ content: string; category: MemoryCategory; include: boolean }> | null>(null);
+  const [preview, setPreview] = useState<Array<{ content: string; category: MemoryCategory; observedAt: string | null; include: boolean }> | null>(null);
   const nowMs = Date.now();
   const [importResult, setImportResult] = useState<MemoryImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,11 +96,13 @@ export function Memory() {
       description: string;
       content: string;
       memoryType: MemoryCategory;
+      observedAt?: string | null;
     }) =>
       memoryApi.save(selectedCompanyId!, userId!, memory.name, {
         content: memory.content,
         description: memory.description,
         memoryType: memory.memoryType,
+        observedAt: memory.observedAt ?? null,
       }),
     onSuccess: () => {
       setDraft({ name: "", description: "", content: "", memoryType: "auto" });
@@ -113,7 +115,7 @@ export function Memory() {
   // Bulk-save the confirmed entries from a pasted dump. Names derive from content
   // and are de-duped so entries don't overwrite each other.
   const saveMany = useMutation({
-    mutationFn: async (entries: Array<{ content: string; category: MemoryCategory }>) => {
+    mutationFn: async (entries: Array<{ content: string; category: MemoryCategory; observedAt: string | null }>) => {
       const used = new Set<string>();
       for (const entry of entries) {
         let name = slugify(entry.content.slice(0, 48)) || "memory";
@@ -125,6 +127,7 @@ export function Memory() {
           content: entry.content,
           description: "",
           memoryType: entry.category,
+          observedAt: entry.observedAt,
         });
       }
     },
@@ -387,7 +390,7 @@ export function Memory() {
               if (draft.memoryType === "auto") {
                 const parsed = parseMemoryDump(draft.content);
                 if (parsed.length > 1) {
-                  setPreview(parsed.map((entry) => ({ content: entry.content, category: entry.category, include: true })));
+                  setPreview(parsed.map((entry) => ({ content: entry.content, category: entry.category, observedAt: entry.observedAt, include: true })));
                   return;
                 }
                 save.mutate({
@@ -395,6 +398,7 @@ export function Memory() {
                   description: draft.description,
                   content: draft.content,
                   memoryType: parsed[0]?.category ?? classifyMemoryContent(draft.content),
+                  observedAt: parsed[0]?.observedAt ?? null,
                 });
                 return;
               }
@@ -469,7 +473,7 @@ export function Memory() {
                 type="button"
                 className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
                 disabled={saveMany.isPending || preview.every((entry) => !entry.include)}
-                onClick={() => saveMany.mutate(preview.filter((entry) => entry.include).map((entry) => ({ content: entry.content, category: entry.category })))}
+                onClick={() => saveMany.mutate(preview.filter((entry) => entry.include).map((entry) => ({ content: entry.content, category: entry.category, observedAt: entry.observedAt })))}
               >
                 {saveMany.isPending
                   ? t("common.saving", { defaultValue: "儲存中…" })
