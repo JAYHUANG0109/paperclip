@@ -309,7 +309,7 @@ export function Memory() {
     : [...visible].sort((a, b) => sortMode === "hot" ? lastSeenMs(b) - lastSeenMs(a) : lastSeenMs(a) - lastSeenMs(b));
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-6">
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">
           {t("memory.title", { defaultValue: "Memory" })}
@@ -683,13 +683,15 @@ export function Memory() {
               <h2 className="mt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {categoryLabel(group.id)}
               </h2>
-              {group.memories.map(renderEntry)}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {group.memories.map(renderEntry)}
+              </div>
             </div>
           ))
-        ) : sortMode !== "category" ? (
-          sortedFlat.map(renderEntry)
         ) : (
-          visible.map(renderEntry)
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {(sortMode !== "category" ? sortedFlat : visible).map(renderEntry)}
+          </div>
         )}
       </section>
 
@@ -776,52 +778,39 @@ export function Memory() {
   function renderEntry(memory: PersonalMemory) {
     const strength = strengthLabel(memoryStrength(memory.timesObserved));
     const recency = memoryRecency(memory.lastObservedAt ?? memory.updatedAt ?? memory.createdAt, nowMs);
+    const content = memory.isBinary
+      ? t("memory.binaryEntry", { path: memory.filePath ?? memory.name, defaultValue: `Attached file: ${memory.filePath ?? memory.name}` })
+      : memory.content;
     return (
       <article
         key={memory.name}
-        className="flex items-start gap-3 rounded-lg border border-border px-4 py-3"
+        className="group/card flex h-full flex-col gap-2 rounded-lg border border-border p-3"
       >
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="whitespace-pre-wrap break-words text-sm">
-            {memory.isBinary
-              ? t("memory.binaryEntry", {
-                  path: memory.filePath ?? memory.name,
-                  defaultValue: `Attached file: ${memory.filePath ?? memory.name}`,
-                })
-              : memory.content}
-          </p>
-          <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        <p className="line-clamp-6 whitespace-pre-wrap break-words text-sm" title={content ?? undefined}>
+          {content}
+        </p>
+        <div className="mt-auto flex items-end gap-1.5">
+          <p className="flex flex-1 flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
             <span className="rounded-full border border-border px-1.5 py-0.5">
               {categoryLabel(normalizeMemoryCategory(memory.memoryType))}
             </span>
             <RecencyBadge recency={recency} />
-            <span>{memory.name}</span>
-            {memory.source !== "manual" ? <span>· {memory.source}</span> : null}
-            {/* Repetition is why an agent-written entry is trusted, so it
-                is shown rather than kept as an internal ranking signal. */}
+            {memory.source !== "manual" ? <span className="rounded-full bg-foreground/5 px-1.5 py-0.5">{memory.source}</span> : null}
             {memory.timesObserved > 1 ? (
-              <span>
-                ·{" "}
-                {t("memory.timesObserved", {
-                  count: memory.timesObserved,
-                  defaultValue: `seen ${memory.timesObserved}×`,
-                })}
-              </span>
+              <span>{t("memory.timesObserved", { count: memory.timesObserved, defaultValue: `seen ${memory.timesObserved}×` })}</span>
             ) : null}
-            {strength ? (
-              <span className="rounded-full bg-foreground/10 px-1.5 py-0.5">{strength}</span>
-            ) : null}
+            {strength ? <span className="rounded-full bg-foreground/10 px-1.5 py-0.5">{strength}</span> : null}
           </p>
+          <button
+            type="button"
+            aria-label={t("memory.forget", { defaultValue: "Forget" })}
+            className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover/card:opacity-100 focus-visible:opacity-100"
+            onClick={() => remove.mutate({ name: memory.name })}
+            disabled={remove.isPending}
+          >
+            <Trash2 className="size-3.5" />
+          </button>
         </div>
-        <button
-          type="button"
-          aria-label={t("memory.forget", { defaultValue: "Forget" })}
-          className="rounded-md border border-border p-1.5"
-          onClick={() => remove.mutate({ name: memory.name })}
-          disabled={remove.isPending}
-        >
-          <Trash2 className="size-3.5" />
-        </button>
       </article>
     );
   }
