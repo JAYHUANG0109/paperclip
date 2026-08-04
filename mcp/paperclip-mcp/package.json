@@ -1,0 +1,13 @@
+{
+  "name": "paperclip-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-dependency MCP server that lets Claude Desktop drive a Paperclip instance with a Paperclip API key.",
+  "bin": {
+    "paperclip-mcp": "./paperclip-mcp.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
