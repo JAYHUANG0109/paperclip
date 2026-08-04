@@ -62,6 +62,18 @@ const AUTO_RECOVERY_TOGGLE_SELECTOR =
 function defaultExperimentalSettings(): InstanceExperimentalSettingsPayload {
   return {
     enableEnvironments: false,
+    worktreeRunExecutionActivatedAt: null,
+    worktreeRunExecutionActivationInstanceId: null,
+    enableBuiltInAgents: false,
+    enableBetaSkills: false,
+    enableSummaries: false,
+    enableStatusCards: false,
+    enableDecisions: false,
+    enableGoalsSidebarLink: false,
+    enableWorkspaceBranchReconcileForward: false,
+    enableWorkspaceDirtyQuarantineRepair: false,
+    enableOwnerInstanceAdmin: false,
+    enableWorktreeRunExecution: false,
     enableIsolatedWorkspaces: false,
     enableStreamlinedLeftNavigation: true,
     enableApps: false,
@@ -78,8 +90,6 @@ function defaultExperimentalSettings(): InstanceExperimentalSettingsPayload {
     autoRestartDevServerWhenIdle: false,
     enableIssueGraphLivenessAutoRecovery: false,
     issueGraphLivenessAutoRecoveryLookbackHours: 24,
-    enablePipelines: false,
-    enableServerInfoDebugView: false,
   };
 }
 
