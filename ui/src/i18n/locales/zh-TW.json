@@ -6648,5 +6648,8 @@
     "enabled": "已在此代理人啟用",
     "available": "技能庫中可用",
     "emptyLibrary": "公司技能庫中沒有技能"
+  },
+  "issueProperties": {
+    "searchProjects": "搜尋專案…"
   }
 }

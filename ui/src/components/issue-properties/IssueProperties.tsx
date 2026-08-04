@@ -55,7 +55,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { User, ArrowUpRight, Plus, GitBranch, FolderOpen, HardDrive, Check, Clock, RotateCcw, Loader2, CheckCircle2, ArchiveRestore } from "lucide-react";
+import { User, ArrowUpRight, Plus, GitBranch, FolderOpen, HardDrive, Check, Clock, RotateCcw, Loader2, CheckCircle2, ArchiveRestore, ChevronRight } from "lucide-react";
 import { AgentIcon } from "../AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "../InlineEntitySelector";
 import {
@@ -180,6 +180,10 @@ export function IssueProperties({
   const { t } = useTranslation();
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
+  // Project scope groups (公司/團隊/個人) collapse by default so the picker isn't
+  // a long scroll; a group opens on click, and any active search force-expands
+  // every group so matches are never hidden behind a collapsed header.
+  const [expandedProjectGroups, setExpandedProjectGroups] = useState<Set<string>>(new Set());
   const [skillScopeOpen, setSkillScopeOpen] = useState(false);
   const [blockedByOpen, setBlockedByOpen] = useState(false);
   const [blockedBySearch, setBlockedBySearch] = useState("");
@@ -1794,7 +1798,7 @@ export function IssueProperties({
     <>
       <input
         className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
-        placeholder="Search projects..."
+        placeholder={t("issueProperties.searchProjects", { defaultValue: "Search projects..." })}
         value={projectSearch}
         onChange={(e) => setProjectSearch(e.target.value)}
         autoFocus={!inline}
@@ -1806,26 +1810,46 @@ export function IssueProperties({
         >
           {t("issueProperties.noProject", { defaultValue: "無專案" })}
         </button>
-        {projectScopeGroups.map((group) =>
-          group.items.length === 0 ? null : (
+        {projectScopeGroups.map((group) => {
+          if (group.items.length === 0) return null;
+          const open = projectSearch.trim().length > 0 || expandedProjectGroups.has(group.label);
+          return (
             <div key={group.label}>
-              <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{group.label}</div>
-              {group.items.map((project) => (
-                <button
-                  key={project.id}
-                  className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
-                    project.id === issue.projectId && "bg-accent",
-                  )}
-                  onClick={() => selectProjectOption(project)}
-                >
-                  <span className="shrink-0 h-3 w-3 rounded-sm" style={{ backgroundColor: project.color ?? "var(--project-seed)" }} />
-                  <span className="truncate">{project.name}</span>
-                </button>
-              ))}
+              <button
+                type="button"
+                aria-expanded={open}
+                className="flex w-full items-center gap-1 px-2 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                onClick={() =>
+                  setExpandedProjectGroups((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(group.label)) next.delete(group.label);
+                    else next.add(group.label);
+                    return next;
+                  })
+                }
+              >
+                <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform", open && "rotate-90")} />
+                <span>{group.label}</span>
+                <span className="ml-1 normal-case text-muted-foreground/60">{group.items.length}</span>
+              </button>
+              {open
+                ? group.items.map((project) => (
+                    <button
+                      key={project.id}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
+                        project.id === issue.projectId && "bg-accent",
+                      )}
+                      onClick={() => selectProjectOption(project)}
+                    >
+                      <span className="shrink-0 h-3 w-3 rounded-sm" style={{ backgroundColor: project.color ?? "var(--project-seed)" }} />
+                      <span className="truncate">{project.name}</span>
+                    </button>
+                  ))
+                : null}
             </div>
-          ),
-        )}
+          );
+        })}
         {/* Always-visible create action. Typed a name → inline-create + assign this
             task to it. Empty → open the full project dialog (scope, teams, etc.). */}
         <button
