@@ -610,7 +610,10 @@ export function OrgChart() {
                       {agent ? (
                         <OfficeAvatar agent={agent} size={36} />
                       ) : (
-                        <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
+                        // This branch only runs when the agent record is not in agentMap,
+                        // so there is no icon to read — `agent?.icon` was always undefined
+                        // here, and the org node carries no icon of its own.
+                        <AgentIcon icon={null} className="h-4.5 w-4.5 text-foreground/70" />
                       )}
                     </div>
                     <span

@@ -93,6 +93,15 @@ interface MarkdownEditorProps {
 
 export interface MarkdownEditorRef {
   focus: () => void;
+  /**
+   * Insert text into the document — used for variable tokens like `{{field}}`.
+   *
+   * Callers already relied on this (PipelineSettings' variable-token buttons) while the
+   * ref only exposed `focus`, so the call threw "insertMarkdown is not a function" and
+   * the caller's own fallback never ran, because it only triggers when `ref.current` is
+   * absent — and it was present, just missing the method.
+   */
+  insertMarkdown: (text: string) => void;
 }
 
 class MarkdownEditorRichErrorBoundary extends Component<
@@ -722,7 +731,23 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       }
       ref.current?.focus(undefined, { defaultSelection: "rootEnd" });
     },
-  }), [richEditorError]);
+    insertMarkdown: (text: string) => {
+      if (!text) return;
+      const textarea = fallbackTextareaRef.current;
+      if (richEditorError && textarea) {
+        // Plain textarea: insert exactly where the caret is.
+        const start = textarea.selectionStart ?? value.length;
+        const end = textarea.selectionEnd ?? start;
+        onChange(`${value.slice(0, start)}${text}${value.slice(end)}`);
+        return;
+      }
+      // Rich mode appends instead of inserting at the Lexical caret. Doing the latter
+      // means editor.update() plus history and markdown-serialization handling this
+      // component has never done, and getting that subtly wrong corrupts the document
+      // a user is editing. Appending is what the callers' own fallbacks already did.
+      onChange(value ? `${value}${/\s$/.test(value) ? "" : " "}${text}` : text);
+    },
+  }), [richEditorError, value, onChange]);
 
   const autoSizeFallbackTextarea = useCallback((element: HTMLTextAreaElement | null) => {
     if (!element) return;

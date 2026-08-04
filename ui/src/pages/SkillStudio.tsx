@@ -3169,20 +3169,14 @@ function RunDetailView({
           <RunDocumentsSection documents={additionalDocuments} />
         ) : null}
 
-        <IssueOutputSection
-          workProducts={detail.harnessContent.workProducts}
-          onMediaClick={(item) => {
-            const meta = item.metadata;
-            if (!meta) return;
-            const idx = mediaGalleryItems.findIndex((galleryItem) => (
-              galleryItem.contentPath === meta.contentPath ||
-              galleryItem.id === `work-product-${item.id}` ||
-              galleryItem.id === meta.attachmentId
-            ));
-            setGalleryIndex(idx >= 0 ? idx : 0);
-            setGalleryOpen(true);
-          }}
-        />
+        {/*
+          IssueOutputSection has no onMediaClick and never has — it renders its own cards
+          via OutputPrimaryCard, and IssueDetail uses it the same way. The handler that
+          used to sit here was dead: React dropped the unknown prop, so clicking an output
+          never opened this page's gallery. Removed rather than left in place looking wired.
+          The gallery is still reached from the attachments section below.
+        */}
+        <IssueOutputSection workProducts={detail.harnessContent.workProducts} />
 
         {rawAttachments.length > 0 ? (
           <IssueAttachmentsSection

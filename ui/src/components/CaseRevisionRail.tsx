@@ -265,7 +265,7 @@ export function CaseRevisionRail({
           <RevisionByline revision={selected} />
         </div>
         {selected.body ? (
-          <MarkdownBody linkIssueReferences linkCaseReferences>
+          <MarkdownBody linkIssueReferences>
             {selected.body}
           </MarkdownBody>
         ) : (

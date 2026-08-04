@@ -56,6 +56,13 @@ export const queryKeys = {
       companyId: string,
       filters: {
         agentId?: string | null;
+        /**
+         * Multiselect agent filter, pre-joined by the caller. It MUST be part of the key:
+         * the audit feed's team filter resolves to a set of agent ids, and leaving it out
+         * meant two different team selections shared one cache entry, so changing teams
+         * showed the previous team's rows until something else invalidated the query.
+         */
+        agentIds?: string | null;
         responsibleUserId?: string | null;
         runId?: string | null;
         entityType?: string | null;
@@ -70,6 +77,7 @@ export const queryKeys = {
         companyId,
         "agent-actions",
         filters.agentId ?? "__all",
+        filters.agentIds ?? "__all",
         filters.responsibleUserId ?? "__all",
         filters.runId ?? "__all",
         filters.entityType ?? "__all",

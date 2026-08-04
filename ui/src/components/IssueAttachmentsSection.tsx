@@ -26,7 +26,11 @@ interface IssueAttachmentsSectionProps {
   error?: string | null;
   dragActive?: boolean;
   deletePending?: boolean;
-  onDelete: (attachmentId: string) => void;
+  /**
+   * Omit on read-only surfaces (e.g. SkillStudio's harness view) — the delete control is
+   * then not rendered at all, rather than rendered and throwing on click.
+   */
+  onDelete?: (attachmentId: string) => void;
   onImageClick: (attachment: IssueAttachment) => void;
   onDragEnter?: (evt: DragEvent<HTMLDivElement>) => void;
   onDragOver?: (evt: DragEvent<HTMLDivElement>) => void;
@@ -50,7 +54,7 @@ function AttachmentActions({
   deletePending,
 }: {
   attachment: IssueAttachment;
-  onDelete: (attachmentId: string) => void;
+  onDelete?: (attachmentId: string) => void;
   deletePending?: boolean;
 }) {
   const { t } = useTranslation();
@@ -67,16 +71,18 @@ function AttachmentActions({
           <Download className="h-4 w-4" />
         </a>
       </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title={t("issueAttachments.deleteAttachment", { defaultValue: "Delete attachment" })}
-        className="text-muted-foreground hover:text-destructive"
-        onClick={() => onDelete(attachment.id)}
-        disabled={deletePending}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      {onDelete ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title={t("issueAttachments.deleteAttachment", { defaultValue: "Delete attachment" })}
+          className="text-muted-foreground hover:text-destructive"
+          onClick={() => onDelete(attachment.id)}
+          disabled={deletePending}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -96,7 +102,7 @@ function MarkdownAttachmentCard({
   deletePending,
 }: {
   attachment: IssueAttachment;
-  onDelete: (attachmentId: string) => void;
+  onDelete?: (attachmentId: string) => void;
   deletePending?: boolean;
 }) {
   const { t } = useTranslation();
@@ -141,7 +147,7 @@ function VideoAttachmentCard({
   deletePending,
 }: {
   attachment: IssueAttachment;
-  onDelete: (attachmentId: string) => void;
+  onDelete?: (attachmentId: string) => void;
   deletePending?: boolean;
 }) {
   const filename = attachmentFilename(attachment);
@@ -165,7 +171,7 @@ function GenericAttachmentRow({
   deletePending,
 }: {
   attachment: IssueAttachment;
-  onDelete: (attachmentId: string) => void;
+  onDelete?: (attachmentId: string) => void;
   deletePending?: boolean;
 }) {
   const { t } = useTranslation();
@@ -228,9 +234,19 @@ export function IssueAttachmentsSection({
     };
   }, [attachments]);
 
-  const requestDelete = (attachmentId: string) => setConfirmDeleteId(attachmentId);
+  /**
+   * Only offer deletion when the caller actually supplied a handler. `requestDelete` is a
+   * local function, so passing it to children unconditionally made their own
+   * `onDelete ? …` guards always true and the destructive control reappeared on
+   * read-only surfaces.
+   */
+  const requestDelete = onDelete
+    ? (attachmentId: string) => setConfirmDeleteId(attachmentId)
+    : undefined;
   const confirmDelete = (attachmentId: string) => {
-    onDelete(attachmentId);
+    // Reachable only from a control that is not rendered without onDelete, but the
+    // confirm dialog is state-driven, so guard rather than assume.
+    onDelete?.(attachmentId);
     setConfirmDeleteId(null);
   };
 
@@ -304,7 +320,7 @@ export function IssueAttachmentsSection({
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : requestDelete ? (
                 <button
                   type="button"
                   className="absolute right-1.5 top-1.5 rounded-md bg-black/50 p-1 text-white opacity-0 transition-opacity hover:bg-destructive group-hover:opacity-100"
@@ -316,7 +332,7 @@ export function IssueAttachmentsSection({
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
-              )}
+              ) : null}
             </div>
           ))}
         </div>
