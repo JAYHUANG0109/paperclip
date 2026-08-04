@@ -1,4 +1,102 @@
 {
+  "runtimeAccount": {
+    "accountInUse": "使用中的帳號",
+    "description": "Paperclip 目前執行所在的 Claude 帳號。",
+    "agentCount_one": "{{count}} 個代理人",
+    "agentCount_other": "{{count}} 個代理人",
+    "loading": "載入帳號中…",
+    "noPool": "尚未設定帳號輪替池，因此所有代理人都使用此主機的預設 Claude 登入，共用同一額度。",
+    "currentlyInUse": "目前使用中",
+    "nextRunUses": "自上次重啟後尚無執行 — 下次執行將使用此帳號",
+    "rotationPool": "輪替池",
+    "backToAutomatic": "恢復自動",
+    "pinnedHelp": "已固定於單一帳號。若額度用盡，Paperclip 會輪替至其他帳號，並在額度重置後返回此帳號。",
+    "rotatingHelp": "自動輪替中。選擇一個帳號可將執行固定於該帳號。",
+    "pinned": "已固定",
+    "useThisAccount": "使用此帳號",
+    "noCredentialsTitle": "此目錄沒有可用的憑證",
+    "quotaLimitedShort": "額度受限",
+    "resettingNow": "正在重置",
+    "resetsInMinutes": "{{minutes}} 分鐘後重置",
+    "resetsInHoursMinutes": "{{hours}} 小時 {{minutes}} 分後重置",
+    "resetsInHours": "{{hours}} 小時後重置",
+    "state": {
+      "signedOut": "已登出",
+      "signedOutDetail": "此目錄沒有可用的憑證 — 輪替將略過它。",
+      "quotaLimited": "額度受限",
+      "inUse": "使用中",
+      "standby": "待命"
+    }
+  },
+  "audit": {
+    "heading": "稽核",
+    "headerDescription": "您的代理人所做的一切，最新在前 — 每一列都是一筆已記錄的動作，並附上負責人。點擊即可前往任務或執行查看完整內容。",
+    "footer": "由 Paperclip 記錄 — 記錄無法編輯，且不會儲存敏感值。",
+    "theTask": "此任務",
+    "aUser": "某位使用者",
+    "document": "文件",
+    "onBehalfOf": "代表 {{label}}",
+    "viewRun": "查看執行",
+    "clearFilters": "清除篩選",
+    "exporting": "匯出中…",
+    "exportCsv": "匯出 CSV",
+    "loading": "載入中…",
+    "loadMore": "載入更多",
+    "loadFailed": "無法載入稽核紀錄。",
+    "tryAgain": "重試",
+    "actor": {
+      "user": "使用者",
+      "plugin": "外掛",
+      "system": "系統"
+    },
+    "filter": {
+      "agent": "代理人",
+      "allAgents": "所有代理人",
+      "responsibleUser": "負責人",
+      "allResponsibleUsers": "所有負責人",
+      "action": "動作",
+      "entity": "實體",
+      "fromDate": "起始日期",
+      "toDate": "結束日期"
+    },
+    "actionDomain": {
+      "all": "所有動作",
+      "tasks": "任務",
+      "agents": "代理人",
+      "runs": "執行",
+      "approvals": "審批",
+      "projects": "專案",
+      "goals": "目標",
+      "tools": "工具",
+      "costs": "成本",
+      "company": "公司"
+    },
+    "entityType": {
+      "all": "所有實體",
+      "task": "任務",
+      "agent": "代理人",
+      "project": "專案",
+      "goal": "目標",
+      "company": "公司"
+    },
+    "empty": {
+      "title": "目前尚無內容",
+      "body": "只要您的代理人開始行動，其動作就會顯示在這裡。",
+      "filteredTitle": "沒有符合這些篩選條件的動作",
+      "filteredBody": "請嘗試更寬的日期範圍或不同的篩選條件。"
+    },
+    "toast": {
+      "exportedTitle": "稽核已匯出",
+      "exportedBody": "您的 CSV 下載已開始。",
+      "failedTitle": "匯出失敗",
+      "failedBody": "無法匯出稽核紀錄。"
+    },
+    "upsell": {
+      "title": "代理人稽核是 Paperclip 企業版功能",
+      "bodyBefore": "代理人稽核紀錄提供可搜尋、可匯出的完整紀錄，記載您的代理人所做的一切 — 每則留言、任務變更、審批與執行 — 並附上每個動作的負責人。請洽管理員授予您",
+      "bodyAfter": "權限以檢視。"
+    }
+  },
   "onboardingGame": {
     "title": "上手教學",
     "progress": "{{done}}/{{total}} 完成",
@@ -59,7 +157,8 @@
     "decisions": "待決議",
     "memory": "記憶",
     "myTasks": "近期",
-    "myTasksSeeAll": "查看全部任務"
+    "myTasksSeeAll": "查看全部任務",
+    "audit": "稽核"
   },
   "sort": {
     "top": "置頂",

@@ -1,4 +1,6 @@
 import type { RuntimeAccountPoolEntry, RuntimeAccountsResult } from "@paperclipai/shared";
+import type { TFunction } from "i18next";
+import { useTranslation } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 interface RuntimeAccountCardProps {
@@ -16,40 +18,60 @@ function shortDirName(dir: string): string {
   return parts[parts.length - 1] ?? dir;
 }
 
-function resetsInText(coolingDownUntil: string): string {
+function resetsInText(coolingDownUntil: string, t: TFunction): string {
   const until = new Date(coolingDownUntil);
   const minutes = Math.round((until.getTime() - Date.now()) / 60_000);
-  if (Number.isNaN(minutes)) return "quota-limited";
-  if (minutes <= 0) return "resetting now";
-  if (minutes < 60) return `resets in ${minutes}m`;
+  if (Number.isNaN(minutes)) return t("runtimeAccount.quotaLimitedShort", { defaultValue: "quota-limited" });
+  if (minutes <= 0) return t("runtimeAccount.resettingNow", { defaultValue: "resetting now" });
+  if (minutes < 60)
+    return t("runtimeAccount.resetsInMinutes", { minutes, defaultValue: "resets in {{minutes}}m" });
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return rest > 0 ? `resets in ${hours}h ${rest}m` : `resets in ${hours}h`;
+  return rest > 0
+    ? t("runtimeAccount.resetsInHoursMinutes", {
+        hours,
+        minutes: rest,
+        defaultValue: "resets in {{hours}}h {{minutes}}m",
+      })
+    : t("runtimeAccount.resetsInHours", { hours, defaultValue: "resets in {{hours}}h" });
 }
 
-function entryState(entry: RuntimeAccountPoolEntry): {
+function entryState(
+  entry: RuntimeAccountPoolEntry,
+  t: TFunction,
+): {
   label: string;
   dotClass: string;
   detail: string | null;
 } {
   if (!entry.loggedIn) {
     return {
-      label: "Signed out",
+      label: t("runtimeAccount.state.signedOut", { defaultValue: "Signed out" }),
       dotClass: "bg-(--status-agent-error)",
-      detail: "This directory has no usable credentials — rotation will skip past it.",
+      detail: t("runtimeAccount.state.signedOutDetail", {
+        defaultValue: "This directory has no usable credentials — rotation will skip past it.",
+      }),
     };
   }
   if (entry.coolingDownUntil) {
     return {
-      label: "Quota-limited",
+      label: t("runtimeAccount.state.quotaLimited", { defaultValue: "Quota-limited" }),
       dotClass: "bg-(--status-task-blocked)",
-      detail: resetsInText(entry.coolingDownUntil),
+      detail: resetsInText(entry.coolingDownUntil, t),
     };
   }
   if (entry.active) {
-    return { label: "In use", dotClass: "bg-(--status-agent-running)", detail: null };
+    return {
+      label: t("runtimeAccount.state.inUse", { defaultValue: "In use" }),
+      dotClass: "bg-(--status-agent-running)",
+      detail: null,
+    };
   }
-  return { label: "Standby", dotClass: "bg-(--status-agent-idle)", detail: null };
+  return {
+    label: t("runtimeAccount.state.standby", { defaultValue: "Standby" }),
+    dotClass: "bg-(--status-agent-idle)",
+    detail: null,
+  };
 }
 
 /**
@@ -68,6 +90,7 @@ export function RuntimeAccountCard({
   pinPending = false,
   pinError = null,
 }: RuntimeAccountCardProps) {
+  const { t } = useTranslation();
   const active = result.entries.find((entry) => entry.active) ?? null;
   const hasPool = result.entries.length > 0;
   const canSwitch = result.canSwitch && !!onPin;
@@ -77,15 +100,21 @@ export function RuntimeAccountCard({
       <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
         <div className="min-w-0">
           <div className="text-(length:--text-micro) font-semibold uppercase tracking-(--tracking-caps) text-muted-foreground">
-            Account in use
+            {t("runtimeAccount.accountInUse", { defaultValue: "Account in use" })}
           </div>
           <div className="mt-1 text-sm text-muted-foreground">
-            Which Claude account Paperclip is running on.
+            {t("runtimeAccount.description", {
+              defaultValue: "Which Claude account Paperclip is running on.",
+            })}
           </div>
         </div>
         {result.agentCount > 0 ? (
           <span className="shrink-0 border border-border px-2.5 py-1 text-(length:--text-nano) font-semibold uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
-            {result.agentCount} {result.agentCount === 1 ? "agent" : "agents"}
+            {t("runtimeAccount.agentCount", {
+              count: result.agentCount,
+              defaultValue: "{{count}} agent",
+              defaultValue_other: "{{count}} agents",
+            })}
           </span>
         ) : null}
       </div>
@@ -97,13 +126,17 @@ export function RuntimeAccountCard({
       ) : null}
 
       {loading && !hasPool ? (
-        <div className="mt-4 text-sm text-muted-foreground">Loading accounts…</div>
+        <div className="mt-4 text-sm text-muted-foreground">
+          {t("runtimeAccount.loading", { defaultValue: "Loading accounts…" })}
+        </div>
       ) : null}
 
       {!loading && !hasPool && !result.error ? (
         <div className="mt-4 text-sm text-muted-foreground">
-          No account-rotation pool is configured, so every agent runs on this host's default Claude
-          login and shares one quota.
+          {t("runtimeAccount.noPool", {
+            defaultValue:
+              "No account-rotation pool is configured, so every agent runs on this host's default Claude login and shares one quota.",
+          })}
         </div>
       ) : null}
 
@@ -117,8 +150,11 @@ export function RuntimeAccountCard({
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   {result.activeResolved
-                    ? "Currently in use"
-                    : "No run yet since the last restart — the next run will use this account"}
+                    ? t("runtimeAccount.currentlyInUse", { defaultValue: "Currently in use" })
+                    : t("runtimeAccount.nextRunUses", {
+                        defaultValue:
+                          "No run yet since the last restart — the next run will use this account",
+                      })}
                 </div>
               </div>
               {active?.subscriptionType ? (
@@ -141,7 +177,7 @@ export function RuntimeAccountCard({
           <div className="mt-4 space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div className="text-(length:--text-micro) font-semibold uppercase tracking-(--tracking-caps) text-muted-foreground">
-                Rotation pool
+                {t("runtimeAccount.rotationPool", { defaultValue: "Rotation pool" })}
               </div>
               {canSwitch && result.pinnedDir ? (
                 <button
@@ -150,19 +186,24 @@ export function RuntimeAccountCard({
                   onClick={() => onPin?.(null)}
                   className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
                 >
-                  Back to automatic
+                  {t("runtimeAccount.backToAutomatic", { defaultValue: "Back to automatic" })}
                 </button>
               ) : null}
             </div>
             {canSwitch ? (
               <div className="text-xs text-muted-foreground">
                 {result.pinnedDir
-                  ? "Pinned to one account. If it runs out of quota, Paperclip rotates on and returns here when it resets."
-                  : "Rotating automatically. Choose an account to pin runs to it."}
+                  ? t("runtimeAccount.pinnedHelp", {
+                      defaultValue:
+                        "Pinned to one account. If it runs out of quota, Paperclip rotates on and returns here when it resets.",
+                    })
+                  : t("runtimeAccount.rotatingHelp", {
+                      defaultValue: "Rotating automatically. Choose an account to pin runs to it.",
+                    })}
               </div>
             ) : null}
             {result.entries.map((entry) => {
-              const state = entryState(entry);
+              const state = entryState(entry, t);
               return (
                 <div key={entry.dir} className="border border-border px-3.5 py-2.5">
                   <div className="flex items-start justify-between gap-3">
@@ -187,7 +228,7 @@ export function RuntimeAccountCard({
                       <div className="flex items-center justify-end gap-2">
                         {entry.pinned ? (
                           <span className="border border-border px-1.5 py-0.5 text-(length:--text-nano) font-semibold uppercase tracking-(--tracking-eyebrow) text-muted-foreground">
-                            Pinned
+                            {t("runtimeAccount.pinned", { defaultValue: "Pinned" })}
                           </span>
                         ) : null}
                         <div className="text-xs font-medium text-foreground">{state.label}</div>
@@ -200,10 +241,16 @@ export function RuntimeAccountCard({
                           type="button"
                           disabled={pinPending || !entry.loggedIn}
                           onClick={() => onPin?.(entry.dir)}
-                          title={entry.loggedIn ? undefined : "This directory has no usable credentials"}
+                          title={
+                            entry.loggedIn
+                              ? undefined
+                              : t("runtimeAccount.noCredentialsTitle", {
+                                  defaultValue: "This directory has no usable credentials",
+                                })
+                          }
                           className="mt-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
                         >
-                          Use this account
+                          {t("runtimeAccount.useThisAccount", { defaultValue: "Use this account" })}
                         </button>
                       ) : null}
                     </div>
