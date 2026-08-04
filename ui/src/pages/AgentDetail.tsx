@@ -106,6 +106,8 @@ import {
   isUuidLike,
   anyTeamTokenMatches,
   normalizeMemoryCategory,
+  MEMORY_CATEGORY_LABELS,
+  type MemoryCategory,
   type Agent,
   type AgentInstructionsBundle,
   type AgentInstructionsFileSummary,
@@ -3393,6 +3395,25 @@ function AgentHarnessTab({ companyId, agent, onNavigate }: { companyId: string; 
     () => (ownerMemories ?? []).filter((m) => normalizeMemoryCategory(m.memoryType) === "instruction"),
     [ownerMemories],
   );
+  // Full memory the agent carries per-run — everything the owner remembers, not
+  // just the instruction subset. Per-user and independent: another user's agent
+  // reads that user's own memory, never this one's.
+  const memoryByCategory = useMemo(() => {
+    const counts = new Map<MemoryCategory, number>();
+    for (const m of ownerMemories ?? []) {
+      const cat = normalizeMemoryCategory(m.memoryType);
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [ownerMemories]);
+  const recentMemories = useMemo(
+    () =>
+      [...(ownerMemories ?? [])]
+        .sort((a, b) => (b.lastObservedAt ?? b.createdAt ?? "").localeCompare(a.lastObservedAt ?? a.createdAt ?? ""))
+        .slice(0, 6),
+    [ownerMemories],
+  );
+  const navigate = useNavigate();
 
   const equippedSkills = useMemo(() => {
     const desired = skillSnapshot?.desiredSkills ?? [];
@@ -3481,6 +3502,39 @@ function AgentHarnessTab({ companyId, agent, onNavigate }: { companyId: string; 
             </ul>
           )}
         </Card>
+
+        <div className="flex flex-col gap-2 rounded-xl border border-border p-4 md:col-span-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">
+              {t("agentDetail.harness.memory", { defaultValue: "記憶" })}
+              <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{(ownerMemories ?? []).length}</span>
+            </h3>
+            <button type="button" className="text-xs text-primary hover:underline" onClick={() => navigate("/memory")}>
+              {t("common.open", { defaultValue: "開啟" })} →
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {t("agentDetail.harness.memoryHint", { defaultValue: "此代理人每次執行都會讀取負責人的記憶。每位使用者的記憶各自獨立、互不相見。" })}
+          </p>
+          {(ownerMemories ?? []).length === 0 ? (
+            <span className="text-xs text-muted-foreground">{t("agentDetail.harness.noMemory", { defaultValue: "尚無記憶" })}</span>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1">
+                {memoryByCategory.map(([cat, n]) => (
+                  <span key={cat} className="rounded-full border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                    {t(`memory.category.${cat}`, { defaultValue: MEMORY_CATEGORY_LABELS[cat] })} · {n}
+                  </span>
+                ))}
+              </div>
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {recentMemories.map((m) => (
+                  <li key={m.name} className="line-clamp-2">• {m.content}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
 
         {harnessRules.length > 0 ? (
           <div className="flex flex-col gap-2 rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 md:col-span-2">
