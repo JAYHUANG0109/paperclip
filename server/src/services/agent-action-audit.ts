@@ -19,6 +19,14 @@ export interface AgentActionAuditFilters {
   to?: Date;
   cursor?: string;
   limit: number;
+  /**
+   * Access scoping. When present, the viewer is NOT privileged: they may see
+   * only actions by agents in `agentIds` (their joined agents + reporting
+   * subtree) PLUS actions taken on their own behalf (`responsibleUserId`).
+   * Absent/null => unrestricted (owner/admin/instance-admin, or an explicit
+   * audit:view_agent_actions grant).
+   */
+  scope?: { agentIds: readonly string[]; responsibleUserId: string } | null;
 }
 
 type CursorValue = { createdAt: string; id: string };
@@ -67,6 +75,23 @@ export function agentActionAuditService(db: Db) {
       if (filters.entityId) conditions.push(eq(activityLog.entityId, filters.entityId));
       if (filters.action) conditions.push(sql<boolean>`starts_with(${activityLog.action}, ${filters.action})`);
       if (filters.actorType) conditions.push(eq(activityLog.actorType, filters.actorType));
+      // Access scoping for a non-privileged viewer: their agents' subtree OR
+      // their own on-behalf actions. An empty agent set still lets them see
+      // what they personally did.
+      if (filters.scope) {
+        const ownActions = or(
+          eq(activityLog.responsibleUserId, filters.scope.responsibleUserId),
+          and(
+            isNull(activityLog.responsibleUserId),
+            eq(heartbeatRuns.responsibleUserId, filters.scope.responsibleUserId),
+          ),
+        )!;
+        conditions.push(
+          filters.scope.agentIds.length > 0
+            ? or(inArray(activityLog.agentId, [...filters.scope.agentIds]), ownActions)!
+            : ownActions,
+        );
+      }
       if (filters.from) conditions.push(gte(activityLog.createdAt, filters.from));
       if (filters.to) conditions.push(lte(activityLog.createdAt, filters.to));
       if (cursor) {

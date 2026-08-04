@@ -4,7 +4,7 @@ import type { Db } from "@paperclipai/db";
 import { normalizeIssueIdentifier } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { activityService, normalizeActivityLimit } from "../services/activity.js";
-import { assertAuthenticated, assertBoard, assertCompanyAccess, getAccessibleResource, hasCompanyAccess } from "./authz.js";
+import { assertAuthenticated, assertBoard, assertCompanyAccess, getAccessibleResource, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
 import { accessService, heartbeatService, issueService } from "../services/index.js";
 import { sanitizeRecord } from "../redaction.js";
 import { badRequest, forbidden } from "../errors.js";
@@ -122,12 +122,33 @@ export function activityRoutes(db: Db, options: { restrictVisibility?: boolean }
   const issueSvc = issueService(db);
   const agentAudit = agentActionAuditService(db);
 
-  async function assertAgentAuditPermission(req: import("express").Request, companyId: string) {
+  /**
+   * Resolve the viewer's audit scope by access level, rather than an all-or-
+   * nothing permission gate:
+   *   - null            => UNRESTRICTED: owner/admin, instance admin / local
+   *                        board, or anyone explicitly granted
+   *                        audit:view_agent_actions. Sees the whole company.
+   *   - { agentIds, … } => SCOPED: a non-privileged member sees only actions by
+   *                        agents they've joined + those agents' reporting
+   *                        subtree (so a campus/department head sees their
+   *                        campus/department), plus actions taken on their own
+   *                        behalf. A lowest-access member effectively sees only
+   *                        their own agent(s) and their own actions.
+   * Any active board member of the company may view; the scope is what differs.
+   */
+  async function resolveAuditScope(
+    req: import("express").Request,
+    companyId: string,
+  ): Promise<{ agentIds: string[]; responsibleUserId: string } | null> {
     assertBoard(req);
     assertCompanyAccess(req, companyId);
-    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
-    if (req.actor.userId && await access.canUser(companyId, req.actor.userId, "audit:view_agent_actions")) return;
-    throw forbidden("Missing permission: audit:view_agent_actions");
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return null;
+    if (isPrivilegedMemberViewer(req, companyId, true)) return null;
+    if (req.actor.userId && await access.canUser(companyId, req.actor.userId, "audit:view_agent_actions")) return null;
+    const userId = req.actor.userId;
+    if (!userId) throw forbidden("Audit requires an authenticated user");
+    const agentIds = await access.getVisibleAgentIdsForUser(companyId, userId);
+    return { agentIds: [...agentIds], responsibleUserId: userId };
   }
 
   async function assertCompanyScopeReadAllowed(req: Parameters<typeof assertCompanyAccess>[0], res: any, companyId: string) {
@@ -195,17 +216,17 @@ export function activityRoutes(db: Db, options: { restrictVisibility?: boolean }
 
   router.get("/companies/:companyId/audit/agent-actions", async (req, res) => {
     const companyId = req.params.companyId as string;
-    await assertAgentAuditPermission(req, companyId);
+    const scope = await resolveAuditScope(req, companyId);
     const parsedQuery = agentActionAuditQuerySchema.safeParse(req.query);
     if (!parsedQuery.success) {
       throw badRequest("Invalid agent action audit query", parsedQuery.error.issues);
     }
-    res.json(await agentAudit.list({ companyId, ...parsedQuery.data }));
+    res.json(await agentAudit.list({ companyId, ...parsedQuery.data, scope }));
   });
 
   router.get("/companies/:companyId/audit/agent-actions.csv", async (req, res) => {
     const companyId = req.params.companyId as string;
-    await assertAgentAuditPermission(req, companyId);
+    const scope = await resolveAuditScope(req, companyId);
     const parsedQuery = agentActionAuditQuerySchema.safeParse(req.query);
     if (!parsedQuery.success) {
       throw badRequest("Invalid agent action audit query", parsedQuery.error.issues);
@@ -216,7 +237,7 @@ export function activityRoutes(db: Db, options: { restrictVisibility?: boolean }
     const rows: Awaited<ReturnType<typeof agentAudit.list>>["items"] = [];
     let cursor: string | undefined;
     do {
-      const page = await agentAudit.list({ companyId, ...filters, cursor, limit: AUDIT_CSV_PAGE_SIZE });
+      const page = await agentAudit.list({ companyId, ...filters, scope, cursor, limit: AUDIT_CSV_PAGE_SIZE });
       for (const item of page.items) {
         if (rows.length >= AUDIT_CSV_EXPORT_MAX_ROWS) break;
         rows.push(item);
