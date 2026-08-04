@@ -369,6 +369,10 @@ export async function upsertPersonalMemory(
               lastObservedAt: now,
             }
           : {}),
+        // Re-importing (same name) must refresh recency + batch, so a re-paste
+        // actually updates dates/history instead of silently keeping the old ones.
+        ...(input.observedAt ? { lastObservedAt: input.observedAt } : {}),
+        ...(input.importBatchId ? { importBatchId: input.importBatchId } : {}),
         updatedAt: values.updatedAt,
       },
     })

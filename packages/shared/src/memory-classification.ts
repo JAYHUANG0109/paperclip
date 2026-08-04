@@ -344,14 +344,15 @@ export function classifyMemoryContent(content: string, sectionHint?: string | nu
   const fromHint = categoryFromSectionHint(sectionHint);
   if (fromHint) return fromHint;
   const text = ` ${content.toLowerCase()} `;
-  let best: MemoryCategory = "reference";
+  let best: MemoryCategory = DEFAULT_MEMORY_CATEGORY;
   let bestScore = 0;
   for (const category of CATEGORY_PRIORITY) {
     let score = 0;
     for (const kw of CATEGORY_KEYWORDS[category]) if (text.includes(kw)) score += 1;
     if (score > bestScore) { bestScore = score; best = category; }
   }
-  return bestScore === 0 ? "reference" : best;
+  // Nothing matched → the same default the write gate uses.
+  return bestScore === 0 ? DEFAULT_MEMORY_CATEGORY : best;
 }
 
 export type ParsedDumpEntry = {
