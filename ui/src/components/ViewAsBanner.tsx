@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { useTranslation } from "@/i18n";
 import { VIEW_AS_CHANGED_EVENT, getViewAs, setViewAs, type ViewAsSelection } from "@/lib/view-as";
 
 /**
@@ -82,6 +83,7 @@ function useViewAsUsers() {
  * handles only the active state, where being impossible to miss is the point.
  */
 export function ViewAsSwitcher() {
+  const { t } = useTranslation();
   const selection = useViewAsSelection();
   const users = useViewAsUsers();
 
@@ -93,7 +95,9 @@ export function ViewAsSwitcher() {
   return (
     <div className="mx-2 flex flex-col gap-1 rounded-lg border border-dashed border-border/70 px-2 py-2">
       <label htmlFor="view-as-sidebar-select" className="text-xs font-medium text-muted-foreground">
-        {selection ? `Viewing as ${selection.label}` : "View as user"}
+        {selection
+          ? t("viewAs.viewingAs", { defaultValue: "Viewing as {{name}}", name: selection.label })
+          : t("viewAs.viewAsUser", { defaultValue: "View as user" })}
       </label>
       <select
         id="view-as-sidebar-select"
@@ -104,7 +108,9 @@ export function ViewAsSwitcher() {
           if (user) switchTo({ userId: user.id, label: shortLabel(user) });
         }}
       >
-        <option value="">{selection ? "Switch to another user…" : "Select a user…"}</option>
+        <option value="">{selection
+          ? t("viewAs.switchToAnother", { defaultValue: "Switch to another user…" })
+          : t("viewAs.selectUser", { defaultValue: "Select a user…" })}</option>
         {[...users].sort((a, b) => label(a).localeCompare(label(b), undefined, { numeric: true })).map((user) => (
           <option key={user.id} value={user.id}>
             {label(user)}
@@ -117,11 +123,11 @@ export function ViewAsSwitcher() {
           className="rounded-md border border-border px-2 py-1 text-xs font-medium"
           onClick={() => switchTo(null)}
         >
-          Stop viewing as
+          {t("viewAs.stop", { defaultValue: "Stop viewing as" })}
         </button>
       ) : (
         <p className="text-[11px] leading-snug text-muted-foreground">
-          See the platform as someone else, read-only. Only you can do this.
+          {t("viewAs.hint", { defaultValue: "See the platform as someone else, read-only. Only you can do this." })}
         </p>
       )}
     </div>
@@ -129,6 +135,7 @@ export function ViewAsSwitcher() {
 }
 
 export function ViewAsBanner() {
+  const { t } = useTranslation();
   const selection = useViewAsSelection();
 
   // Idle state lives in the sidebar; the banner is for the active one.
@@ -148,9 +155,9 @@ export function ViewAsBanner() {
       data-testid="view-as-banner"
       className="flex flex-wrap items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm"
     >
-      <span className="font-medium">Viewing as {selection.label} — read-only</span>
+      <span className="font-medium">{t("viewAs.bannerActive", { defaultValue: "Viewing as {{name}} — read-only", name: selection.label })}</span>
       <span className="text-muted-foreground">
-        Everything below is scoped to this person. Changes are refused while this is on.
+        {t("viewAs.bannerScope", { defaultValue: "Everything below is scoped to this person. Changes are refused while this is on." })}
       </span>
       <button
         type="button"

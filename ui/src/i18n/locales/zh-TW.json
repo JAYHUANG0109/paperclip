@@ -6458,5 +6458,52 @@
     "noDeleted": "最近沒有刪除任何記憶。",
     "restore": "還原",
     "purge": "永久刪除"
+  },
+  "connections": {
+    "title": "連結",
+    "subtitle": "你的個人金鑰。每一支由你負責的代理人都會以「你的身分」使用它。",
+    "checking": "檢查中…",
+    "update": "更新",
+    "connect": "連結",
+    "connected": "已連結",
+    "notConnected": "尚未連結",
+    "save": "儲存",
+    "asanaError": "無法儲存你的 Asana 權杖，請確認後再試一次。",
+    "asanaPlaceholder": "貼上你的 Asana 個人存取權杖（Personal Access Token）",
+    "asanaHelp": "到 app.asana.com →「My apps」建立權杖",
+    "odooError": "無法驗證你的 Odoo 金鑰，請確認登入帳號與金鑰後再試一次。",
+    "odooConnectedAs": "已連結為 {{login}}",
+    "odooVerified": "已驗證 · {{db}}",
+    "odooLoginPlaceholder": "你的 Odoo 登入帳號（例如 you@seasonart.org）",
+    "odooKeyPlaceholder": "貼上你的 Odoo API 金鑰（唯讀）"
+  },
+  "viewAs": {
+    "viewAsUser": "以他人身分檢視",
+    "viewingAs": "檢視身分：{{name}}",
+    "switchToAnother": "切換到其他使用者…",
+    "selectUser": "選擇使用者…",
+    "stop": "停止檢視",
+    "hint": "以他人身分（唯讀）檢視平台，僅限你本人可用。",
+    "bannerActive": "正在以 {{name}} 的身分檢視 — 唯讀",
+    "bannerScope": "以下所有內容都限縮在此人；檢視期間所有變更都會被拒絕。"
+  },
+  "inboxPolicy": {
+    "heading": "讓代理人整理我的收件匣",
+    "description": "選擇你管理的代理人是否可代你把任務從收件匣封存。任何封存都可復原，且每次代理人封存都會記錄在任務屬性中。",
+    "radioAria": "收件匣代理人封存政策",
+    "modeOpenTitle": "我的任一代理人",
+    "modeOpenDesc": "讓任何你管理的代理人把任務從收件匣封存。",
+    "modeAllowlistTitle": "僅限選定的代理人",
+    "modeAllowlistDesc": "只允許你在下方挑選的代理人整理收件匣。",
+    "modeDisabledTitle": "關閉",
+    "modeDisabledDesc": "代理人永遠不能把任務從你的收件匣封存。",
+    "allowlistHeading": "允許整理我收件匣的代理人",
+    "noAgents": "你目前沒有管理任何代理人。",
+    "loadError": "無法載入收件匣代理人政策。",
+    "loading": "載入收件匣代理人政策中…",
+    "saveError": "無法儲存收件匣代理人政策。",
+    "saved": "已儲存",
+    "saving": "儲存中…",
+    "save": "儲存"
   }
 }
