@@ -179,6 +179,7 @@ export function IssueProperties({
   const { t } = useTranslation();
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
+  const [skillScopeOpen, setSkillScopeOpen] = useState(false);
   const [blockedByOpen, setBlockedByOpen] = useState(false);
   const [blockedBySearch, setBlockedBySearch] = useState("");
   const [blockedByExpanded, setBlockedByExpanded] = useState(false);
@@ -229,6 +230,17 @@ export function IssueProperties({
     queryFn: () => agentsApi.list(companyId!),
     enabled: !!companyId,
   });
+  // The assignee agent's equipped skills, for per-task skill scoping.
+  const { data: assigneeSkills } = useQuery({
+    queryKey: ["agent-skills", companyId, issue.assigneeAgentId],
+    queryFn: () => agentsApi.skills(issue.assigneeAgentId!, companyId!),
+    enabled: !!companyId && !!issue.assigneeAgentId,
+  });
+  const equippedSkills = useMemo(
+    () => (assigneeSkills?.entries ?? []).filter((e) => e.desired).map((e) => ({ key: e.key, name: e.runtimeName ?? e.key })),
+    [assigneeSkills],
+  );
+  const skillHints = issue.skillHints ?? [];
   const { data: companyMembers } = useQuery({
     queryKey: queryKeys.access.companyUserDirectory(companyId!),
     queryFn: () => accessApi.listUserDirectory(companyId!),
@@ -1694,6 +1706,41 @@ export function IssueProperties({
   ) : (
     <span className="text-sm text-muted-foreground">None</span>
   );
+
+  // Per-task skill scoping (edit after creation). Shown when the assignee agent
+  // has equipped skills.
+  const skillScopeTrigger = skillHints.length > 0
+    ? <span className="text-sm truncate min-w-0">{t("issueProperties.skillsCount", { defaultValue: "{{count}} 個技能", count: skillHints.length })}</span>
+    : <span className="text-sm text-muted-foreground">{t("issueProperties.allSkills", { defaultValue: "全部技能" })}</span>;
+  const skillScopeContent = (
+    <>
+      <p className="px-2 py-1 text-[11px] text-muted-foreground">{t("issueProperties.skillsHint", { defaultValue: "限定此任務使用的技能（不選＝可用全部）" })}</p>
+      <div className="max-h-56 overflow-y-auto overscroll-contain" onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}>
+        {equippedSkills.length === 0 ? (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">{t("issueProperties.noEquippedSkills", { defaultValue: "此代理人沒有已裝備的技能" })}</div>
+        ) : equippedSkills.map((s) => {
+          const on = skillHints.includes(s.key);
+          return (
+            <button
+              key={s.key}
+              type="button"
+              className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", on && "bg-accent")}
+              onClick={() => onUpdate({ skillHints: on ? skillHints.filter((k) => k !== s.key) : [...skillHints, s.key] })}
+            >
+              <input type="checkbox" checked={on} readOnly className="pointer-events-none" />
+              <span className="truncate">{s.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      {skillHints.length > 0 ? (
+        <button type="button" className="mt-1 w-full rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent/50" onClick={() => onUpdate({ skillHints: [] })}>
+          {t("issueProperties.clearSkills", { defaultValue: "清除選擇（可用全部）" })}
+        </button>
+      ) : null}
+    </>
+  );
+
   const projectPickerOptions = orderItemsBySelectedAndRecent(
     [
       { id: "", kind: "none" as const, name: "No project", color: null as string | null },
@@ -2100,6 +2147,20 @@ export function IssueProperties({
         >
           {projectContent}
         </PropertyPicker>
+
+        {issue.assigneeAgentId && equippedSkills.length > 0 ? (
+          <PropertyPicker
+            inline={inline}
+            label={t("issueProperties.skills", { defaultValue: "技能" })}
+            open={skillScopeOpen}
+            onOpenChange={setSkillScopeOpen}
+            triggerContent={skillScopeTrigger}
+            triggerClassName="min-w-0 max-w-full"
+            popoverClassName={cn(inline ? "w-full" : "w-64")}
+          >
+            {skillScopeContent}
+          </PropertyPicker>
+        ) : null}
       </PropertySection>
 
       <PropertySection title="Relationships">

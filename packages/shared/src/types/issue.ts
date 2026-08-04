@@ -731,6 +731,8 @@ export interface Issue {
   pinned?: boolean;
   assigneeAgentId: string | null;
   assigneeUserId: string | null;
+  /** Optional per-task skill scoping — keys of the assignee's equipped skills to use. */
+  skillHints?: string[] | null;
   checkoutRunId: string | null;
   executionRunId: string | null;
   executionAgentNameKey: string | null;
