@@ -4557,16 +4557,55 @@ export function accessRoutes(
           }
         }
 
-        return tx
+        const now = new Date();
+        const updatedMember = await tx
           .update(companyMemberships)
           .set({
             membershipRole: nextMembershipRole,
             status: nextStatus,
-            updatedAt: new Date(),
+            updatedAt: now,
           })
           .where(eq(companyMemberships.id, existing.id))
           .returning()
           .then((rows) => rows[0] ?? existing);
+
+        // Re-seed grants to the new role's defaults whenever the ROLE changes.
+        // Without this, the role label and the actual permission grants diverge:
+        // demoting owner→viewer here would leave every owner grant (including
+        // users:manage_permissions) intact, so the person keeps power the role
+        // no longer implies. Status-only edits leave grants untouched. Custom
+        // (non-default) grants are set through /role-and-grants, not here.
+        const roleChanged =
+          existing.principalType === "user" &&
+          nextMembershipRole !== existing.membershipRole;
+        if (roleChanged) {
+          await tx
+            .delete(principalPermissionGrants)
+            .where(
+              and(
+                eq(principalPermissionGrants.companyId, companyId),
+                eq(principalPermissionGrants.principalType, existing.principalType),
+                eq(principalPermissionGrants.principalId, existing.principalId),
+              ),
+            );
+          const defaults = grantsForHumanRole(normalizeHumanRole(nextMembershipRole));
+          if (defaults.length > 0) {
+            await tx.insert(principalPermissionGrants).values(
+              defaults.map((grant) => ({
+                companyId,
+                principalType: existing.principalType,
+                principalId: existing.principalId,
+                permissionKey: grant.permissionKey,
+                scope: grant.scope ?? null,
+                grantedByUserId: req.actor.userId ?? null,
+                createdAt: now,
+                updatedAt: now,
+              })),
+            );
+          }
+        }
+
+        return { updatedMember, roleChanged };
       });
       if (!updated) throw notFound("Member not found");
 
@@ -4578,8 +4617,11 @@ export function accessRoutes(
         entityType: "company_membership",
         entityId: memberId,
         details: {
-          membershipRole: updated.membershipRole,
-          status: updated.status,
+          membershipRole: updated.updatedMember.membershipRole,
+          status: updated.updatedMember.status,
+          // Signals the grant re-sync happened, so an audit of this action can
+          // see that authority followed the role rather than lagging it.
+          grantsResynced: updated.roleChanged,
         },
       });
 
