@@ -38,6 +38,7 @@ import type {
 } from "@paperclipai/shared";
 import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
+import { agentTeams, localizeTeamName } from "../lib/agent-teams";
 import { agentsApi } from "../api/agents";
 import { accessApi } from "../api/access";
 import { authApi } from "../api/auth";
@@ -2928,6 +2929,7 @@ type AttachAgentOption = {
   required: boolean;
   icon: string | null;
   paused: boolean;
+  teams: string[];
 };
 
 function AttachAgentsPopover({
@@ -2947,10 +2949,31 @@ function AttachAgentsPopover({
   onSubmit: (nextIds: string[], versionId: string | null) => void;
   fullWidth?: boolean;
 }) {
+  const { t } = useTranslation();
+  const lang = useSkillLang();
   const [draftVersionId, setDraftVersionId] = useState<string | null>(selectedVersionId);
   const attachedIds = useMemo(() => new Set(attachedAgentIds), [attachedAgentIds]);
   const eligible = agents.filter((agent) => agent.supportsSkills);
   const sortedVersions = [...versions].sort((a, b) => b.revisionNumber - a.revisionNumber);
+
+  // Team shortcuts: group the selectable agents (skills-capable, not force-
+  // required) by their team membership so a whole team can be shared to at once.
+  // Required/unsupported agents are excluded — they're disabled in the list, so
+  // a team toggle must never try to add or remove them.
+  const teamShareGroups = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; agentIds: string[] }>();
+    for (const agent of agents) {
+      if (!agent.supportsSkills || agent.required) continue;
+      for (const team of agent.teams) {
+        const existing = map.get(team);
+        if (existing) existing.agentIds.push(agent.id);
+        else map.set(team, { key: team, label: localizeTeamName(team, lang), agentIds: [agent.id] });
+      }
+    }
+    return Array.from(map.values())
+      .filter((group) => group.agentIds.length > 0)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [agents, lang]);
 
   return (
     <AgentMultiSelect
@@ -2966,6 +2989,8 @@ function AttachAgentsPopover({
       triggerClassName={cn(fullWidth && "w-full")}
       contentAlign="end"
       showSelectionPreview={false}
+      teams={teamShareGroups}
+      teamsLabel={t("companySkills.shareByTeam", { defaultValue: "Share by team" })}
       onOpenChange={(open) => {
         if (open) setDraftVersionId(selectedVersionId);
       }}
@@ -6259,6 +6284,7 @@ export function CompanySkills() {
         paused: agent.status === "paused" || agent.pausedAt != null,
         attached: usedSet.has(agent.id),
         requiredKeys,
+        teams: agentTeams(agent),
       };
     });
   }, [agentsQuery.data, adapterCaps, activeDetail]);

@@ -2502,7 +2502,8 @@
     "uploadDuplicateBody": "A skill with this name is already in the store, so this upload was blocked to avoid a duplicate. Open the existing skill to edit it instead.",
     "uploadOnlyReferenceMd": "Found {{count}} .md, but none is a skill — a skill needs a SKILL.md. Loose .md inside a package/bundle are treated as references. Drop bare .md files directly (no SKILL.md) to make each one a skill.",
     "uploadStagedCount": "Will create {{count}} skill(s)",
-    "uploadStagedPackages": "+ {{count}} package(s) (unpacked on upload)"
+    "uploadStagedPackages": "+ {{count}} package(s) (unpacked on upload)",
+    "shareByTeam": "Share by team"
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",

@@ -2600,7 +2600,8 @@
     "uploadDuplicateBody": "技能庫已有同名技能，為避免重複已擋下這次上傳。請改開既有技能編輯。",
     "uploadAllSkippedBody": "全部 {{count}} 個技能都已在技能庫中且已正確歸檔。",
     "uploadStagedCount": "將建立 {{count}} 個技能",
-    "uploadStagedPackages": "+ {{count}} 個套件（上傳時解開）"
+    "uploadStagedPackages": "+ {{count}} 個套件（上傳時解開）",
+    "shareByTeam": "分享給團隊"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",

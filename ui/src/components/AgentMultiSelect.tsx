@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Users } from "lucide-react";
 import { AgentIcon } from "@/components/AgentIconPicker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,6 +13,18 @@ export interface AgentMultiSelectOption {
   name: string;
   title?: string | null;
   icon?: string | null;
+}
+
+/**
+ * A team shortcut shown above the agent list: ticking it selects (or clears)
+ * every selectable agent in `agentIds` at once. `agentIds` should already be
+ * narrowed to selectable agents (exclude required / unsupported ones) so the
+ * toggle never fights a disabled row.
+ */
+export interface AgentMultiSelectTeam {
+  key: string;
+  label: string;
+  agentIds: string[];
 }
 
 export function AgentSelect({
@@ -130,6 +142,8 @@ export function AgentMultiSelect({
   triggerClassName,
   contentAlign = "start",
   headerContent,
+  teams,
+  teamsLabel = "Share by team",
   emptyMessage = "No agents yet.",
   showSelectionPreview = true,
   onOpenChange,
@@ -152,6 +166,10 @@ export function AgentMultiSelect({
   triggerClassName?: string;
   contentAlign?: ComponentProps<typeof PopoverContent>["align"];
   headerContent?: ReactNode;
+  /** Optional team shortcuts rendered above the agent list (multiselect). */
+  teams?: AgentMultiSelectTeam[];
+  /** Heading for the team-shortcut section. */
+  teamsLabel?: string;
   emptyMessage?: string;
   showSelectionPreview?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -230,6 +248,41 @@ export function AgentMultiSelect({
           />
           {headerContent}
         </div>
+        {teams && teams.length > 0 && normalizedFilter.length === 0 ? (
+          <div className="border-b border-border py-1">
+            <p className="px-3 pb-0.5 pt-1 text-(length:--text-nano) font-medium uppercase tracking-wide text-muted-foreground">
+              {teamsLabel}
+            </p>
+            {teams.map((team) => {
+              const selectable = team.agentIds;
+              const selectedInTeam = selectable.filter((id) => workingAgentIds.has(id)).length;
+              const allSelected = selectable.length > 0 && selectedInTeam === selectable.length;
+              const someSelected = selectedInTeam > 0 && !allSelected;
+              return (
+                <label
+                  key={team.key}
+                  className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-accent/30"
+                >
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    aria-label={`Share with ${team.label}`}
+                    onCheckedChange={() => {
+                      const next = new Set(workingAgentIds);
+                      if (allSelected) selectable.forEach((id) => next.delete(id));
+                      else selectable.forEach((id) => next.add(id));
+                      setSelection(next);
+                    }}
+                  />
+                  <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{team.label}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {selectedInTeam}/{selectable.length}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
         {loading ? (
           <div className="space-y-2 p-3">
             <Skeleton className="h-6 w-full" />

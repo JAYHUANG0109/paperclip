@@ -128,12 +128,12 @@ const MOCK_FILE: CompanySkillFileDetail = {
 
 // Agents available to attach, including a paused one to exercise the badge.
 const MOCK_ATTACH_AGENTS = [
-  { id: "a-1", name: "Astra", adapterType: "process", supportsSkills: true, required: false, icon: "telescope", paused: false },
-  { id: "a-2", name: "Scout", adapterType: "http", supportsSkills: true, required: false, icon: "compass", paused: false },
-  { id: "a-3", name: "Quill", adapterType: "process", supportsSkills: true, required: false, icon: "feather", paused: true },
-  { id: "a-4", name: "Marlow", adapterType: "process", supportsSkills: true, required: false, icon: "bot", paused: false },
-  { id: "a-5", name: "Pixel", adapterType: "process", supportsSkills: true, required: false, icon: "palette", paused: false },
-  { id: "a-6", name: "Forge", adapterType: "process", supportsSkills: false, required: false, icon: "hammer", paused: false },
+  { id: "a-1", name: "Astra", adapterType: "process", supportsSkills: true, required: false, icon: "telescope", paused: false, teams: ["Research"] },
+  { id: "a-2", name: "Scout", adapterType: "http", supportsSkills: true, required: false, icon: "compass", paused: false, teams: ["Research"] },
+  { id: "a-3", name: "Quill", adapterType: "process", supportsSkills: true, required: false, icon: "feather", paused: true, teams: ["Writing"] },
+  { id: "a-4", name: "Marlow", adapterType: "process", supportsSkills: true, required: false, icon: "bot", paused: false, teams: ["Writing"] },
+  { id: "a-5", name: "Pixel", adapterType: "process", supportsSkills: true, required: false, icon: "palette", paused: false, teams: [] },
+  { id: "a-6", name: "Forge", adapterType: "process", supportsSkills: false, required: false, icon: "hammer", paused: false, teams: [] },
 ];
 
 function SkillDetailHarness({ initialTab = "overview" as DetailTab }: { initialTab?: DetailTab }) {
