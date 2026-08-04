@@ -32,6 +32,15 @@ export type RecoveryResolveOutcome =
   | "false_positive_done"
   | "false_positive_in_review";
 
+/**
+ * What a caller needs to re-issue stalled work onto an isolated git worktree: the live
+ * branch to base it on, and the branch the run had recorded, when they diverged.
+ */
+export interface RecoveryReissueRequest {
+  baseRef: string;
+  expectedBranch?: string | null;
+}
+
 export interface IssueRecoveryActionCardProps {
   action: IssueRecoveryAction;
   agentMap?: ReadonlyMap<string, Agent>;
@@ -42,6 +51,30 @@ export interface IssueRecoveryActionCardProps {
   /** Whether the viewer can run destructive board-only actions (e.g. false-positive dismissal). */
   canFalsePositive?: boolean;
   className?: string;
+  /**
+   * "compact" trims the card for embedding inside another surface that already supplies
+   * its own heading and context.
+   */
+  variant?: "default" | "compact";
+  /**
+   * Workspace-divergence remedies, wired by `RunWorkspaceRecoverySurface`.
+   *
+   * NOT YET RENDERED. These exist so the caller type-checks against the card it was
+   * written for; this fork's card does not draw the controls. `RunWorkspaceRecoverySurface`
+   * is currently unreferenced outside its own test, so nothing regresses — but do not
+   * assume passing a handler makes a button appear. Drawing them needs a UX decision
+   * about where they sit relative to the resolve menu.
+   */
+  onReissueIsolated?: (request: RecoveryReissueRequest) => void;
+  reissuePending?: boolean;
+  onReconcileForward?: () => void;
+  onBreakGlassOverride?: (reason: string) => void;
+  onQuarantineRestore?: () => void;
+  /** In-flight flags so the caller's mutation state can disable the matching control. */
+  reconcilePending?: boolean;
+  quarantineRestorePending?: boolean;
+  /** Break-glass override is board-only; the caller decides whether to offer it. */
+  canBreakGlass?: boolean;
 }
 
 const kindLabel = (kind: IssueRecoveryActionKind): string =>
@@ -305,6 +338,15 @@ export function IssueRecoveryActionCard({
   agentMap,
   forcedState,
   onResolve,
+  variant = "default",
+  onReissueIsolated,
+  reissuePending = false,
+  onReconcileForward,
+  onBreakGlassOverride,
+  onQuarantineRestore,
+  reconcilePending = false,
+  quarantineRestorePending = false,
+  canBreakGlass = false,
   canFalsePositive = false,
   className,
 }: IssueRecoveryActionCardProps) {

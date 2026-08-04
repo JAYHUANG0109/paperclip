@@ -89,6 +89,7 @@ import {
   HelpCircle,
   FolderOpen,
   Pin,
+  AlertTriangle,
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -119,6 +120,7 @@ import {
   type HeartbeatRun,
   type HeartbeatRunEvent,
   type AgentRuntimeState,
+  type AgentOrgChainHealth,
   type LiveEvent,
   type WorkspaceOperation,
 } from "@paperclipai/shared";
@@ -155,6 +157,37 @@ async function loadDuplicateInstructionsBundle(
     ? bundle.entryFile
     : Object.keys(files)[0] ?? "AGENTS.md";
   return Object.keys(files).length > 0 ? { entryFile, files } : null;
+}
+
+/**
+ * Render an agent's reporting chain as a readable path, marking the broken links.
+ *
+ * Shown when `orgChainHealth.status` is `invalid_org_chain`: the agent cannot accept
+ * tasks or start runs until the chain is repaired, so the operator needs to see WHICH
+ * ancestor is at fault, not just that something upstream is wrong. Invalid ancestors are
+ * annotated with their status (the usual causes are a terminated or missing manager).
+ *
+ * The chain runs self → ancestors, so it is reversed to read top-down like an org chart.
+ */
+function formatOrgChainHealthPath(agent: { name: string; orgChainHealth?: AgentOrgChainHealth }): string {
+  const health = agent.orgChainHealth;
+  if (!health) return agent.name;
+  const invalidById = new Map(health.invalidAncestors.map((ancestor) => [ancestor.id, ancestor]));
+  const chain = health.fullChain.length > 0
+    ? [...health.fullChain].sort((a, b) => b.depth - a.depth)
+    : [];
+  if (chain.length === 0) {
+    // No chain resolved at all — name the first invalid ancestor if we know it, since
+    // "unknown" tells the operator nothing actionable.
+    const first = health.firstInvalidAncestor;
+    return first ? `${first.name} (${first.status}) → ${agent.name}` : agent.name;
+  }
+  return chain
+    .map((entry) => {
+      const invalid = invalidById.get(entry.id);
+      return invalid ? `${entry.name} (${invalid.status})` : entry.name;
+    })
+    .join(" → ");
 }
 
 function duplicateInstructionFilePath(
