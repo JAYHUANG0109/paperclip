@@ -59,7 +59,8 @@
     "decisions": "Decisions",
     "memory": "Memory",
     "myTasks": "Recent",
-    "myTasksSeeAll": "See all tasks"
+    "myTasksSeeAll": "See all tasks",
+    "audit": "Audit"
   },
   "sort": {
     "top": "Top",
@@ -691,7 +692,8 @@
       "saving": "Saving...",
       "imageUploadError": "Couldn't upload that image. Try again.",
       "uploading": "Uploading...",
-      "attachScreenshots": "Attach screenshots"
+      "attachScreenshots": "Attach screenshots",
+      "removeScreenshot": "Remove {{name}}"
     },
     "typeYourAnswer": "Type your answer",
     "checkbox": {
@@ -703,10 +705,22 @@
       "selectableOptions": "Selectable options",
       "confirmSelected": "Confirm selected",
       "requestChanges": "Request changes",
-      "reasonRequired": "A reason is required."
+      "reasonRequired": "A reason is required.",
+      "allSelected": "All {{count}} options selected",
+      "confirmedCount": "Confirmed {{selected}} of {{total}} options",
+      "pickAtLeast": "Pick at least {{count}}.",
+      "pickExactly": "Pick exactly {{count}}.",
+      "pickRange": "Pick {{min}}-{{max}}.",
+      "selectAtLeast": "Select at least {{count}} options.",
+      "selectAtMost": "Select at most {{count}} options.",
+      "showMore": "+{{count}} more",
+      "someSelected": "{{selected}} of {{total}} options selected"
     },
     "resolvedByPrefix": "Resolved by",
-    "titleCheckboxConfirmation": "Checkbox confirmation requested"
+    "titleCheckboxConfirmation": "Checkbox confirmation requested",
+    "createdAt": "Created {{time}}",
+    "otherAnswerFor": "Answer for {{prompt}}",
+    "resolvedOn": " on {{date}}"
   },
   "agents": {
     "selectCompany": "Select a company to view agents.",
@@ -1463,7 +1477,8 @@
     "atMinute": "at minute",
     "on": "on",
     "onDay": "on day",
-    "cronExpression": "Cron expression"
+    "cronExpression": "Cron expression",
+    "nextFires": " Next: {{fires}}."
   },
   "agentConfig": {
     "unsavedChanges": "Unsaved changes",
@@ -1548,7 +1563,8 @@
     "noExplicitCheapPrefix": "No explicit cheap model selected — runtime falls back to",
     "noCheapNoDefault": "No cheap model selected and the adapter has no default. Cheap-lane runs will continue on the primary model with a fallback note.",
     "thinkingEffort": "Thinking effort",
-    "auto": "Auto"
+    "auto": "Auto",
+    "adapterDefaultModel": "Adapter default · {{model}}"
   },
   "agentDetail": {
     "source": {
@@ -1609,7 +1625,8 @@
       "skills": "Skills",
       "configuration": "Configuration",
       "runs": "Runs",
-      "budget": "Budget"
+      "budget": "Budget",
+      "tools": "Tools"
     },
     "pendingApproval": "This agent is pending board approval and cannot be invoked yet.",
     "approveAgent": "Approve agent",
@@ -1705,7 +1722,9 @@
       "adapter": "Adapter",
       "skillsApplied": "Skills applied",
       "selectedSkills": "Selected skills",
-      "failedUpdate": "Failed to update skills"
+      "failedUpdate": "Failed to update skills",
+      "equipVsShareLabel": "Equip vs Share",
+      "uncategorized": "Uncategorized"
     },
     "runs": {
       "empty": "No runs yet."
@@ -1819,7 +1838,9 @@
     "color": "Color",
     "resetToNeutral": "Reset to neutral gray",
     "neutralDefault": "Neutral (default)",
-    "dismissMembershipNotice": "Dismiss project membership notice"
+    "dismissMembershipNotice": "Dismiss project membership notice",
+    "archivedToast": "\"{{name}}\" has been archived",
+    "unarchivedToast": "\"{{name}}\" has been unarchived"
   },
   "issuesList": {
     "newIssueInGroup": "New issue in {{group}}",
@@ -2475,7 +2496,13 @@
     "uploadBadArchiveBody": "The .skill / .zip file could not be extracted.",
     "uploadStaged": "Ready to create: {{name}}",
     "uploadStagedFiles": "({{count}} files)",
-    "uploadStagedPackage": "Ready to extract: {{name}}"
+    "uploadStagedPackage": "Ready to extract: {{name}}",
+    "uploadAllSkippedBody": "All {{count}} skill(s) are already in the store and already correctly filed.",
+    "uploadAlreadyFiled": "Already in the store",
+    "uploadDuplicateBody": "A skill with this name is already in the store, so this upload was blocked to avoid a duplicate. Open the existing skill to edit it instead.",
+    "uploadOnlyReferenceMd": "Found {{count}} .md, but none is a skill — a skill needs a SKILL.md. Loose .md inside a package/bundle are treated as references. Drop bare .md files directly (no SKILL.md) to make each one a skill.",
+    "uploadStagedCount": "Will create {{count}} skill(s)",
+    "uploadStagedPackages": "+ {{count}} package(s) (unpacked on upload)"
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",
@@ -3394,6 +3421,9 @@
       "runFailedBody": "Paperclip could not start the routine run.",
       "defaultAgentRequired": "Default agent required",
       "defaultAgentBody": "Set a default agent before enabling routine automation."
+    },
+    "groupBy": {
+      "folder": "Folder"
     }
   },
   "projectWorkspace": {
@@ -4315,7 +4345,8 @@
     "duplicateAgent": "Duplicate Agent",
     "copyAgentId": "Copy Agent ID",
     "resetSessions": "Reset Sessions",
-    "terminate": "Terminate"
+    "terminate": "Terminate",
+    "openActionsFor": "Open actions for {{name}}"
   },
   "issueSiblingNav": {
     "navAria": "Sub-issue navigation",
@@ -5079,7 +5110,9 @@
     "assignedBacklogNote": "Assigning implies executable intent — leave status as Backlog only to deliberately park this. The assignee will not be woken until status moves to Todo or In Progress.",
     "lowTrustNote": "Low-trust review agent. It can only act inside its assigned review boundary; issue, project, or run policy defines the concrete scope.",
     "created": "Created {{ref}}",
-    "createdUnassignedBody": "This task has no assignee, so no agent will pick it up. Open it to assign someone."
+    "createdUnassignedBody": "This task has no assignee, so no agent will pick it up. Open it to assign someone.",
+    "reusingWorkspace": "existing execution workspace",
+    "taskTitleOptional": "Title (optional) — your agent will write one"
   },
   "routineDetail": {
     "concurrencyDesc": {
@@ -5429,7 +5462,8 @@
     "ifLoginRequiredPrefix": "If login is required, run",
     "ifLoginRequiredSuffix": "and retry.",
     "agentCreated": "Agent created",
-    "hintPrefix": "Hint:"
+    "hintPrefix": "Hint:",
+    "startConversation": "Start a conversation with {{name}} to discuss strategy and plan who to bring on."
   },
   "myIssues": {
     "title": "My Issues",
@@ -5513,7 +5547,15 @@
       "agentFallback": "agent",
       "idempotentTitle": "Repeat attempts with this fingerprint reuse this record instead of creating new children",
       "idempotentClaim": "Idempotent claim",
-      "planDocument": "Plan document"
+      "planDocument": "Plan document",
+      "childrenCreated": "{{created}} of {{requested}} child tasks created",
+      "completedAt": "Completed {{time}}",
+      "owner": "Owner: {{ownerName}}",
+      "planRevision": "Plan {{revisionLabel}}",
+      "revisionCount": "{{count}} accepted plan revisions",
+      "revisionLabel": "revision {{revision}}",
+      "started": "Started {{time}}",
+      "updated": "Updated {{time}}"
     }
   },
   "projectMembers": {
@@ -5713,7 +5755,38 @@
     "noCatalogConfigured": "No team catalog configured.",
     "noTeamsMatch": "No teams match this filter.",
     "backToCatalog": "Back to catalog",
-    "selectTeam": "Select a team to view details."
+    "selectTeam": "Select a team to view details.",
+    "adapterSelectionCount": "Adapter selection · {{count}}",
+    "agentCount_one": "{{count}} agent",
+    "agentCount_other": "{{count}} agents",
+    "agentsCount": "Agents · {{count}}",
+    "bundledCount": "Bundled · {{count}}",
+    "categoryNamed": "Category · {{name}}",
+    "envValueAria": "{{key}} value",
+    "externalSourcesCount": "External sources · {{count}}",
+    "hideKey": "Hide {{key}}",
+    "importedSummary": "{{name}} was imported into your company. Imported entities are stamped with catalog provenance.",
+    "installBlockedErrors_one": "Install blocked: {{count}} error",
+    "installBlockedErrors_other": "Install blocked: {{count}} errors",
+    "installNamed": "Install {{name}}",
+    "installedCount": "Installed · {{count}}",
+    "installingNamed": "Installing {{name}}…",
+    "optionalCount": "Optional · {{count}}",
+    "projectCount_one": "{{count}} project",
+    "projectCount_other": "{{count}} projects",
+    "projectsCount": "Projects · {{count}}",
+    "requiredSecretsMissing": "Required secrets missing: {{count}}",
+    "riskBanner_one": "This team references {{count}} external source",
+    "riskBanner_other": "This team references {{count}} external sources",
+    "routineCount_one": "{{count}} routine",
+    "routineCount_other": "{{count}} routines",
+    "secretsEnvInputsCount": "Secrets & env inputs · {{count}}",
+    "showKey": "Show {{key}}",
+    "sourcePolicyIntro_one": "This team references {{count}} external source. Review each one and decide what to allow before continuing.",
+    "sourcePolicyIntro_other": "This team references {{count}} external sources. Review each one and decide what to allow before continuing.",
+    "starterTasksCount": "Starter tasks · {{count}}",
+    "stepProgress": "Step {{current}} of {{total}} · {{label}}",
+    "teamImportedToast": "{{name}} was imported."
   },
   "workspaceFileBrowser": {
     "currentFolder": "Current folder",
@@ -5830,7 +5903,12 @@
     "badgesHeading": "Badges",
     "leveledUp": "{{name}} reached Lv{{level}} · {{title}}",
     "earnedBadgeToast": "{{name}} unlocked: {{badge}}",
-    "progressSummary": "{{count}} agents leveled up or unlocked badges"
+    "progressSummary": "{{count}} agents leveled up or unlocked badges",
+    "agentCount": "{{count}} agents",
+    "animals": "Animals",
+    "fitToScreen": "Fit to screen",
+    "people": "People",
+    "pickCharacter": "Choose a character"
   },
   "asana": {
     "myTasks": "My tasks (Asana)",
@@ -5941,7 +6019,11 @@
     "openThread": "Open annotation thread",
     "anchorMoved": "Anchor moved — needs review",
     "selectionActions": "Selection actions",
-    "addCommentOnSelection": "Add comment on selection (⌘⇧M)"
+    "addCommentOnSelection": "Add comment on selection (⌘⇧M)",
+    "annotationsForRevision": "Annotations for {{documentKey}}, revision {{revision}}",
+    "commentCount": "{{count}} comments",
+    "commentsOnRevision": "Comments on {{documentKey}} revision {{revision}}",
+    "rev": "rev {{revision}}"
   },
   "chatComposer": {
     "messagePlaceholder": "Message…",
@@ -5979,7 +6061,10 @@
     "couldntLoad404": "Workspace browsing isn't available for this issue.",
     "couldntLoadGeneric": "Something went wrong loading workspace files.",
     "noRecentlyChanged": "No recently changed files yet",
-    "trySearching": "Try searching by name or path."
+    "trySearching": "Try searching by name or path.",
+    "announceCount": "{{count}} items found.",
+    "noFilesMatch": "No files match “{{query}}”",
+    "showingFirst": "Showing first {{count}} — refine the search to narrow."
   },
   "routineSidebar": {
     "navLabel": "Routine sections",
@@ -6046,7 +6131,9 @@
     "noRunOutput": "No run output yet.",
     "emptyConversation": "This task conversation is empty. Start with a message below.",
     "legacyRecoveryTask": "Legacy recovery task",
-    "legacyRecoveryBody": "Legacy recovery task. Newer recovery actions live on the source task"
+    "legacyRecoveryBody": "Legacy recovery task. Newer recovery actions live on the source task",
+    "agentPausedNotice": "is paused. New runs will not start until the agent is resumed. {{detail}}",
+    "forDuration": "for {{duration}}"
   },
   "agentBubble": {
     "helpful": "Helpful",
@@ -6113,7 +6200,14 @@
     "noWorkspaceTitle": "No workspace available",
     "noWorkspaceBody": "This issue does not have a workspace that supports preview yet.",
     "remoteComingSoonTitle": "Remote workspace preview coming soon",
-    "remoteComingSoonBody": "This workspace is hosted remotely; inline previews are not supported yet."
+    "remoteComingSoonBody": "This workspace is hosted remotely; inline previews are not supported yet.",
+    "contentType": "Content type: {{contentType}}",
+    "fileLoadedLines": "File loaded, {{count}} lines.",
+    "line": "Line {{line}}",
+    "lineCol": "Line {{line}}, Col {{column}}",
+    "renderedMarkdownRegionLabel": "{{title}} rendered Markdown",
+    "sourceRegionLabel": "{{title}} source",
+    "videoPreviewLabel": "Video preview: {{title}}"
   },
   "envVar": {
     "secretNamePrompt": "Secret name",
@@ -6132,7 +6226,10 @@
     "seal": "Seal",
     "recentlyUsed": "Recently used:",
     "runsWillFail": "Runs will fail until you remap or re-enable.",
-    "bottomHint": "Set KEY to the env var name the process expects, for example GH_TOKEN. Choose Secret to resolve a stored value at run start. PAPERCLIP_* variables are injected automatically."
+    "bottomHint": "Set KEY to the env var name the process expects, for example GH_TOKEN. Choose Secret to resolve a stored value at run start. PAPERCLIP_* variables are injected automatically.",
+    "bindSecret": "Bind {{name}}",
+    "bindingsNeedAttention": "{{count}} secret binding(s) need attention:",
+    "missingSecret": "Missing ({{id}}…)"
   },
   "issueAttachments": {
     "deleteAttachment": "Delete attachment",
@@ -6141,7 +6238,9 @@
     "previewError": "Could not load markdown preview.",
     "title": "Attachments",
     "deleteQuestion": "Delete?",
-    "deleteConfirm": "Delete this attachment? This cannot be undone."
+    "deleteConfirm": "Delete this attachment? This cannot be undone.",
+    "downloadFile": "Download {{filename}}",
+    "openFile": "Open {{filename}}"
   },
   "sidebar": {
     "keepExpanded": "Keep sidebar expanded",
@@ -6182,7 +6281,8 @@
     "rowPromotionTarget": "Promotion target",
     "rowEeFields": "EE fields",
     "customAdvancedPreserved": "Custom advanced policy fields preserved",
-    "advancedEditableNote": "Advanced permissions remain editable through the EE permissions extension when installed."
+    "advancedEditableNote": "Advanced permissions remain editable through the EE permissions extension when installed.",
+    "managedByEeDesc": "This policy has {{summary}} and cannot be edited by the CE single-boundary editor."
   },
   "activityFeed": {
     "system": "System",
@@ -6201,7 +6301,8 @@
     "filterByAria": "filter by",
     "filterBy": "Filter by",
     "showAllActivity": "Show all activity",
-    "emptyFallback": "Activity from your agents will appear here."
+    "emptyFallback": "Activity from your agents will appear here.",
+    "madeUpdates": "made {{count}} updates to"
   },
   "artifactCard": {
     "image": "Image",
@@ -6209,13 +6310,22 @@
     "text": "Text",
     "file": "File",
     "openInNewTab": "Open file in new tab",
-    "downloadFile": "Download file"
+    "downloadFile": "Download file",
+    "lastEdited": "Last edited {{date}}"
   },
   "issueOutput": {
     "taskOutputs": "Task outputs",
     "output": "Output",
     "alsoProduced": "Also produced",
-    "fileDetailsUnavailable": "File details unavailable"
+    "fileDetailsUnavailable": "File details unavailable",
+    "degradedMeta": "Output metadata is unavailable — this file can’t be played or downloaded here.",
+    "download": "Download",
+    "downloadFile": "Download {{filename}}",
+    "drive": "Drive",
+    "open": "Open",
+    "openFile": "Open {{filename}}",
+    "openInDrive": "Open in your Google Drive",
+    "primary": "Primary"
   },
   "routineSections": {
     "runs": {
@@ -6299,7 +6409,13 @@
       "noRunsAria": "No runs. Open runs.",
       "recentActivity": "Recent activity",
       "noActivityYet": "No activity yet.",
-      "viewAllActivity": "View all activity"
+      "viewAllActivity": "View all activity",
+      "activeCount": "{{count}} active",
+      "boundCount": "{{count}} bound",
+      "lastRunAria": "Last run {{status}}. Open runs.",
+      "nextFire": "Next fire {{time}}",
+      "secretsAria": "{{count}} secrets bound. Open secrets.",
+      "triggersAria": "{{count}} triggers. Open triggers."
     },
     "triggers": {
       "noneYet": "No triggers yet",
@@ -6312,12 +6428,15 @@
       "replayWindow": "Replay window (seconds)",
       "adding": "Adding...",
       "emptyMessage": "No triggers yet.",
-      "addSchedule": "Add a schedule"
+      "addSchedule": "Add a schedule",
+      "count_one": "{{count}} trigger",
+      "count_other": "{{count}} triggers"
     },
     "variables": {
       "hintPrefix": "Variables are auto-detected from",
       "hintSuffix": "in the title & instructions. The variable name is read-only — rename by editing the placeholder.",
-      "editInstructions": "Edit instructions"
+      "editInstructions": "Edit instructions",
+      "emptyMessage": "No variables yet. Add a {{token}} in the title or instructions to create one."
     },
     "secrets": {
       "intro": "Routine secrets apply to every task this routine creates. They override matching keys in project and agent env.",
@@ -6334,7 +6453,8 @@
       "catchUp": "Catch-up",
       "catchUpPolicy": "Catch-up policy",
       "next5Fires": "Next 5 fires",
-      "noPreview": "No enabled schedule trigger to preview. Add a schedule in Triggers to see how this policy treats upcoming fires."
+      "noPreview": "No enabled schedule trigger to preview. Add a schedule in Triggers to see how this policy treats upcoming fires.",
+      "previewNote": "Preview assumes the previous run is still in flight when the next fires. Times shown in {{timeZone}}."
     }
   },
   "interruptHandoff": {
@@ -6348,7 +6468,9 @@
     "handOffTo": "Hand off to",
     "whatThisAffects": "What this affects",
     "nothingLive": "Nothing live to pause — no agent run is in flight or queued. This records a hold so new work won't start until you resume.",
-    "noTasksAffected": "No tasks are affected."
+    "noTasksAffected": "No tasks are affected.",
+    "insertMentionAria": "Insert mention for {{name}} into your comment",
+    "mentionCoach": "Did you mean @{{matchedText}}? Plain text won't notify or assign an agent."
   },
   "boardChat": {
     "typing": "typing",
@@ -6369,21 +6491,26 @@
     "chatHistory": "chat history",
     "newChat": "new chat",
     "welcome": {
-      "prompt": "Here are a few things I can help you put on paper right now. Pick one below and I'll draft it for you using everything you told us."
+      "prompt": "Here are a few things I can help you put on paper right now. Pick one below and I'll draft it for you using everything you told us.",
+      "greeting": "Welcome to **{{companyName}}**! I'm {{ceoName}}, your team lead. I've read through what you shared in the wizard{{missionLine}}",
+      "missionLine": " — your mission is \"{{mission}}\"."
     },
     "chip": {
       "companyBrief": {
-        "label": "Draft a Company Brief"
+        "label": "Draft a Company Brief",
+        "prompt": "Draft a one-page Company Brief for {{companyName}} — include our mission, team roster, and first priorities."
       },
       "hiringPlan": {
-        "label": "Create a hiring plan"
+        "label": "Create a hiring plan",
+        "prompt": "Create a hiring plan for {{companyName}}. List the next roles to hire, in priority order, with a short rationale for each."
       },
       "first30Days": {
         "label": "Outline our first 30 days",
         "prompt": "Outline our first 30 days. Break it into weekly priorities with who owns what."
       },
       "introPitch": {
-        "label": "Write an intro pitch"
+        "label": "Write an intro pitch",
+        "prompt": "Write a short intro pitch for {{companyName}} that I could reuse for investors, customers, or recruits."
       }
     },
     "assistant": "Assistant",
@@ -6448,6 +6575,179 @@
     "deletedWindow": "Deleted memories can be restored for {{days}} days, then they are gone for good. Agents stopped reading them the moment you deleted them.",
     "noDeleted": "Nothing deleted recently.",
     "restore": "Restore",
-    "purge": "Delete forever"
+    "purge": "Delete forever",
+    "contentPlaceholder": "Remember that…",
+    "empty": "Nothing remembered yet.",
+    "forget": "Forget",
+    "importFiles": "Import files",
+    "importFolder": "Import folder",
+    "namePlaceholder": "Short label (optional)",
+    "save": "Remember",
+    "subtitle": "Things your agents should remember about you. Only you and your own agents can read this.",
+    "title": "Memory"
+  },
+  "agentSkillsTab": {
+    "available": "Available from the library",
+    "emptyLibrary": "No skills in the company library",
+    "enabled": "Enabled on this agent"
+  },
+  "audit": {
+    "aUser": "a user",
+    "actor": {
+      "plugin": "Plugin",
+      "system": "System",
+      "user": "User"
+    },
+    "clearFilters": "Clear filters",
+    "document": "Document",
+    "empty": {
+      "body": "As soon as your agents start doing things, their actions show up here.",
+      "filteredBody": "Try a wider date range or different filters.",
+      "filteredTitle": "No actions match these filters",
+      "title": "Nothing here yet"
+    },
+    "exportCsv": "Export CSV",
+    "exporting": "Exporting…",
+    "filter": {
+      "action": "Action",
+      "agent": "Agent",
+      "allAgents": "All agents",
+      "allResponsibleUsers": "All responsible users",
+      "entity": "Entity",
+      "fromDate": "From date",
+      "responsibleUser": "Responsible user",
+      "toDate": "To date"
+    },
+    "footer": "Recorded by Paperclip — entries can't be edited. Sensitive values are never stored.",
+    "headerDescription": "Everything your agents did, newest first — each line is one recorded action, with the person responsible for it. Click through to the task or run for the full context.",
+    "heading": "Audit",
+    "loadFailed": "Failed to load the audit log.",
+    "loadMore": "Load more",
+    "loading": "Loading…",
+    "onBehalfOf": "on behalf of {{label}}",
+    "theTask": "the task",
+    "toast": {
+      "exportedBody": "Your CSV download has started.",
+      "exportedTitle": "Audit exported",
+      "failedBody": "Could not export the audit log.",
+      "failedTitle": "Export failed"
+    },
+    "tryAgain": "Try again",
+    "upsell": {
+      "bodyAfter": "permission to view it.",
+      "bodyBefore": "The agent audit log gives you a searchable, exportable record of everything your agents did — every comment, task change, approval, and run — with the responsible person for each action. Ask an administrator to grant you the",
+      "title": "Agent audit is a Paperclip Enterprise view"
+    },
+    "viewRun": "View run",
+    "actionDomain": {
+      "all": "All actions",
+      "tasks": "Tasks",
+      "agents": "Agents",
+      "runs": "Runs",
+      "approvals": "Approvals",
+      "projects": "Projects",
+      "goals": "Goals",
+      "tools": "Tools",
+      "costs": "Costs",
+      "company": "Company"
+    },
+    "entityType": {
+      "all": "All entities",
+      "task": "Task",
+      "agent": "Agent",
+      "project": "Project",
+      "goal": "Goal",
+      "company": "Company"
+    }
+  },
+  "connections": {
+    "asanaError": "Could not save your Asana token. Check it and try again.",
+    "asanaHelp": "Create a token at app.asana.com → My apps",
+    "asanaPlaceholder": "Paste your Asana Personal Access Token",
+    "checking": "Checking…",
+    "connect": "Connect",
+    "connected": "Connected",
+    "notConnected": "Not connected",
+    "odooConnectedAs": "Connected as {{login}}",
+    "odooError": "Could not verify your Odoo key. Check the login + key and try again.",
+    "odooKeyPlaceholder": "Paste your Odoo API key (read-only)",
+    "odooLoginPlaceholder": "Your Odoo login (e.g. you@seasonart.org)",
+    "odooVerified": "Verified · {{db}}",
+    "save": "Save",
+    "subtitle": "Your personal keys. Every agent you're responsible for uses them, acting as you.",
+    "title": "Connections",
+    "update": "Update"
+  },
+  "inboxPolicy": {
+    "allowlistHeading": "Agents allowed to tidy my inbox",
+    "description": "Choose whether the agents you manage may archive tasks out of your inbox on your behalf. You can undo any archive, and every agent archive is attributed in the task's properties.",
+    "heading": "Let agents tidy my inbox",
+    "loadError": "Failed to load inbox agent policy.",
+    "loading": "Loading inbox agent policy…",
+    "modeAllowlistDesc": "Restrict inbox tidying to the agents you pick below.",
+    "modeAllowlistTitle": "Only chosen agents",
+    "modeDisabledDesc": "Agents can never archive tasks from your inbox.",
+    "modeDisabledTitle": "Off",
+    "modeOpenDesc": "Let any agent you manage archive tasks out of your inbox.",
+    "modeOpenTitle": "Any of my agents",
+    "noAgents": "You don't manage any agents yet.",
+    "radioAria": "Inbox agent archiving policy",
+    "save": "Save",
+    "saveError": "Failed to save inbox agent policy.",
+    "saved": "Saved",
+    "saving": "Saving…"
+  },
+  "issueProperties": {
+    "searchProjects": "Search projects..."
+  },
+  "runtimeAccount": {
+    "accountInUse": "Account in use",
+    "backToAutomatic": "Back to automatic",
+    "currentlyInUse": "Currently in use",
+    "description": "Which Claude account Paperclip is running on.",
+    "loading": "Loading accounts…",
+    "nextRunUses": "No run yet since the last restart — the next run will use this account",
+    "noCredentialsTitle": "This directory has no usable credentials",
+    "noPool": "No account-rotation pool is configured, so every agent runs on this host's default Claude login and shares one quota.",
+    "pinned": "Pinned",
+    "pinnedHelp": "Pinned to one account. If it runs out of quota, Paperclip rotates on and returns here when it resets.",
+    "quotaLimitedShort": "quota-limited",
+    "resetsInHours": "resets in {{hours}}h",
+    "resetsInHoursMinutes": "resets in {{hours}}h {{minutes}}m",
+    "resetsInMinutes": "resets in {{minutes}}m",
+    "resettingNow": "resetting now",
+    "rotatingHelp": "Rotating automatically. Choose an account to pin runs to it.",
+    "rotationPool": "Rotation pool",
+    "state": {
+      "inUse": "In use",
+      "quotaLimited": "Quota-limited",
+      "signedOut": "Signed out",
+      "signedOutDetail": "This directory has no usable credentials — rotation will skip past it.",
+      "standby": "Standby"
+    },
+    "useThisAccount": "Use this account",
+    "agentCount_one": "{{count}} agent",
+    "agentCount_other": "{{count}} agents"
+  },
+  "teamPicker": {
+    "crossCampus": "Cross-campus / all campuses",
+    "deptAllCampuses": "{{name}} (all campuses)",
+    "wholeCampus": "Whole {{name}}"
+  },
+  "viewAs": {
+    "bannerActive": "Viewing as {{name}} — read-only",
+    "bannerScope": "Everything below is scoped to this person. Changes are refused while this is on.",
+    "hint": "See the platform as someone else, read-only. Only you can do this.",
+    "selectUser": "Select a user…",
+    "stop": "Stop viewing as",
+    "switchToAnother": "Switch to another user…",
+    "viewAsUser": "View as user",
+    "viewingAs": "Viewing as {{name}}"
+  },
+  "whatNeedsMe": {
+    "caughtUp": "You're all caught up.",
+    "caughtUpTitle": "You're all caught up",
+    "noMatch": "No decisions match your filters.",
+    "selectCompany": "Select a company first."
   }
 }

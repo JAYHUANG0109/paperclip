@@ -817,7 +817,6 @@
     "resolvedByPrefix": "解決者",
     "titleCheckboxConfirmation": "已要求核取方塊確認",
     "otherAnswerFor": "{{prompt}} 的其他回答",
-    "other": "{{prompt}} 的其他回答",
     "createdAt": "建立於 {{time}}",
     "resolvedOn": " 於 {{date}}"
   },
