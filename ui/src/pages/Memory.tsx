@@ -6,9 +6,13 @@ import {
   MEMORY_CATEGORIES,
   MEMORY_CATEGORY_LABELS,
   MEMORY_RECOVERY_WINDOW_DAYS,
+  classifyMemoryContent,
+  memoryRecency,
   memoryStrength,
   normalizeMemoryCategory,
+  parseMemoryDump,
   type MemoryCategory,
+  type MemoryRecency,
   type MemoryStrength,
 } from "@paperclipai/shared";
 import { useTranslation } from "@/i18n";
@@ -17,6 +21,7 @@ import { agentsApi } from "@/api/agents";
 import { issuesApi } from "@/api/issues";
 import { memoryApi, type MemoryImportResult, type PersonalMemory } from "@/api/memory";
 import { useCompany } from "@/context/CompanyContext";
+import { cn } from "@/lib/utils";
 
 /**
  * Personal memory — facts this person's agents should carry between runs.
@@ -38,8 +43,11 @@ export function Memory() {
     name: string;
     description: string;
     content: string;
-    memoryType: MemoryCategory;
-  }>({ name: "", description: "", content: "", memoryType: DEFAULT_MEMORY_CATEGORY });
+    memoryType: MemoryCategory | "auto";
+  }>({ name: "", description: "", content: "", memoryType: "auto" });
+  // Preview of a pasted multi-entry dump before it lands (auto-split + categorized).
+  const [preview, setPreview] = useState<Array<{ content: string; category: MemoryCategory; include: boolean }> | null>(null);
+  const nowMs = Date.now();
   const [importResult, setImportResult] = useState<MemoryImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Which category is being shown, or "all". Not persisted — a view, not a setting. */
@@ -95,7 +103,34 @@ export function Memory() {
         memoryType: memory.memoryType,
       }),
     onSuccess: () => {
-      setDraft({ name: "", description: "", content: "", memoryType: DEFAULT_MEMORY_CATEGORY });
+      setDraft({ name: "", description: "", content: "", memoryType: "auto" });
+      setError(null);
+      invalidate();
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  // Bulk-save the confirmed entries from a pasted dump. Names derive from content
+  // and are de-duped so entries don't overwrite each other.
+  const saveMany = useMutation({
+    mutationFn: async (entries: Array<{ content: string; category: MemoryCategory }>) => {
+      const used = new Set<string>();
+      for (const entry of entries) {
+        let name = slugify(entry.content.slice(0, 48)) || "memory";
+        let n = name;
+        for (let i = 2; used.has(n); i += 1) n = `${name}-${i}`;
+        used.add(n);
+        name = n;
+        await memoryApi.save(selectedCompanyId!, userId!, name, {
+          content: entry.content,
+          description: "",
+          memoryType: entry.category,
+        });
+      }
+    },
+    onSuccess: () => {
+      setPreview(null);
+      setDraft({ name: "", description: "", content: "", memoryType: "auto" });
       setError(null);
       invalidate();
     },
@@ -316,8 +351,8 @@ export function Memory() {
           onChange={(event) => setDraft((prev) => ({ ...prev, content: event.target.value }))}
         />
         <div className="flex flex-wrap items-center gap-2">
-          {/* Category is required on every write, so it is a control with a
-              default rather than an optional extra someone has to remember. */}
+          {/* Category is optional — the default "自動分類" lets the platform file
+              the entry (or split a pasted dump into many). */}
           <select
             aria-label={t("memory.categoryLabel", { defaultValue: "Category" })}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
@@ -325,10 +360,11 @@ export function Memory() {
             onChange={(event) =>
               setDraft((prev) => ({
                 ...prev,
-                memoryType: normalizeMemoryCategory(event.target.value),
+                memoryType: event.target.value === "auto" ? "auto" : normalizeMemoryCategory(event.target.value),
               }))
             }
           >
+            <option value="auto">{t("memory.autoCategory", { defaultValue: "自動分類" })}</option>
             {MEMORY_CATEGORIES.map((category) => (
               <option key={category.id} value={category.id}>
                 {categoryLabel(category.id)}
@@ -345,16 +381,30 @@ export function Memory() {
             type="button"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium disabled:opacity-50"
             disabled={!canSave || save.isPending}
-            onClick={() =>
+            onClick={() => {
+              // Auto mode: parse the content. A multi-entry dump opens a preview to
+              // confirm the split + categories; a single note saves straight away.
+              if (draft.memoryType === "auto") {
+                const parsed = parseMemoryDump(draft.content);
+                if (parsed.length > 1) {
+                  setPreview(parsed.map((entry) => ({ content: entry.content, category: entry.category, include: true })));
+                  return;
+                }
+                save.mutate({
+                  name: slugify(draft.name) || slugify(draft.content.slice(0, 48)) || "memory",
+                  description: draft.description,
+                  content: draft.content,
+                  memoryType: parsed[0]?.category ?? classifyMemoryContent(draft.content),
+                });
+                return;
+              }
               save.mutate({
-                // Fall back to a slug of the content so a quick note does not
-                // require inventing a label first.
                 name: slugify(draft.name) || slugify(draft.content.slice(0, 48)) || "memory",
                 description: draft.description,
                 content: draft.content,
                 memoryType: draft.memoryType,
-              })
-            }
+              });
+            }}
           >
             {t("memory.save", { defaultValue: "Remember" })}
           </button>
@@ -402,6 +452,55 @@ export function Memory() {
           {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
         />
       </section>
+
+      {/* Preview + confirm a pasted dump before it lands: auto-split, each entry's
+          category pre-filled and editable, deselect any you don't want. */}
+      {preview ? (
+        <section className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-primary/5 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">
+              {t("memory.previewTitle", { defaultValue: "將自動拆分並分類 {{count}} 筆記憶", count: preview.length })}
+            </p>
+            <div className="flex items-center gap-2">
+              <button type="button" className="rounded-md border border-border px-3 py-1.5 text-sm" onClick={() => setPreview(null)}>
+                {t("common.cancel", { defaultValue: "取消" })}
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                disabled={saveMany.isPending || preview.every((entry) => !entry.include)}
+                onClick={() => saveMany.mutate(preview.filter((entry) => entry.include).map((entry) => ({ content: entry.content, category: entry.category })))}
+              >
+                {saveMany.isPending
+                  ? t("common.saving", { defaultValue: "儲存中…" })
+                  : t("memory.saveAll", { defaultValue: "全部記住（{{count}}）", count: preview.filter((entry) => entry.include).length })}
+              </button>
+            </div>
+          </div>
+          <div className="max-h-96 space-y-1.5 overflow-y-auto overscroll-contain" onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}>
+            {preview.map((entry, index) => (
+              <div key={index} className={cn("flex items-start gap-2 rounded-md border border-border bg-background px-2 py-1.5", !entry.include && "opacity-50")}>
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={entry.include}
+                  onChange={(e) => setPreview((cur) => cur && cur.map((it, i) => i === index ? { ...it, include: e.target.checked } : it))}
+                />
+                <span className="min-w-0 flex-1 text-xs">{entry.content}</span>
+                <select
+                  className="shrink-0 rounded border border-border bg-background px-1.5 py-1 text-xs"
+                  value={entry.category}
+                  onChange={(e) => setPreview((cur) => cur && cur.map((it, i) => i === index ? { ...it, category: normalizeMemoryCategory(e.target.value) } : it))}
+                >
+                  {MEMORY_CATEGORIES.map((category) => (
+                    <option key={category.id} value={category.id}>{categoryLabel(category.id)}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {importResult ? (
         <div className="rounded-md border border-border px-3 py-2 text-sm">
@@ -549,6 +648,7 @@ export function Memory() {
    */
   function renderEntry(memory: PersonalMemory) {
     const strength = strengthLabel(memoryStrength(memory.timesObserved));
+    const recency = memoryRecency(memory.lastObservedAt ?? memory.updatedAt ?? memory.createdAt, nowMs);
     return (
       <article
         key={memory.name}
@@ -567,6 +667,7 @@ export function Memory() {
             <span className="rounded-full border border-border px-1.5 py-0.5">
               {categoryLabel(normalizeMemoryCategory(memory.memoryType))}
             </span>
+            <RecencyBadge recency={recency} />
             <span>{memory.name}</span>
             {memory.source !== "manual" ? <span>· {memory.source}</span> : null}
             {/* Repetition is why an agent-written entry is trusted, so it
@@ -597,6 +698,17 @@ export function Memory() {
       </article>
     );
   }
+}
+
+/** Small recency badge: 🔥 hot / warm / cold, derived from when the fact was last seen. */
+function RecencyBadge({ recency }: { recency: MemoryRecency }) {
+  if (recency === "hot") {
+    return <span className="rounded-full bg-orange-500/15 px-1.5 py-0.5 text-orange-600 dark:text-orange-400" title="hot — recently relevant">🔥 hot</span>;
+  }
+  if (recency === "warm") {
+    return <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-amber-600 dark:text-amber-400" title="warm">warm</span>;
+  }
+  return <span className="rounded-full border border-border px-1.5 py-0.5 text-muted-foreground/70" title="cold — not seen in a while">cold</span>;
 }
 
 export default Memory;

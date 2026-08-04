@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifyMemoryContent,
+  parseMemoryDump,
+  memoryRecency,
   DEFAULT_MEMORY_CATEGORY,
   MEMORY_CATEGORY_IDS,
   MEMORY_CATEGORY_LABELS,
@@ -229,5 +232,66 @@ describe("reserved names", () => {
   it("allows a name that merely contains one", () => {
     expect(isReservedMemoryName("stats-dashboard")).toBe(false);
     expect(isReservedMemoryName("import-checklist")).toBe(false);
+  });
+});
+
+describe("classifyMemoryContent", () => {
+  it("uses section header as the strongest signal", () => {
+    expect(classifyMemoryContent("anything", "Identity")).toBe("profile");
+    expect(classifyMemoryContent("anything", "## Preferences")).toBe("preference");
+    expect(classifyMemoryContent("anything", "Projects")).toBe("project");
+    expect(classifyMemoryContent("anything", "Career")).toBe("expertise");
+    // Instructions read as preferences (rules about how to work).
+    expect(classifyMemoryContent("anything", "Instructions")).toBe("preference");
+  });
+
+  it("falls back to content keywords with no hint", () => {
+    expect(classifyMemoryContent("Jay prefers concise replies and Traditional Chinese")).toBe("preference");
+    expect(classifyMemoryContent("Built a Gurobi integer LP final project report")).toBe("project");
+    expect(classifyMemoryContent("See the dashboard at https://drive.google.com/x")).toBe("reference");
+    expect(classifyMemoryContent("Born and raised in Taiwan; studied at Cornell University")).toBe("profile");
+  });
+});
+
+describe("parseMemoryDump", () => {
+  const dump = [
+    "## Identity",
+    "[2024-11-28] - Grew up in a family of educators.",
+    "[2025-01-13] - Name: Mu-Chieh Huang; prefers Jay.",
+    "",
+    "## Preferences",
+    "[2025-11-08] - Asked for replies to be really wholesome and sincere.",
+    "## Projects",
+    "[unknown] - Shared instructor-allocation mechanism proposal.",
+  ].join("\n");
+
+  it("splits sections + dated bullets into categorized entries", () => {
+    const parsed = parseMemoryDump(dump);
+    expect(parsed).toHaveLength(4);
+    expect(parsed[0]).toMatchObject({ category: "profile", section: "Identity", observedAt: "2024-11-28T00:00:00.000Z" });
+    expect(parsed[0].content).toContain("family of educators");
+    expect(parsed[2]).toMatchObject({ category: "preference", section: "Preferences" });
+    expect(parsed[3]).toMatchObject({ category: "project", section: "Projects", observedAt: null });
+  });
+
+  it("drops exporter meta lines", () => {
+    const parsed = parseMemoryDump("## Instructions\nNo persistent stored-memory instructions were found.");
+    expect(parsed).toHaveLength(0);
+  });
+
+  it("classifies a structureless blob as one entry", () => {
+    const parsed = parseMemoryDump("Jay prefers concise replies in Traditional Chinese.");
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].category).toBe("preference");
+  });
+});
+
+describe("memoryRecency", () => {
+  const now = Date.parse("2026-08-04T00:00:00.000Z");
+  it("tiers by age since last seen", () => {
+    expect(memoryRecency("2026-08-01T00:00:00.000Z", now)).toBe("hot");
+    expect(memoryRecency("2026-06-01T00:00:00.000Z", now)).toBe("warm");
+    expect(memoryRecency("2025-01-01T00:00:00.000Z", now)).toBe("cold");
+    expect(memoryRecency(null, now)).toBe("cold");
   });
 });

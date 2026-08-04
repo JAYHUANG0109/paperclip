@@ -252,6 +252,158 @@ export function memoryStrength(timesObserved: number): MemoryStrength {
 }
 
 // ---------------------------------------------------------------------------
+// Recency tier (hot / warm / cold)
+// ---------------------------------------------------------------------------
+
+/** A recency signal orthogonal to strength: how recently the fact was seen. */
+export type MemoryRecency = "hot" | "warm" | "cold";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Age (days since last seen) at which a memory cools. */
+export const MEMORY_RECENCY_THRESHOLDS = { hot: 30, warm: 120 } as const;
+
+/** hot (≤30d) → warm (≤120d) → cold. `nowMs` is passed in to stay pure. */
+export function memoryRecency(lastSeenIso: string | null | undefined, nowMs: number): MemoryRecency {
+  if (!lastSeenIso) return "cold";
+  const seen = Date.parse(lastSeenIso);
+  if (!Number.isFinite(seen)) return "cold";
+  const ageDays = (nowMs - seen) / DAY_MS;
+  if (ageDays <= MEMORY_RECENCY_THRESHOLDS.hot) return "hot";
+  if (ageDays <= MEMORY_RECENCY_THRESHOLDS.warm) return "warm";
+  return "cold";
+}
+
+// ---------------------------------------------------------------------------
+// Heuristic content classification + dump parsing (import auto-categorization)
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a pasted section header ("## Identity", "Preferences", …) to a category.
+ * Section headers are the strongest signal when importing an AI-platform export,
+ * so this takes precedence over content keywords.
+ */
+function categoryFromSectionHint(hint: string | null | undefined): MemoryCategory | null {
+  if (!hint) return null;
+  const h = hint.toLowerCase().replace(/[^a-z一-鿿]+/g, " ").trim();
+  const has = (...words: string[]) => words.some((w) => h.includes(w));
+  // Operating rules ("Instructions") aren't a memory category; they read as
+  // preferences (how the person wants things done) — the same call the source
+  // exports already make.
+  if (has("instruction", "rule", "guardrail", "指示", "規則")) return "preference";
+  if (has("preference", "偏好", "style", "格式", "工作方式")) return "preference";
+  if (has("identity", "about", "profile", "who", "個人資料", "身份", "背景")) return "profile";
+  if (has("career", "experience", "work history", "employment", "職涯", "經歷", "工作")) return "expertise";
+  if (has("expertise", "skill", "專長", "技能")) return "expertise";
+  if (has("project", "專案", "作品")) return "project";
+  if (has("workflow", "process", "cadence", "how we work", "流程", "工作流程")) return "workflow";
+  if (has("feedback", "correction", "回饋", "修正")) return "feedback";
+  if (has("reference", "link", "resource", "參考", "連結", "資源")) return "reference";
+  return null;
+}
+
+const CATEGORY_KEYWORDS: Record<MemoryCategory, string[]> = {
+  preference: ["prefer", "wants ", "want ", "likes ", "avoid", "don't", "do not", "concise", "verbose", "tone", "format", "reply in", "default to", "should be", "keep responses", "no ai", "偏好", "希望", "喜歡", "避免"],
+  profile: ["name:", "born", "raised", "grew up", "based in", "lives in", "family", "mother", "father", "studied", "degree", "university", "cornell", "language", "netid", "role:", "founder", "married", "身份", "出生", "家庭", "就讀"],
+  expertise: ["skill", "expertise", "experience with", "proficient", "specializ", "go-to", "built with", "knows ", "python", "sql", "machine learning", "deep learning", "figma", "專長", "技能", "擅長"],
+  project: ["project", "built a", "developed", "homework", "final project", "report", "app", "model", "portfolio", "delivered", "completed", "prototype", "專案", "作品", "報告"],
+  workflow: ["workflow", "process", "cadence", "each week", "weekly", "routine", "pipeline", "the steps", "deploy", "publish", "storage code path", "流程", "每週", "步驟"],
+  feedback: ["corrected", "pushed back", "was wrong", "caught an error", "redo", "re-show", "verify before", "should not have", "回饋", "修正", "指正"],
+  reference: ["http://", "https://", "www.", "dashboard", "ticket", "github.com", "docs.google", "drive.google", "連結", "參考資料"],
+};
+
+/** Priority when scores tie — more specific categories win over generic ones. */
+const CATEGORY_PRIORITY: MemoryCategory[] = ["feedback", "preference", "project", "expertise", "workflow", "profile", "reference"];
+
+/**
+ * Best-effort category for a single memory's text. Section hint wins; otherwise
+ * keyword scoring; otherwise the most generic bucket. Deterministic and free —
+ * an LLM pass can replace this later without changing callers.
+ */
+export function classifyMemoryContent(content: string, sectionHint?: string | null): MemoryCategory {
+  const fromHint = categoryFromSectionHint(sectionHint);
+  if (fromHint) return fromHint;
+  const text = ` ${content.toLowerCase()} `;
+  let best: MemoryCategory = "reference";
+  let bestScore = 0;
+  for (const category of CATEGORY_PRIORITY) {
+    let score = 0;
+    for (const kw of CATEGORY_KEYWORDS[category]) if (text.includes(kw)) score += 1;
+    if (score > bestScore) { bestScore = score; best = category; }
+  }
+  return bestScore === 0 ? "reference" : best;
+}
+
+export type ParsedDumpEntry = {
+  /** The fact text, with any leading "[date] -" stripped. */
+  content: string;
+  /** Auto-assigned category (section hint or content heuristic). */
+  category: MemoryCategory;
+  /** ISO date parsed from a leading "[YYYY-MM-DD]", when present. */
+  observedAt: string | null;
+  /** The section header this fell under, if any (for display/grouping). */
+  section: string | null;
+};
+
+const SECTION_HEADER = /^\s*#{1,6}\s*(.+?)\s*#*\s*$/;
+const DATE_PREFIX = /^\s*(?:[-*]\s*)?\[(\d{4}-\d{2}-\d{2}|unknown)\]\s*[-–—]\s*(.*)$/i;
+const BULLET_PREFIX = /^\s*[-*]\s+(.*)$/;
+
+/**
+ * Split a pasted memory dump (ChatGPT / Claude / Gemini export, or freeform
+ * notes) into individual, auto-categorized entries.
+ *
+ * Handles the common export shape: "## Section" headers with "[date] - fact"
+ * bullets under them. Falls back to one entry per non-empty line/paragraph, and
+ * to a single classified entry when there's no structure at all.
+ */
+export function parseMemoryDump(raw: string): ParsedDumpEntry[] {
+  const text = (raw ?? "").replace(/\r\n/g, "\n").trim();
+  if (!text) return [];
+  const lines = text.split("\n");
+  const entries: ParsedDumpEntry[] = [];
+  let section: string | null = null;
+
+  const push = (body: string, observedAt: string | null) => {
+    const content = body.trim();
+    if (!content) return;
+    // Drop meta lines the exporters inject (e.g. "No persistent stored-memory…").
+    if (/^no\b.*\b(found|instructions were found)/i.test(content) && content.length < 200) return;
+    entries.push({ content, category: classifyMemoryContent(content, section), observedAt, section });
+  };
+
+  let buffer = "";
+  let bufferDate: string | null = null;
+  const flush = () => { if (buffer) push(buffer, bufferDate); buffer = ""; bufferDate = null; };
+
+  for (const line of lines) {
+    const header = SECTION_HEADER.exec(line);
+    if (header && !DATE_PREFIX.test(line)) {
+      flush();
+      section = header[1];
+      continue;
+    }
+    const dated = DATE_PREFIX.exec(line);
+    if (dated) {
+      flush();
+      bufferDate = dated[1].toLowerCase() === "unknown" ? null : `${dated[1]}T00:00:00.000Z`;
+      buffer = dated[2] ?? "";
+      continue;
+    }
+    const bullet = BULLET_PREFIX.exec(line);
+    if (bullet) {
+      flush();
+      buffer = bullet[1] ?? "";
+      continue;
+    }
+    if (line.trim() === "") { flush(); continue; }
+    // Continuation of the current entry (wrapped line).
+    buffer = buffer ? `${buffer} ${line.trim()}` : line.trim();
+  }
+  flush();
+  return entries;
+}
+
+// ---------------------------------------------------------------------------
 // Retention
 // ---------------------------------------------------------------------------
 

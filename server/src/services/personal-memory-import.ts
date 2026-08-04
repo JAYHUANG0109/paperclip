@@ -11,7 +11,7 @@
  * Skips are RETURNED, never swallowed. An importer that silently drops files
  * reads as "imported everything" when it did not.
  */
-import { normalizeMemoryCategory } from "@paperclipai/shared";
+import { classifyMemoryContent, normalizeMemoryCategory } from "@paperclipai/shared";
 
 /**
  * Extensions stored as UTF-8 text. Everything else is base64 (`is_binary`).
@@ -214,8 +214,10 @@ export function parseMemoryUpload(upload: MemoryUpload): ParsedMemory | SkippedM
     // set, which silently went stale the moment the taxonomy grew — a file
     // declaring `type: preference` imported as `project`, with nothing to say
     // so. Deferring to the shared normalizer means the importer cannot drift
-    // from the write gate again, and legacy values still map forward.
-    memoryType: normalizeMemoryCategory(frontmatter.type),
+    // from the write gate again, and legacy values still map forward. When a file
+    // declares no type, auto-classify from its content instead of dumping it all
+    // into one bucket.
+    memoryType: frontmatter.type ? normalizeMemoryCategory(frontmatter.type) : classifyMemoryContent(body),
     content: body,
     isBinary: false,
     filePath,
