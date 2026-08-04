@@ -97,7 +97,7 @@ function makeAgent(over: Partial<CompanySkillUsageAgent> = {}): CompanySkillUsag
     actualState: null,
     versionId: null,
     ...over,
-  };
+  } as CompanySkillUsageAgent;
 }
 
 function makeSkill(over: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
@@ -143,7 +143,7 @@ function makeSkill(over: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
     starredByCurrentActor: false,
     existingForks: [],
     ...over,
-  };
+  } as CompanySkillDetail;
 }
 
 function makePrecheck(over: Partial<CompanySkillForkPrecheckResult> = {}): CompanySkillForkPrecheckResult {
@@ -161,7 +161,7 @@ function makePrecheck(over: Partial<CompanySkillForkPrecheckResult> = {}): Compa
     usedByAgents: [],
     existingForks: [],
     ...over,
-  };
+  } as CompanySkillForkPrecheckResult;
 }
 
 function makeForkSummary(over: Partial<CompanySkillForkSummary> = {}): CompanySkillForkSummary {
@@ -181,7 +181,7 @@ function makeForkSummary(over: Partial<CompanySkillForkSummary> = {}): CompanySk
     createdAt: new Date("2026-07-01T00:00:00Z"),
     updatedAt: new Date("2026-07-01T00:00:00Z"),
     ...over,
-  };
+  } as CompanySkillForkSummary;
 }
 
 beforeEach(() => {

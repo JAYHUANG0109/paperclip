@@ -59,7 +59,7 @@ function createRun(overrides: Partial<RunForIssue> = {}): RunForIssue {
     lastUsefulActionAt: "2026-04-18T19:59:00.000Z",
     nextAction: null,
     ...overrides,
-  };
+  } as RunForIssue;
 }
 
 function createActivity(overrides: Partial<ActivityEvent> = {}): ActivityEvent {
@@ -76,7 +76,7 @@ function createActivity(overrides: Partial<ActivityEvent> = {}): ActivityEvent {
     details: null,
     createdAt: new Date("2026-04-18T19:57:00.000Z"),
     ...overrides,
-  };
+  } as ActivityEvent;
 }
 
 function createIssue(overrides: Partial<Issue> = {}): Issue {
@@ -116,7 +116,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     updatedAt: new Date("2026-04-18T19:00:00.000Z"),
     ...overrides,
     workMode: overrides.workMode ?? "standard",
-  };
+  } as Issue;
 }
 
 function createActiveRun(overrides: Partial<ActiveRunForIssue> = {}): ActiveRunForIssue {
@@ -146,7 +146,7 @@ function createActiveRun(overrides: Partial<ActiveRunForIssue> = {}): ActiveRunF
       evaluationIssueAssigneeAgentId: "agent-owner",
     },
     ...overrides,
-  };
+  } as ActiveRunForIssue;
 }
 
 function renderLedger(props: Partial<ComponentProps<typeof IssueRunLedgerContent>> = {}) {

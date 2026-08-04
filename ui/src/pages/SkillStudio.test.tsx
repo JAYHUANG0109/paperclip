@@ -252,7 +252,7 @@ function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDet
     starredByCurrentActor: false,
     existingForks: [],
     ...overrides,
-  };
+  } as CompanySkillDetail;
 }
 
 function buttonsNamed(node: ParentNode, name: string) {
@@ -451,7 +451,7 @@ function makeListItem(
     packageName: null,
     packageVersion: null,
     ...overrides,
-  };
+  } as CompanySkillListItem;
 }
 
 const userEditor = (name: string): CompanySkillLastEditor => ({

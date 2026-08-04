@@ -30,7 +30,7 @@ function makeVersion(overrides: Partial<CompanySkillVersion>): CompanySkillVersi
     authorUserId: null,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
-  };
+  } as CompanySkillVersion;
 }
 
 const VERSIONS: CompanySkillVersion[] = [
@@ -56,7 +56,7 @@ function usageAgent(overrides: Partial<CompanySkillUsageAgent>): CompanySkillUsa
     actualState: null,
     versionId: null,
     ...overrides,
-  };
+  } as CompanySkillUsageAgent;
 }
 
 function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
@@ -106,7 +106,7 @@ function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDet
     starredByCurrentActor: false,
     existingForks: [],
     ...overrides,
-  };
+  } as CompanySkillDetail;
 }
 
 // Prime the react-query cache so the lazy versions/agents lookups resolve

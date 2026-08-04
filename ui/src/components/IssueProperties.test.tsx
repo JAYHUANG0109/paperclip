@@ -205,7 +205,7 @@ function createIssue(overrides: Partial<Issue> = {}): Issue {
     updatedAt: new Date("2026-04-06T12:05:00.000Z"),
     ...overrides,
     workMode: overrides.workMode ?? "standard",
-  };
+  } as Issue;
 }
 
 function createLabel(overrides: Partial<IssueLabel> = {}): IssueLabel {
@@ -217,7 +217,7 @@ function createLabel(overrides: Partial<IssueLabel> = {}): IssueLabel {
     createdAt: new Date("2026-04-06T12:00:00.000Z"),
     updatedAt: new Date("2026-04-06T12:00:00.000Z"),
     ...overrides,
-  };
+  } as IssueLabel;
 }
 
 function createRuntimeService(overrides: Partial<WorkspaceRuntimeService> = {}): WorkspaceRuntimeService {
@@ -250,7 +250,7 @@ function createRuntimeService(overrides: Partial<WorkspaceRuntimeService> = {}):
     createdAt: new Date("2026-04-06T12:02:00.000Z"),
     updatedAt: new Date("2026-04-06T12:03:00.000Z"),
     ...overrides,
-  };
+  } as WorkspaceRuntimeService;
 }
 
 function createExecutionWorkspace(overrides: Partial<ExecutionWorkspace> = {}): ExecutionWorkspace {
@@ -282,7 +282,7 @@ function createExecutionWorkspace(overrides: Partial<ExecutionWorkspace> = {}): 
     createdAt: new Date("2026-04-06T12:01:00.000Z"),
     updatedAt: new Date("2026-04-06T12:04:00.000Z"),
     ...overrides,
-  };
+  } as ExecutionWorkspace;
 }
 
 function createProject(overrides: Partial<Project> = {}): Project {
@@ -353,7 +353,7 @@ function createExecutionPolicy(overrides: Partial<IssueExecutionPolicy> = {}): I
     commentRequired: true,
     stages: [],
     ...overrides,
-  };
+  } as IssueExecutionPolicy;
 }
 
 function createExecutionState(overrides: Partial<IssueExecutionState> = {}): IssueExecutionState {
@@ -369,7 +369,7 @@ function createExecutionState(overrides: Partial<IssueExecutionState> = {}): Iss
     lastDecisionId: null,
     lastDecisionOutcome: "changes_requested",
     ...overrides,
-  };
+  } as IssueExecutionState;
 }
 
 function renderProperties(container: HTMLDivElement, props: ComponentProps<typeof IssueProperties>) {

@@ -112,7 +112,7 @@ function makeAgent(overrides: Partial<CompanySkillUsageAgent> = {}): CompanySkil
     actualState: null,
     versionId: null,
     ...overrides,
-  };
+  } as CompanySkillUsageAgent;
 }
 
 function makeVersion(overrides: Partial<CompanySkillVersion> = {}): CompanySkillVersion {
@@ -130,7 +130,7 @@ function makeVersion(overrides: Partial<CompanySkillVersion> = {}): CompanySkill
     authorUserId: null,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
-  };
+  } as CompanySkillVersion;
 }
 
 function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
@@ -176,7 +176,7 @@ function makeSkill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDet
     starredByCurrentActor: false,
     existingForks: [],
     ...overrides,
-  };
+  } as CompanySkillDetail;
 }
 
 beforeEach(() => {

@@ -52,7 +52,7 @@ function skill(overrides: Partial<CompanySkillDetail> = {}): CompanySkillDetail 
     starredByCurrentActor: false,
     existingForks: [],
     ...overrides,
-  };
+  } as CompanySkillDetail;
 }
 
 describe("skill create helpers", () => {

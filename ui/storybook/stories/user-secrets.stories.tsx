@@ -43,7 +43,7 @@ function makeDefinition(overrides: Partial<UserSecretDefinition>): UserSecretDef
     createdAt: new Date("2026-06-01T00:00:00Z"),
     updatedAt: new Date("2026-06-01T00:00:00Z"),
     ...overrides,
-  };
+  } as UserSecretDefinition;
 }
 
 function makeValue(definitionId: string): CompanySecret {

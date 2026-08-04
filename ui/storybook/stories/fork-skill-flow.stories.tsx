@@ -33,7 +33,7 @@ function usageAgent(over: Partial<CompanySkillUsageAgent>): CompanySkillUsageAge
     actualState: null,
     versionId: null,
     ...over,
-  };
+  } as CompanySkillUsageAgent;
 }
 
 const USAGE_AGENTS: CompanySkillUsageAgent[] = [
@@ -85,7 +85,7 @@ function makeSkill(over: Partial<CompanySkillDetail> = {}): CompanySkillDetail {
     starredByCurrentActor: false,
     existingForks: [],
     ...over,
-  };
+  } as CompanySkillDetail;
 }
 
 function makePrecheck(
@@ -105,7 +105,7 @@ function makePrecheck(
     usedByAgents: USAGE_AGENTS,
     existingForks: [],
     ...over,
-  };
+  } as CompanySkillForkPrecheckResult;
 }
 
 function makeForkSummary(over: Partial<CompanySkillForkSummary> = {}): CompanySkillForkSummary {
@@ -125,7 +125,7 @@ function makeForkSummary(over: Partial<CompanySkillForkSummary> = {}): CompanySk
     createdAt: new Date("2026-07-01T00:00:00Z"),
     updatedAt: new Date("2026-07-01T00:00:00Z"),
     ...over,
-  };
+  } as CompanySkillForkSummary;
 }
 
 /** Prime react-query so the dialog's precheck + lineage lookups resolve offline. */

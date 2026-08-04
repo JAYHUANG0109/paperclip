@@ -681,7 +681,7 @@ describe("studio landing recency helpers", () => {
       packageName: null,
       packageVersion: null,
       ...overrides,
-    };
+    } as CompanySkillListItem;
   }
 
   describe("orderRecentlyVisitedSkills", () => {

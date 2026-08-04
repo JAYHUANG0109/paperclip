@@ -216,7 +216,7 @@ function createIssueDocument(overrides: Partial<IssueDocument> = {}): IssueDocum
     createdAt: new Date("2026-03-31T12:00:00.000Z"),
     updatedAt: new Date("2026-03-31T12:05:00.000Z"),
     ...overrides,
-  };
+  } as IssueDocument;
 }
 
 function createRevision(overrides: Partial<DocumentRevision> = {}): DocumentRevision {
@@ -235,7 +235,7 @@ function createRevision(overrides: Partial<DocumentRevision> = {}): DocumentRevi
     createdByUserId: "user-1",
     createdAt: new Date("2026-03-31T11:00:00.000Z"),
     ...overrides,
-  };
+  } as DocumentRevision;
 }
 
 function createIssue(): Issue {

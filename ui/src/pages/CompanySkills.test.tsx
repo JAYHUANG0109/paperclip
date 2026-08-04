@@ -213,7 +213,7 @@ function makeDetail(
     currentVersion,
     starredByCurrentActor: false,
     ...overrides,
-  };
+  } as CompanySkillDetail;
 }
 
 async function renderSkillDetail(
