@@ -24,6 +24,15 @@ export function ConnectionsCard({ companyId }: { companyId: string }) {
     queryKey: ["connections", companyId],
     queryFn: () => dashboardApi.connections(companyId),
   });
+  // Collapsed state persists, so someone who tucks it away keeps it away.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("connections-card-collapsed") === "1"; } catch { return false; }
+  });
+  const toggle = () => setCollapsed((c) => {
+    const next = !c;
+    try { localStorage.setItem("connections-card-collapsed", next ? "1" : "0"); } catch { /* ignore */ }
+    return next;
+  });
 
   // Nothing to connect to until the signed-in user has their own agent.
   if (!isLoading && data && !data.agentLinked) return null;
@@ -31,20 +40,25 @@ export function ConnectionsCard({ companyId }: { companyId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+        <button type="button" onClick={toggle} className="flex w-full items-center gap-2 text-left" aria-expanded={!collapsed}>
           <Plug className="size-4 text-muted-foreground" />
-          {t("connections.title", { defaultValue: "Connections" })}
-        </CardTitle>
-        <CardDescription className="text-xs">
-          {t("connections.subtitle", {
-            defaultValue: "Your personal keys. Every agent you're responsible for uses them, acting as you.",
-          })}
-        </CardDescription>
+          <CardTitle className="text-sm font-semibold">{t("connections.title", { defaultValue: "Connections" })}</CardTitle>
+          <ChevronDown className={cn("ml-auto size-4 text-muted-foreground transition-transform", collapsed && "-rotate-90")} />
+        </button>
+        {!collapsed ? (
+          <CardDescription className="text-xs">
+            {t("connections.subtitle", {
+              defaultValue: "Your personal keys. Every agent you're responsible for uses them, acting as you.",
+            })}
+          </CardDescription>
+        ) : null}
       </CardHeader>
-      <CardContent className="space-y-2">
-        <AsanaRow companyId={companyId} status={data?.asana} loading={isLoading} />
-        <OdooRow companyId={companyId} status={data?.odoo} loading={isLoading} />
-      </CardContent>
+      {!collapsed ? (
+        <CardContent className="space-y-2">
+          <AsanaRow companyId={companyId} status={data?.asana} loading={isLoading} />
+          <OdooRow companyId={companyId} status={data?.odoo} loading={isLoading} />
+        </CardContent>
+      ) : null}
     </Card>
   );
 }
