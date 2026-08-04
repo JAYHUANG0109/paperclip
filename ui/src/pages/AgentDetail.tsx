@@ -10,6 +10,8 @@ import {
 import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
 import { routinesApi } from "../api/routines";
+import { accessApi } from "../api/access";
+import { memoryApi } from "../api/memory";
 import { projectsApi } from "../api/projects";
 import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
@@ -103,6 +105,7 @@ import {
 import {
   isUuidLike,
   anyTeamTokenMatches,
+  normalizeMemoryCategory,
   type Agent,
   type AgentInstructionsBundle,
   type AgentInstructionsFileSummary,
@@ -3369,6 +3372,27 @@ function AgentHarnessTab({ companyId, agent, onNavigate }: { companyId: string; 
     queryFn: () => routinesApi.list(companyId),
     enabled: !!companyId,
   });
+  // The agent's owner (joined user) → their 指示・守則 memory rules, so the harness
+  // page shows the operating rules the agent carries per-run, not just its config.
+  const { data: userDirectory } = useQuery({
+    queryKey: queryKeys.access.companyUserDirectory(companyId),
+    queryFn: () => accessApi.listUserDirectory(companyId),
+    enabled: !!companyId,
+  });
+  const ownerUserId = useMemo(
+    () => (userDirectory?.users ?? []).find((u) => (u.agents ?? []).some((a) => a.id === agent.id))?.principalId ?? null,
+    [userDirectory, agent.id],
+  );
+  const { data: ownerMemories } = useQuery({
+    queryKey: ["personal-memories", companyId, ownerUserId],
+    queryFn: () => memoryApi.list(companyId, ownerUserId!),
+    enabled: !!companyId && !!ownerUserId,
+    retry: false, // a non-admin viewer may not read another user's memory; just hide the card
+  });
+  const harnessRules = useMemo(
+    () => (ownerMemories ?? []).filter((m) => normalizeMemoryCategory(m.memoryType) === "instruction"),
+    [ownerMemories],
+  );
 
   const equippedSkills = useMemo(() => {
     const desired = skillSnapshot?.desiredSkills ?? [];
@@ -3457,6 +3481,24 @@ function AgentHarnessTab({ companyId, agent, onNavigate }: { companyId: string; 
             </ul>
           )}
         </Card>
+
+        {harnessRules.length > 0 ? (
+          <div className="flex flex-col gap-2 rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 md:col-span-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">
+                {t("agentDetail.harness.rules", { defaultValue: "指示・守則（harness）" })}
+                <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{harnessRules.length}</span>
+              </h3>
+              <span className="text-[11px] text-muted-foreground">{t("agentDetail.harness.rulesSource", { defaultValue: "來自負責人的記憶" })}</span>
+            </div>
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {harnessRules.slice(0, 10).map((r) => (
+                <li key={r.name} className="line-clamp-2">• {r.content}</li>
+              ))}
+              {harnessRules.length > 10 ? <li>+{harnessRules.length - 10}</li> : null}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </div>
   );
