@@ -5468,6 +5468,8 @@ export function issueRoutes(
         blocks: relationsWithRecoveryActions.blocks,
         assigneeAgentId: issue.assigneeAgentId,
         assigneeUserId: issue.assigneeUserId,
+        // Per-task skill scoping: the equipped skills to use for this task (if set).
+        skillHints: issue.skillHints ?? null,
         originKind: issue.originKind,
         originId: issue.originId,
         updatedAt: issue.updatedAt,

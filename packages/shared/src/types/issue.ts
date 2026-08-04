@@ -153,6 +153,8 @@ export interface AcceptedPlanDecompositionChild {
   pinned?: boolean;
   assigneeAgentId?: string | null;
   assigneeUserId?: string | null;
+  /** Optional per-task skill scoping — keys of the assignee's equipped skills to use. */
+  skillHints?: string[] | null;
   requestDepth?: number;
   billingCode?: string | null;
   assigneeAdapterOverrides?: IssueAssigneeAdapterOverrides | null;

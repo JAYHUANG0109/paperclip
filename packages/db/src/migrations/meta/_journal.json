@@ -1562,6 +1562,13 @@
       "when": 1785420024000,
       "tag": "9029_user_memory_import_batch",
       "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1785420025000,
+      "tag": "9030_issue_skill_hints",
+      "breakpoints": true
     }
   ]
 }

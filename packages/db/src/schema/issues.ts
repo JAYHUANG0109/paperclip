@@ -67,6 +67,9 @@ export const issues = pgTable(
     startDate: date("start_date"),
     dueDate: date("due_date"),
     assigneeAdapterOverrides: jsonb("assignee_adapter_overrides").$type<Record<string, unknown>>(),
+    // Optional per-task skill scoping: keys of the equipped skills the assignee
+    // should use for this task. Empty/null = no restriction.
+    skillHints: jsonb("skill_hints").$type<string[]>(),
     executionPolicy: jsonb("execution_policy").$type<Record<string, unknown>>(),
     executionState: jsonb("execution_state").$type<Record<string, unknown>>(),
     monitorNextCheckAt: timestamp("monitor_next_check_at", { withTimezone: true }),

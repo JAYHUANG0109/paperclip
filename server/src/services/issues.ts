@@ -2575,6 +2575,7 @@ const issueListSelect = {
   pinned: issues.pinned,
   assigneeAgentId: issues.assigneeAgentId,
   assigneeUserId: issues.assigneeUserId,
+  skillHints: issues.skillHints,
   checkoutRunId: issues.checkoutRunId,
   executionRunId: issues.executionRunId,
   executionAgentNameKey: issues.executionAgentNameKey,

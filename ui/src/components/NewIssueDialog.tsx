@@ -61,6 +61,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   ScanEye,
+  Wrench,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "../lib/utils";
@@ -448,6 +449,9 @@ export function NewIssueDialog() {
   const [assigneeModelOverride, setAssigneeModelOverride] = useState("");
   const [assigneeThinkingEffort, setAssigneeThinkingEffort] = useState("");
   const [assigneeChrome, setAssigneeChrome] = useState(false);
+  // Optional per-task skill scoping: which of the assignee agent's equipped skills to use.
+  const [selectedSkillHints, setSelectedSkillHints] = useState<string[]>([]);
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [executionWorkspaceMode, setExecutionWorkspaceMode] = useState<string>("shared_workspace");
   const [selectedExecutionWorkspaceId, setSelectedExecutionWorkspaceId] = useState("");
   const [workMode, setWorkMode] = useState<IssueWorkMode>("standard");
@@ -548,6 +552,21 @@ export function NewIssueDialog() {
   const selectedAssignee = useMemo(() => parseAssigneeValue(assigneeValue), [assigneeValue]);
   const selectedAssigneeAgentId = selectedAssignee.assigneeAgentId;
   const selectedAssigneeUserId = selectedAssignee.assigneeUserId;
+
+  // The assignee agent's equipped skills, for optional per-task scoping.
+  const { data: assigneeSkills } = useQuery({
+    queryKey: ["agent-skills", effectiveCompanyId, selectedAssigneeAgentId],
+    queryFn: () => agentsApi.skills(selectedAssigneeAgentId!, effectiveCompanyId!),
+    enabled: Boolean(effectiveCompanyId && selectedAssigneeAgentId),
+  });
+  const equippedSkills = useMemo(
+    () => (assigneeSkills?.entries ?? []).filter((e) => e.desired).map((e) => ({ key: e.key, name: e.runtimeName ?? e.key })),
+    [assigneeSkills],
+  );
+  // Drop any picked skills that aren't equipped by the currently-selected agent.
+  useEffect(() => {
+    setSelectedSkillHints((cur) => cur.filter((k) => equippedSkills.some((s) => s.key === k)));
+  }, [equippedSkills]);
 
   // Required to create: SOME text (title or description) AND an AGENT assignee.
   // A task assigned to a person (or no one) is never picked up by a heartbeat,
@@ -1124,6 +1143,7 @@ export function NewIssueDialog() {
       allowDuplicate: true,
       ...(selectedAssigneeAgentId ? { assigneeAgentId: selectedAssigneeAgentId } : {}),
       ...(selectedAssigneeUserId ? { assigneeUserId: selectedAssigneeUserId } : {}),
+      ...(selectedAssigneeAgentId && selectedSkillHints.length > 0 ? { skillHints: selectedSkillHints } : {}),
       ...(newIssueDefaults.parentId ? { parentId: newIssueDefaults.parentId } : {}),
       ...(newIssueDefaults.goalId ? { goalId: newIssueDefaults.goalId } : {}),
       ...(projectId ? { projectId } : {}),
@@ -2209,6 +2229,55 @@ export function NewIssueDialog() {
               ))}
             </PopoverContent>
           </Popover>
+
+          {/* Optional per-task skill scoping — shown when the assignee agent has
+              equipped skills. Selecting some limits the task to those. */}
+          {selectedAssigneeAgentId && equippedSkills.length > 0 ? (
+            <Popover open={skillPickerOpen} onOpenChange={setSkillPickerOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  data-testid="new-issue-skills-chip"
+                  className="hidden items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-accent/50 sm:inline-flex"
+                >
+                  <Wrench className="h-3 w-3 text-muted-foreground" />
+                  {selectedSkillHints.length > 0
+                    ? t("newIssue.skillsCount", { defaultValue: "技能：{{count}}", count: selectedSkillHints.length })
+                    : t("newIssue.skills", { defaultValue: "技能（選填）" })}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-1" align="start">
+                <p className="px-2 py-1 text-[11px] text-muted-foreground">
+                  {t("newIssue.skillsHint", { defaultValue: "限定此任務使用的技能（不選＝可用全部）" })}
+                </p>
+                <div className="max-h-56 overflow-y-auto overscroll-contain" onWheel={(e) => { e.currentTarget.scrollTop += e.deltaY; }}>
+                  {equippedSkills.map((s) => {
+                    const on = selectedSkillHints.includes(s.key);
+                    return (
+                      <button
+                        key={s.key}
+                        type="button"
+                        className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", on && "bg-accent")}
+                        onClick={() => setSelectedSkillHints((cur) => on ? cur.filter((k) => k !== s.key) : [...cur, s.key])}
+                      >
+                        <input type="checkbox" checked={on} readOnly className="pointer-events-none" />
+                        <span className="truncate">{s.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedSkillHints.length > 0 ? (
+                  <button
+                    type="button"
+                    className="mt-1 w-full rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent/50"
+                    onClick={() => setSelectedSkillHints([])}
+                  >
+                    {t("newIssue.clearSkills", { defaultValue: "清除選擇" })}
+                  </button>
+                ) : null}
+              </PopoverContent>
+            </Popover>
+          ) : null}
 
           {/* Labels chip — disabled, not wired up yet */}
           {/* <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors text-muted-foreground">
