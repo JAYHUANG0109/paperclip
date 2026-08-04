@@ -1179,6 +1179,10 @@ function IssueDetailActivityTab({
           childIssues={childIssues}
           agentMap={agentMap}
           hasLiveRuns={hasLiveRuns}
+          // Names the person a run acted on behalf of, and lets the ledger say who is
+          // missing access when a run failed on their authorisation rather than the
+          // agent's. Reuses the directory this tab already receives.
+          resolveUserLabel={(userId) => userProfileMap?.get(userId)?.label ?? null}
           activityEvents={activity ?? []}
           renderActivityEvent={(evt) => {
             const tone = successfulRunHandoffActivityTone(evt.action);

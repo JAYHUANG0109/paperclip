@@ -29,6 +29,8 @@ type IssueRunLedgerProps = {
   hasLiveRuns: boolean;
   activityEvents?: ActivityEvent[];
   renderActivityEvent?: (event: ActivityEvent) => ReactNode;
+  /** Resolve a responsible user's id to a display name; see IssueRunLedgerContentProps. */
+  resolveUserLabel?: (userId: string) => string | null;
 };
 
 type IssueRunLedgerContentProps = {
@@ -44,7 +46,27 @@ type IssueRunLedgerContentProps = {
   canRecordWatchdogDecisions?: boolean;
   watchdogDecisionError?: string | null;
   onWatchdogDecision?: (input: WatchdogDecisionInput) => void;
+  /**
+   * Resolve a user id to a display name. Runs carry `responsibleUserId` — the person an
+   * agent acted on behalf of — but the ledger has no user directory of its own, so the
+   * caller supplies the lookup. Without it the run still renders; it just cannot name
+   * the person, so the on-behalf-of chip is omitted rather than showing a raw id.
+   */
+  resolveUserLabel?: (userId: string) => string | null;
 };
+
+/**
+ * A run that failed *because of the responsible user* rather than because of the agent.
+ * Worth calling out separately: the agent is fine and retrying will not help — someone
+ * has to grant access, or the work has to be marked blocked.
+ */
+function responsibleUserDenial(run: RunForIssue): "unauthorized" | "unavailable" | null {
+  if (run.status !== "failed") return null;
+  const code = (run.errorCode ?? "").toUpperCase();
+  if (code === "RESPONSIBLE_USER_UNAUTHORIZED") return "unauthorized";
+  if (code === "RESPONSIBLE_USER_UNAVAILABLE") return "unavailable";
+  return null;
+}
 
 type LedgerRun = RunForIssue & {
   isLive?: boolean;
@@ -318,6 +340,13 @@ function stopReasonLabel(run: RunForIssue) {
   if (stopReason === "budget_paused") return t("runLedger.stop.budgetPaused");
   if (stopReason === "cancelled") return t("runLedger.stop.cancelled");
   if (stopReason === "paused") return t("runLedger.stop.pausedByBoard");
+  if (stopReason === "unmanaged_background_task_stopped") {
+    // The run left a process running past its own lifetime and the harness stopped it.
+    // Worth naming plainly: nothing failed, but work may be half-done.
+    return t("runLedger.stop.unmanagedBackgroundTaskStopped", {
+      defaultValue: "unmanaged background task stopped",
+    });
+  }
   if (stopReason === "process_lost") return t("runLedger.stop.processLost");
   if (stopReason === "adapter_failed") return t("runLedger.stop.adapterFailed");
   if (stopReason === "completed") return timeoutText ? t("runLedger.stop.completedWith", { detail: timeoutText }) : t("runLedger.stop.completed");
@@ -408,6 +437,7 @@ export function IssueRunLedger({
   hasLiveRuns,
   activityEvents,
   renderActivityEvent,
+  resolveUserLabel,
 }: IssueRunLedgerProps) {
   const queryClient = useQueryClient();
   const { pushToast } = useToastActions();
@@ -468,6 +498,7 @@ export function IssueRunLedger({
       issueStatus={issueStatus}
       childIssues={childIssues}
       agentMap={agentMap}
+      resolveUserLabel={resolveUserLabel}
       activityEvents={activityEvents}
       renderActivityEvent={renderActivityEvent}
       pendingWatchdogDecision={watchdogDecision.variables?.decision ?? null}
@@ -491,6 +522,7 @@ export function IssueRunLedgerContent({
   canRecordWatchdogDecisions = true,
   watchdogDecisionError,
   onWatchdogDecision,
+  resolveUserLabel,
 }: IssueRunLedgerContentProps) {
   const { t } = useTranslation();
   const ledgerRuns = useMemo(() => mergeRuns(runs, liveRuns, activeRun), [activeRun, liveRuns, runs]);
@@ -697,6 +729,10 @@ export function IssueRunLedgerContent({
             const retryState = describeRunRetryState(run);
             const agentName = compactAgentName(run, agentMap);
             const sourceResolvedFold = readSourceResolvedWatchdogFold(run.resultJson);
+            const responsibleLabel = run.responsibleUserId
+              ? resolveUserLabel?.(run.responsibleUserId) ?? null
+              : null;
+            const denialTone = responsibleUserDenial(run);
             return (
               <article
                 key={`run:${run.runId}`}
@@ -711,6 +747,21 @@ export function IssueRunLedgerContent({
                     {run.runId.slice(0, 8)}
                   </Link>
                   <span>{t("runLedger.byName", { name: agentName })}</span>
+                  {responsibleLabel ? (
+                    <span
+                      data-testid="run-on-behalf-of"
+                      className="rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                      title={t("runLedger.onBehalfOfTitle", {
+                        name: responsibleLabel,
+                        defaultValue: "This run used {{name}}'s access",
+                      })}
+                    >
+                      {t("runLedger.onBehalfOf", {
+                        name: responsibleLabel,
+                        defaultValue: "on behalf of {{name}}",
+                      })}
+                    </span>
+                  ) : null}
                   <span className="rounded-md border border-border px-1.5 py-0.5 text-[11px] capitalize text-muted-foreground">
                     {statusLabel(run.status)}
                   </span>
@@ -798,6 +849,46 @@ export function IssueRunLedgerContent({
                     {stopStatusLabel(run, stopReason)}
                   </div>
                 </div>
+
+                {denialTone ? (
+                  <div
+                    data-testid="responsible-user-denial-notice"
+                    data-denial-tone={denialTone}
+                    className="rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-2 text-xs leading-5 text-amber-900 dark:text-amber-100"
+                  >
+                    {denialTone === "unauthorized" ? (
+                      <>
+                        <p className="font-medium">
+                          {t("runLedger.denial.unauthorizedTitle", {
+                            defaultValue: "Responsible user not authorized",
+                          })}
+                        </p>
+                        <p>
+                          {t("runLedger.denial.unauthorizedBody", {
+                            name: responsibleLabel ?? t("runLedger.denial.thatUser", { defaultValue: "that user" }),
+                            defaultValue:
+                              "This run stopped because {{name}} does not have access to what it needed. Retrying will not help — grant the access, then re-run.",
+                          })}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium">
+                          {t("runLedger.denial.unavailableTitle", {
+                            defaultValue: "Responsible user unavailable",
+                          })}
+                        </p>
+                        <p>
+                          {t("runLedger.denial.unavailableBody", {
+                            name: responsibleLabel ?? t("runLedger.denial.thatUser", { defaultValue: "that user" }),
+                            defaultValue:
+                              "This run needed {{name}} and could not reach them, so it cannot proceed on its own. Mark the work blocked, or reassign it to someone available.",
+                          })}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                ) : null}
 
                 {retryState ? (
                   <div className="rounded-md border border-border/70 bg-accent/20 px-2 py-2 text-xs leading-5 text-muted-foreground">
