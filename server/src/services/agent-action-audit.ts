@@ -9,6 +9,8 @@ import { visibleIssueCondition } from "./issue-visibility.js";
 export interface AgentActionAuditFilters {
   companyId: string;
   agentId?: string;
+  /** Multiselect agent filter; composed (AND) with `agentId` if both present. */
+  agentIds?: readonly string[];
   responsibleUserId?: string;
   runId?: string;
   entityType?: string;
@@ -63,6 +65,7 @@ export function agentActionAuditService(db: Db) {
       const effectiveResponsibleUserId = sql<string | null>`coalesce(${activityLog.responsibleUserId}, ${heartbeatRuns.responsibleUserId})`;
       const conditions = [eq(activityLog.companyId, filters.companyId), isNotNull(activityLog.agentId)];
       if (filters.agentId) conditions.push(eq(activityLog.agentId, filters.agentId));
+      if (filters.agentIds && filters.agentIds.length > 0) conditions.push(inArray(activityLog.agentId, [...filters.agentIds]));
       if (filters.responsibleUserId) conditions.push(or(
         eq(activityLog.responsibleUserId, filters.responsibleUserId),
         and(

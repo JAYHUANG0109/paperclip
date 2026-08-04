@@ -22,6 +22,8 @@ import { buildCompanyUserProfileMap, type CompanyUserProfile } from "@/lib/compa
 import { auditApi, type AuditActionRecord, type AuditActionFilters } from "@/api/audit";
 import { agentsApi } from "@/api/agents";
 import { accessApi } from "@/api/access";
+import { TeamFilterBar } from "@/components/TeamFilterBar";
+import { agentMatchesTeams, listAllTeams, useAgentTeamFilter } from "@/lib/agent-teams";
 import { ApiError } from "@/api/client";
 import { useToastActions } from "@/context/ToastContext";
 
@@ -255,8 +257,20 @@ export function AuditFeed({ companyId, lockedAgentId, hideHeader }: AuditFeedPro
     [userDirectory.data],
   );
 
+  // Multiselect team filter, same control as the Agents page. Selected teams are
+  // resolved to the matching agent ids and sent as `agentIds`. Irrelevant on the
+  // per-agent tab (locked to one agent), so hidden there.
+  const { selected: teamFilter, toggle: toggleTeam, clear: clearTeams } = useAgentTeamFilter(companyId);
+  const allTeams = useMemo(() => listAllTeams(agents.data ?? []), [agents.data]);
+  const teamAgentIds = useMemo(() => {
+    if (lockedAgentId || teamFilter.length === 0) return undefined;
+    const ids = (agents.data ?? []).filter((a) => agentMatchesTeams(a, teamFilter)).map((a) => a.id);
+    return ids.length > 0 ? ids : undefined;
+  }, [agents.data, teamFilter, lockedAgentId]);
+
   const filters: AuditActionFilters = {
     agentId: lockedAgentId ?? (agent === ALL ? undefined : agent),
+    agentIds: teamAgentIds,
     responsibleUserId: responsibleUser === ALL ? undefined : responsibleUser,
     action: actionDomain === ALL ? undefined : actionDomain,
     entityType: entityType === ALL ? undefined : entityType,
@@ -266,6 +280,7 @@ export function AuditFeed({ companyId, lockedAgentId, hideHeader }: AuditFeedPro
 
   const hasActiveFilters = Boolean(
     (!lockedAgentId && agent !== ALL)
+      || (!lockedAgentId && teamFilter.length > 0)
       || responsibleUser !== ALL
       || actionDomain !== ALL
       || entityType !== ALL
@@ -276,6 +291,7 @@ export function AuditFeed({ companyId, lockedAgentId, hideHeader }: AuditFeedPro
   const feed = useInfiniteQuery({
     queryKey: queryKeys.audit.agentActions(companyId, {
       agentId: filters.agentId,
+      agentIds: filters.agentIds?.join(","),
       responsibleUserId: filters.responsibleUserId,
       action: filters.action,
       entityType: filters.entityType,
@@ -298,6 +314,7 @@ export function AuditFeed({ companyId, lockedAgentId, hideHeader }: AuditFeedPro
 
   const clearFilters = () => {
     setAgent(ALL);
+    clearTeams();
     setResponsibleUser(ALL);
     setActionDomain(ALL);
     setEntityType(ALL);
@@ -310,6 +327,7 @@ export function AuditFeed({ companyId, lockedAgentId, hideHeader }: AuditFeedPro
     try {
       const blob = await auditApi.exportAgentActionsCsv(companyId, {
         agentId: filters.agentId,
+        agentIds: filters.agentIds,
         responsibleUserId: filters.responsibleUserId,
         action: filters.action,
         entityType: filters.entityType,
@@ -354,6 +372,10 @@ export function AuditFeed({ companyId, lockedAgentId, hideHeader }: AuditFeedPro
             </p>
           </div>
         </div>
+      ) : null}
+
+      {!lockedAgentId && allTeams.length > 0 ? (
+        <TeamFilterBar teams={allTeams} selected={teamFilter} onToggle={toggleTeam} onClear={clearTeams} />
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">

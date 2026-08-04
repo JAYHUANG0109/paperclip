@@ -101,6 +101,12 @@ const createActivitySchema = z.object({
 
 const agentActionAuditQuerySchema = z.object({
   agentId: z.string().uuid().optional(),
+  // Multiselect agent filter (comma-separated). Composed with `agentId` if both
+  // are present. Used by the team-chip filter, which resolves teams to agents.
+  agentIds: z.preprocess(
+    (v) => (typeof v === "string" && v.length > 0 ? v.split(",").filter(Boolean) : undefined),
+    z.array(z.string().uuid()).min(1).max(500).optional(),
+  ),
   responsibleUserId: z.string().min(1).optional(),
   runId: z.string().uuid().optional(),
   entityType: z.string().min(1).optional(),

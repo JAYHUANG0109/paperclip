@@ -44,6 +44,8 @@ export interface AuditActionsResponse {
 /** Server-side filters for the audit feed. All optional. */
 export interface AuditActionFilters {
   agentId?: string | null;
+  /** Multiselect agent filter (e.g. resolved from selected teams). */
+  agentIds?: string[] | null;
   responsibleUserId?: string | null;
   runId?: string | null;
   entityType?: string | null;
@@ -61,6 +63,7 @@ export interface AuditActionFilters {
 function buildAuditQuery(filters: AuditActionFilters): URLSearchParams {
   const search = new URLSearchParams();
   if (filters.agentId) search.set("agentId", filters.agentId);
+  if (filters.agentIds && filters.agentIds.length > 0) search.set("agentIds", filters.agentIds.join(","));
   if (filters.responsibleUserId) search.set("responsibleUserId", filters.responsibleUserId);
   if (filters.runId) search.set("runId", filters.runId);
   if (filters.entityType) search.set("entityType", filters.entityType);
