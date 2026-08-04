@@ -54,14 +54,27 @@ Restart Claude Desktop. You should see the **paperclip** tools appear. Use a `pc
 | `PAPERCLIP_COMPANY_ID` | no | Default company id for tools that need one (else pass `companyId` per call) |
 | `PAPERCLIP_RUN_ID` | no | Stamped as `X-Paperclip-Run-Id` on writes for audit linkage |
 
+## Full access
+
+Two tools together give **complete access to everything the platform can do** — nothing is out of reach for a board key:
+
+- **`describe_api`** — discover the entire API (the OpenAPI spec, ~600 endpoints). No args → a searchable index; `search: "skill"` → filter; `path: "…"` → full detail (params + body schema) for one endpoint.
+- **`paperclip_request`** — call **any** of those endpoints with any method/body.
+
+The named tools below are just ergonomic shortcuts for the common operations.
+
 ## Tools
 
-- `paperclip_request` — **generic** authenticated call (`method`, `path`, `body`, `query`) → full coverage of anything the named tools don't wrap.
+- **Discovery / generic** — `describe_api`, `paperclip_request`
 - **Tasks** — `list_tasks`, `get_task`, `create_task`, `update_task`, `checkout_task`
-- **Memory** — `list_memory`, `add_memory`, `delete_memory`
+- **Memory** — `list_memory`, `add_memory` (create **or** update one entry), `delete_memory`
+- **Skills — library** (board key) — `import_skills` (add/update by importing a source), `install_catalog_skill`, `delete_skill`, `list_company_skills`
+- **Skills — per agent** (board key) — `list_skills`, `set_skills` (equip/unequip)
+- **Instructions** (board key) — `get_instructions`, `set_instructions` (rewrite AGENTS.md)
 - **Routines** — `list_routines`, `update_routine`
-- **Harness** (board key) — `get_instructions`, `set_instructions`, `list_skills`, `set_skills`, `list_company_skills`
 - **Identity / audit** — `whoami`, `list_agents`, `list_audit`
+
+> Skills have no inline content-edit API — to change a skill you **re-import** a new version with `import_skills`. Memory has no bulk file-upload over MCP (that's a UI multipart feature); use `add_memory` per entry, which both creates and updates.
 
 ## Run it directly (debug)
 

@@ -84,12 +84,19 @@ const S = {
   bool: (description) => ({ type: "boolean", description }),
 };
 
+// Cache the OpenAPI spec for the session so describe_api is cheap after the first call.
+let _spec = null;
+async function openapiSpec() {
+  if (!_spec) _spec = await api("GET", "/openapi.json");
+  return _spec;
+}
+
 const tools = [
   {
     name: "paperclip_request",
     description:
-      "Generic authenticated call to the Paperclip REST API — full coverage of everything the key can do. " +
-      "path is relative to the API root (e.g. '/agents/me', '/issues/{id}'). Use this for any endpoint the named tools don't cover.",
+      "Generic authenticated call to the Paperclip REST API — FULL access to everything the key permits. " +
+      "path is relative to the API root (e.g. '/agents/me', '/issues/{id}'). Use describe_api to discover endpoints, then call any of them here.",
     inputSchema: {
       type: "object",
       properties: {
@@ -101,6 +108,39 @@ const tools = [
       required: ["method", "path"],
     },
     handler: (a) => api(a.method, a.path, { body: a.body, query: a.query }),
+  },
+  {
+    name: "describe_api",
+    description:
+      "Discover the ENTIRE Paperclip API (the platform's OpenAPI spec — hundreds of endpoints). " +
+      "Call with no args for a compact searchable index (path + methods + summary); pass `search` to filter; pass `path` to get the full detail (params, body schema, responses) for one path. " +
+      "Combined with paperclip_request this gives complete access to anything the platform can do.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        search: S.str("Substring to filter paths/summaries, e.g. 'memory', 'skill', 'approval'"),
+        path: S.str("Exact path to get full detail for, e.g. /api/companies/{companyId}/skills"),
+      },
+    },
+    handler: async (a) => {
+      const spec = await openapiSpec();
+      const paths = spec.paths || {};
+      const verbs = ["get", "post", "put", "patch", "delete"];
+      if (a.path) return { path: a.path, detail: paths[a.path] ?? "not found (use search to find the exact path)" };
+      const q = (a.search || "").toLowerCase();
+      const endpoints = [];
+      for (const [p, ops] of Object.entries(paths)) {
+        const methods = Object.keys(ops).filter((m) => verbs.includes(m));
+        const summaries = methods.map((m) => ops[m]?.summary || ops[m]?.operationId || "").join(" ");
+        if (q && !`${p} ${summaries}`.toLowerCase().includes(q)) continue;
+        endpoints.push({
+          path: p,
+          methods: methods.map((m) => m.toUpperCase()),
+          summary: methods.map((m) => ops[m]?.summary).filter(Boolean)[0] ?? null,
+        });
+      }
+      return { total: endpoints.length, endpoints };
+    },
   },
   {
     name: "whoami",
@@ -322,6 +362,47 @@ const tools = [
     description: "List the company's skill library (definitions), with keys and names.",
     inputSchema: { type: "object", properties: { companyId: S.str("Company id (defaults to env)") } },
     handler: (a) => api("GET", `/companies/${company(a.companyId)}/skills`),
+  },
+  {
+    name: "import_skills",
+    description:
+      "Create/UPDATE/UPLOAD skills into the company library by importing from a source (a git repo URL, or a workspace path). " +
+      "This is how you add a new skill or push a new version of an existing one — there is no inline content-edit API; re-import to update. Requires a USER/board key (skills:create).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        companyId: S.str("Company id (defaults to env)"),
+        source: S.str("Import source — e.g. a git repo URL or a workspace path/locator"),
+      },
+      required: ["source"],
+    },
+    handler: (a) => api("POST", `/companies/${company(a.companyId)}/skills/import`, { body: { source: a.source } }),
+  },
+  {
+    name: "install_catalog_skill",
+    description: "Install a skill from the built-in catalog into the company library. Requires a USER/board key (skills:install).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        companyId: S.str("Company id (defaults to env)"),
+        catalogSkillId: S.str("Catalog skill id to install"),
+        options: S.obj("Any extra install options the endpoint accepts (folder/share/etc.)"),
+      },
+      required: ["catalogSkillId"],
+    },
+    handler: (a) => api("POST", `/companies/${company(a.companyId)}/skills/install-catalog`, {
+      body: { catalogSkillId: a.catalogSkillId, ...(a.options ?? {}) },
+    }),
+  },
+  {
+    name: "delete_skill",
+    description: "Delete a skill from the company library by its skill id. Requires a USER/board key (skills:create).",
+    inputSchema: {
+      type: "object",
+      properties: { companyId: S.str("Company id (defaults to env)"), skillId: S.str("Skill id to delete") },
+      required: ["skillId"],
+    },
+    handler: (a) => api("DELETE", `/companies/${company(a.companyId)}/skills/${a.skillId}`),
   },
   {
     name: "list_audit",
