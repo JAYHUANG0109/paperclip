@@ -1752,6 +1752,7 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
             options?.actorUserId || options?.authorUserEmail ? null : options?.authorAgentId ?? null,
           authorUserId:
             options?.actorUserId ?? (options?.authorUserEmail ? `user:${options.authorUserEmail}` : null),
+          onBehalfOfUserId: null,
           body,
           presentation: null,
           metadata: null,
