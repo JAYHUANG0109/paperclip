@@ -11,6 +11,7 @@ import { issuesApi } from "../api/issues";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { projectsApi } from "../api/projects";
 import { agentsApi } from "../api/agents";
+import { companySkillsApi } from "../api/companySkills";
 import { accessApi } from "../api/access";
 import { authApi } from "../api/auth";
 import { assetsApi } from "../api/assets";
@@ -553,16 +554,25 @@ export function NewIssueDialog() {
   const selectedAssigneeAgentId = selectedAssignee.assigneeAgentId;
   const selectedAssigneeUserId = selectedAssignee.assigneeUserId;
 
-  // The assignee agent's equipped skills, for optional per-task scoping.
+  // The assignee agent's equipped skills, for optional per-task scoping. Equipped =
+  // the agent's desiredSkills (keys); names come from the company skill library.
   const { data: assigneeSkills } = useQuery({
     queryKey: ["agent-skills", effectiveCompanyId, selectedAssigneeAgentId],
     queryFn: () => agentsApi.skills(selectedAssigneeAgentId!, effectiveCompanyId!),
     enabled: Boolean(effectiveCompanyId && selectedAssigneeAgentId),
   });
-  const equippedSkills = useMemo(
-    () => (assigneeSkills?.entries ?? []).filter((e) => e.desired).map((e) => ({ key: e.key, name: e.runtimeName ?? e.key })),
-    [assigneeSkills],
-  );
+  const { data: companySkillsForScope } = useQuery({
+    queryKey: ["company-skills-scope", effectiveCompanyId],
+    queryFn: () => companySkillsApi.list(effectiveCompanyId!),
+    enabled: Boolean(effectiveCompanyId && selectedAssigneeAgentId),
+  });
+  const equippedSkills = useMemo(() => {
+    const desired = assigneeSkills?.desiredSkills ?? [];
+    const nameByKey = new Map<string, string>();
+    for (const s of companySkillsForScope ?? []) nameByKey.set(s.key, s.name);
+    for (const e of assigneeSkills?.entries ?? []) if (!nameByKey.has(e.key)) nameByKey.set(e.key, e.runtimeName ?? e.key);
+    return desired.map((key) => ({ key, name: nameByKey.get(key) ?? key }));
+  }, [assigneeSkills, companySkillsForScope]);
   // Drop any picked skills that aren't equipped by the currently-selected agent.
   useEffect(() => {
     setSelectedSkillHints((cur) => cur.filter((k) => equippedSkills.some((s) => s.key === k)));

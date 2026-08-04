@@ -7,6 +7,7 @@ import { deriveOriginatingActor, type Issue, type IssueLabel } from "@paperclipa
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accessApi } from "../../api/access";
 import { agentsApi } from "../../api/agents";
+import { companySkillsApi } from "../../api/companySkills";
 import { authApi } from "../../api/auth";
 import { executionWorkspacesApi } from "../../api/execution-workspaces";
 import { instanceSettingsApi } from "../../api/instanceSettings";
@@ -230,16 +231,25 @@ export function IssueProperties({
     queryFn: () => agentsApi.list(companyId!),
     enabled: !!companyId,
   });
-  // The assignee agent's equipped skills, for per-task skill scoping.
+  // The assignee agent's equipped skills, for per-task skill scoping. Equipped =
+  // the agent's desiredSkills (keys); names come from the company skill library.
   const { data: assigneeSkills } = useQuery({
     queryKey: ["agent-skills", companyId, issue.assigneeAgentId],
     queryFn: () => agentsApi.skills(issue.assigneeAgentId!, companyId!),
     enabled: !!companyId && !!issue.assigneeAgentId,
   });
-  const equippedSkills = useMemo(
-    () => (assigneeSkills?.entries ?? []).filter((e) => e.desired).map((e) => ({ key: e.key, name: e.runtimeName ?? e.key })),
-    [assigneeSkills],
-  );
+  const { data: companySkillsForScope } = useQuery({
+    queryKey: ["company-skills-scope", companyId],
+    queryFn: () => companySkillsApi.list(companyId!),
+    enabled: !!companyId && !!issue.assigneeAgentId,
+  });
+  const equippedSkills = useMemo(() => {
+    const desired = assigneeSkills?.desiredSkills ?? [];
+    const nameByKey = new Map<string, string>();
+    for (const s of companySkillsForScope ?? []) nameByKey.set(s.key, s.name);
+    for (const e of assigneeSkills?.entries ?? []) if (!nameByKey.has(e.key)) nameByKey.set(e.key, e.runtimeName ?? e.key);
+    return desired.map((key) => ({ key, name: nameByKey.get(key) ?? key }));
+  }, [assigneeSkills, companySkillsForScope]);
   const skillHints = issue.skillHints ?? [];
   const { data: companyMembers } = useQuery({
     queryKey: queryKeys.access.companyUserDirectory(companyId!),

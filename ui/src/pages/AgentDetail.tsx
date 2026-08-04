@@ -9,6 +9,7 @@ import {
 } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
+import { routinesApi } from "../api/routines";
 import { projectsApi } from "../api/projects";
 import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
@@ -292,13 +293,14 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "projects" | "tools" | "runs" | "budget";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "projects" | "harness" | "tools" | "runs" | "budget";
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "instructions" || value === "prompts") return "instructions";
   if (value === "configure" || value === "configuration") return "configuration";
   if (value === "skills") return "skills";
   if (value === "projects") return "projects";
+  if (value === "harness") return "harness";
   if (value === "tools") return "tools";
   if (value === "budget") return "budget";
   if (value === "runs") return value;
@@ -875,6 +877,8 @@ export function AgentDetail() {
             ? "skills"
             : activeView === "projects"
               ? "projects"
+            : activeView === "harness"
+              ? "harness"
             : activeView === "tools"
               ? "tools"
               : activeView === "runs"
@@ -1259,6 +1263,7 @@ export function AgentDetail() {
               { value: "dashboard", label: t("agentDetail.tab.dashboard") },
               { value: "instructions", label: t("agentDetail.tab.instructions") },
               { value: "skills", label: t("agentDetail.tab.skills") },
+              { value: "harness", label: t("agentDetail.tab.harness", { defaultValue: "運作方式" }) },
               { value: "projects", label: t("agentDetail.tab.projects", { defaultValue: "專案" }) },
               { value: "configuration", label: t("agentDetail.tab.configuration") },
               { value: "tools", label: t("agentDetail.tab.tools", { defaultValue: "Tools" }) },
@@ -1381,6 +1386,10 @@ export function AgentDetail() {
           agent={agent}
           companyId={resolvedCompanyId ?? undefined}
         />
+      )}
+
+      {activeView === "harness" && resolvedCompanyId && (
+        <AgentHarnessTab companyId={resolvedCompanyId} agent={agent} onNavigate={(tab) => navigate(`/agents/${canonicalAgentRef}/${tab}`)} />
       )}
 
       {activeView === "projects" && resolvedCompanyId && (
@@ -3335,6 +3344,124 @@ type AgentProjectsIssue = {
  *  split into 公司 / 團隊 / 個人 scope sections (with team/私人 tags) plus an
  *  Unfiled bucket. The projects list is viewer-access-filtered server-side, so a
  *  non-admin only sees scopes they may access; admins see all. */
+/* ---- Harness Tab: one scannable view of how this agent operates ---- */
+
+function AgentHarnessTab({ companyId, agent, onNavigate }: { companyId: string; agent: Agent; onNavigate: (tab: string) => void }) {
+  const { t } = useTranslation();
+
+  const { data: bundle } = useQuery({
+    queryKey: queryKeys.agents.instructionsBundle(agent.id),
+    queryFn: () => agentsApi.instructionsBundle(agent.id, companyId),
+    enabled: !!companyId,
+  });
+  const { data: skillSnapshot } = useQuery({
+    queryKey: queryKeys.agents.skills(agent.id),
+    queryFn: () => agentsApi.skills(agent.id, companyId),
+    enabled: !!companyId,
+  });
+  const { data: companySkills } = useQuery({
+    queryKey: queryKeys.companySkills.list(companyId),
+    queryFn: () => companySkillsApi.list(companyId),
+    enabled: !!companyId,
+  });
+  const { data: routines } = useQuery({
+    queryKey: queryKeys.routines.list(companyId),
+    queryFn: () => routinesApi.list(companyId),
+    enabled: !!companyId,
+  });
+
+  const equippedSkills = useMemo(() => {
+    const desired = skillSnapshot?.desiredSkills ?? [];
+    const nameByKey = new Map<string, string>();
+    for (const s of companySkills ?? []) nameByKey.set(s.key, s.name);
+    for (const e of skillSnapshot?.entries ?? []) if (!nameByKey.has(e.key)) nameByKey.set(e.key, e.runtimeName ?? e.key);
+    return desired.map((key) => ({ key, name: nameByKey.get(key) ?? key }));
+  }, [skillSnapshot, companySkills]);
+
+  const agentRoutines = useMemo(
+    () => (routines ?? []).filter((r) => r.assigneeAgentId === agent.id),
+    [routines, agent.id],
+  );
+
+  const Card = ({ title, count, action, onOpen, children }: { title: string; count?: number; action: string; onOpen: () => void; children: React.ReactNode }) => (
+    <div className="flex flex-col gap-2 rounded-xl border border-border p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">
+          {title}
+          {typeof count === "number" ? <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{count}</span> : null}
+        </h3>
+        <button type="button" className="text-xs text-primary hover:underline" onClick={onOpen}>{action} →</button>
+      </div>
+      <div className="min-h-8 text-xs text-muted-foreground">{children}</div>
+    </div>
+  );
+
+  return (
+    <div className="max-w-4xl space-y-4">
+      <p className="text-sm text-muted-foreground">
+        {t("agentDetail.harness.intro", { defaultValue: "這位代理人的運作方式：它的指示、技能、工具與例行作業。" })}
+      </p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Card
+          title={t("agentDetail.tab.instructions", { defaultValue: "指示" })}
+          action={t("common.edit", { defaultValue: "編輯" })}
+          onOpen={() => onNavigate("instructions")}
+        >
+          {bundle ? (
+            <span>{t("agentDetail.harness.entryFile", { defaultValue: "進入點：{{file}}", file: bundle.entryFile })} · {t("agentDetail.harness.fileCount", { defaultValue: "{{count}} 個檔案", count: bundle.files.length })}</span>
+          ) : (
+            <span>{t("common.loading", { defaultValue: "載入中…" })}</span>
+          )}
+        </Card>
+
+        <Card
+          title={t("agentDetail.tab.skills", { defaultValue: "技能" })}
+          count={equippedSkills.length}
+          action={t("common.manage", { defaultValue: "管理" })}
+          onOpen={() => onNavigate("skills")}
+        >
+          {equippedSkills.length === 0 ? (
+            <span>{t("agentDetail.harness.noSkills", { defaultValue: "尚未裝備技能" })}</span>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {equippedSkills.slice(0, 12).map((s) => (
+                <span key={s.key} className="rounded-full border border-border px-1.5 py-0.5">{s.name}</span>
+              ))}
+              {equippedSkills.length > 12 ? <span>+{equippedSkills.length - 12}</span> : null}
+            </div>
+          )}
+        </Card>
+
+        <Card
+          title={t("agentDetail.tab.tools", { defaultValue: "工具" })}
+          action={t("common.manage", { defaultValue: "管理" })}
+          onOpen={() => onNavigate("tools")}
+        >
+          <span>{t("agentDetail.harness.toolsHint", { defaultValue: "在「工具」分頁檢視與連接此代理人的工具。" })}</span>
+        </Card>
+
+        <Card
+          title={t("agentDetail.harness.routines", { defaultValue: "例行作業" })}
+          count={agentRoutines.length}
+          action={t("common.open", { defaultValue: "開啟" })}
+          onOpen={() => onNavigate("dashboard")}
+        >
+          {agentRoutines.length === 0 ? (
+            <span>{t("agentDetail.harness.noRoutines", { defaultValue: "沒有指派給此代理人的例行作業" })}</span>
+          ) : (
+            <ul className="space-y-0.5">
+              {agentRoutines.slice(0, 6).map((r) => (
+                <li key={r.id} className="truncate">• {r.title} <span className="text-muted-foreground/60">· {r.status}</span></li>
+              ))}
+              {agentRoutines.length > 6 ? <li>+{agentRoutines.length - 6}</li> : null}
+            </ul>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function AgentProjectsTab({ companyId, agentId, agentName, agentTeams, issues }: { companyId: string; agentId: string; agentName: string; agentTeams: string[]; issues: AgentProjectsIssue[] }) {
   const { t } = useTranslation();
   const { openNewProject } = useDialogActions();
