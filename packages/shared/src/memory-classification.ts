@@ -388,8 +388,9 @@ export function parseMemoryDump(raw: string): ParsedDumpEntry[] {
   const push = (body: string, observedAt: string | null) => {
     const content = body.trim();
     if (!content) return;
-    // Drop meta lines the exporters inject (e.g. "No persistent stored-memory…").
-    if (/^no\b.*\b(found|instructions were found)/i.test(content) && content.length < 200) return;
+    // Drop meta lines the exporters inject about the export itself, not the person.
+    if (/no persistent stored-memory|instruction-like items below|retrieved only from past-conversation|listed under \w+ rather than/i.test(content)) return;
+    if (/^no\b.*\b(found|instructions were found)/i.test(content) && content.length < 240) return;
     entries.push({ content, category: classifyMemoryContent(content, section), observedAt, section });
   };
 

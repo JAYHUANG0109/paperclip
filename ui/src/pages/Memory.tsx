@@ -53,6 +53,8 @@ export function Memory() {
   const [error, setError] = useState<string | null>(null);
   /** Which category is being shown, or "all". Not persisted — a view, not a setting. */
   const [filter, setFilter] = useState<MemoryCategory | "all">("all");
+  /** Ordering: by category (grouped) or by recency (flat, hot- or cold-first). */
+  const [sortMode, setSortMode] = useState<"category" | "hot" | "cold">("category");
   /** The recovery view stays closed until asked for; it is a drawer, not a list. */
   const [showDeleted, setShowDeleted] = useState(false);
 
@@ -295,10 +297,16 @@ export function Memory() {
    *
    * Skipped while a filter is on: one heading above one group is furniture.
    */
-  const grouped = (filter === "all" ? presentCategories : []).map((id) => ({
+  const grouped = (filter === "all" && sortMode === "category" ? presentCategories : []).map((id) => ({
     id,
     memories: visible.filter((memory) => normalizeMemoryCategory(memory.memoryType) === id),
   }));
+
+  // Flat, recency-ordered list when sorting by hotness/coldness.
+  const lastSeenMs = (m: PersonalMemory) => Date.parse(m.lastObservedAt ?? m.updatedAt ?? m.createdAt) || 0;
+  const sortedFlat = sortMode === "category"
+    ? []
+    : [...visible].sort((a, b) => sortMode === "hot" ? lastSeenMs(b) - lastSeenMs(a) : lastSeenMs(a) - lastSeenMs(b));
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-6">
@@ -641,6 +649,24 @@ export function Memory() {
               {id === "all" ? t("memory.category.all", { defaultValue: "All" }) : categoryLabel(id)}
             </button>
           ))}
+          {/* Sort: by category (grouped) or by recency. */}
+          <span className="ml-auto flex items-center gap-1">
+            {([
+              ["category", t("memory.sortCategory", { defaultValue: "分類" })],
+              ["hot", t("memory.sortHot", { defaultValue: "🔥 最熱" })],
+              ["cold", t("memory.sortCold", { defaultValue: "❄ 最冷" })],
+            ] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={sortMode === mode}
+                className={`rounded-full border px-2.5 py-1 text-xs ${sortMode === mode ? "border-foreground bg-foreground/10 font-medium" : "border-border"}`}
+                onClick={() => setSortMode(mode)}
+              >
+                {label}
+              </button>
+            ))}
+          </span>
         </div>
       ) : null}
 
@@ -660,6 +686,8 @@ export function Memory() {
               {group.memories.map(renderEntry)}
             </div>
           ))
+        ) : sortMode !== "category" ? (
+          sortedFlat.map(renderEntry)
         ) : (
           visible.map(renderEntry)
         )}

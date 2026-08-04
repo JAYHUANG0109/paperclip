@@ -285,6 +285,9 @@ describe("parseMemoryDump", () => {
   it("drops exporter meta lines", () => {
     const parsed = parseMemoryDump("## Instructions\nNo persistent stored-memory instructions were found.");
     expect(parsed).toHaveLength(0);
+    // The long ChatGPT/Claude preamble about the export itself, not the person.
+    const preamble = parseMemoryDump("## Instructions\nNo persistent stored-memory instructions were found. The instruction-like items below were retrieved only from past-conversation context, so they are listed under Preferences rather than Instructions.");
+    expect(preamble).toHaveLength(0);
   });
 
   it("classifies a structureless blob as one entry", () => {
