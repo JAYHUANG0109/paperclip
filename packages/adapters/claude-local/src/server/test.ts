@@ -28,6 +28,7 @@ import {
 import {
   describeClaudeFailure,
   detectClaudeLoginRequired,
+  isClaudeProviderQuotaError,
   isClaudeTransientUpstreamError,
   parseClaudeStreamJson,
 } from "./parse.js";
@@ -428,11 +429,16 @@ export async function testEnvironment(
           (stdoutFallback ? truncateDetail(stdoutFallback) : "") ||
           detail ||
           "";
-        const transient = isClaudeTransientUpstreamError({
-          parsed,
-          stdout: probe.stdout,
-          stderr: probe.stderr,
-        });
+        // A provider quota / usage limit is a wait-and-retry condition, exactly like an
+        // overload, so the probe reports both as a warning. isClaudeTransientUpstreamError
+        // deliberately excludes quota (see parse.ts) because the EXECUTE path routes it to
+        // account rotation and cooldown, where the distinction changes behaviour. Here it
+        // does not: telling an operator "probe failed, run claude manually to debug" when
+        // the account simply ran out for the hour sends them looking for a broken config
+        // that does not exist.
+        const probeInput = { parsed, stdout: probe.stdout, stderr: probe.stderr };
+        const transient =
+          isClaudeTransientUpstreamError(probeInput) || isClaudeProviderQuotaError(probeInput);
         checks.push(
           transient
             ? {

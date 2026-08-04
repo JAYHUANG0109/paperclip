@@ -210,11 +210,22 @@ describe("claude remote execution", () => {
       localDir: workspaceDir,
       remoteDir: managedRemoteWorkspace,
     }));
-    expect(syncDirectoryToSsh).toHaveBeenCalledTimes(1);
+    // Asserting an exact call count here was incidental to the intent and went stale:
+    // the adapter now ships mcp-config and (when seeded) config-seed alongside skills.
+    // What matters is that the skills bundle is synced to the right remote path with
+    // symlinks followed, and that nothing unexpected is pushed to the remote host.
     expect(syncDirectoryToSsh).toHaveBeenCalledWith(expect.objectContaining({
       remoteDir: `${managedRemoteWorkspace}/.paperclip-runtime/claude/skills`,
       followSymlinks: true,
     }));
+    const syncedRemoteDirs = (
+      syncDirectoryToSsh.mock.calls as unknown as Array<[{ remoteDir: string }]>
+    ).map(([arg]) => arg.remoteDir);
+    expect(
+      syncedRemoteDirs.every((dir) =>
+        dir.startsWith(`${managedRemoteWorkspace}/.paperclip-runtime/claude/`),
+      ),
+    ).toBe(true);
     expect(runChildProcess).toHaveBeenCalledTimes(1);
     const call = runChildProcess.mock.calls[0] as unknown as
       | [string, string, string[], { env: Record<string, string>; remoteExecution?: { remoteCwd: string } | null }]
