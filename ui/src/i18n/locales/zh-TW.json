@@ -6429,7 +6429,8 @@
       "feedback": "回饋",
       "reference": "參考資料",
       "expertise": "專長",
-      "workflow": "工作方式"
+      "workflow": "工作方式",
+      "instruction": "指示・守則"
     },
     "timesObserved": "已記錄 {{count}} 次",
     "noAgentWrites": "你的代理尚未在這裡儲存任何內容。",

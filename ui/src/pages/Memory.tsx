@@ -7,6 +7,7 @@ import {
   MEMORY_CATEGORY_LABELS,
   MEMORY_RECOVERY_WINDOW_DAYS,
   classifyMemoryContent,
+  isHarnessCategory,
   memoryRecency,
   memoryStrength,
   normalizeMemoryCategory,
@@ -482,7 +483,13 @@ export function Memory() {
         <section className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-primary/5 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">
-              {t("memory.previewTitle", { defaultValue: "將自動拆分並分類 {{count}} 筆記憶", count: preview.length })}
+              {(() => {
+                const harness = preview.filter((e) => isHarnessCategory(e.category)).length;
+                const mem = preview.length - harness;
+                return harness > 0
+                  ? t("memory.previewTitleSplit", { defaultValue: "偵測到 {{mem}} 筆記憶與 {{harness}} 筆指示・守則（harness）", mem, harness })
+                  : t("memory.previewTitle", { defaultValue: "將自動拆分並分類 {{count}} 筆記憶", count: preview.length });
+              })()}
             </p>
             <div className="flex items-center gap-2">
               <button type="button" className="rounded-md border border-border px-3 py-1.5 text-sm" onClick={() => setPreview(null)}>
@@ -509,7 +516,12 @@ export function Memory() {
                   checked={entry.include}
                   onChange={(e) => setPreview((cur) => cur && cur.map((it, i) => i === index ? { ...it, include: e.target.checked } : it))}
                 />
-                <span className="min-w-0 flex-1 text-xs">{entry.content}</span>
+                <span className="min-w-0 flex-1 text-xs">
+                  {isHarnessCategory(entry.category) ? (
+                    <span className="mr-1 rounded bg-violet-500/15 px-1 py-0.5 text-[10px] text-violet-600 dark:text-violet-400" title="harness — operating rule">⚙️ harness</span>
+                  ) : null}
+                  {entry.content}
+                </span>
                 <select
                   className="shrink-0 rounded border border-border bg-background px-1.5 py-1 text-xs"
                   value={entry.category}

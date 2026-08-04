@@ -13,6 +13,8 @@
  */
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
+import { parseMemoryDump } from "@paperclipai/shared";
 import type { Db } from "@paperclipai/db";
 import { forbidden, notFound } from "../errors.js";
 import { assertCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
@@ -360,9 +362,55 @@ export function personalMemoryRoutes(db: Db) {
       files.map((file) => ({ relativePath: file.originalname, content: file.buffer })),
     );
 
+    // One batch id for the whole upload, so file imports show up in history and
+    // can be selected/deleted as a unit — same as a paste.
+    const batchId = randomUUID();
+    // Expand a text file that is itself a dated dump into per-entry rows (dates +
+    // per-entry categories), so file uploads behave like the paste box. Discrete
+    // files (skills, single notes) stay as one entry.
+    type ImportRow = { name: string; description: string; memoryType: string; content: string; filePath: string; isBinary: boolean; observedAt: Date | null };
+    const usedNames = new Set<string>();
+    const slugFromContent = (s: string) =>
+      s.trim().toLowerCase().replace(/[^\p{Letter}\p{Number}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "memory";
+    const uniqueName = (base: string) => {
+      let name = base || "memory";
+      for (let i = 2; usedNames.has(name); i += 1) name = `${base}-${i}`;
+      usedNames.add(name);
+      return name;
+    };
+    const rows: ImportRow[] = [];
+    for (const memory of memories) {
+      if (!memory.isBinary) {
+        const parsed = parseMemoryDump(memory.content);
+        if (parsed.length > 1) {
+          for (const entry of parsed) {
+            rows.push({
+              name: uniqueName(slugFromContent(entry.content)),
+              description: "",
+              memoryType: entry.category,
+              content: entry.content,
+              filePath: memory.filePath,
+              isBinary: false,
+              observedAt: entry.observedAt ? new Date(entry.observedAt) : null,
+            });
+          }
+          continue;
+        }
+      }
+      rows.push({
+        name: uniqueName(memory.name),
+        description: memory.description,
+        memoryType: memory.memoryType,
+        content: memory.content,
+        filePath: memory.filePath,
+        isBinary: memory.isBinary,
+        observedAt: null,
+      });
+    }
+
     const imported: string[] = [];
     const refused: Array<{ relativePath: string; reason: string }> = [...skipped];
-    for (const memory of memories) {
+    for (const memory of rows) {
       const saved = await upsertPersonalMemory(db, {
         companyId,
         ownerUserId,
@@ -374,6 +422,8 @@ export function personalMemoryRoutes(db: Db) {
         source: "imported",
         filePath: memory.filePath,
         isBinary: memory.isBinary,
+        observedAt: memory.observedAt,
+        importBatchId: batchId,
         createdByAgentId: requester.kind === "agent" ? requester.agentId : null,
       });
       // `forbidden` is the access rule, not the file: the requester may not

@@ -105,6 +105,13 @@ export const MEMORY_CATEGORIES = [
     label: "Reference",
     hint: "Links, dashboards, documents and tickets worth coming back to.",
   },
+  {
+    id: "instruction",
+    /** Operating rules — the "harness": how the agent must/must not work. Distinct
+     *  from a preference (a leaning) because it's a directive the agent follows. */
+    label: "Rules",
+    hint: "Operating rules / directives — do / don't / always / never. The harness.",
+  },
 ] as const;
 
 export type MemoryCategory = (typeof MEMORY_CATEGORIES)[number]["id"];
@@ -151,8 +158,6 @@ const CATEGORY_ALIASES: Record<string, MemoryCategory> = {
   correction: "feedback",
   corrections: "feedback",
   guidance: "feedback",
-  instruction: "feedback",
-  instructions: "feedback",
   projects: "project",
   work: "project",
   task: "project",
@@ -186,6 +191,14 @@ const CATEGORY_ALIASES: Record<string, MemoryCategory> = {
   stack: "workflow",
   system: "workflow",
   systems: "workflow",
+  // Harness / operating rules.
+  instructions: "instruction",
+  rule: "instruction",
+  rules: "instruction",
+  guardrail: "instruction",
+  guardrails: "instruction",
+  directive: "instruction",
+  harness: "instruction",
 };
 
 export function isMemoryCategory(value: unknown): value is MemoryCategory {
@@ -286,10 +299,9 @@ function categoryFromSectionHint(hint: string | null | undefined): MemoryCategor
   if (!hint) return null;
   const h = hint.toLowerCase().replace(/[^a-z一-鿿]+/g, " ").trim();
   const has = (...words: string[]) => words.some((w) => h.includes(w));
-  // Operating rules ("Instructions") aren't a memory category; they read as
-  // preferences (how the person wants things done) — the same call the source
-  // exports already make.
-  if (has("instruction", "rule", "guardrail", "指示", "規則")) return "preference";
+  // Operating rules ("Instructions") are the harness — a directive the agent
+  // follows, distinct from a preference (a leaning).
+  if (has("instruction", "rule", "guardrail", "directive", "harness", "指示", "規則", "守則")) return "instruction";
   if (has("preference", "偏好", "style", "格式", "工作方式")) return "preference";
   if (has("identity", "about", "profile", "who", "個人資料", "身份", "背景")) return "profile";
   if (has("career", "experience", "work history", "employment", "職涯", "經歷", "工作")) return "expertise";
@@ -302,7 +314,8 @@ function categoryFromSectionHint(hint: string | null | undefined): MemoryCategor
 }
 
 const CATEGORY_KEYWORDS: Record<MemoryCategory, string[]> = {
-  preference: ["prefer", "wants ", "want ", "likes ", "avoid", "don't", "do not", "concise", "verbose", "tone", "format", "reply in", "default to", "should be", "keep responses", "no ai", "偏好", "希望", "喜歡", "避免"],
+  instruction: ["do not use", "don't use", "must not", "must ", "never ", "always ", "remove all", "do not ", "no external", "no hyphens", "no em dash", "not sound ai", "ensure ", "make sure"],
+  preference: ["prefer", "wants ", "want ", "likes ", "avoid", "concise", "verbose", "tone", "format", "reply in", "default to", "should be", "keep responses", "偏好", "希望", "喜歡"],
   profile: ["name:", "born", "raised", "grew up", "based in", "lives in", "family", "mother", "father", "studied", "degree", "university", "cornell", "language", "netid", "role:", "founder", "married", "身份", "出生", "家庭", "就讀"],
   expertise: ["skill", "expertise", "experience with", "proficient", "specializ", "go-to", "built with", "knows ", "python", "sql", "machine learning", "deep learning", "figma", "專長", "技能", "擅長"],
   project: ["project", "built a", "developed", "homework", "final project", "report", "app", "model", "portfolio", "delivered", "completed", "prototype", "專案", "作品", "報告"],
@@ -312,7 +325,15 @@ const CATEGORY_KEYWORDS: Record<MemoryCategory, string[]> = {
 };
 
 /** Priority when scores tie — more specific categories win over generic ones. */
-const CATEGORY_PRIORITY: MemoryCategory[] = ["feedback", "preference", "project", "expertise", "workflow", "profile", "reference"];
+const CATEGORY_PRIORITY: MemoryCategory[] = ["instruction", "feedback", "preference", "project", "expertise", "workflow", "profile", "reference"];
+
+/**
+ * Whether an entry is HARNESS (an operating rule the agent follows) rather than a
+ * fact/memory. Used by the importer to separate the two.
+ */
+export function isHarnessCategory(category: MemoryCategory): boolean {
+  return category === "instruction";
+}
 
 /**
  * Best-effort category for a single memory's text. Section hint wins; otherwise

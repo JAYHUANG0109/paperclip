@@ -12,6 +12,7 @@ export {
   MEMORY_RECENCY_THRESHOLDS,
   RESERVED_MEMORY_NAMES,
   classifyMemoryContent,
+  isHarnessCategory,
   isMemoryCategory,
   isReservedMemoryName,
   memoryRecency,

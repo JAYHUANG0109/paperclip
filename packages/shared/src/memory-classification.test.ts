@@ -241,8 +241,16 @@ describe("classifyMemoryContent", () => {
     expect(classifyMemoryContent("anything", "## Preferences")).toBe("preference");
     expect(classifyMemoryContent("anything", "Projects")).toBe("project");
     expect(classifyMemoryContent("anything", "Career")).toBe("expertise");
-    // Instructions read as preferences (rules about how to work).
-    expect(classifyMemoryContent("anything", "Instructions")).toBe("preference");
+    // Instructions are the harness — operating rules.
+    expect(classifyMemoryContent("anything", "Instructions")).toBe("instruction");
+  });
+
+  it("routes imperative operating rules to the harness (instruction) category", () => {
+    expect(classifyMemoryContent("Do not use external libraries.")).toBe("instruction");
+    expect(classifyMemoryContent("Remove all hyphens, em dashes, and en dashes.")).toBe("instruction");
+    expect(classifyMemoryContent("Never fabricate references.")).toBe("instruction");
+    // A genuine leaning is still a preference, not a rule.
+    expect(classifyMemoryContent("Jay prefers concise replies")).toBe("preference");
   });
 
   it("falls back to content keywords with no hint", () => {

@@ -6427,7 +6427,8 @@
       "feedback": "Feedback",
       "reference": "Reference",
       "expertise": "Expertise",
-      "workflow": "How we work"
+      "workflow": "How we work",
+      "instruction": "Rules"
     },
     "timesObserved": "seen {{count}}×",
     "noAgentWrites": "Your agents have not saved anything here yet.",
