@@ -12,6 +12,12 @@ import {
 } from "./issue-thread-interactions";
 import type { RequestItemVerdictsInteraction } from "./issue-thread-interactions";
 
+const resolverPolicyFields = {
+  resolverPolicy: "board_only",
+  requestedResolverPolicy: "board_only",
+  effectiveResolverPolicy: "board_only",
+} as const;
+
 describe("buildSuggestedTaskTree", () => {
   it("preserves parent-child relationships from client keys", () => {
     const roots = buildSuggestedTaskTree([
@@ -48,6 +54,7 @@ describe("issue thread interaction helpers", () => {
       kind: "suggest_tasks",
       status: "pending",
       continuationPolicy: "wake_assignee",
+      ...resolverPolicyFields,
       createdAt: "2026-04-06T12:00:00.000Z",
       updatedAt: "2026-04-06T12:00:00.000Z",
       payload: {
@@ -66,6 +73,7 @@ describe("issue thread interaction helpers", () => {
       kind: "suggest_tasks",
       status: "accepted",
       continuationPolicy: "wake_assignee",
+      ...resolverPolicyFields,
       createdAt: "2026-04-06T12:00:00.000Z",
       updatedAt: "2026-04-06T12:00:00.000Z",
       payload: {
@@ -89,6 +97,7 @@ describe("issue thread interaction helpers", () => {
       kind: "ask_user_questions",
       status: "pending",
       continuationPolicy: "wake_assignee",
+      ...resolverPolicyFields,
       createdAt: "2026-04-06T12:00:00.000Z",
       updatedAt: "2026-04-06T12:00:00.000Z",
       payload: {
@@ -111,6 +120,7 @@ describe("issue thread interaction helpers", () => {
       kind: "ask_user_questions",
       status: "answered",
       continuationPolicy: "wake_assignee",
+      ...resolverPolicyFields,
       createdAt: "2026-04-06T12:00:00.000Z",
       updatedAt: "2026-04-06T12:00:00.000Z",
       payload: {
@@ -129,6 +139,35 @@ describe("issue thread interaction helpers", () => {
         answers: [{ questionId: "question-1", optionIds: ["option-1"] }],
       },
     })).toBe("Answered 1 question");
+
+    expect(buildIssueThreadInteractionSummary({
+      id: "interaction-expired",
+      companyId: "company-1",
+      issueId: "issue-1",
+      kind: "ask_user_questions",
+      status: "expired",
+      continuationPolicy: "wake_assignee",
+      ...resolverPolicyFields,
+      createdAt: "2026-04-06T12:00:00.000Z",
+      updatedAt: "2026-04-06T12:05:00.000Z",
+      payload: {
+        version: 1,
+        questions: [
+          {
+            id: "question-1",
+            prompt: "Pick one",
+            selectionMode: "single",
+            options: [{ id: "option-1", label: "Option 1" }],
+          },
+        ],
+      },
+      result: {
+        version: 1,
+        answers: [],
+        expirationReason: "superseded_by_comment",
+        commentId: "11111111-1111-4111-8111-111111111111",
+      },
+    })).toBe("Question expired after comment");
   });
 
   it("summarizes checkbox confirmation interactions by count", () => {
@@ -138,6 +177,7 @@ describe("issue thread interaction helpers", () => {
       issueId: "issue-1",
       kind: "request_checkbox_confirmation" as const,
       continuationPolicy: "wake_assignee" as const,
+      ...resolverPolicyFields,
       createdAt: "2026-04-06T12:00:00.000Z",
       updatedAt: "2026-04-06T12:00:00.000Z",
       payload: {
@@ -270,6 +310,7 @@ describe("per-item verdict helpers", () => {
       kind: "request_item_verdicts",
       status: "pending",
       continuationPolicy: "wake_assignee",
+      ...resolverPolicyFields,
       createdAt: "2026-04-06T12:00:00.000Z",
       updatedAt: "2026-04-06T12:00:00.000Z",
       payload: {

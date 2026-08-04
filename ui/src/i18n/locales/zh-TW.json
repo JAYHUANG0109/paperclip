@@ -710,7 +710,8 @@
       "answered": "已回覆",
       "cancelled": "已取消",
       "expired": "已逾期",
-      "failed": "失敗"
+      "failed": "失敗",
+      "expiredIssueClosed": "已失效 · 任務結案"
     },
     "kind": {
       "suggestTasks": "建議任務",
@@ -799,7 +800,9 @@
       "imageUploadError": "無法上傳該圖片。請再試一次。",
       "uploading": "上傳中…",
       "attachScreenshots": "附加螢幕截圖",
-      "removeScreenshot": "移除 {{name}}"
+      "removeScreenshot": "移除 {{name}}",
+      "withdrawn": "已撤回",
+      "expiredByIssueClosedBody": "此確認在任務進入結束狀態時自動失效。"
     },
     "typeYourAnswer": "輸入你的答覆",
     "checkbox": {
@@ -827,7 +830,27 @@
     "otherAnswerFor": "{{prompt}} 的其他回答",
     "createdAt": "建立於 {{time}}",
     "resolvedOn": " 於 {{date}}",
-    "otherAnswerAriaFor": "「{{prompt}}」的其他回答"
+    "otherAnswerAriaFor": "「{{prompt}}」的其他回答",
+    "questions": {
+      "expiredWhenClosed_one": "任務結案時問題已失效",
+      "expiredWhenClosed_other": "任務結案時問題已失效",
+      "expiredByComment_one": "問題已被留言取代",
+      "expiredByComment_other": "問題已被留言取代",
+      "expiredWhenClosedBody": "此提問請求在任務進入結束狀態時自動失效。",
+      "expiredByCommentBody": "後續的留言已取代這項提問請求。若仍需要答覆，請重新建立請求。",
+      "withdrawn_one": "問題已撤回",
+      "withdrawn_other": "問題已撤回"
+    },
+    "policy": {
+      "agentsMayResolve": "代理人可自行回覆",
+      "agentsMayResolveHint": "治理設定允許受指派的代理人自行回覆此互動，無需等待管理者。"
+    },
+    "addressee": {
+      "for": "指定給 {{name}}",
+      "forHint": "此互動指定由 {{name}} 處理。指定給代理人的互動由該代理人負責，不會出現在管理者的待辦動態中。"
+    },
+    "withdrawnByPrefix": "撤回者",
+    "withdrawnByUnknownAgent": "某個代理人"
   },
   "agents": {
     "selectCompany": "請選擇一家公司以檢視助理。",

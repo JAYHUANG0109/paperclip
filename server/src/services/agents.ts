@@ -45,6 +45,7 @@ import {
   builtInAgentMarkersEqual,
   readBuiltInAgentMarker,
 } from "./built-in-agent-metadata.js";
+import { issueThreadInteractionService } from "./issue-thread-interactions.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -759,6 +760,13 @@ export function agentService(db: Db) {
       // routines, etc.); rows that cannot exist without their agent are deleted.
       // Keep CASCADE FKs (agent_memberships, agent_config_revisions, …) implicit.
       return db.transaction(async (tx) => {
+        await tx
+          .select({ id: agents.id })
+          .from(agents)
+          .where(eq(agents.id, id))
+          .for("update");
+        await issueThreadInteractionService(tx as unknown as Db)
+          .cancelPendingForDeletedAddressee(existing.companyId, id);
         const ownRuns = sql`(select ${heartbeatRuns.id} from ${heartbeatRuns} where ${heartbeatRuns.agentId} = ${id})`;
 
         // ── Preserve-the-record references → SET NULL ──────────────────────────

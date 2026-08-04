@@ -9,6 +9,7 @@ import { ThemeProvider } from "../context/ThemeContext";
 import { TooltipProvider } from "./ui/tooltip";
 import {
   pendingAskUserQuestionsInteraction,
+  commentExpiredAskUserQuestionsInteraction,
   commentExpiredRequestConfirmationInteraction,
   declinedToolActionInteraction,
   disabledDeclineReasonRequestConfirmationInteraction,
@@ -27,6 +28,10 @@ import {
   supersededRequestItemVerdictsInteraction,
   staleTargetRequestConfirmationInteraction,
   rejectedSuggestedTasksInteraction,
+  agentAddressedRequestConfirmationInteraction,
+  agentResolvedRequestConfirmationInteraction,
+  withdrawnRequestConfirmationInteraction,
+  issueClosedRequestConfirmationInteraction,
 } from "../fixtures/issueThreadInteractionFixtures";
 
 let root: Root | null = null;
@@ -187,6 +192,112 @@ describe("IssueThreadInteractionCard", () => {
       onSubmitInteractionAnswers: vi.fn(),
     });
     expect(withHandler.textContent).toContain("Cancel question");
+  });
+
+  it("renders expired question interactions as resolved and non-actionable", () => {
+    const host = renderCard({
+      interaction: commentExpiredAskUserQuestionsInteraction,
+      onSubmitInteractionAnswers: vi.fn(),
+      onCancelInteraction: vi.fn(),
+    });
+
+    expect(host.textContent).toContain("Questions expired by comment");
+    expect(host.textContent).toContain("A later board/user comment superseded this question request.");
+    expect(host.textContent).not.toContain("Send answers");
+    expect(host.textContent).not.toContain("Cancel question");
+
+    const jumpLink = Array.from(host.querySelectorAll("a")).find((link) =>
+      link.textContent?.includes("Jump to comment"),
+    );
+    expect(jumpLink?.getAttribute("href")).toBe(
+      "#comment-22222222-2222-4222-8222-222222222222",
+    );
+  });
+
+  it("uses singular copy for expired single-question interactions", () => {
+    const [question] = commentExpiredAskUserQuestionsInteraction.payload.questions;
+    const host = renderCard({
+      interaction: {
+        ...commentExpiredAskUserQuestionsInteraction,
+        payload: {
+          ...commentExpiredAskUserQuestionsInteraction.payload,
+          questions: [question],
+        },
+      },
+    });
+
+    expect(host.textContent).toContain("Question expired by comment");
+    expect(host.textContent).not.toContain("Questions expired by comment");
+  });
+
+  it("renders withdrawn confirmations with the withdraw reason", () => {
+    const host = renderCard({
+      interaction: {
+        ...pendingRequestConfirmationInteraction,
+        status: "cancelled",
+        result: { version: 1, outcome: "withdrawn", reason: "Superseded by the hotfix plan." },
+      },
+      onAcceptInteraction: vi.fn(),
+      onRejectInteraction: vi.fn(),
+    });
+
+    expect(host.textContent).toContain("Withdrawn");
+    expect(host.textContent).toContain("Superseded by the hotfix plan.");
+    expect(host.textContent).not.toContain("Decline");
+  });
+
+  it("renders confirmations expired by issue closure with dedicated copy", () => {
+    const host = renderCard({
+      interaction: {
+        ...pendingRequestConfirmationInteraction,
+        status: "expired",
+        result: { version: 1, outcome: "issue_closed", reason: null },
+      },
+    });
+
+    expect(host.textContent).toContain("Expired · issue closed");
+    expect(host.textContent).toContain("This confirmation expired automatically when the issue reached a terminal state.");
+    expect(host.textContent).not.toContain("Expired by target change");
+  });
+
+  it("renders withdrawn question interactions with the withdraw reason", () => {
+    const host = renderCard({
+      interaction: {
+        ...pendingAskUserQuestionsInteraction,
+        status: "cancelled",
+        result: {
+          version: 1,
+          outcome: "withdrawn",
+          reason: "Scope was decided on the parent issue.",
+          answers: [],
+          summaryMarkdown: null,
+        },
+      },
+    });
+
+    expect(host.textContent).toContain("Questions withdrawn");
+    expect(host.textContent).toContain("Scope was decided on the parent issue.");
+    expect(host.textContent).not.toContain("Question cancelled");
+  });
+
+  it("renders question interactions expired by issue closure with dedicated copy", () => {
+    const host = renderCard({
+      interaction: {
+        ...pendingAskUserQuestionsInteraction,
+        status: "expired",
+        result: {
+          version: 1,
+          outcome: "issue_closed",
+          reason: null,
+          answers: [],
+          summaryMarkdown: null,
+        },
+      },
+    });
+
+    expect(host.textContent).toContain("Questions expired when the issue closed");
+    expect(host.textContent).toContain("This question request expired automatically when the issue reached a terminal state.");
+    expect(host.textContent).not.toContain("expired by comment");
   });
 
   it("makes child tasks explicit in suggested task trees", () => {
@@ -667,5 +778,83 @@ describe("IssueThreadInteractionCard tool-action card", () => {
     expect(host.textContent).toContain("Approve the plan and let the responsible start implementation?");
     expect(host.textContent).not.toContain("Approve & run");
     expect(host.textContent).not.toContain("Technical details");
+  });
+
+  it("renders the agents-may-resolve policy badge and addressee chip", () => {
+    const host = renderCard({
+      interaction: agentAddressedRequestConfirmationInteraction,
+    });
+
+    const policyBadge = host.querySelector('[data-testid="interaction-policy-badge"]');
+    expect(policyBadge?.textContent).toContain("Agents may resolve");
+
+    const addresseeBadge = host.querySelector('[data-testid="interaction-addressee-badge"]');
+    expect(addresseeBadge?.textContent).toContain("For ");
+  });
+
+  it("omits the policy and addressee badges for a board-only interaction", () => {
+    const host = renderCard({
+      interaction: pendingRequestConfirmationInteraction,
+    });
+
+    expect(host.querySelector('[data-testid="interaction-policy-badge"]')).toBeNull();
+    expect(host.querySelector('[data-testid="interaction-addressee-badge"]')).toBeNull();
+  });
+
+  it("marks agent resolution with an audit chip in the resolved footer", () => {
+    const host = renderCard({
+      interaction: agentResolvedRequestConfirmationInteraction,
+    });
+
+    const footer = host.querySelector('[data-testid="interaction-resolved-footer"]');
+    expect(footer?.textContent).toContain("Resolved by");
+    expect(
+      host.querySelector('[data-testid="interaction-resolved-by-agent-chip"]'),
+    ).not.toBeNull();
+  });
+
+  it("renders a withdrawn footer with the withdrawer, reason, and agent chip", () => {
+    const host = renderCard({
+      interaction: withdrawnRequestConfirmationInteraction,
+    });
+
+    // Header status reads "Withdrawn", not the raw "Cancelled" status.
+    expect(host.textContent).toContain("Withdrawn");
+    // Withdrawn is a neutral administrative retraction — it must NOT wear the
+    // cancelled/rejected costume (rose/red border + XCircle). The shell is muted
+    // (border-border), never a rose/red alarm colour (design review R2).
+    const cardRoot = host.querySelector("div.rounded-sm.p-5.shadow-none");
+    expect(cardRoot?.className).toContain("border-border");
+    expect(cardRoot?.className).not.toMatch(/border-(rose|red)/);
+    // The header status icon is MinusCircle ("retracted"), never XCircle ("denied").
+    const statusIcon = cardRoot?.querySelector("svg");
+    expect(statusIcon?.getAttribute("class")).toContain("lucide-circle-minus");
+    expect(statusIcon?.getAttribute("class")).not.toContain("lucide-circle-x");
+    const footer = host.querySelector('[data-testid="interaction-withdrawn-footer"]');
+    expect(footer?.textContent).toContain("Withdrawn by");
+    expect(footer?.textContent).toContain("Plan superseded by a newer revision");
+    expect(
+      footer?.querySelector('[data-testid="interaction-resolved-by-agent-chip"]'),
+    ).not.toBeNull();
+    // The generic "Resolved by" footer must not double-render.
+    expect(host.querySelector('[data-testid="interaction-resolved-footer"]')).toBeNull();
+  });
+
+  it("renders an issue-closed expiry footer for terminal auto-expiry", () => {
+    const host = renderCard({
+      interaction: issueClosedRequestConfirmationInteraction,
+    });
+
+    // Footer is trimmed to just the audit timestamp — the header status badge
+    // already carries the "Expired · issue closed" label, so the footer must
+    // not restate it.
+    const footer = host.querySelector('[data-testid="interaction-issue-closed-footer"]');
+    expect(footer?.textContent).toContain("Apr 20");
+    expect(footer?.textContent).not.toContain("Expired when the issue closed");
+    // The "Expired · issue closed" label survives exactly once (the header
+    // status badge); the duplicate body eyebrow was dropped.
+    const label = "Expired · issue closed";
+    const occurrences = (host.textContent ?? "").split(label).length - 1;
+    expect(occurrences).toBe(1);
   });
 });

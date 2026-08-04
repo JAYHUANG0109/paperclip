@@ -55,6 +55,7 @@ import {
 import { ONBOARDING_ORIGIN_KIND } from "./onboarding.js";
 import { parseIssueExecutionState } from "./issue-execution-policy.js";
 import { isProspectiveBlockedTransition } from "./routable-blocked.js";
+import { evaluateAgentInvokability, type AgentOrgRow } from "./agent-invokability.js";
 import { decisionQueueService } from "./decision-queues.js";
 import {
   decisionRetentionService,
@@ -1141,6 +1142,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
           title: issueThreadInteractions.title,
           summary: issueThreadInteractions.summary,
           payload: issueThreadInteractions.payload,
+          addresseeAgentId: issueThreadInteractions.addresseeAgentId,
           createdByAgentId: issueThreadInteractions.createdByAgentId,
           createdAt: issueThreadInteractions.createdAt,
           updatedAt: issueThreadInteractions.updatedAt,
@@ -1151,10 +1153,29 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
           inArray(issueThreadInteractions.status, [...PENDING_INTERACTION_STATUSES]),
         ))
         .orderBy(desc(issueThreadInteractions.updatedAt), desc(issueThreadInteractions.id));
-      const visibleInteractionRows = collapsePendingConfirmationsToNewest(interactionRows);
-      const interactionIssueMap = await issueSummaryMap(db, companyId, visibleInteractionRows.map((row) => row.issueId));
-      const interactionImageMap = await issueImageMap(db, companyId, visibleInteractionRows.map((row) => row.issueId));
-      const interactionPlanDocumentMap = await planDocumentMap(db, companyId, visibleInteractionRows.map((row) => row.issueId));
+      const companyAgentRows: AgentOrgRow[] = interactionRows.some((row) => row.addresseeAgentId !== null)
+        ? await db
+          .select({
+            id: agents.id,
+            companyId: agents.companyId,
+            name: agents.name,
+            reportsTo: agents.reportsTo,
+            status: agents.status,
+          })
+          .from(agents)
+          .where(eq(agents.companyId, companyId))
+        : [];
+      const companyAgentMap = new Map(companyAgentRows.map((agent) => [agent.id, agent]));
+      const boardInteractionRows = interactionRows.filter((row) =>
+        row.addresseeAgentId === null ||
+        !evaluateAgentInvokability(companyAgentMap.get(row.addresseeAgentId), companyAgentRows).invokable
+      );
+      const visibleInteractionRows = collapsePendingConfirmationsToNewest(boardInteractionRows);
+      const [interactionIssueMap, interactionImageMap, interactionPlanDocumentMap] = await Promise.all([
+        issueSummaryMap(db, companyId, visibleInteractionRows.map((row) => row.issueId)),
+        issueImageMap(db, companyId, visibleInteractionRows.map((row) => row.issueId)),
+        planDocumentMap(db, companyId, visibleInteractionRows.map((row) => row.issueId)),
+      ]);
 
       for (const interaction of visibleInteractionRows) {
         const issue = interactionIssueMap.get(interaction.issueId) ?? null;

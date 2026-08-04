@@ -612,7 +612,8 @@
       "answered": "Answered",
       "cancelled": "Cancelled",
       "expired": "Expired",
-      "failed": "Failed"
+      "failed": "Failed",
+      "expiredIssueClosed": "Expired · issue closed"
     },
     "kind": {
       "suggestTasks": "Suggested tasks",
@@ -701,7 +702,9 @@
       "imageUploadError": "Couldn't upload that image. Try again.",
       "uploading": "Uploading...",
       "attachScreenshots": "Attach screenshots",
-      "removeScreenshot": "Remove {{name}}"
+      "removeScreenshot": "Remove {{name}}",
+      "withdrawn": "Withdrawn",
+      "expiredByIssueClosedBody": "This confirmation expired automatically when the issue reached a terminal state."
     },
     "typeYourAnswer": "Type your answer",
     "checkbox": {
@@ -729,7 +732,27 @@
     "createdAt": "Created {{time}}",
     "otherAnswerFor": "Answer for {{prompt}}",
     "resolvedOn": " on {{date}}",
-    "otherAnswerAriaFor": "Other answer for {{prompt}}"
+    "otherAnswerAriaFor": "Other answer for {{prompt}}",
+    "questions": {
+      "expiredWhenClosed_one": "Question expired when the issue closed",
+      "expiredWhenClosed_other": "Questions expired when the issue closed",
+      "expiredByComment_one": "Question expired by comment",
+      "expiredByComment_other": "Questions expired by comment",
+      "expiredWhenClosedBody": "This question request expired automatically when the issue reached a terminal state.",
+      "expiredByCommentBody": "A later board/user comment superseded this question request. Create a fresh request if answers are still needed.",
+      "withdrawn_one": "Question withdrawn",
+      "withdrawn_other": "Questions withdrawn"
+    },
+    "policy": {
+      "agentsMayResolve": "Agents may resolve",
+      "agentsMayResolveHint": "Governance allows an assigned agent to resolve this interaction without waiting for the board."
+    },
+    "addressee": {
+      "for": "For {{name}}",
+      "forHint": "Directed to {{name}}. Agent-addressed interactions are handled by that agent and are kept out of the board attention feed."
+    },
+    "withdrawnByPrefix": "Withdrawn by",
+    "withdrawnByUnknownAgent": "an agent"
   },
   "agents": {
     "selectCompany": "Select a company to view agents.",
