@@ -758,7 +758,7 @@ describe("NewIssueDialog", () => {
     act(() => root.unmount());
   });
 
-  it("confirms creation with a toast and warns when there is no assignee", async () => {
+  it("refuses to create without an agent assignee and says why", async () => {
     const { root } = renderDialog(container);
     await flush();
 
@@ -779,14 +779,15 @@ describe("NewIssueDialog", () => {
     });
     await flush();
 
-    // No assignee was chosen: the user must be told the task will sit idle,
-    // and given a one-click way to open the task that would otherwise "vanish".
-    expect(toastState.pushToast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tone: "warn",
-        action: expect.objectContaining({ href: "/PAP/issues/PAP-2" }),
-      }),
-    );
+    /*
+     * An agent assignee is required (f206a8788, 2026-07-07), which superseded the
+     * earlier behaviour this case was written for — creating unassigned and warning
+     * afterwards (3f38e7b34, 2026-07-03). So submitting with no assignee must not
+     * create anything, and must say why instead of failing silently.
+     */
+    expect(mockIssuesApi.create).not.toHaveBeenCalled();
+    expect(toastState.pushToast).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Choose an agent to run this task");
 
     act(() => root.unmount());
   });

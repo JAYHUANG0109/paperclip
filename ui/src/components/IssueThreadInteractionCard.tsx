@@ -4,7 +4,7 @@ import { useTranslation } from "@/i18n";
 
 /** Minimal shape of the i18next translate function used by this module's helpers. */
 type TFunction = (key: string, options?: Record<string, unknown>) => string;
-import { AlertTriangle, ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, ExternalLink, FileText, GitBranch, ImagePlus, ListChecks, Loader2, MessageSquareQuote, MinusCircle, ShieldAlert, ThumbsUp, TriangleAlert, Wrench, X, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Clock, ExternalLink, FileText, GitBranch, ImagePlus, Loader2, MessageSquareQuote, MinusCircle, ShieldAlert, ThumbsUp, TriangleAlert, Wrench, X, XCircle } from "lucide-react";
 import { Link } from "@/lib/router";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import {
@@ -1139,7 +1139,7 @@ function AskUserQuestionsCard({
                     </button>
                     {otherActiveQuestions[question.id] ? (
                       <Textarea
-                        aria-label={t("interaction.otherAnswerFor", { prompt: question.prompt, defaultValue: "Other answer for {{prompt}}" })}
+                        aria-label={t("interaction.otherAnswerAriaFor", { prompt: question.prompt, defaultValue: "Other answer for {{prompt}}" })}
                         value={draftOtherAnswers[question.id] ?? ""}
                         onChange={(event) =>
                           setDraftOtherAnswers((current) => ({
@@ -3091,15 +3091,11 @@ export function IssueThreadInteractionCard({
               <span className="text-current/60">/</span>
               {activeStyles ? activeStyles.label : statusLabel(interaction.status, t)}
             </span>
-            {interaction.continuationPolicy === "wake_assignee"
-              || interaction.continuationPolicy === "wake_assignee_on_accept" ? (
-              <span className="inline-flex items-center gap-1 rounded-sm border border-border/70 bg-transparent px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/70">
-                <ListChecks className="h-3.5 w-3.5" />
-                {interaction.continuationPolicy === "wake_assignee_on_accept"
-                  ? t("interaction.wakesOnConfirm")
-                  : t("interaction.wakesAssignee")}
-              </span>
-            ) : null}
+            {/*
+              * No continuation-policy chip here. It described internal plumbing —
+              * whether accepting this interaction wakes the assignee — which reads to an
+              * approver as a promise about what their click does, and is not one.
+              */}
           </div>
 
           <div className="mt-3 text-lg font-bold text-foreground">

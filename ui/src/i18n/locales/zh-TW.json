@@ -823,7 +823,8 @@
     "titleCheckboxConfirmation": "已要求核取方塊確認",
     "otherAnswerFor": "{{prompt}} 的其他回答",
     "createdAt": "建立於 {{time}}",
-    "resolvedOn": " 於 {{date}}"
+    "resolvedOn": " 於 {{date}}",
+    "otherAnswerAriaFor": "「{{prompt}}」的其他回答"
   },
   "agents": {
     "selectCompany": "請選擇一家公司以檢視助理。",
@@ -1920,7 +1921,7 @@
     "leftProjectNotice": "您已離開此專案，它將不再顯示於側邊欄。",
     "dismissNotice": "關閉專案成員通知",
     "pausedByBudget": "因預算硬性停止而暫停",
-    "managedBy": "由 {{name}} 管理",
+    "managedBy": "由 {{plugin}} 管理",
     "tab": {
       "issues": "議題",
       "overview": "總覽",
@@ -5239,7 +5240,8 @@
     "created": "已建立 {{ref}}",
     "createdUnassignedBody": "此任務尚未指派負責人，因此不會有代理人接手。開啟以指派。",
     "taskTitleOptional": "標題（可留空）—你的代理人會自動擬一個",
-    "reusingWorkspace": "既有的執行工作區"
+    "reusingWorkspace": "重用 {{name}}（來自 {{source}}）。",
+    "agentAssigneeRequired": "請選擇一位代理人來執行此任務 — 留空的話任務不會被處理。指派後，該代理人負責的人也會收到通知。"
   },
   "routineDetail": {
     "concurrencyDesc": {

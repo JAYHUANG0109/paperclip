@@ -120,7 +120,9 @@ const emptyOverlay: AgentConfigOverlay = {
 const EMPTY_ENV: Record<string, EnvBinding> = {};
 
 export function supportsAdapterModelRefresh(adapterType: string): boolean {
-  return adapterType === "claude_local" || adapterType === "codex_local" || adapterType === "acpx_local";
+  // Only adapters with a live refresh hook. acpx_local is retired — it has no hook,
+  // so the action just failed when offered.
+  return adapterType === "claude_local" || adapterType === "codex_local";
 }
 
 function isOverlayDirty(o: AgentConfigOverlay): boolean {

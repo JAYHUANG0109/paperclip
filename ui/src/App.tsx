@@ -244,6 +244,16 @@ function boardRoutes() {
       <Route path="company/settings/instance/plugins/:pluginId" element={<PluginSettings />} />
       <Route path="company/settings/instance/adapters" element={<AdapterManager />} />
       <Route path="company/settings/:settingsRoutePath/*" element={<CompanySettingsPluginPage />} />
+      {/*
+        * Skill Studio must be registered before the `skills/*` catch-all, and `new`
+        * before `:skillId`, or the catch-all swallows both and the studio is
+        * unreachable. It was: the page and its legacy redirect were imported but
+        * never routed, so /skills/studio rendered the skills list instead.
+        */}
+      <Route path="skills/studio" element={<SkillStudio />} />
+      <Route path="skills/studio/new" element={<SkillStudio />} />
+      <Route path="skills/studio/:skillId" element={<SkillStudio />} />
+      <Route path="skills/:skillId/studio" element={<LegacySkillStudioRedirect />} />
       <Route path="skills/*" element={<CompanySkills />} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
@@ -699,6 +709,10 @@ export function App() {
               MEMORY" instead of the page. */}
           <Route path="memory" element={<UnprefixedBoardRedirect />} />
           <Route path="u/:userSlug" element={<UnprefixedBoardRedirect />} />
+          <Route path="skills/studio" element={<UnprefixedBoardRedirect />} />
+          <Route path="skills/studio/new" element={<UnprefixedBoardRedirect />} />
+          <Route path="skills/studio/:skillId" element={<UnprefixedBoardRedirect />} />
+          <Route path="skills/:skillId/studio" element={<LegacySkillStudioRedirect />} />
           <Route path="skills/*" element={<UnprefixedBoardRedirect />} />
           <Route path="settings" element={<LegacySettingsRedirect />} />
           <Route path="settings/*" element={<LegacySettingsRedirect />} />

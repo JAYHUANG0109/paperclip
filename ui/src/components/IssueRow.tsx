@@ -124,12 +124,12 @@ export function IssueRow({
       className={cn(
         "group flex items-start gap-2 border-b border-border py-2.5 pl-2 pr-3 text-sm no-underline text-inherit transition-colors last:border-b-0 sm:items-center sm:py-2 sm:pl-1",
         selected ? "hover:bg-transparent" : "hover:bg-accent/50",
-        checklistCurrentStep ? "border-l-2 border-l-primary bg-primary/5 pl-[calc(theme(spacing.2)-2px)] sm:pl-[calc(theme(spacing.1)-2px)]" : null,
+        checklistCurrentStep ? "bg-primary/5" : null,
         className,
       )}
     >
       <span className="flex shrink-0 items-center gap-1 pt-px sm:hidden">
-        {mobileLeading ?? <StatusIcon status={issue.status} blockerAttention={issue.blockerAttention} size="lg" className={selectedStatusClass} />}
+        {mobileLeading ?? <StatusIcon status={issue.status} blockerAttention={issue.blockerAttention} size="md" className={selectedStatusClass} />}
         {productivityReviewIndicator}
         {parkedBlockerIndicator}
         {recoveryIndicator}
@@ -139,7 +139,7 @@ export function IssueRow({
           {issue.title}{titleSuffix}
         </span>
         {checklistDependencyChips ? (
-          <span className="flex flex-wrap gap-1 sm:order-3 sm:ml-[calc(theme(spacing.3)+theme(spacing.2))]">
+          <span className="flex flex-wrap gap-1 sm:order-3 sm:ml-(--sz-calc-13)">
             {checklistDependencyChips}
           </span>
         ) : null}
@@ -150,7 +150,7 @@ export function IssueRow({
           {desktopMetaLeading ?? (
             <>
               <span className="hidden shrink-0 items-center gap-1 sm:inline-flex">
-                <StatusIcon status={issue.status} blockerAttention={issue.blockerAttention} size="lg" className={selectedStatusClass} />
+                <StatusIcon status={issue.status} blockerAttention={issue.blockerAttention} size="md" className={selectedStatusClass} />
                 {productivityReviewIndicator}
               </span>
               {checklistStep}

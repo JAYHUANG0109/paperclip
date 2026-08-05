@@ -725,7 +725,8 @@
     "titleCheckboxConfirmation": "Checkbox confirmation requested",
     "createdAt": "Created {{time}}",
     "otherAnswerFor": "Answer for {{prompt}}",
-    "resolvedOn": " on {{date}}"
+    "resolvedOn": " on {{date}}",
+    "otherAnswerAriaFor": "Other answer for {{prompt}}"
   },
   "agents": {
     "selectCompany": "Select a company to view agents.",
@@ -1822,7 +1823,7 @@
     "leftProjectNotice": "You left this project. It no longer appears in your sidebar.",
     "dismissNotice": "Dismiss project membership notice",
     "pausedByBudget": "Paused by budget hard stop",
-    "managedBy": "Managed by {{name}}",
+    "managedBy": "Managed by {{plugin}}",
     "tab": {
       "issues": "Issues",
       "overview": "Overview",
@@ -5140,8 +5141,9 @@
     "lowTrustNote": "Low-trust review agent. It can only act inside its assigned review boundary; issue, project, or run policy defines the concrete scope.",
     "created": "Created {{ref}}",
     "createdUnassignedBody": "This task has no assignee, so no agent will pick it up. Open it to assign someone.",
-    "reusingWorkspace": "existing execution workspace",
-    "taskTitleOptional": "Title (optional) — your agent will write one"
+    "reusingWorkspace": "Reusing {{name}} from {{source}}.",
+    "taskTitleOptional": "Title (optional) — your agent will write one",
+    "agentAssigneeRequired": "Choose an agent to run this task — left unassigned, nothing will pick it up. The person responsible for that agent is notified too."
   },
   "routineDetail": {
     "concurrencyDesc": {

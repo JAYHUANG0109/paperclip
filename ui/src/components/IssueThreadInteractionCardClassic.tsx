@@ -877,7 +877,7 @@ function AskUserQuestionsCard({
                 </button>
                 {otherActiveQuestions[question.id] ? (
                   <Textarea
-                    aria-label={t("interaction.otherAnswerFor", { prompt: question.prompt, defaultValue: "Other answer for {{prompt}}" })}
+                    aria-label={t("interaction.otherAnswerAriaFor", { prompt: question.prompt, defaultValue: "Other answer for {{prompt}}" })}
                     value={draftOtherAnswers[question.id] ?? ""}
                     onChange={(event) =>
                       setDraftOtherAnswers((current) => ({

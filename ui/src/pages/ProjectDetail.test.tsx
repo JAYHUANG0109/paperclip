@@ -210,9 +210,10 @@ describe("ProjectDetail", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    // The component passes { plugin: name } but the i18n key uses {{name}}, so the
-    // variable is not interpolated; assert on the badge text that is actually rendered.
-    expect(container.textContent).toContain("Managed by {{name}}");
+    // The call site passes { plugin }, and the locale entry now uses {{plugin}} to
+    // match. This previously asserted the raw "Managed by {{name}}" — the placeholder
+    // was reaching users because the key and the call site disagreed.
+    expect(container.textContent).toContain("Managed by Missions");
     expect(container.textContent).toContain("Plugin operations");
     expect(mockIssuesApi.list).toHaveBeenCalledWith("company-1", {
       projectId: "project-1",

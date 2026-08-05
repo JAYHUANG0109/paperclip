@@ -206,7 +206,9 @@ describe("InstanceExperimentalSettings — Conference Room Chat card (PAP-11233)
   it("does not render the Conference Room Chat experimental setting for now", async () => {
     await renderPage();
 
-    const headings = [...container.querySelectorAll("section h2")].map((h) => h.textContent);
+    // Setting cards render as <Card> (a div), so "section h2" matched nothing and every
+    // negative assertion here passed trivially. Query the headings themselves.
+    const headings = [...container.querySelectorAll("h2")].map((h) => h.textContent);
     expect(headings).toContain("Enable Environments");
     expect(headings).not.toContain("Conference Room Chat");
     expect(container.querySelector(CONFERENCE_TOGGLE_SELECTOR)).toBeNull();

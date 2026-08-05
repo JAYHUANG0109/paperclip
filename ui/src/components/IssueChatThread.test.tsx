@@ -1905,7 +1905,9 @@ describe("IssueChatThread", () => {
     });
 
     expect(container.textContent).toContain("Work on this task is blocked by the linked task");
-    expect(container.textContent).toContain("Comments still wake the assignee for questions or triage");
+    // IssueBlockedNotice says "notify", not "wake" — this assertion was written against
+    // the older copy and the component (byte-identical to upstream) has since changed.
+    expect(container.textContent).toContain("Comments still notify the assignee for questions or triage");
     expect(container.textContent).toContain("PAP-1723");
     expect(container.textContent).toContain("QA the install flow");
     expect(container.querySelector('[data-issue-path-id="PAP-1723"]')).not.toBeNull();
