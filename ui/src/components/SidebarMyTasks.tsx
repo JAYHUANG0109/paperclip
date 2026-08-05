@@ -77,35 +77,39 @@ export function SidebarMyTasks({
           title={task.title}
           className={({ isActive }) =>
             cn(
-              // Same rhythm as SidebarNavItem — mx-2, rounded-lg, the shared
-              // compact type scale — so these read as real sidebar rows rather
-              // than footnotes. The extra left padding indents them under
-              // "Tasks" the way a file sits under its folder.
-              "flex items-center gap-2.5 mx-2 rounded-lg py-1.5 pl-8 pr-2 pointer-coarse:py-1 text-(length:--text-compact) font-medium transition-colors",
+              // Mirror SidebarNavItem's box exactly — mx-2, px-2, gap-2.5 — so
+              // the status dot lands in the same 16px icon column as "Tasks"
+              // above it (dots align under the icon, not the label text), and
+              // the list sits in the sidebar's main indent rather than a deep
+              // nested one.
+              "flex items-center gap-2.5 mx-2 rounded-lg px-2 py-1.5 pointer-coarse:py-1 text-(length:--text-compact) font-medium transition-colors",
               isActive
                 ? "bg-accent text-foreground"
                 : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
             )
           }
         >
-          {/* Status dot, vertically centered on the title row (items-center on
-              the flex parent). shrink-0 keeps it a perfect circle. */}
-          <span
-            className={cn(
-              "size-2 shrink-0 self-center rounded-full",
-              STATUS_DOT[task.status] ?? "bg-muted-foreground/40",
-            )}
-            aria-hidden="true"
-          />
+          {/* The dot occupies the same h-4 w-4 slot a nav icon would, centered
+              inside it, so every dot lines up vertically under the Tasks icon. */}
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                STATUS_DOT[task.status] ?? "bg-muted-foreground/40",
+              )}
+            />
+          </span>
           <span className="truncate">{task.title}</span>
         </NavLink>
       ))}
       {recent.length > MAX_TASKS ? (
         <NavLink
           to="/issues"
-          className="mx-2 rounded-lg py-1.5 pl-8 pr-2 pointer-coarse:py-1 text-(length:--text-compact) text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          className="flex items-center gap-2.5 mx-2 rounded-lg px-2 py-1.5 pointer-coarse:py-1 text-(length:--text-compact) text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
         >
-          {t("nav.myTasksSeeAll", { defaultValue: "See all tasks" })}
+          {/* Empty icon slot keeps this label aligned with the task titles. */}
+          <span className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">{t("nav.myTasksSeeAll", { defaultValue: "See all tasks" })}</span>
         </NavLink>
       ) : null}
     </div>
