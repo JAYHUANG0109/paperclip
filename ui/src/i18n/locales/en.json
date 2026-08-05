@@ -3936,6 +3936,19 @@
       "blocked": "Blocked",
       "cancelled": "Cancelled",
       "backlog": "Backlog"
+    },
+    "tooltip": {
+      "succeeded": "succeeded",
+      "recovered": "recovered",
+      "retrySucceeded": "retry succeeded",
+      "failed": "failed",
+      "other": "other"
+    },
+    "legend": {
+      "succeeded": "Succeeded",
+      "recovered": "Recovered",
+      "failed": "Failed",
+      "other": "Other"
     }
   },
   "workspaces": {
@@ -4097,7 +4110,10 @@
     "myProjects": "My Projects",
     "otherProjects": "Other Projects",
     "projectCount_one": "{{count}} project",
-    "projectCount_other": "{{count}} projects"
+    "projectCount_other": "{{count}} projects",
+    "scopeCompany": "Company projects",
+    "scopeTeam": "Team projects",
+    "scopePersonal": "Personal projects"
   },
   "sidebarAgents": {
     "resumeAgent": "Resume agent",

@@ -4034,6 +4034,19 @@
       "blocked": "受阻",
       "cancelled": "已取消",
       "backlog": "待處理"
+    },
+    "tooltip": {
+      "succeeded": "成功",
+      "recovered": "已恢復",
+      "retrySucceeded": "重試成功",
+      "failed": "失敗",
+      "other": "其他"
+    },
+    "legend": {
+      "succeeded": "成功",
+      "recovered": "已恢復",
+      "failed": "失敗",
+      "other": "其他"
     }
   },
   "workspaces": {
@@ -4195,7 +4208,10 @@
     "myProjects": "我的專案",
     "otherProjects": "其他專案",
     "projectCount_one": "{{count}} 個專案",
-    "projectCount_other": "{{count}} 個專案"
+    "projectCount_other": "{{count}} 個專案",
+    "scopeCompany": "公司專案",
+    "scopeTeam": "團隊專案",
+    "scopePersonal": "個人專案"
   },
   "sidebarAgents": {
     "resumeAgent": "恢復代理",

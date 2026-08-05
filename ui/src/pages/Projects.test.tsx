@@ -132,6 +132,9 @@ describe("Projects", () => {
         id: "project-b",
         urlKey: "bravo",
         name: "Bravo",
+        // This fork groups by access scope, not by joined/left, so the second
+        // group needs a project whose visibility differs.
+        visibility: "team",
         updatedAt: new Date("2026-01-05T00:00:00Z"),
       }),
       makeProject({
@@ -207,15 +210,23 @@ describe("Projects", () => {
     await flushReact();
   }
 
-  it("groups joined projects above left projects and defaults sorting by name", async () => {
+  /*
+   * Upstream groups this page by membership ("My Projects" / "Other Projects").
+   * This fork deliberately groups by access scope instead — company / team /
+   * personal — because that is the axis that matters across campuses, and the
+   * server already access-filters the list per viewer. These two tests keep
+   * upstream's intent (a group header precedes its own projects, and the sort
+   * field reorders within a group) expressed against the fork's grouping.
+   */
+  it("groups projects by access scope and defaults sorting by name", async () => {
     await renderProjects();
 
     const content = container.textContent ?? "";
     expect(container.querySelector('button[title="Sort"]')?.textContent).toContain("Sort: Name");
-    expect(content.indexOf("My Projects")).toBeLessThan(content.indexOf("Alpha"));
+    expect(content.indexOf("Company projects")).toBeLessThan(content.indexOf("Alpha"));
     expect(content.indexOf("Alpha")).toBeLessThan(content.indexOf("Charlie"));
-    expect(content.indexOf("Charlie")).toBeLessThan(content.indexOf("Other Projects"));
-    expect(content.indexOf("Other Projects")).toBeLessThan(content.indexOf("Bravo"));
+    expect(content.indexOf("Charlie")).toBeLessThan(content.indexOf("Team projects"));
+    expect(content.indexOf("Team projects")).toBeLessThan(content.indexOf("Bravo"));
     expect(content).toContain("in progress");
   });
 
@@ -225,9 +236,9 @@ describe("Projects", () => {
     await chooseSortField("Updated");
 
     const content = container.textContent ?? "";
-    expect(content.indexOf("My Projects")).toBeLessThan(content.indexOf("Charlie"));
+    expect(content.indexOf("Company projects")).toBeLessThan(content.indexOf("Charlie"));
     expect(content.indexOf("Charlie")).toBeLessThan(content.indexOf("Alpha"));
-    expect(content.indexOf("Alpha")).toBeLessThan(content.indexOf("Other Projects"));
+    expect(content.indexOf("Alpha")).toBeLessThan(content.indexOf("Team projects"));
   });
 
   it("reserves description line height for projects without descriptions", async () => {

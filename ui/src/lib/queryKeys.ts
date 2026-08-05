@@ -190,6 +190,14 @@ export const queryKeys = {
       ["issues", companyId, "execution-workspace", executionWorkspaceId] as const,
     detail: (id: string) => ["issues", "detail", id] as const,
     comments: (issueId: string) => ["issues", "comments", issueId] as const,
+    /*
+     * Issue detail pages comments with useInfiniteQuery, so `comments` holds a
+     * `{pages, pageParams}` envelope. Anywhere that wants a plain array (the pipeline
+     * conversation pane) must use a distinct key or the two clobber each other's cached
+     * shape and one of them renders nothing. The `list` suffix keeps `comments` as a
+     * prefix, so an invalidate on `comments` still reaches both.
+     */
+    commentsList: (issueId: string) => ["issues", "comments", issueId, "list"] as const,
     interactions: (issueId: string) => ["issues", "interactions", issueId] as const,
     pendingInteractions: (companyId: string) => ["issues", "pending-interactions", companyId] as const,
     acceptedPlanDecompositions: (issueId: string) =>
