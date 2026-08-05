@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type {
   Agent,
   IssueRecoveryAction,
@@ -37,7 +37,13 @@ export type RecoveryResolveOutcome =
  * branch to base it on, and the branch the run had recorded, when they diverged.
  */
 export interface RecoveryReissueRequest {
+  /** What the new worktree is based on: the live branch, or the live HEAD sha when detached. */
   baseRef: string;
+  /** Live branch name, null when HEAD is detached. */
+  liveBranch: string | null;
+  /** Live HEAD sha, so the re-issued task records exactly what it branched from. */
+  liveHeadSha: string | null;
+  /** The branch the stalled run had recorded, for the audit trail. */
   expectedBranch?: string | null;
 }
 
@@ -59,6 +65,14 @@ function ancestryVerdictLabel(verdict: string | null): string | null {
   return verdict;
 }
 
+/** "1 uncommitted change" / "3 uncommitted changes" — the count is read aloud in prose. */
+function dirtyChangesText(count: number | null): string {
+  const n = count ?? 0;
+  return n === 1
+    ? t("recoveryCard.workspace.dirtyOne", { count: n, defaultValue: "{{count}} uncommitted change" })
+    : t("recoveryCard.workspace.dirtyMany", { count: n, defaultValue: "{{count}} uncommitted changes" });
+}
+
 function workspaceValidationEvidence(action: IssueRecoveryAction): {
   expectedBranch: string | null;
   actualBranch: string | null;
@@ -68,6 +82,10 @@ function workspaceValidationEvidence(action: IssueRecoveryAction): {
   expectedHeadSha: string | null;
   actualHeadSha: string | null;
   ancestryVerdict: string | null;
+  rawReason: string | null;
+  sourceIdentifier: string | null;
+  /** Another task holds this workspace, so repairing it would yank it out from under them. */
+  contendedBy: { issueIdentifier: string | null; hasActiveRun: boolean } | null;
 } | null {
   if (action.kind !== "workspace_validation") return null;
   const ev = action.evidence as Record<string, unknown> | null | undefined;
@@ -89,6 +107,21 @@ function workspaceValidationEvidence(action: IssueRecoveryAction): {
     expectedHeadSha: str(prov?.expectedHeadSha),
     actualHeadSha: str(prov?.actualHeadSha),
     ancestryVerdict: str(prov?.ancestryVerdict),
+    rawReason: str(wv.reason),
+    sourceIdentifier: str(wv.sourceIdentifier),
+    contendedBy: (() => {
+      const c = typeof wv.contention === "object" && wv.contention !== null
+        ? (wv.contention as Record<string, unknown>)
+        : null;
+      if (!c) return null;
+      const run = typeof c.activeRun === "object" && c.activeRun !== null
+        ? (c.activeRun as Record<string, unknown>)
+        : null;
+      return {
+        issueIdentifier: str(c.claimedByIssueIdentifier),
+        hasActiveRun: run !== null,
+      };
+    })(),
   };
 }
 
@@ -205,7 +238,14 @@ function readEvidenceString(value: unknown): string | null {
   return trimmed.length > 240 ? `${trimmed.slice(0, 237)}…` : trimmed;
 }
 
-function pickEvidenceSummary(action: IssueRecoveryAction): string | null {
+/**
+ * Keys whose values are written for a person to read. Everything else in the candidate
+ * list is a machine token (an error code, a status), which stays in the mono treatment
+ * because it is something you match against logs, not a sentence.
+ */
+const PROSE_EVIDENCE_KEYS = new Set(["summary", "detectedProgressSummary", "missingDisposition", "retryReason"]);
+
+function pickEvidenceSummary(action: IssueRecoveryAction): { text: string; prose: boolean } | null {
   const evidence = action.evidence ?? {};
   const candidates = [
     "summary",
@@ -218,7 +258,7 @@ function pickEvidenceSummary(action: IssueRecoveryAction): string | null {
   ] as const;
   for (const key of candidates) {
     const next = readEvidenceString(evidence[key]);
-    if (next) return next;
+    if (next) return { text: next, prose: PROSE_EVIDENCE_KEYS.has(key) };
   }
   return null;
 }
@@ -438,6 +478,11 @@ export function IssueRecoveryActionCard({
   const showResolveActions = onResolve !== undefined && cardState !== "resolved";
   const wv = workspaceValidationEvidence(action);
   // Only offer remedies the caller can actually perform.
+  // A detached HEAD has no branch to base on, so the sha is the only stable ref.
+  // Required, and deliberately not defaulted: an override with a canned reason is an
+  // override with no reason.
+  const [breakGlassReason, setBreakGlassReason] = useState("");
+  const reissueBaseRef = wv ? wv.actualBranch ?? wv.actualHeadSha : null;
   const showWorkspaceRemedies =
     cardState !== "resolved"
     // Only for a workspace-validation action with readable evidence: these remedies are
@@ -529,7 +574,16 @@ export function IssueRecoveryActionCard({
         ) : null}
         <MetadataRow label={t("recoveryCard.field.evidence")}>
           {evidenceSummary ? (
-            <span className="break-words font-mono text-[11px] text-foreground/80">{evidenceSummary}</span>
+            <span
+              className={cn(
+                "break-words text-foreground/80",
+                // A written sentence reads as prose; a machine token keeps the mono
+                // treatment so it still looks like something you grep for.
+                evidenceSummary.prose ? "text-xs" : "font-mono text-[11px]",
+              )}
+            >
+              {evidenceSummary.text}
+            </span>
           ) : (
             <MissingValue />
           )}
@@ -569,12 +623,26 @@ export function IssueRecoveryActionCard({
           </MetadataRow>
         ) : null}
       </dl>
-      {wv ? (
+      {wv && wv.rawReason === "git_worktree_branch_incoherence" ? (
         <div
           data-testid="recovery-divergence-diagnosis"
           className={cn("border-t px-3 py-2.5 text-xs leading-5 sm:px-4", tone.divider)}
         >
           {wv.reason ? <p className="font-medium">{wv.reason}</p> : null}
+          {wv.contendedBy ? (
+            <p data-testid="recovery-contention-notice" className="mt-1">
+              {wv.contendedBy.hasActiveRun
+                ? t("recoveryCard.workspace.contendedActive", {
+                    issue: wv.contendedBy.issueIdentifier ?? "another task",
+                    defaultValue:
+                      "{{issue}} currently holds this workspace and has an active run, so it cannot be repaired underneath them.",
+                  })
+                : t("recoveryCard.workspace.contended", {
+                    issue: wv.contendedBy.issueIdentifier ?? "another task",
+                    defaultValue: "{{issue}} currently holds this workspace.",
+                  })}
+            </p>
+          ) : null}
           <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2">
             {wv.expectedBranch ? (
               <>
@@ -618,12 +686,7 @@ export function IssueRecoveryActionCard({
                   {t("recoveryCard.workspace.tree", { defaultValue: "Working tree" })}
                 </dt>
                 <dd>
-                  {wv.cleanliness === "dirty"
-                    ? t("recoveryCard.workspace.dirtyWithCount", {
-                        count: wv.dirtyCount ?? 0,
-                        defaultValue: "uncommitted changes ({{count}})",
-                      })
-                    : wv.cleanliness}
+                  {wv.cleanliness === "dirty" ? dirtyChangesText(wv.dirtyCount) : wv.cleanliness}
                 </dd>
               </>
             ) : null}
@@ -634,7 +697,20 @@ export function IssueRecoveryActionCard({
       {showWorkspaceRemedies ? (
         <div className={cn("flex flex-wrap items-center gap-2 border-t px-3 py-2.5 sm:px-4", tone.divider)}>
           {/* Repair sets aside uncommitted work; with a clean tree there is nothing to set aside. */}
-          {onQuarantineRestore && wv.cleanliness === "dirty" ? (
+          {onQuarantineRestore && wv.cleanliness === "dirty" && wv.contendedBy ? (
+            <span data-testid="recovery-action-repair-disabled" className="inline-flex items-center gap-2">
+              <Button type="button" size="sm" variant="outline"
+                data-testid="recovery-action-repair-trigger" disabled>
+                {t("recoveryCard.workspace.repair", { defaultValue: "Repair workspace" })}
+              </Button>
+              <span className="text-muted-foreground">
+                {t("recoveryCard.workspace.repairBlocked", {
+                  issue: wv.contendedBy.issueIdentifier ?? "another task",
+                  defaultValue: "held by {{issue}}",
+                })}
+              </span>
+            </span>
+          ) : onQuarantineRestore && wv.cleanliness === "dirty" ? (
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -648,12 +724,29 @@ export function IssueRecoveryActionCard({
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-72 space-y-2 p-3 text-xs">
-                <p>
-                  {t("recoveryCard.workspace.repairExplain", {
-                    defaultValue:
-                      "Moves the uncommitted changes aside and restores the workspace to the recorded branch. Nothing is deleted — the set-aside changes stay recoverable.",
-                  })}
-                </p>
+                <div data-testid="recovery-repair-restated" className="space-y-1">
+                  <p>
+                    <span data-testid="recovery-repair-dirty-count">{dirtyChangesText(wv.dirtyCount)}</span>
+                    {" "}
+                    {t("recoveryCard.workspace.repairRestate", {
+                      live: wv.actualBranch ?? "—",
+                      recorded: wv.expectedBranch ?? "—",
+                      defaultValue:
+                        "on {{live}} are moved to a rescue branch and left untouched there, then the workspace is restored to {{recorded}}.",
+                    })}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">
+                      {t("recoveryCard.workspace.rescueBranch", { defaultValue: "Rescue branch" })}:{" "}
+                    </span>
+                    <span data-testid="recovery-repair-rescue-branch" className="font-mono">
+                      {`paperclip/rescue/${wv.sourceIdentifier ?? "task"}/`}
+                      <span className="text-muted-foreground">
+                        {t("recoveryCard.workspace.rescueTimestamp", { defaultValue: "<timestamp>" })}
+                      </span>
+                    </span>
+                  </p>
+                </div>
                 <Button
                   type="button"
                   size="sm"
@@ -666,7 +759,12 @@ export function IssueRecoveryActionCard({
               </PopoverContent>
             </Popover>
           ) : null}
-          {onReconcileForward ? (
+          {/*
+            Only when the recorded branch is an ancestor of the live one. Otherwise
+            "accept the live branch" would silently drop the commits that diverged, which
+            is the entire failure this recovery exists to prevent.
+          */}
+          {onReconcileForward && wv.ancestryVerdict === "ancestor" ? (
             <Button
               type="button"
               size="sm"
@@ -678,50 +776,121 @@ export function IssueRecoveryActionCard({
               {t("recoveryCard.workspace.reconcileForward", { defaultValue: "Accept live branch" })}
             </Button>
           ) : null}
-          {onReissueIsolated && wv?.actualBranch ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              data-testid="recovery-action-reissue-isolated"
-              disabled={reissuePending}
-              onClick={() =>
-                onReissueIsolated({
-                  baseRef: wv.actualBranch as string,
-                  expectedBranch: wv.expectedBranch,
-                })
-              }
-            >
-              {t("recoveryCard.workspace.reissueIsolated", { defaultValue: "Re-issue on a worktree" })}
-            </Button>
+          {onReissueIsolated && reissueBaseRef && wv.contendedBy ? (
+            <span data-testid="recovery-reissue-recommended" className="text-muted-foreground">
+              {t("recoveryCard.workspace.reissueRecommended", {
+                defaultValue: "Recommended:",
+              })}
+            </span>
           ) : null}
-          {onBreakGlassOverride && canBreakGlass ? (
+          {onReissueIsolated && reissueBaseRef ? (
             <Popover>
               <PopoverTrigger asChild>
-                <Button type="button" size="sm" variant="ghost" className="text-destructive"
-                  data-testid="recovery-action-break-glass-trigger" disabled={reconcilePending}>
-                  {t("recoveryCard.workspace.breakGlass", { defaultValue: "Override" })}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  data-testid="recovery-action-reissue-trigger"
+                  data-recommended={wv.contendedBy ? "true" : undefined}
+                  disabled={reissuePending}
+                >
+                  {t("recoveryCard.workspace.reissueIsolated", { defaultValue: "Re-issue on a worktree" })}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-72 space-y-2 p-3 text-xs">
+              <PopoverContent align="start" className="w-80 space-y-2 p-3 text-xs">
+                <p className="font-medium">
+                  {t("recoveryCard.workspace.reissueTitle", {
+                    defaultValue: "Re-issue on isolated workspace",
+                  })}
+                </p>
                 <p>
-                  {t("recoveryCard.workspace.breakGlassExplain", {
+                  {t("recoveryCard.workspace.reissueExplain", {
+                    base: reissueBaseRef,
                     defaultValue:
-                      "Forces the workspace to proceed as-is. Recorded for audit, and the divergence is not repaired.",
+                      "Starts a fresh task on its own git worktree based on {{base}}, leaving this workspace untouched.",
                   })}
                 </p>
                 <Button
                   type="button"
                   size="sm"
-                  variant="destructive"
-                  data-testid="recovery-action-break-glass-confirm"
+                  data-testid="recovery-action-reissue-confirm"
+                  disabled={reissuePending}
                   onClick={() =>
-                    onBreakGlassOverride(
-                      t("recoveryCard.workspace.breakGlassReason", {
-                        defaultValue: "Operator override from the run recovery surface",
-                      }),
-                    )
+                    onReissueIsolated({
+                      baseRef: reissueBaseRef,
+                      liveBranch: wv.actualBranch,
+                      liveHeadSha: wv.actualHeadSha,
+                      expectedBranch: wv.expectedBranch,
+                    })
                   }
+                >
+                  {t("recoveryCard.workspace.reissueConfirm", { defaultValue: "Re-issue" })}
+                </Button>
+              </PopoverContent>
+            </Popover>
+          ) : null}
+          {onBreakGlassOverride && canBreakGlass ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" size="sm" variant="ghost" className="text-destructive"
+                  data-testid="recovery-action-breakglass-trigger" disabled={reconcilePending}>
+                  {t("recoveryCard.workspace.breakGlass", { defaultValue: "Override" })}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-80 space-y-2 p-3 text-xs">
+                <p className="font-medium">
+                  {t("recoveryCard.workspace.breakGlassTitle", { defaultValue: "Override the divergence" })}
+                </p>
+                {/*
+                  Restated here on purpose: an override is the one action that proceeds
+                  without repairing anything, so the operator should have to read what they
+                  are overriding at the moment they do it, not scroll back for it.
+                */}
+                <div data-testid="recovery-breakglass-restated-divergence" className="space-y-0.5">
+                  <p>
+                    <span className="text-muted-foreground">
+                      {t("recoveryCard.workspace.recordedBranch", { defaultValue: "Recorded branch" })}:{" "}
+                    </span>
+                    <span className="font-mono">{wv.expectedBranch ?? "—"}</span>
+                    {wv.expectedHeadSha ? (
+                      <span className="font-mono text-muted-foreground"> @{wv.expectedHeadSha.slice(0, 10)}</span>
+                    ) : null}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">
+                      {t("recoveryCard.workspace.liveBranch", { defaultValue: "Live branch" })}:{" "}
+                    </span>
+                    <span className="font-mono">{wv.actualBranch ?? "—"}</span>
+                    {wv.actualHeadSha ? (
+                      <span className="font-mono text-muted-foreground"> @{wv.actualHeadSha.slice(0, 10)}</span>
+                    ) : null}
+                  </p>
+                  {ancestryVerdictLabel(wv.ancestryVerdict) ? (
+                    <p>
+                      <span className="text-muted-foreground">
+                        {t("recoveryCard.workspace.ancestry", { defaultValue: "Ancestry" })}:{" "}
+                      </span>
+                      {ancestryVerdictLabel(wv.ancestryVerdict)}
+                    </p>
+                  ) : null}
+                </div>
+                <textarea
+                  data-testid="recovery-breakglass-reason"
+                  value={breakGlassReason}
+                  onChange={(event) => setBreakGlassReason(event.target.value)}
+                  rows={3}
+                  placeholder={t("recoveryCard.workspace.breakGlassReasonPlaceholder", {
+                    defaultValue: "Why is it safe to proceed without repairing?",
+                  })}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  data-testid="recovery-action-breakglass-confirm"
+                  disabled={breakGlassReason.trim().length === 0}
+                  onClick={() => onBreakGlassOverride(breakGlassReason.trim())}
                 >
                   {t("recoveryCard.workspace.breakGlassConfirm", { defaultValue: "Override anyway" })}
                 </Button>
