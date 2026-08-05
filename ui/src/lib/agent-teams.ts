@@ -114,6 +114,75 @@ function compareTeams(a: string, b: string): number {
     || a.localeCompare(b, undefined, { sensitivity: "base" });
 }
 
+const SUBTEAM_SEP = "\0";
+
+export type TwoLevelTeamGroup<T> = {
+  key: string;
+  team: string; // raw team name (e.g. Chinese) — localize at the display edge
+  items: T[]; // everything under this top (campus / cross-campus group)
+  directItems: T[]; // items with no second-level (department) team
+  subGroups: { key: string; team: string; items: T[] }[];
+};
+
+/**
+ * Two-level campus›department grouping shared by the sidebar and the skill
+ * team-share picker. teams[0] is the top (a campus, or a cross-campus group like
+ * 領導團隊 / 系統自動化); teams[1] is the nested department. Each item lands in
+ * EXACTLY ONE place, so the top-level groups are disjoint — selecting one campus
+ * never bleeds a partial state into another. Items with no team are omitted
+ * (callers surface those individually). Sorted by teamPriorityRank (infra last),
+ * stable within a rank. Mirrors SidebarAgents' groupAgentsByTeam, minus the
+ * ungrouped bucket, and generalized off the concrete Agent type.
+ */
+export function groupItemsByTeam<T>(
+  items: readonly T[],
+  getTeams: (item: T) => readonly string[],
+): TwoLevelTeamGroup<T>[] {
+  type TopAcc = { all: T[]; direct: T[]; subs: Map<string, T[]>; subOrder: string[] };
+  const tops = new Map<string, TopAcc>();
+  const topOrder: string[] = [];
+  const ensureTop = (key: string): TopAcc => {
+    let acc = tops.get(key);
+    if (!acc) {
+      acc = { all: [], direct: [], subs: new Map(), subOrder: [] };
+      tops.set(key, acc);
+      topOrder.push(key);
+    }
+    return acc;
+  };
+  for (const item of items) {
+    const teams = getTeams(item);
+    if (teams.length === 0) continue; // no team → not a team-share target
+    const topKey = teams[0]!;
+    const subKey = teams.length >= 2 ? teams[1]! : null;
+    const top = ensureTop(topKey);
+    top.all.push(item);
+    if (subKey) {
+      let list = top.subs.get(subKey);
+      if (!list) {
+        list = [];
+        top.subs.set(subKey, list);
+        top.subOrder.push(subKey);
+      }
+      list.push(item);
+    } else {
+      top.direct.push(item);
+    }
+  }
+  const result: TwoLevelTeamGroup<T>[] = topOrder.map((key) => {
+    const acc = tops.get(key)!;
+    return {
+      key,
+      team: key,
+      items: acc.all,
+      directItems: acc.direct,
+      subGroups: acc.subOrder.map((sk) => ({ key: `${key}${SUBTEAM_SEP}${sk}`, team: sk, items: acc.subs.get(sk)! })),
+    };
+  });
+  result.sort((a, b) => teamPriorityRank(a.team) - teamPriorityRank(b.team));
+  return result;
+}
+
 // Cross-campus groups — not scoped to any campus. Shown in the picker's 跨校/全部 section.
 export const CROSS_CAMPUS_GROUPS = ["領導團隊", "系統自動化"];
 

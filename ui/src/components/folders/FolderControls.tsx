@@ -844,6 +844,13 @@ export function BulkBar({
   onCreateAndMove,
   onClear,
   onDone,
+  shareControl,
+  onDelete,
+  moveLabel = "Move to...",
+  deleteLabel = "Delete",
+  deselectLabel = "Deselect all",
+  doneLabel = "Done",
+  selectedLabel,
 }: {
   selectedCount: number;
   folders: FolderListItem[];
@@ -851,14 +858,25 @@ export function BulkBar({
   onCreateAndMove: () => void;
   onClear: () => void;
   onDone: () => void;
+  /** Optional bulk-share control (e.g. an agent multiselect popover), rendered
+   * next to Move. Kept as a slot so this generic bar stays agent-agnostic. */
+  shareControl?: ReactNode;
+  /** When set, shows a destructive Delete action for the current selection. */
+  onDelete?: () => void;
+  moveLabel?: string;
+  deleteLabel?: string;
+  deselectLabel?: string;
+  doneLabel?: string;
+  selectedLabel?: string;
 }) {
   if (selectedCount === 0) return null;
   return (
     <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-md border border-border bg-background/95 px-3 py-2 shadow-sm backdrop-blur">
-      <span className="mr-auto text-sm text-muted-foreground">{selectedCount} selected</span>
+      <span className="mr-auto text-sm text-muted-foreground">{selectedLabel ?? `${selectedCount} selected`}</span>
+      {shareControl}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="outline">Move to...</Button>
+          <Button size="sm" variant="outline">{moveLabel}</Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <MoveToMenuItems
@@ -869,8 +887,14 @@ export function BulkBar({
           />
         </DropdownMenuContent>
       </DropdownMenu>
-      <Button size="sm" variant="ghost" onClick={onClear}>Deselect all</Button>
-      <Button size="sm" onClick={onDone}>Done</Button>
+      {onDelete ? (
+        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={onDelete}>
+          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+          {deleteLabel}
+        </Button>
+      ) : null}
+      <Button size="sm" variant="ghost" onClick={onClear}>{deselectLabel}</Button>
+      <Button size="sm" onClick={onDone}>{doneLabel}</Button>
     </div>
   );
 }

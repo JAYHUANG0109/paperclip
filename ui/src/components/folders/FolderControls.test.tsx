@@ -170,6 +170,46 @@ describe("FolderControls", () => {
     expect(folderSearchValue("folder-reporting")).toBe("folder-reporting");
   });
 
+  it("BulkBar renders the share slot and fires delete; both are opt-in", () => {
+    const onDelete = vi.fn();
+    // Without shareControl/onDelete: only Move / Deselect / Done.
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        <BulkBar
+          selectedCount={2}
+          folders={skillFolderResult.folders}
+          onMove={() => {}}
+          onCreateAndMove={() => {}}
+          onClear={() => {}}
+          onDone={() => {}}
+        />,
+      );
+    });
+    expect(container.querySelector('[data-testid="bulk-share"]')).toBeNull();
+    expect([...container.querySelectorAll("button")].some((b) => b.textContent === "Delete")).toBe(false);
+
+    // With both: share control renders and the Delete button calls onDelete.
+    act(() => {
+      root?.render(
+        <BulkBar
+          selectedCount={2}
+          folders={skillFolderResult.folders}
+          onMove={() => {}}
+          onCreateAndMove={() => {}}
+          onClear={() => {}}
+          onDone={() => {}}
+          shareControl={<button data-testid="bulk-share">share</button>}
+          onDelete={onDelete}
+        />,
+      );
+    });
+    expect(container.querySelector('[data-testid="bulk-share"]')).not.toBeNull();
+    const deleteBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("Delete"))!;
+    act(() => deleteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
   it("renders All, user folders, and Unfiled with counts and selection callbacks", () => {
     const onSelect = vi.fn();
     root = createRoot(container);

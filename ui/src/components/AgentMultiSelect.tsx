@@ -25,6 +25,9 @@ export interface AgentMultiSelectTeam {
   key: string;
   label: string;
   agentIds: string[];
+  /** Nested department groups (campus › department). A parent's agentIds is the
+   * union of its children's plus any direct members. */
+  children?: AgentMultiSelectTeam[];
 }
 
 export function AgentSelect({
@@ -120,6 +123,59 @@ export function AgentSelect({
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * One team row (recursive). A campus renders at depth 0 with the group icon; its
+ * departments render indented at depth 1. The checkbox is tri-state — all / some
+ * / none of the row's selectable agents — and toggling adds or clears every
+ * agent under that node at once. Because the group tree is built disjoint
+ * (each agent in exactly one campus›department path), a campus only ever reads
+ * "partial" when you've picked some of ITS OWN departments — never because
+ * another campus was selected.
+ */
+function renderTeamRow(
+  team: AgentMultiSelectTeam,
+  depth: number,
+  workingAgentIds: Set<string>,
+  setSelection: (next: Set<string>) => void,
+): ReactNode {
+  const selectable = team.agentIds;
+  const selectedInTeam = selectable.filter((id) => workingAgentIds.has(id)).length;
+  const allSelected = selectable.length > 0 && selectedInTeam === selectable.length;
+  const someSelected = selectedInTeam > 0 && !allSelected;
+  return (
+    <div key={team.key}>
+      <label
+        className="flex cursor-pointer items-center gap-2 py-1.5 pr-3 hover:bg-accent/30"
+        style={{ paddingLeft: `${12 + depth * 22}px` }}
+      >
+        <Checkbox
+          checked={allSelected ? true : someSelected ? "indeterminate" : false}
+          aria-label={`Share with ${team.label}`}
+          onCheckedChange={() => {
+            const next = new Set(workingAgentIds);
+            if (allSelected) selectable.forEach((id) => next.delete(id));
+            else selectable.forEach((id) => next.add(id));
+            setSelection(next);
+          }}
+        />
+        {depth === 0 ? <Users className="h-4 w-4 shrink-0 text-muted-foreground" /> : null}
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            depth === 0 ? "text-sm font-medium text-foreground" : "text-xs text-foreground/80",
+          )}
+        >
+          {team.label}
+        </span>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {selectedInTeam}/{selectable.length}
+        </span>
+      </label>
+      {team.children?.map((child) => renderTeamRow(child, depth + 1, workingAgentIds, setSelection))}
+    </div>
   );
 }
 
@@ -253,34 +309,7 @@ export function AgentMultiSelect({
             <p className="px-3 pb-0.5 pt-1 text-(length:--text-nano) font-medium uppercase tracking-wide text-muted-foreground">
               {teamsLabel}
             </p>
-            {teams.map((team) => {
-              const selectable = team.agentIds;
-              const selectedInTeam = selectable.filter((id) => workingAgentIds.has(id)).length;
-              const allSelected = selectable.length > 0 && selectedInTeam === selectable.length;
-              const someSelected = selectedInTeam > 0 && !allSelected;
-              return (
-                <label
-                  key={team.key}
-                  className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-accent/30"
-                >
-                  <Checkbox
-                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                    aria-label={`Share with ${team.label}`}
-                    onCheckedChange={() => {
-                      const next = new Set(workingAgentIds);
-                      if (allSelected) selectable.forEach((id) => next.delete(id));
-                      else selectable.forEach((id) => next.add(id));
-                      setSelection(next);
-                    }}
-                  />
-                  <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{team.label}</span>
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {selectedInTeam}/{selectable.length}
-                  </span>
-                </label>
-              );
-            })}
+            {teams.map((team) => renderTeamRow(team, 0, workingAgentIds, setSelection))}
           </div>
         ) : null}
         {loading ? (

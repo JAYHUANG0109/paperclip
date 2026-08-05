@@ -9,7 +9,7 @@ import {
 } from "@/lib/skill-i18n";
 import { SkillMembersPanel } from "../components/SkillMembersPanel";
 import { TeamScopePicker } from "../components/TeamScopePicker";
-import { useCallback, useEffect, useMemo, useRef, useState, type SVGProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -38,7 +38,7 @@ import type {
 } from "@paperclipai/shared";
 import { companySkillsApi } from "../api/companySkills";
 import { foldersApi } from "../api/folders";
-import { agentTeams, localizeTeamName } from "../lib/agent-teams";
+import { agentTeams, localizeTeamName, groupItemsByTeam } from "../lib/agent-teams";
 import { agentsApi } from "../api/agents";
 import { accessApi } from "../api/access";
 import { authApi } from "../api/auth";
@@ -53,7 +53,7 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { CopyText } from "../components/CopyText";
 import { Identity } from "../components/Identity";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { AgentMultiSelect } from "../components/AgentMultiSelect";
+import { AgentMultiSelect, type AgentMultiSelectTeam } from "../components/AgentMultiSelect";
 import { useAdapterCapabilities } from "../adapters/use-adapter-capabilities";
 import {
   SkillPolicyDenialNotice,
@@ -1231,6 +1231,8 @@ export function DiscoveryGrid({
   onMoveSelected,
   onCreateFolderAndMoveSelected,
   onClearSelected,
+  onDeleteSelected,
+  bulkShareControl,
   onOpenMobileFolders,
   onCreateFolderIn,
   onEnsureMyFolder,
@@ -1281,6 +1283,10 @@ export function DiscoveryGrid({
   onMoveSelected?: (folderId: string | null) => void;
   onCreateFolderAndMoveSelected?: () => void;
   onClearSelected?: () => void;
+  /** Delete every selected skill (parent opens a confirm dialog). */
+  onDeleteSelected?: () => void;
+  /** Bulk-share control (agent multiselect popover) rendered in the BulkBar. */
+  bulkShareControl?: ReactNode;
   onOpenMobileFolders?: () => void;
   /** Create a folder under `parentId` (null = top level), used by the tree rail. */
   onCreateFolderIn?: (parentId: string | null) => void;
@@ -1562,6 +1568,13 @@ export function DiscoveryGrid({
                 onCreateAndMove={onCreateFolderAndMoveSelected}
                 onClear={onClearSelected}
                 onDone={onToggleSelectMode ?? onClearSelected}
+                shareControl={bulkShareControl}
+                onDelete={onDeleteSelected}
+                selectedLabel={t("companySkills.bulkSelected", { defaultValue: "{{count}} selected", count: selectedSkillIds.length })}
+                moveLabel={t("companySkills.bulkMove", { defaultValue: "Move to..." })}
+                deleteLabel={t("companySkills.bulkDelete", { defaultValue: "Delete" })}
+                deselectLabel={t("companySkills.bulkDeselect", { defaultValue: "Deselect all" })}
+                doneLabel={t("common.done", { defaultValue: "Done" })}
               />
             </div>
           ) : null}
@@ -2949,31 +2962,31 @@ function AttachAgentsPopover({
   onSubmit: (nextIds: string[], versionId: string | null) => void;
   fullWidth?: boolean;
 }) {
-  const { t } = useTranslation();
-  const lang = useSkillLang();
+  const { t, i18n } = useTranslation();
   const [draftVersionId, setDraftVersionId] = useState<string | null>(selectedVersionId);
   const attachedIds = useMemo(() => new Set(attachedAgentIds), [attachedAgentIds]);
   const eligible = agents.filter((agent) => agent.supportsSkills);
   const sortedVersions = [...versions].sort((a, b) => b.revisionNumber - a.revisionNumber);
 
-  // Team shortcuts: group the selectable agents (skills-capable, not force-
-  // required) by their team membership so a whole team can be shared to at once.
-  // Required/unsupported agents are excluded — they're disabled in the list, so
-  // a team toggle must never try to add or remove them.
-  const teamShareGroups = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; agentIds: string[] }>();
-    for (const agent of agents) {
-      if (!agent.supportsSkills || agent.required) continue;
-      for (const team of agent.teams) {
-        const existing = map.get(team);
-        if (existing) existing.agentIds.push(agent.id);
-        else map.set(team, { key: team, label: localizeTeamName(team, lang), agentIds: [agent.id] });
-      }
-    }
-    return Array.from(map.values())
-      .filter((group) => group.agentIds.length > 0)
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [agents, lang]);
+  // Team shortcuts: the same disjoint campus›department grouping the sidebar
+  // uses, so a whole campus (or one department inside it) can be shared to at
+  // once. Only selectable agents (skills-capable, not force-required) go in —
+  // disabled rows must never be toggled by a team checkbox. Labels follow the
+  // APP locale (i18n.language), not the skills-page language toggle, so they
+  // read in the platform's language (Traditional Chinese) like the sidebar.
+  const teamShareGroups = useMemo<AgentMultiSelectTeam[]>(() => {
+    const selectable = agents.filter((agent) => agent.supportsSkills && !agent.required);
+    return groupItemsByTeam(selectable, (agent) => agent.teams).map((group) => ({
+      key: group.key,
+      label: localizeTeamName(group.team, i18n.language),
+      agentIds: group.items.map((agent) => agent.id),
+      children: group.subGroups.map((sub) => ({
+        key: sub.key,
+        label: localizeTeamName(sub.team, i18n.language),
+        agentIds: sub.items.map((agent) => agent.id),
+      })),
+    }));
+  }, [agents, i18n.language]);
 
   return (
     <AgentMultiSelect
@@ -3011,6 +3024,73 @@ function AttachAgentsPopover({
           </select>
         </div>
       ) : null}
+      emptyMessage={eligible.length === 0 ? "No agents in this company support skills yet." : "No agents yet."}
+      isAgentDisabled={(agent) => {
+        const option = agent as AttachAgentOption;
+        return option.required || !option.supportsSkills;
+      }}
+      getDescription={(agent) => {
+        const option = agent as AttachAgentOption;
+        return `${option.adapterType}${option.required ? " · required" : ""}${!option.supportsSkills ? " · skills not supported" : ""}`;
+      }}
+      renderNameSuffix={(agent) => (agent as AttachAgentOption).paused ? (
+        <Badge variant="outline" className="[&>svg]:size-2.5 border-amber-500/30 bg-amber-500/10 px-1.5 text-(length:--text-nano) uppercase tracking-wide text-amber-500">
+          <Pause className="h-2.5 w-2.5" aria-hidden="true" />
+          Paused
+        </Badge>
+      ) : null}
+    />
+  );
+}
+
+/**
+ * Bulk "Share to agents" for the Skills page's Select mode. Same agent picker as
+ * a single skill's Add-to-agent popover (individual agents + campus›department
+ * team shortcuts), but ADDITIVE and version-less: on save it attaches the whole
+ * selected-skill set to the chosen agents (latest version), without removing any
+ * existing attachment. Starts from an empty selection each open.
+ */
+function BulkShareAgentsPopover({
+  agents,
+  pending,
+  onShare,
+}: {
+  agents: AttachAgentOption[];
+  pending: boolean;
+  onShare: (agentIds: string[]) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const eligible = agents.filter((agent) => agent.supportsSkills);
+  const emptySelection = useMemo(() => new Set<string>(), []);
+  const teamShareGroups = useMemo<AgentMultiSelectTeam[]>(() => {
+    const selectable = agents.filter((agent) => agent.supportsSkills && !agent.required);
+    return groupItemsByTeam(selectable, (agent) => agent.teams).map((group) => ({
+      key: group.key,
+      label: localizeTeamName(group.team, i18n.language),
+      agentIds: group.items.map((agent) => agent.id),
+      children: group.subGroups.map((sub) => ({
+        key: sub.key,
+        label: localizeTeamName(sub.team, i18n.language),
+        agentIds: sub.items.map((agent) => agent.id),
+      })),
+    }));
+  }, [agents, i18n.language]);
+
+  return (
+    <AgentMultiSelect
+      agents={agents}
+      selectedAgentIds={emptySelection}
+      onSave={(nextIds) => onShare(Array.from(nextIds))}
+      pending={pending}
+      triggerLabel={t("companySkills.bulkShare", { defaultValue: "Share to agents" })}
+      triggerIcon={<Plus className="mr-1.5 h-3.5 w-3.5" />}
+      triggerVariant="outline"
+      triggerSize="sm"
+      triggerFullWidth={false}
+      contentAlign="end"
+      showSelectionPreview={false}
+      teams={teamShareGroups}
+      teamsLabel={t("companySkills.shareByTeam", { defaultValue: "Share by team" })}
       emptyMessage={eligible.length === 0 ? "No agents in this company support skills yet." : "No agents yet."}
       isAgentDisabled={(agent) => {
         const option = agent as AttachAgentOption;
@@ -4745,6 +4825,8 @@ export function CompanySkills() {
   >(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [moveAfterCreateSkillIds, setMoveAfterCreateSkillIds] = useState<string[]>([]);
   const parsedRoute = useMemo(() => parseSkillRoute(routePath), [routePath]);
   const isStudioNew = routePath === "studio/new";
@@ -6159,6 +6241,68 @@ export function CompanySkills() {
     }
   }
 
+  // Bulk-share the selected skills to the chosen agents. ADDITIVE — each agent
+  // keeps its existing skills and gains any of the selected ones it lacks
+  // (latest version). Never removes an attachment, so it's safe to fan out.
+  async function shareSelectedSkills(agentIds: string[]) {
+    const keys = Array.from(new Set(
+      installedSkills.filter((skill) => selectedSkillIds.includes(skill.id)).map((skill) => skill.key),
+    ));
+    if (agentIds.length === 0 || keys.length === 0) return;
+    setBulkBusy(true);
+    try {
+      for (const agentId of agentIds) {
+        const snapshot = await agentsApi.skills(agentId, selectedCompanyId ?? undefined);
+        const entries: AgentDesiredSkillEntry[] = snapshot.desiredSkillEntries
+          ?? snapshot.desiredSkills.map((key) => ({ key, versionId: null }));
+        const have = new Set(entries.map((entry) => entry.key));
+        let added = false;
+        for (const key of keys) if (!have.has(key)) { entries.push({ key, versionId: null }); added = true; }
+        if (added) await attachAgentsMutation.mutateAsync({ agentId, desiredSkills: entries });
+      }
+      setSelectedSkillIds([]);
+      setSelectMode(false);
+      pushToast({
+        tone: "success",
+        title: t("companySkills.bulkSharedTitle", { defaultValue: "Skills shared" }),
+        body: t("companySkills.bulkSharedBody", { defaultValue: "{{skills}} skill(s) shared to {{agents}} agent(s).", skills: keys.length, agents: agentIds.length }),
+      });
+    } catch (error) {
+      pushToast({ tone: "error", title: "Share failed", body: error instanceof Error ? error.message : "Failed to share the selected skills." });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // Bulk-delete the selected skills. Forced (detaches from any agents using
+  // them) — the confirm dialog says so. Runs after explicit confirmation.
+  async function deleteSelectedSkills() {
+    const ids = selectedSkillIds;
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      for (const id of ids) {
+        await companySkillsApi.delete(selectedCompanyId!, id, { force: true });
+      }
+      setSelectedSkillIds([]);
+      setSelectMode(false);
+      setBulkDeleteOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.folders.list(selectedCompanyId!, "skill") }),
+      ]);
+      pushToast({
+        tone: "success",
+        title: t("companySkills.bulkDeletedTitle", { defaultValue: "Skills deleted" }),
+        body: t("companySkills.bulkDeletedBody", { defaultValue: "{{count}} skill(s) removed.", count: ids.length }),
+      });
+    } catch (error) {
+      pushToast({ tone: "error", title: "Delete failed", body: error instanceof Error ? error.message : "Failed to delete the selected skills." });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   // Provision the signed-in user's personal "My Skills" root, then select it.
   const ensureMyFolder = useMutation({
     mutationFn: () => foldersApi.ensureMy(selectedCompanyId!),
@@ -6534,6 +6678,35 @@ export function CompanySkills() {
                 </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={(open) => { if (!open && !bulkBusy) setBulkDeleteOpen(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("companySkills.bulkDeleteTitle", { defaultValue: "Delete selected skills" })}</DialogTitle>
+            <DialogDescription>
+              {t("companySkills.bulkDeleteDesc", { defaultValue: "This permanently removes the selected skills from the company library and detaches them from any agents using them. This cannot be undone." })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm">
+            <p>
+              {t("companySkills.bulkDeleteConfirm", {
+                defaultValue: "You are about to delete {{count}} skill(s).",
+                count: selectedSkillIds.length,
+              })}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setBulkDeleteOpen(false)} disabled={bulkBusy}>
+              {t("common.cancel", { defaultValue: "Cancel" })}
+            </Button>
+            <Button variant="destructive" onClick={() => void deleteSelectedSkills()} disabled={bulkBusy || selectedSkillIds.length === 0}>
+              {bulkBusy
+                ? t("companySkills.removingSkill", { defaultValue: "Removing..." })
+                : t("companySkills.bulkDeleteConfirmBtn", { defaultValue: "Delete {{count}}", count: selectedSkillIds.length })}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -7070,6 +7243,14 @@ export function CompanySkills() {
           onMoveSelected={showInstalledFolders ? (folderId) => void moveSelectedSkills(folderId) : undefined}
           onCreateFolderAndMoveSelected={showInstalledFolders ? () => openCreateFolder(selectedSkillIds) : undefined}
           onClearSelected={showInstalledFolders ? () => setSelectedSkillIds([]) : undefined}
+          onDeleteSelected={showInstalledFolders ? () => setBulkDeleteOpen(true) : undefined}
+          bulkShareControl={showInstalledFolders ? (
+            <BulkShareAgentsPopover
+              agents={eligibleAgentsForAttach}
+              pending={bulkBusy}
+              onShare={(agentIds) => void shareSelectedSkills(agentIds)}
+            />
+          ) : undefined}
           folderNudgeStorageKey={showInstalledFolders ? `paperclip:skills-folder-nudge:${selectedCompanyId ?? "none"}` : undefined}
         />
       ) : activeView === "installed" && selectedSkillId ? (

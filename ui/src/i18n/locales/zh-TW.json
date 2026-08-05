@@ -2610,7 +2610,20 @@
     "uploadAllSkippedBody": "全部 {{count}} 個技能都已在技能庫中且已正確歸檔。",
     "uploadStagedCount": "將建立 {{count}} 個技能",
     "uploadStagedPackages": "+ {{count}} 個套件（上傳時解開）",
-    "shareByTeam": "分享給團隊"
+    "shareByTeam": "分享給團隊",
+    "bulkSelected": "已選 {{count}} 項",
+    "bulkMove": "移動到…",
+    "bulkDelete": "刪除",
+    "bulkDeselect": "取消全選",
+    "bulkShare": "分享給代理人",
+    "bulkSharedTitle": "技能已分享",
+    "bulkSharedBody": "已將 {{skills}} 個技能分享給 {{agents}} 位代理人。",
+    "bulkDeletedTitle": "技能已刪除",
+    "bulkDeletedBody": "已移除 {{count}} 個技能。",
+    "bulkDeleteTitle": "刪除所選技能",
+    "bulkDeleteDesc": "這會從公司技能庫永久移除所選技能，並從所有使用中的代理人卸除。此動作無法復原。",
+    "bulkDeleteConfirm": "你即將刪除 {{count}} 個技能。",
+    "bulkDeleteConfirmBtn": "刪除 {{count}}"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",

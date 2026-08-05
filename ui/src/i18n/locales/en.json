@@ -2512,7 +2512,20 @@
     "uploadOnlyReferenceMd": "Found {{count}} .md, but none is a skill — a skill needs a SKILL.md. Loose .md inside a package/bundle are treated as references. Drop bare .md files directly (no SKILL.md) to make each one a skill.",
     "uploadStagedCount": "Will create {{count}} skill(s)",
     "uploadStagedPackages": "+ {{count}} package(s) (unpacked on upload)",
-    "shareByTeam": "Share by team"
+    "shareByTeam": "Share by team",
+    "bulkSelected": "{{count}} selected",
+    "bulkMove": "Move to...",
+    "bulkDelete": "Delete",
+    "bulkDeselect": "Deselect all",
+    "bulkShare": "Share to agents",
+    "bulkSharedTitle": "Skills shared",
+    "bulkSharedBody": "{{skills}} skill(s) shared to {{agents}} agent(s).",
+    "bulkDeletedTitle": "Skills deleted",
+    "bulkDeletedBody": "{{count}} skill(s) removed.",
+    "bulkDeleteTitle": "Delete selected skills",
+    "bulkDeleteDesc": "This permanently removes the selected skills from the company library and detaches them from any agents using them. This cannot be undone.",
+    "bulkDeleteConfirm": "You are about to delete {{count}} skill(s).",
+    "bulkDeleteConfirmBtn": "Delete {{count}}"
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",
