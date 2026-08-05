@@ -3057,18 +3057,20 @@
       "comments": "Comments",
       "documents": "Documents",
       "agents": "Agents",
-      "projects": "Projects"
+      "projects": "Projects",
+      "artifacts": "Artifacts"
     },
     "subgroup": {
       "issues": "Issues",
       "comments": "Comments",
       "documents": "Documents",
       "agents": "Agents",
-      "projects": "Projects"
+      "projects": "Projects",
+      "artifacts": "Artifacts"
     },
     "allScopes": "All scopes",
     "breadcrumb": "Search",
-    "inputPlaceholder": "Search issues, comments, documents, agents, projects…",
+    "inputPlaceholder": "Search issues, comments, documents, artifacts, agents, projects…",
     "inputAria": "Search query",
     "clearSearch": "Clear search",
     "initialHeading": "Type to search company memory.",
@@ -3099,7 +3101,10 @@
     "resultCount_one": "1 result",
     "resultCount_other": "{{count}} results",
     "sortedByRelevance": "sorted by relevance",
-    "updating": "Updating…"
+    "updating": "Updating…",
+    "resultCountOfTotal": "{{count}} of {{total}} results",
+    "sortedByField": "sorted by {{field}}",
+    "filtersActive": "{{count}} filters active"
   },
   "costs": {
     "financeLedger": "Finance ledger",
@@ -4672,7 +4677,9 @@
     "createNewIssue": "Create new issue",
     "createNewAgent": "Create new agent",
     "createNewProject": "Create new project",
-    "pagesHeading": "Pages"
+    "pagesHeading": "Pages",
+    "quickFiltersHeading": "Quick filters",
+    "openFileInIssue": "Open file in this issue..."
   },
   "choosePath": {
     "choose": "Choose",

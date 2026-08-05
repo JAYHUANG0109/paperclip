@@ -3155,18 +3155,20 @@
       "comments": "留言",
       "documents": "文件",
       "agents": "代理人",
-      "projects": "專案"
+      "projects": "專案",
+      "artifacts": "產出物"
     },
     "subgroup": {
       "issues": "議題",
       "comments": "留言",
       "documents": "文件",
       "agents": "代理人",
-      "projects": "專案"
+      "projects": "專案",
+      "artifacts": "產出物"
     },
     "allScopes": "所有範圍",
     "breadcrumb": "搜尋",
-    "inputPlaceholder": "搜尋議題、留言、文件、代理人、專案…",
+    "inputPlaceholder": "搜尋議題、留言、文件、產出物、代理人、專案…",
     "inputAria": "搜尋查詢",
     "clearSearch": "清除搜尋",
     "initialHeading": "輸入以搜尋公司記憶。",
@@ -3197,7 +3199,10 @@
     "resultCount_one": "1 筆結果",
     "resultCount_other": "{{count}} 筆結果",
     "sortedByRelevance": "依相關性排序",
-    "updating": "更新中…"
+    "updating": "更新中…",
+    "resultCountOfTotal": "{{total}} 筆中的 {{count}} 筆結果",
+    "sortedByField": "依 {{field}} 排序",
+    "filtersActive": "{{count}} 個篩選條件生效"
   },
   "costs": {
     "financeLedger": "財務帳本",
@@ -4770,7 +4775,9 @@
     "createNewIssue": "建立新議題",
     "createNewAgent": "建立新代理",
     "createNewProject": "建立新專案",
-    "pagesHeading": "頁面"
+    "pagesHeading": "頁面",
+    "quickFiltersHeading": "快速篩選",
+    "openFileInIssue": "開啟此議題中的檔案…"
   },
   "choosePath": {
     "choose": "選擇",

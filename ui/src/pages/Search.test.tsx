@@ -463,7 +463,10 @@ describe("Search page", () => {
       expect(container.textContent).toContain("Couldn’t run that search");
       expect(container.textContent).toContain("The server returned 500.");
       expect(container.textContent).toContain("Retry");
-      expect(container.textContent).toContain("Open Tasks filter view");
+      // Upstream renamed issues to "Tasks" in user-facing copy. This fork still
+      // says "Issues" / 議題 on this surface in both locale bundles, so assert the
+      // fork's wording rather than flipping app-wide terminology for one test.
+      expect(container.textContent).toContain("Open Issues filter view");
     });
 
     flushSync(() => {
