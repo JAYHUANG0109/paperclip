@@ -45,6 +45,12 @@ import {
 } from "../lib/issueDetailBreadcrumb";
 import { prefetchIssueDetail } from "../lib/issueDetailCache";
 import {
+  cancelInboxIssueQueries,
+  removeIssueFromInboxCaches,
+  restoreIssueToInboxCaches,
+  snapshotInboxIssueCaches,
+} from "../lib/inboxArchiveCache";
+import {
   hasBlockingShortcutDialog,
   isKeyboardShortcutTextInputTarget,
   resolveInboxUndoArchiveKeyAction,
@@ -818,10 +824,13 @@ export function Inbox() {
   });
 
   const { data: issues, isLoading: isIssuesLoading } = useQuery({
-    queryKey: [...queryKeys.issues.list(selectedCompanyId!), "with-routine-executions"],
+    queryKey: [...queryKeys.issues.list(selectedCompanyId!), "with-routine-executions", "live-descendant-summary"],
     queryFn: () =>
       issuesApi.list(selectedCompanyId!, {
         includeRoutineExecutions: true,
+        // Row chips report whether anything under a task is still running; without
+        // this the server omits that summary and the chips stay dark.
+        includeLiveDescendantSummary: true,
         limit: INBOX_ISSUE_LIST_LIMIT,
       }),
     enabled: !!selectedCompanyId,
@@ -832,13 +841,14 @@ export function Inbox() {
     data: mineIssuesRaw = [],
     isLoading: isMineIssuesLoading,
   } = useQuery({
-    queryKey: [...queryKeys.issues.listMineByMe(selectedCompanyId!), "with-routine-executions"],
+    queryKey: [...queryKeys.issues.listMineByMe(selectedCompanyId!), "with-routine-executions", "live-descendant-summary"],
     queryFn: () =>
       issuesApi.list(selectedCompanyId!, {
         touchedByUserId: "me",
         inboxArchivedByUserId: "me",
         status: INBOX_MINE_ISSUE_STATUS_FILTER,
         includeRoutineExecutions: true,
+        includeLiveDescendantSummary: true,
         limit: INBOX_ISSUE_LIST_LIMIT,
       }),
     enabled: !!selectedCompanyId,
@@ -849,12 +859,13 @@ export function Inbox() {
     data: touchedIssuesRaw = [],
     isLoading: isTouchedIssuesLoading,
   } = useQuery({
-    queryKey: [...queryKeys.issues.listTouchedByMe(selectedCompanyId!), "with-routine-executions"],
+    queryKey: [...queryKeys.issues.listTouchedByMe(selectedCompanyId!), "with-routine-executions", "live-descendant-summary"],
     queryFn: () =>
       issuesApi.list(selectedCompanyId!, {
         touchedByUserId: "me",
         status: INBOX_MINE_ISSUE_STATUS_FILTER,
         includeRoutineExecutions: true,
+        includeLiveDescendantSummary: true,
         limit: INBOX_ISSUE_LIST_LIMIT,
       }),
     enabled: !!selectedCompanyId,
@@ -1598,26 +1609,17 @@ export function Inbox() {
     onMutate: async (id) => {
       setActionError(null);
       setArchivingIssueIds((prev) => new Set(prev).add(id));
+      if (!selectedCompanyId) return { previousData: undefined };
 
-      // Cancel in-flight refetches so they don't overwrite our optimistic update
-      const queryKeys_ = [
-        [...queryKeys.issues.listMineByMe(selectedCompanyId!), "with-routine-executions"],
-        [...queryKeys.issues.listTouchedByMe(selectedCompanyId!), "with-routine-executions"],
-        queryKeys.issues.listUnreadTouchedByMe(selectedCompanyId!),
-      ];
-      await Promise.all(queryKeys_.map((qk) => queryClient.cancelQueries({ queryKey: qk })));
-
-      // Snapshot previous data for rollback
-      const previousData = queryKeys_.map((qk) => [qk, queryClient.getQueryData(qk)] as const);
-
-      // Optimistically remove the issue from all inbox query caches
-      for (const qk of queryKeys_) {
-        queryClient.setQueryData(qk, (old: unknown) => {
-          if (!Array.isArray(old)) return old;
-          return old.filter((issue: { id: string }) => issue.id !== id);
-        });
-      }
-
+      /*
+       * Match the inbox caches by key *prefix* rather than reconstructing exact keys
+       * here. The exact keys carry suffixes that change whenever a query gains an
+       * option, and a stale copy of them silently stops matching — the row then stays
+       * on screen through the whole request. inboxArchiveCache owns the prefixes.
+       */
+      await cancelInboxIssueQueries(queryClient, selectedCompanyId);
+      const previousData = snapshotInboxIssueCaches(queryClient, selectedCompanyId);
+      removeIssueFromInboxCaches(queryClient, selectedCompanyId, id);
       return { previousData };
     },
     onError: (err, id, context) => {
@@ -1627,11 +1629,9 @@ export function Inbox() {
         next.delete(id);
         return next;
       });
-      // Restore previous query data on failure
+      // Restore previous query data on failure, putting the row back where it was.
       if (context?.previousData) {
-        for (const [qk, data] of context.previousData) {
-          queryClient.setQueryData(qk, data);
-        }
+        restoreIssueToInboxCaches(queryClient, context.previousData, id);
       }
     },
     onSettled: (_data, _error, id) => {
@@ -1902,23 +1902,35 @@ export function Inbox() {
         return {};
       };
 
+      // Act on the row under the cursor when the pointer has moved since the last key
+      // nav (so "hover a row → press a/r/Enter/Arrow" acts on it), otherwise on the
+      // keyboard selection. Hover deliberately does not write selection state, so this
+      // is what threads the pointer position into every handler below; without it j/k
+      // restarted at the top of the list and a/r/Enter hit the wrong row.
+      const rawHovered = hoveredIndexRef.current;
+      const hoveredIndex = rawHovered != null && rawHovered >= 0 && rawHovered < navCount ? rawHovered : -1;
+      const fromHover = pointerMovedSinceKeyNavRef.current && hoveredIndex >= 0;
+      const effectiveIndex = fromHover ? hoveredIndex : st.selectedIndex;
+
       switch (e.key) {
         case "j":
         case "ArrowDown": {
           e.preventDefault();
-          setSelectedIndex((prev) => getInboxKeyboardSelectionIndex(prev, navCount, "next"));
+          pointerMovedSinceKeyNavRef.current = false;
+          setSelectedIndex(getInboxKeyboardSelectionIndex(effectiveIndex, navCount, "next"));
           break;
         }
         case "k":
         case "ArrowUp": {
           e.preventDefault();
-          setSelectedIndex((prev) => getInboxKeyboardSelectionIndex(prev, navCount, "previous"));
+          pointerMovedSinceKeyNavRef.current = false;
+          setSelectedIndex(getInboxKeyboardSelectionIndex(effectiveIndex, navCount, "previous"));
           break;
         }
         case "ArrowLeft":
         case "ArrowRight": {
-          if (st.selectedIndex < 0 || st.selectedIndex >= navCount) return;
-          const entry = navItems[st.selectedIndex];
+          if (effectiveIndex < 0 || effectiveIndex >= navCount) return;
+          const entry = navItems[effectiveIndex];
           if (!entry || entry.type !== "group") return;
           e.preventDefault();
           act.setGroupCollapsed(entry.groupKey, e.key === "ArrowLeft");
@@ -1926,9 +1938,9 @@ export function Inbox() {
         }
         case "a":
         case "y": {
-          if (st.selectedIndex < 0 || st.selectedIndex >= navCount) return;
+          if (effectiveIndex < 0 || effectiveIndex >= navCount) return;
           e.preventDefault();
-          const { issue, item } = resolveNavEntry(st.selectedIndex);
+          const { issue, item } = resolveNavEntry(effectiveIndex);
           if (issue) {
             if (!st.nonInboxSearchIssueIds.has(issue.id) && !st.archivingIssueIds.has(issue.id)) act.archiveIssue(issue.id);
           } else if (item) {
@@ -1944,9 +1956,9 @@ export function Inbox() {
           break;
         }
         case "U": {
-          if (st.selectedIndex < 0 || st.selectedIndex >= navCount) return;
+          if (effectiveIndex < 0 || effectiveIndex >= navCount) return;
           e.preventDefault();
-          const { issue, item } = resolveNavEntry(st.selectedIndex);
+          const { issue, item } = resolveNavEntry(effectiveIndex);
           if (issue) {
             act.markUnreadIssue(issue.id);
           } else if (item) {
@@ -1956,9 +1968,9 @@ export function Inbox() {
           break;
         }
         case "r": {
-          if (st.selectedIndex < 0 || st.selectedIndex >= navCount) return;
+          if (effectiveIndex < 0 || effectiveIndex >= navCount) return;
           e.preventDefault();
-          const { issue, item } = resolveNavEntry(st.selectedIndex);
+          const { issue, item } = resolveNavEntry(effectiveIndex);
           if (issue) {
             if (issue.isUnreadForMe && !st.fadingOutIssues.has(issue.id)) act.markRead(issue.id);
           } else if (item) {
@@ -1972,9 +1984,9 @@ export function Inbox() {
           break;
         }
         case "Enter": {
-          if (st.selectedIndex < 0 || st.selectedIndex >= navCount) return;
+          if (effectiveIndex < 0 || effectiveIndex >= navCount) return;
           e.preventDefault();
-          const { issue, item } = resolveNavEntry(st.selectedIndex);
+          const { issue, item } = resolveNavEntry(effectiveIndex);
           if (issue) {
             const pathId = issue.identifier ?? issue.id;
             const detailState = armIssueDetailInboxQuickArchive(withIssueDetailHeaderSeed(issueLinkState, issue));
@@ -2540,7 +2552,9 @@ export function Inbox() {
                       unreadState={isUnread ? "visible" : isFading ? "fading" : "hidden"}
                       onMarkRead={() => markReadMutation.mutate(issue.id)}
                       onArchive={allowArchive ? () => archiveIssueMutation.mutate(issue.id) : undefined}
-                      archiveDisabled={isArchiving || archiveIssueMutation.isPending}
+                      // Per-issue only. Also gating on the mutation's global isPending
+                      // froze every other row's control while one archive was in flight.
+                      archiveDisabled={isArchiving}
                       desktopTrailing={
                         visibleTrailingIssueColumns.length > 0 ? (
                           <InboxIssueTrailingColumns

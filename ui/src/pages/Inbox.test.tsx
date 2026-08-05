@@ -567,6 +567,9 @@ describe("Inbox toolbar", () => {
     }
   });
 
+  // Upstream's IssueRow has a labelled "Archive" button; this fork uses a compact X
+  // with aria-label "Dismiss from inbox" (從收件匣移除). Same action, different affordance,
+  // so these cases target the fork's control.
   it("keeps other issue archive controls enabled while one archive is pending", async () => {
     routerMock.location.pathname = "/inbox/mine";
     const issueA = createIssue({ id: "issue-a", identifier: "PAP-1001", title: "First inbox row" });
@@ -595,7 +598,7 @@ describe("Inbox toolbar", () => {
     });
 
     const initialArchiveButtons = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button[aria-label="Archive"]'),
+      container.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss from inbox"]'),
     );
     expect(initialArchiveButtons.length).toBeGreaterThanOrEqual(2);
 
@@ -610,7 +613,7 @@ describe("Inbox toolbar", () => {
     });
 
     const remainingArchiveButton = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Archive"]',
+      'button[aria-label="Dismiss from inbox"]',
     );
     expect(remainingArchiveButton).not.toBeNull();
     expect(remainingArchiveButton?.disabled).toBe(false);
