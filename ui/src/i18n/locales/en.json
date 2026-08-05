@@ -60,7 +60,10 @@
     "memory": "Memory",
     "myTasks": "Recent",
     "myTasksSeeAll": "See all tasks",
-    "audit": "Audit"
+    "audit": "Audit",
+    "pipelines": "Pipelines",
+    "apps": "Apps",
+    "timeline": "Timeline"
   },
   "sort": {
     "top": "Top",

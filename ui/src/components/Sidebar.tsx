@@ -10,6 +10,7 @@ import {
   Network,
   Boxes,
   Repeat,
+  AppWindow,
   GitBranch,
   Package,
   Settings,
@@ -53,6 +54,7 @@ import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, SIDEBAR_RAIL_HIDDEN_LABEL, agentUrl } from "../lib/utils";
+import { SidebarStarredProjects } from "./SidebarStarredProjects";
 import { PluginSlotOutlet } from "@/plugins/slots";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
@@ -136,7 +138,14 @@ export function Sidebar() {
   // opt-out and hardcodes `true` (PAP-12472); the fork keeps the flag, so the
   // classic branch below stays reachable. Gating is navigation-only — all
   // routes stay registered in both modes.
-  const streamlined = experimentalSettings?.enableStreamlinedLeftNavigation !== false;
+  /*
+   * The opt-out is retired (upstream PAP-12472): streamlined is the only path. It stayed
+   * readable here after a merge, which left a stale `false` in instance settings able to
+   * restore the classic sidebar — a path this fork no longer maintains (SidebarAgents
+   * ignores the prop entirely), so it renders half-built. One line to revert if an
+   * instance genuinely wants classic back.
+   */
+  const streamlined = true;
   // Conference Room Chat flag (PAP-136/PAP-137): the Conference Room nav item
   // is a new surface, hidden entirely while the flag is off (same no-flash
   // pattern as showWorkspacesLink above).
@@ -286,6 +295,13 @@ export function Sidebar() {
           {SHOW_BOUNTIES && isAdminViewer && <SidebarNavItem to="/bounties" label={t("nav.bounties", { defaultValue: "Bounties" })} icon={Lightbulb} />}
           <SidebarNavItem to="/office" label={t("nav.office", { defaultValue: "Virtual Office" })} icon={Building2} />
           <SidebarNavItem to="/routines" label={t("nav.routines", { defaultValue: "Routines" })} icon={Repeat} />
+          {/* Routed and built, but this sidebar linked to none of them, so Pipelines,
+              Apps and Timeline were reachable only by typing the URL. Gated exactly as
+              upstream gates them; showApps/showPipelines were already computed here and
+              used by nothing. */}
+          {showPipelines && (
+            <SidebarNavItem to="/pipelines" label={t("nav.pipelines", { defaultValue: "Pipelines" })} icon={GitBranch} />
+          )}
           {isAdminViewer && <SidebarNavItem to="/goals" label={t("nav.goals", { defaultValue: "Goals" })} icon={Target} />}
           {/* Deliberately NOT behind isAdminViewer: everyone has their own
               memory, and it is scoped to the signed-in user server-side. Hiding
@@ -298,7 +314,12 @@ export function Sidebar() {
             <SidebarNavItem to="/workspaces" label={t("nav.workspaces", { defaultValue: "Workspaces" })} icon={GitBranch} />
           ) : null}
           {streamlined ? (
-            <SidebarNavItem to="/projects" label={t("nav.projects", { defaultValue: "Projects" })} icon={FolderOpen} />
+            <>
+              <SidebarNavItem to="/projects" label={t("nav.projects", { defaultValue: "Projects" })} icon={FolderOpen} />
+              {/* Starred projects under the Projects link. The component existed with no
+                  importer at all — starring a project had nowhere to show up. */}
+              <SidebarStarredProjects />
+            </>
           ) : null}
           {/* Plugin sidebar items (currently the LLM Wiki "Wiki" button) — hidden
               from non-admins for now to declutter. Admins still see it; the plugin
@@ -332,6 +353,10 @@ export function Sidebar() {
 
         <SidebarSection label={t("nav.company", { defaultValue: "Company" })}>
           <SidebarNavItem to="/org" label={t("nav.org", { defaultValue: "Org" })} icon={Network} />
+          {showApps && (
+            <SidebarNavItem to="/apps" label={t("nav.apps", { defaultValue: "Apps" })} icon={AppWindow} />
+          )}
+          <SidebarNavItem to="/timeline" label={t("nav.timeline", { defaultValue: "Timeline" })} icon={GanttChartSquare} />
           <SidebarNavItem to="/costs" label={t("nav.costs", { defaultValue: "Costs" })} icon={DollarSign} />
           <SidebarNavItem to="/activity" label={t("nav.activity", { defaultValue: "Activity" })} icon={History} />
           <SidebarNavItem to="/audit" label={t("nav.audit", { defaultValue: "Audit" })} icon={ScrollText} />

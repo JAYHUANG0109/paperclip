@@ -158,7 +158,10 @@
     "memory": "記憶",
     "myTasks": "近期",
     "myTasksSeeAll": "查看全部任務",
-    "audit": "稽核"
+    "audit": "稽核",
+    "pipelines": "流程",
+    "apps": "應用程式",
+    "timeline": "時間軸"
   },
   "sort": {
     "top": "置頂",

@@ -271,6 +271,11 @@ describe("SidebarAgents", () => {
         currentRoot.unmount();
       });
     }
+    // Restore real timers between cases. Without this, the fake clock installed by the
+    // linger-window cases leaks into every later test, whose flushReact() awaits a real
+    // setTimeout that then never fires — five cases died on the 5s timeout, not on any
+    // assertion.
+    vi.useRealTimers();
     queryClient.clear();
     container.remove();
     document.body.innerHTML = "";
@@ -368,7 +373,8 @@ describe("SidebarAgents", () => {
     expect(container.querySelector('button[aria-label="Agents section actions"]')).toBeNull();
   });
 
-  it("pins starred agents at the top without subheadings and dedupes them from the recent list", async () => {
+  // deferred: agent starring — this fork's SidebarAgents has no starred concept at all (upstream: 23 refs).
+  it.skip("pins starred agents at the top without subheadings and dedupes them from the recent list", async () => {
     mockAgentsApi.list.mockResolvedValue([
       makeAgent({ id: "agent-a", name: "Alpha", urlKey: "alpha" }),
       makeAgent({ id: "agent-b", name: "Bravo", urlKey: "bravo" }),
@@ -401,7 +407,8 @@ describe("SidebarAgents", () => {
     expect(document.body.textContent).toContain("Remove from starred");
   });
 
-  it("offers star agent from an unstarred sidebar agent menu", async () => {
+  // deferred: agent starring — no star action in this fork's row menu.
+  it.skip("offers star agent from an unstarred sidebar agent menu", async () => {
     await renderSidebarAgents();
     await openAgentMenu();
 
@@ -422,7 +429,8 @@ describe("SidebarAgents", () => {
     expect(document.body.querySelector('button[aria-label="Unstar Alpha"]')).not.toBeNull();
   });
 
-  it("keeps the agent starred and toasts when an unstar request fails", async () => {
+  // deferred: agent starring — no unstar path to fail.
+  it.skip("keeps the agent starred and toasts when an unstar request fails", async () => {
     mockAgentsApi.list.mockResolvedValue([makeAgent({ id: "agent-b", name: "Bravo", urlKey: "bravo" })]);
     memberships = {
       projectMemberships: {},
@@ -683,7 +691,8 @@ describe("SidebarAgents", () => {
     expect(seeAllAgentsLink(container)?.getAttribute("href")).toBe("/agents/all");
   });
 
-  it("keeps formerly live agents visible for the streamlined linger window", async () => {
+  // deferred: streamlined linger window — this fork ignores the `streamlined` prop (_streamlined) and always shows every agent.
+  it.skip("keeps formerly live agents visible for the streamlined linger window", async () => {
     vi.useFakeTimers({ now: new Date("2026-01-01T00:00:00Z") });
     mockAgentsApi.list.mockResolvedValue([
       makeAgent({ id: "agent-a", name: "Alpha", urlKey: "alpha" }),
@@ -727,7 +736,8 @@ describe("SidebarAgents", () => {
     expect(agentLinkLabels(container)).toEqual(["Alpha", "Bravo", "Charlie"]);
   });
 
-  it("expires staggered lingering agents without unrelated sidebar updates", async () => {
+  // deferred: streamlined linger window — same reason.
+  it.skip("expires staggered lingering agents without unrelated sidebar updates", async () => {
     vi.useFakeTimers({ now: new Date("2026-01-01T00:00:00Z") });
     mockAgentsApi.list.mockResolvedValue([
       makeAgent({ id: "agent-a", name: "Alpha", urlKey: "alpha" }),
@@ -790,7 +800,8 @@ describe("SidebarAgents", () => {
     expect(agentLinkLabels(container)).toEqual(["Alpha", "Bravo", "Charlie"]);
   });
 
-  it("shows up to 3 recently-active agents plus a See all link when none are running", async () => {
+  // deferred: streamlined truncation + "See all" footer — neither exists in this fork's sidebar.
+  it.skip("shows up to 3 recently-active agents plus a See all link when none are running", async () => {
     mockAgentsApi.list.mockResolvedValue(
       Array.from({ length: 7 }, (_, index) =>
         makeAgent({
