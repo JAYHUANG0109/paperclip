@@ -96,9 +96,9 @@ const slack = makeDefinition({
 const definitions: UserSecretDefinition[] = [ghToken, openai, slack];
 
 const coverage: Record<string, UserSecretCoverageSummary> = {
-  "def-gh": { definitionId: "def-gh", configuredCount: 5, missingCount: 2, inactiveCount: 0 },
-  "def-openai": { definitionId: "def-openai", configuredCount: 7, missingCount: 0, inactiveCount: 0 },
-  "def-slack": { definitionId: "def-slack", configuredCount: 1, missingCount: 5, inactiveCount: 1 },
+  "def-gh": { definitionId: "def-gh", configuredCount: 5, missingCount: 2, inactiveCount: 0, members: [] },
+  "def-openai": { definitionId: "def-openai", configuredCount: 7, missingCount: 0, inactiveCount: 0, members: [] },
+  "def-slack": { definitionId: "def-slack", configuredCount: 1, missingCount: 5, inactiveCount: 1, members: [] },
 };
 
 const myEntries: MyUserSecretEntry[] = [

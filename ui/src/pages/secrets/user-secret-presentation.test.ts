@@ -43,8 +43,7 @@ describe("coverageSummaryLabel", () => {
         definitionId: "def-1",
         configuredCount: 5,
         missingCount: 2,
-        inactiveCount: 0,
-      }),
+        inactiveCount: 0, members: [] }),
     ).toBe("5 of 7 set");
   });
 
@@ -54,8 +53,7 @@ describe("coverageSummaryLabel", () => {
         definitionId: "def-1",
         configuredCount: 3,
         missingCount: 1,
-        inactiveCount: 1,
-      }),
+        inactiveCount: 1, members: [] }),
     ).toBe("3 of 5 set");
   });
 

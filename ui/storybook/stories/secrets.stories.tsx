@@ -67,14 +67,12 @@ const storybookUserSecretCoverage: Record<string, UserSecretCoverageSummary> = {
     definitionId: "def-storybook-github",
     configuredCount: 5,
     missingCount: 2,
-    inactiveCount: 0,
-  },
+    inactiveCount: 0, members: [] },
   "def-storybook-openai": {
     definitionId: "def-storybook-openai",
     configuredCount: 7,
     missingCount: 0,
-    inactiveCount: 0,
-  },
+    inactiveCount: 0, members: [] },
 };
 
 // Seed localStorage before CompanyContext mounts so its `useState` initializer reads the right id.

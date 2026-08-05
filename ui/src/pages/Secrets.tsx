@@ -270,6 +270,7 @@ export function getCreateProviderBlockReason(
   provider: SecretProviderDescriptor | null | undefined,
   mode: CreateMode,
   health: SecretProviderHealthResponse | null,
+  providerConfig?: CompanySecretProviderConfig | null,
 ) {
   if (!provider) return t("secrets.selectProvider");
   if (mode === "managed" && provider.supportsManagedValues === false) {
@@ -278,7 +279,18 @@ export function getCreateProviderBlockReason(
   if (mode === "external" && provider.supportsExternalReferences === false) {
     return t("secrets.noExternalSupport", { provider: provider.label });
   }
+  const selectedProviderConfigBlockReason = providerConfig?.provider === provider.id
+    ? getProviderConfigBlockReason(providerConfig)
+    : null;
+  const selectedProviderConfigReady =
+    providerConfig?.provider === provider.id && !selectedProviderConfigBlockReason;
   if (provider.configured === false) {
+    // An unconfigured deployment default is not a blocker when the user has
+    // picked a ready provider vault for that same provider — the vault carries
+    // its own credentials. Without this, choosing a working AWS vault still
+    // refused to submit.
+    if (selectedProviderConfigReady) return null;
+    if (selectedProviderConfigBlockReason) return selectedProviderConfigBlockReason;
     const healthEntry = healthEntryForProvider(health, provider.id);
     return healthEntry?.message
       ? t("secrets.notConfiguredWithMessage", { provider: provider.label, message: healthEntry.message })
@@ -317,6 +329,51 @@ export function getProviderConfigBlockReason(
     return config.healthMessage ?? t("secrets.vaultHealthFailed");
   }
   return null;
+}
+
+export function getSelectableProviderConfig(
+  configs: CompanySecretProviderConfig[],
+  provider: SecretProvider,
+) {
+  const providerConfigs = configs.filter((config) => config.provider === provider);
+  return (
+    providerConfigs.find((config) => config.isDefault && !getProviderConfigBlockReason(config)) ??
+    providerConfigs.find((config) => !getProviderConfigBlockReason(config)) ??
+    null
+  );
+}
+
+/*
+ * When the current provider is blocked, pick the first provider that isn't.
+ * Provider vaults have to be considered here, not just the deployment default:
+ * an unconfigured provider with a ready vault is a valid choice, and skipping it
+ * meant switching to external mode fell back to local encrypted even when a
+ * working AWS vault existed.
+ */
+export function findCreateProviderReplacement({
+  providers,
+  providerConfigs,
+  currentProvider,
+  mode,
+  health,
+}: {
+  providers: SecretProviderDescriptor[];
+  providerConfigs: CompanySecretProviderConfig[];
+  currentProvider: SecretProvider;
+  mode: CreateMode;
+  health: SecretProviderHealthResponse | null;
+}) {
+  return (
+    providers.find((provider) => {
+      const selectedConfig =
+        provider.id === currentProvider
+          ? providerConfigs.find(
+              (config) => config.provider === provider.id && !getProviderConfigBlockReason(config),
+            ) ?? null
+          : getSelectableProviderConfig(providerConfigs, provider.id);
+      return !getCreateProviderBlockReason(provider, mode, health, selectedConfig);
+    }) ?? null
+  );
 }
 
 export function getDefaultProviderConfigId(
@@ -511,6 +568,7 @@ export function Secrets() {
     selectedCreateProvider,
     createMode,
     providerHealthQuery.data ?? null,
+    selectedCreateProviderConfig,
   ) ?? getProviderConfigBlockReason(selectedCreateProviderConfig);
   const rotateProviderBlockReason = getProviderConfigBlockReason(selectedRotateProviderConfig);
   const createProviderHealthText = providerHealthText(
@@ -798,12 +856,16 @@ export function Secrets() {
       providers.find((provider) => provider.id === createForm.provider) ?? null,
       createMode,
       providerHealthQuery.data ?? null,
+      getSelectableProviderConfig(providerConfigs, createForm.provider),
     );
     if (!currentBlockReason) return;
-    const replacement = providers.find(
-      (provider) =>
-        !getCreateProviderBlockReason(provider, createMode, providerHealthQuery.data ?? null),
-    );
+    const replacement = findCreateProviderReplacement({
+      providers,
+      providerConfigs,
+      currentProvider: createForm.provider,
+      mode: createMode,
+      health: providerHealthQuery.data ?? null,
+    });
     if (replacement && replacement.id !== createForm.provider) {
       setCreateForm((current) => ({
         ...current,
