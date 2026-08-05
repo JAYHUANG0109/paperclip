@@ -469,6 +469,7 @@ export const RESERVED_MEMORY_NAMES: readonly string[] = [
   "settings",
   "deleted",
   "import",
+  "import-batches",
   "restore",
 ];
 

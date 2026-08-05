@@ -3450,6 +3450,8 @@ for (const route of [
   ["delete", "/api/companies/{companyId}/users/{userId}/memories/{name}", "Delete a personal memory (recoverable unless ?purge=true)"],
   ["post", "/api/companies/{companyId}/users/{userId}/memories/{name}/restore", "Restore a deleted personal memory"],
   ["post", "/api/companies/{companyId}/users/{userId}/memories/import", "Import files or a folder into a user's memory"],
+  ["get", "/api/companies/{companyId}/users/{userId}/memories/import-batches", "List a user's memory import batches"],
+  ["post", "/api/companies/{companyId}/users/{userId}/memories/import-batches/delete", "Delete a memory import batch"],
 ] as const) {
   registerCurrentRoute({ method: route[0], path: route[1], tags: ["memory"], summary: route[2] });
 }
@@ -6935,6 +6937,9 @@ for (const route of [
   ["get", "/api/companies/{companyId}/asana-digest/tasks/{gid}/detail", "Get an Asana task's detail"],
   ["post", "/api/companies/{companyId}/connections/asana", "Connect the company's Asana workspace"],
   ["post", "/api/companies/{companyId}/connections/asana/me", "Connect the signed-in user's Asana account"],
+  ["get", "/api/companies/{companyId}/connections/me", "Get the signed-in user's connection status (Asana + Odoo)"],
+  ["post", "/api/companies/{companyId}/connections/odoo", "Connect the owning agent's Odoo credentials"],
+  ["post", "/api/companies/{companyId}/connections/odoo/me", "Connect the signed-in user's Odoo account"],
 ] as const) {
   registerCurrentRoute({ method: route[0], path: route[1], tags: ["asana-digest"], summary: route[2] });
 }
