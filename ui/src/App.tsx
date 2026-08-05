@@ -127,6 +127,7 @@ const CloudUpstream = lazyPage(() => import("./pages/CloudUpstream"), "CloudUpst
 const CloudUpstreamUxLab = lazyPage(() => import("./pages/CloudUpstreamUxLab"), "CloudUpstreamUxLab");
 const BootstrapSetupUxLab = lazyPage(() => import("./pages/BootstrapSetupUxLab"), "BootstrapSetupUxLab");
 const ResponsibleUserDenialUxLab = lazyPage(() => import("./pages/ResponsibleUserDenialUxLab"), "ResponsibleUserDenialUxLab");
+const CrossIssueCollaborationUxLab = lazyPage(() => import("./pages/CrossIssueCollaborationUxLab"), "CrossIssueCollaborationUxLab");
 const CompanySettingsPluginPage = lazyPage(() => import("./pages/CompanySettingsPluginPage"), "CompanySettingsPluginPage");
 const CompanyAccess = lazyPage(() => import("./pages/CompanyAccess"), "CompanyAccess");
 const CompanyAccessLegacyRoute = lazyPage(() => import("./pages/CompanyAccess"), "CompanyAccessLegacyRoute");
@@ -673,6 +674,7 @@ export function App() {
         <Route path="ux-lab/cloud-upstream" element={<CloudUpstreamUxLab />} />
         <Route path="ux-lab/bootstrap-setup" element={<BootstrapSetupUxLab />} />
         <Route path="ux-lab/responsible-user-denial" element={<ResponsibleUserDenialUxLab />} />
+        <Route path="ux-lab/cross-issue-collaboration" element={<CrossIssueCollaborationUxLab />} />
 
         <Route element={<CloudAccessGate />}>
           <Route index element={<CompanyRootRedirect />} />

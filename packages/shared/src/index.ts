@@ -130,6 +130,18 @@ export {
   type OriginatingActor,
 } from "./issue-attribution.js";
 export {
+  ISSUE_WRITE_DENIAL_CODES,
+  describeIssueWriteDenial,
+  isIssueWriteDenialCode,
+  issueWriteDenialApiMessage,
+  issueWriteDenialCodeForResponsibleUserDenial,
+  issueWriteDenialResponse,
+  type IssueWriteDenialCode,
+  type IssueWriteDenialContext,
+  type IssueWriteDenialCopy,
+  type IssueWriteDenialTone,
+} from "./issue-write-denial.js";
+export {
   RESPONSIBLE_USER_DENIAL_CODES,
   describeResponsibleUserDenial,
   isResponsibleUserDenialCode,
