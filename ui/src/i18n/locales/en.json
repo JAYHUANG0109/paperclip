@@ -224,7 +224,8 @@
         "updated": "Updated",
         "startDate": "Start date",
         "dueDate": "Due date",
-        "section": "Section"
+        "section": "Section",
+        "archived": "Archived"
       },
       "noLabels": "No labels",
       "noParent": "No parent",
@@ -300,7 +301,11 @@
       "viewWorkspace": "View workspace",
       "me": "Me",
       "noSection": "No section",
-      "newSection": "+ New section…"
+      "newSection": "+ New section…",
+      "archivedByTooltip": "Archived by {{name}} · {{when}}",
+      "unarchive": "Unarchive",
+      "unarchiving": "Unarchiving…",
+      "unarchiveFailed": "Failed to unarchive this issue. Please try again."
     },
     "actions": {
       "newSubIssue": "New Sub-issue",

@@ -322,7 +322,8 @@
         "updated": "更新時間",
         "startDate": "開始日",
         "dueDate": "截止日",
-        "section": "區段"
+        "section": "區段",
+        "archived": "已封存"
       },
       "noLabels": "無標籤",
       "noParent": "無母議題",
@@ -398,7 +399,11 @@
       "viewWorkspace": "檢視工作區",
       "me": "我",
       "noSection": "無區段",
-      "newSection": "+ 新增區段…"
+      "newSection": "+ 新增區段…",
+      "archivedByTooltip": "由 {{name}} 於 {{when}} 封存",
+      "unarchive": "取消封存",
+      "unarchiving": "取消封存中…",
+      "unarchiveFailed": "無法取消封存此議題，請再試一次。"
     },
     "actions": {
       "newSubIssue": "新增子議題",

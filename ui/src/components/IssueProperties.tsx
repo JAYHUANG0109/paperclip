@@ -10,6 +10,7 @@ import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { issuesApi } from "../api/issues";
+import { invalidateInboxIssueQueries } from "../lib/inboxArchiveCache";
 import { projectsApi } from "../api/projects";
 import { sectionsApi } from "../api/sections";
 import { IssueCustomFields } from "./IssueCustomFields";
@@ -54,7 +55,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Hexagon, ArrowUpRight, Tag, Plus, GitBranch, FolderOpen, Check, ExternalLink, X, Clock, RotateCcw, Loader2, CheckCircle2 } from "lucide-react";
+import { ArchiveRestore, User, Hexagon, ArrowUpRight, Tag, Plus, GitBranch, FolderOpen, Check, ExternalLink, X, Clock, RotateCcw, Loader2, CheckCircle2 } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 
@@ -419,6 +420,7 @@ export function IssueProperties({
   const [monitorAtInput, setMonitorAtInput] = useState(() => toDateTimeLocalValue(issue.executionPolicy?.monitor?.nextCheckAt));
   const [monitorNotesInput, setMonitorNotesInput] = useState(issue.executionPolicy?.monitor?.notes ?? "");
   const [monitorServiceInput, setMonitorServiceInput] = useState(issue.executionPolicy?.monitor?.serviceName ?? "");
+  const [unarchiveErrorMessage, setUnarchiveErrorMessage] = useState<string | null>(null);
   const normalizedBlockedBySearch = blockedBySearch.trim();
 
   const { data: session } = useQuery({
@@ -466,6 +468,33 @@ export function IssueProperties({
   });
   const [sectionOpen, setSectionOpen] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
+  /*
+   * An agent can archive a task out of the inbox. Without a way to see who did it and
+   * put it back, that reads as the task having vanished.
+   */
+  const unarchiveFromInbox = useMutation({
+    mutationFn: () => issuesApi.unarchiveFromInbox(issue.id),
+    onMutate: () => {
+      setUnarchiveErrorMessage(null);
+    },
+    onSuccess: () => {
+      setUnarchiveErrorMessage(null);
+      queryClient.setQueryData<Issue>(queryKeys.issues.detail(issue.id), (current) =>
+        current
+          ? { ...current, archivedAt: null, archivedByActorType: null, archivedByAgentId: null, archivedByRunId: null }
+          : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issue.id) });
+      if (companyId) invalidateInboxIssueQueries(queryClient, companyId);
+    },
+    onError: (error) => {
+      setUnarchiveErrorMessage(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : t("issues.props.unarchiveFailed"),
+      );
+    },
+  });
   const createSection = useMutation({
     mutationFn: (name: string) =>
       sectionsApi.create(companyId!, { projectId: issue.projectId!, name }),
@@ -2234,6 +2263,51 @@ export function IssueProperties({
         <PropertyRow label={t("issues.props.field.updated")}>
           <span className="text-sm">{timeAgo(issue.updatedAt)}</span>
         </PropertyRow>
+        {issue.archivedAt && issue.archivedByActorType === "agent" && issue.archivedByAgentId ? (
+          (() => {
+            const archivedByAgent = (agents ?? []).find((candidate) => candidate.id === issue.archivedByAgentId);
+            const archivedByName = agentName(issue.archivedByAgentId);
+            return (
+              <PropertyRow label={t("issues.props.field.archived")}>
+                <div className="flex min-w-0 max-w-full flex-col items-start gap-1">
+                  {/* The row label already reads "Archived", so the value shows just the
+                      attributing agent — that gives the name the full value column at the
+                      real 320px pane width, where an "Archived by …" prefix would clip.
+                      The full phrasing and timestamp live in the tooltip. */}
+                  <span
+                    className="flex min-w-0 max-w-full items-center gap-1.5 text-sm"
+                    title={t("issues.props.archivedByTooltip", {
+                      name: archivedByName,
+                      when: formatDateTime(issue.archivedAt),
+                    })}
+                  >
+                    {archivedByAgent
+                      ? <AgentIcon icon={archivedByAgent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      : null}
+                    <span className="min-w-0 truncate">{archivedByName}</span>
+                  </span>
+                  <div className="flex min-w-0 max-w-full items-center gap-2">
+                    <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(issue.archivedAt)}</span>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:opacity-50"
+                      onClick={() => unarchiveFromInbox.mutate()}
+                      disabled={unarchiveFromInbox.isPending}
+                    >
+                      <ArchiveRestore className="h-3 w-3" />
+                      {unarchiveFromInbox.isPending ? t("issues.props.unarchiving") : t("issues.props.unarchive")}
+                    </button>
+                  </div>
+                  {unarchiveErrorMessage ? (
+                    <p className="text-xs text-destructive" role="alert">
+                      {unarchiveErrorMessage}
+                    </p>
+                  ) : null}
+                </div>
+              </PropertyRow>
+            );
+          })()
+        ) : null}
       </div>
     </div>
   );

@@ -1341,7 +1341,9 @@ describe("IssueProperties", () => {
     await flush();
     await flush();
 
-    expect(container.textContent).toContain("Override · gpt-5.4 · high");
+    // This fork names the third model lane "Custom" (自訂) where upstream says
+    // "Override" — a deliberate copy choice, so assert the fork's wording.
+    expect(container.textContent).toContain("Custom · gpt-5.4 · high");
     expect(container.textContent).toContain("Model lane");
 
     // Wait for the adapter-models query to resolve so the model options render.
