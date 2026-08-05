@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
+import type { DocumentAnnotationTarget } from "@/api/document-annotations";
 import type {
   Agent,
   DocumentRevision,
@@ -21,6 +22,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { cn, relativeTime } from "../lib/utils";
 import { FoldCurtain } from "./FoldCurtain";
 import { DocumentAnnotationsCountChip, IssueDocumentAnnotations } from "./IssueDocumentAnnotations";
+import { RevisionActorAvatar, type DocumentFrameHeaderRevisionActor } from "./DocumentFrameHeader";
 import { MarkdownBody, type MarkdownExternalReferenceMap } from "./MarkdownBody";
 import { MarkdownEditor, type MentionOption } from "./MarkdownEditor";
 import { OutputFeedbackButtons } from "./OutputFeedbackButtons";
@@ -118,16 +120,81 @@ function downloadDocumentFile(key: string, body: string) {
   URL.revokeObjectURL(url);
 }
 
-function getRevisionActorLabel(revision: DocumentRevision) {
-  if (revision.createdByUserId) return t("issueDocuments.actor.board");
-  if (revision.createdByAgentId) return t("issueDocuments.actor.agent");
-  return t("issueDocuments.actor.system");
+/*
+ * Name the actor, don't just classify it. "• agent" tells a reader nothing about
+ * which of forty-odd agents rewrote their plan; the generic labels below are only
+ * the fallback for when the id can't be resolved in the maps we were handed.
+ */
+function getRevisionActor(
+  revision: DocumentRevision,
+  maps: {
+    agentMap?: ReadonlyMap<string, Pick<Agent, "id" | "name"> & Partial<Pick<Agent, "icon">>>;
+    userProfileMap?: ReadonlyMap<string, CompanyUserProfile>;
+  },
+): DocumentFrameHeaderRevisionActor {
+  if (revision.createdByAgentId) {
+    const agent = maps.agentMap?.get(revision.createdByAgentId);
+    return {
+      kind: "agent",
+      name: agent?.name ?? revision.createdByAgentId.slice(0, 8),
+      agentIcon: agent?.icon ?? null,
+    };
+  }
+  if (revision.createdByUserId) {
+    const profile = maps.userProfileMap?.get(revision.createdByUserId);
+    return {
+      kind: "user",
+      name: profile?.label
+        ?? (revision.createdByUserId === "local-board"
+          ? t("issueDocuments.actor.board")
+          : revision.createdByUserId.slice(0, 8)),
+      imageUrl: profile?.image ?? null,
+    };
+  }
+  return { kind: "system", name: t("issueDocuments.actor.system") };
 }
 
 function documentHasUnsavedChanges(doc: IssueDocument, draft: DraftState | null) {
   if (!draft || draft.isNew || draft.key !== doc.key) return false;
   return draft.body !== doc.body || (doc.title ?? "") !== draft.title;
 }
+
+/*
+ * This section renders documents for more than one kind of owner. Issues are the
+ * common case, but cases (and pipeline items) hold documents too and reach a
+ * different API and cache. Rather than branch on the owner everywhere, callers can
+ * pass a subject describing how to read and write documents for whatever they own.
+ *
+ * CaseDetail already built and passed one of these; only this component was missing
+ * the prop, so `issue` arrived undefined and the section threw on `issue.id` — the
+ * Documents panel on a case white-screened.
+ */
+export type DocumentSubjectConfig = {
+  id: string;
+  detailQueryKey?: QueryKey;
+  documentsQueryKey: QueryKey;
+  idleDocumentRevisionsQueryKey: QueryKey;
+  documentRevisionsQueryKey: (key: string) => QueryKey;
+  listDocuments: () => Promise<IssueDocument[]>;
+  listDocumentRevisions: (key: string) => Promise<DocumentRevision[]>;
+  getDocument: (key: string) => Promise<IssueDocument>;
+  upsertDocument: (key: string, data: {
+    title: string | null;
+    format: "markdown";
+    body: string;
+    baseRevisionId: string | null;
+  }) => Promise<IssueDocument>;
+  deleteDocument?: (key: string) => Promise<unknown>;
+  restoreDocumentRevision?: (key: string, revisionId: string) => Promise<IssueDocument>;
+  setDocumentLock?: (key: string, locked: boolean) => Promise<IssueDocument>;
+  syncDetailCache?: (queryClient: QueryClient, document: IssueDocument) => void;
+  hideSystemDocuments?: boolean;
+  legacyPlanDocument?: { body: string } | null;
+  annotations?: {
+    issueId: string;
+    target?: DocumentAnnotationTarget | ((documentKey: string) => DocumentAnnotationTarget);
+  } | null;
+};
 
 function toDocumentSummary(document: IssueDocument) {
   return {
@@ -152,8 +219,49 @@ function toDocumentSummary(document: IssueDocument) {
   };
 }
 
+function makeIssueDocumentSubject(issue: Issue): DocumentSubjectConfig {
+  return {
+    id: issue.id,
+    detailQueryKey: queryKeys.issues.detail(issue.id),
+    documentsQueryKey: queryKeys.issues.documents(issue.id),
+    idleDocumentRevisionsQueryKey: ["issues", "document-revisions", issue.id, "__idle__"],
+    documentRevisionsQueryKey: (key) => queryKeys.issues.documentRevisions(issue.id, key),
+    listDocuments: () => issuesApi.listDocuments(issue.id),
+    listDocumentRevisions: (key) => issuesApi.listDocumentRevisions(issue.id, key),
+    getDocument: (key) => issuesApi.getDocument(issue.id, key),
+    upsertDocument: (key, data) => issuesApi.upsertDocument(issue.id, key, data),
+    deleteDocument: (key) => issuesApi.deleteDocument(issue.id, key),
+    restoreDocumentRevision: (key, revisionId) => issuesApi.restoreDocumentRevision(issue.id, key, revisionId),
+    setDocumentLock: (key, locked) =>
+      locked ? issuesApi.lockDocument(issue.id, key) : issuesApi.unlockDocument(issue.id, key),
+    legacyPlanDocument: issue.legacyPlanDocument ?? null,
+    annotations: { issueId: issue.id },
+    syncDetailCache: (queryClient, document) => {
+      queryClient.setQueryData<Issue | undefined>(
+        queryKeys.issues.detail(issue.id),
+        (current) => {
+          if (!current) return current;
+          const nextSummaries = (() => {
+            const summary = toDocumentSummary(document);
+            const existingIndex = (current.documentSummaries ?? []).findIndex((entry) => entry.key === document.key);
+            if (existingIndex === -1) return [...(current.documentSummaries ?? []), summary];
+            return (current.documentSummaries ?? []).map((entry, index) => index === existingIndex ? summary : entry);
+          })();
+          return {
+            ...current,
+            planDocument: document.key === "plan" ? document : current.planDocument ?? null,
+            documentSummaries: nextSummaries,
+            legacyPlanDocument: document.key === "plan" ? null : current.legacyPlanDocument ?? null,
+          };
+        },
+      );
+    },
+  };
+}
+
 export function IssueDocumentsSection({
   issue,
+  subject,
   canDeleteDocuments,
   canManageDocumentLocks = false,
   feedbackVotes = [],
@@ -170,7 +278,9 @@ export function IssueDocumentsSection({
   forceEditDocumentKey,
   externalReferences,
 }: {
-  issue: Issue;
+  /** Provide either `issue` (the common case) or a `subject` describing another owner. */
+  issue?: Issue;
+  subject?: DocumentSubjectConfig;
   canDeleteDocuments: boolean;
   canManageDocumentLocks?: boolean;
   feedbackVotes?: FeedbackVote[];
@@ -200,11 +310,25 @@ export function IssueDocumentsSection({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const location = useLocation();
+  const documentSubject = useMemo<DocumentSubjectConfig>(() => {
+    if (subject) return subject;
+    if (!issue) throw new Error("IssueDocumentsSection requires either issue or subject");
+    return makeIssueDocumentSubject(issue);
+  }, [issue, subject]);
+  const subjectId = documentSubject.id;
+  const legacyPlanDocument = documentSubject.legacyPlanDocument ?? null;
+  const annotationsIssueId = documentSubject.annotations?.issueId ?? subjectId;
+  const annotationTargetForKey = useCallback((documentKey: string) => {
+    const configured = documentSubject.annotations?.target;
+    if (!configured) return undefined;
+    if (typeof configured === "function") return configured(documentKey);
+    return { ...configured, documentKey };
+  }, [documentSubject]);
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [documentConflict, setDocumentConflict] = useState<DocumentConflictState | null>(null);
-  const [foldedDocumentKeys, setFoldedDocumentKeys] = useState<string[]>(() => loadFoldedDocumentKeys(issue.id));
+  const [foldedDocumentKeys, setFoldedDocumentKeys] = useState<string[]>(() => loadFoldedDocumentKeys(subjectId));
   const [annotationPanelOpenKeys, setAnnotationPanelOpenKeys] = useState<string[]>(
     () => (defaultAnnotationPanelOpenKeys ?? []),
   );
@@ -225,39 +349,39 @@ export function IssueDocumentsSection({
   } = useAutosaveIndicator();
 
   const { data: documents } = useQuery({
-    queryKey: queryKeys.issues.documents(issue.id),
-    queryFn: () => issuesApi.listDocuments(issue.id),
+    queryKey: documentSubject.documentsQueryKey,
+    queryFn: () => documentSubject.listDocuments(),
   });
 
   const { data: activeDocumentRevisions, isFetching: isFetchingDocumentRevisions } = useQuery({
     queryKey: revisionMenuOpenKey
-      ? queryKeys.issues.documentRevisions(issue.id, revisionMenuOpenKey)
-      : ["issues", "document-revisions", issue.id, "__idle__"],
+      ? documentSubject.documentRevisionsQueryKey(revisionMenuOpenKey)
+      : documentSubject.idleDocumentRevisionsQueryKey,
     queryFn: async () => {
       if (!revisionMenuOpenKey) return [];
-      return issuesApi.listDocumentRevisions(issue.id, revisionMenuOpenKey);
+      return documentSubject.listDocumentRevisions(revisionMenuOpenKey);
     },
     enabled: Boolean(revisionMenuOpenKey),
   });
 
   const invalidateIssueDocuments = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issue.id) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.issues.documents(issue.id) });
+    if (documentSubject.detailQueryKey) queryClient.invalidateQueries({ queryKey: documentSubject.detailQueryKey });
+    queryClient.invalidateQueries({ queryKey: documentSubject.documentsQueryKey });
     queryClient.invalidateQueries({
       predicate: (query) =>
         Array.isArray(query.queryKey)
         && query.queryKey[0] === "issues"
         && (
-          (query.queryKey[1] === "document-revisions" && query.queryKey[2] === issue.id)
-          || (query.queryKey[1] === "document-annotations" && query.queryKey[2] === issue.id)
+          (query.queryKey[1] === "document-revisions" && query.queryKey[2] === subjectId)
+          || (query.queryKey[1] === "document-annotations" && query.queryKey[2] === subjectId)
         ),
     });
-  }, [issue.id, queryClient]);
+  }, [documentSubject, queryClient, subjectId]);
 
   const syncDocumentCaches = useCallback((document: IssueDocument) => {
     if (isSystemIssueDocumentKey(document.key)) return;
     queryClient.setQueryData<IssueDocument[] | undefined>(
-      queryKeys.issues.documents(issue.id),
+      documentSubject.documentsQueryKey,
       (current) => {
         if (!current) return [document];
         const existingIndex = current.findIndex((entry) => entry.key === document.key);
@@ -265,29 +389,12 @@ export function IssueDocumentsSection({
         return current.map((entry, index) => index === existingIndex ? document : entry);
       },
     );
-    queryClient.setQueryData<Issue | undefined>(
-      queryKeys.issues.detail(issue.id),
-      (current) => {
-        if (!current) return current;
-        const nextSummaries = (() => {
-          const summary = toDocumentSummary(document);
-          const existingIndex = (current.documentSummaries ?? []).findIndex((entry) => entry.key === document.key);
-          if (existingIndex === -1) return [...(current.documentSummaries ?? []), summary];
-          return (current.documentSummaries ?? []).map((entry, index) => index === existingIndex ? summary : entry);
-        })();
-        return {
-          ...current,
-          planDocument: document.key === "plan" ? document : current.planDocument ?? null,
-          documentSummaries: nextSummaries,
-          legacyPlanDocument: document.key === "plan" ? null : current.legacyPlanDocument ?? null,
-        };
-      },
-    );
-  }, [issue.id, queryClient]);
+    documentSubject.syncDetailCache?.(queryClient, document);
+  }, [documentSubject, queryClient, subjectId]);
 
   const upsertDocument = useMutation({
     mutationFn: async (nextDraft: DraftState) =>
-      issuesApi.upsertDocument(issue.id, nextDraft.key, {
+      documentSubject.upsertDocument(nextDraft.key, {
         title: isPlanKey(nextDraft.key) ? null : nextDraft.title.trim() || null,
         format: "markdown",
         body: nextDraft.body,
@@ -296,7 +403,7 @@ export function IssueDocumentsSection({
   });
 
   const deleteDocument = useMutation({
-    mutationFn: (key: string) => issuesApi.deleteDocument(issue.id, key),
+    mutationFn: (key: string) => documentSubject.deleteDocument?.(key) ?? Promise.resolve(undefined),
     onSuccess: () => {
       setError(null);
       setConfirmDeleteKey(null);
@@ -309,7 +416,7 @@ export function IssueDocumentsSection({
 
   const restoreDocumentRevision = useMutation({
     mutationFn: ({ key, revisionId }: { key: string; revisionId: string }) =>
-      issuesApi.restoreDocumentRevision(issue.id, key, revisionId),
+      documentSubject.restoreDocumentRevision!(key, revisionId),
     onSuccess: (document, variables) => {
       syncDocumentCaches(document);
       setSelectedRevisionIds((current) => ({ ...current, [variables.key]: null }));
@@ -326,7 +433,7 @@ export function IssueDocumentsSection({
 
   const setDocumentLock = useMutation({
     mutationFn: ({ key, locked }: { key: string; locked: boolean }) =>
-      locked ? issuesApi.lockDocument(issue.id, key) : issuesApi.unlockDocument(issue.id, key),
+      documentSubject.setDocumentLock!(key, locked),
     onSuccess: (document) => {
       syncDocumentCaches(document);
       setDraft((current) => current?.key === document.key ? null : current);
@@ -358,7 +465,7 @@ export function IssueDocumentsSection({
   }, [feedbackVotes]);
 
   const hasRealPlan = sortedDocuments.some((doc) => doc.key === "plan");
-  const isEmpty = sortedDocuments.length === 0 && !issue.legacyPlanDocument;
+  const isEmpty = sortedDocuments.length === 0 && !legacyPlanDocument;
   const newDocumentKeyError =
     draft?.isNew && draft.key.trim().length > 0 && !DOCUMENT_KEY_PATTERN.test(draft.key.trim())
       ? t("issueDocuments.keyPatternHint")
@@ -522,7 +629,7 @@ export function IssueDocumentsSection({
       }
       if (isDocumentConflictError(err)) {
         try {
-          const latestDocument = await issuesApi.getDocument(issue.id, normalizedKey);
+          const latestDocument = await documentSubject.getDocument(normalizedKey);
           setDocumentConflict({
             key: normalizedKey,
             serverDocument: latestDocument,
@@ -547,7 +654,7 @@ export function IssueDocumentsSection({
       setError(err instanceof Error ? err.message : t("issueDocuments.failedToSave"));
       return false;
     }
-  }, [documentConflict, invalidateIssueDocuments, issue.id, resetAutosaveState, runSave, sortedDocuments, syncDocumentCaches, upsertDocument]);
+  }, [documentConflict, invalidateIssueDocuments, subjectId, resetAutosaveState, runSave, sortedDocuments, syncDocumentCaches, upsertDocument]);
 
   const reloadDocumentFromServer = useCallback((key: string) => {
     if (documentConflict?.key !== key) return;
@@ -610,11 +717,11 @@ export function IssueDocumentsSection({
   }, []);
 
   const getDocumentRevisions = useCallback((key: string) => {
-    const cached = queryClient.getQueryData<DocumentRevision[]>(queryKeys.issues.documentRevisions(issue.id, key));
+    const cached = queryClient.getQueryData<DocumentRevision[]>(documentSubject.documentRevisionsQueryKey(key));
     if (cached) return cached;
     if (revisionMenuOpenKey === key) return activeDocumentRevisions ?? [];
     return [];
-  }, [activeDocumentRevisions, issue.id, queryClient, revisionMenuOpenKey]);
+  }, [activeDocumentRevisions, documentSubject, queryClient, revisionMenuOpenKey]);
 
   const returnToLatestRevision = useCallback((key: string) => {
     setSelectedRevisionIds((current) => ({ ...current, [key]: null }));
@@ -674,27 +781,27 @@ export function IssueDocumentsSection({
   };
 
   useEffect(() => {
-    setFoldedDocumentKeys(loadFoldedDocumentKeys(issue.id));
-  }, [issue.id]);
+    setFoldedDocumentKeys(loadFoldedDocumentKeys(subjectId));
+  }, [subjectId]);
 
   useEffect(() => {
     hasScrolledToHashRef.current = false;
-  }, [issue.id, location.hash]);
+  }, [subjectId, location.hash]);
 
   useEffect(() => {
     const validKeys = new Set(sortedDocuments.map((doc) => doc.key));
     setFoldedDocumentKeys((current) => {
       const next = current.filter((key) => validKeys.has(key));
       if (next.length !== current.length) {
-        saveFoldedDocumentKeys(issue.id, next);
+        saveFoldedDocumentKeys(subjectId, next);
       }
       return next;
     });
-  }, [issue.id, sortedDocuments]);
+  }, [subjectId, sortedDocuments]);
 
   useEffect(() => {
-    saveFoldedDocumentKeys(issue.id, foldedDocumentKeys);
-  }, [foldedDocumentKeys, issue.id]);
+    saveFoldedDocumentKeys(subjectId, foldedDocumentKeys);
+  }, [foldedDocumentKeys, subjectId]);
 
   useEffect(() => {
     if (!documentConflict) return;
@@ -712,7 +819,7 @@ export function IssueDocumentsSection({
     if (!hash.startsWith("#document-")) return;
     const documentKey = decodeURIComponent(hash.slice("#document-".length));
     const targetExists = sortedDocuments.some((doc) => doc.key === documentKey)
-      || (documentKey === "plan" && Boolean(issue.legacyPlanDocument));
+      || (documentKey === "plan" && Boolean(legacyPlanDocument));
     if (!targetExists || hasScrolledToHashRef.current) return;
     setFoldedDocumentKeys((current) => current.filter((key) => key !== documentKey));
     const element = document.getElementById(`document-${documentKey}`);
@@ -722,7 +829,7 @@ export function IssueDocumentsSection({
     element.scrollIntoView({ behavior: "smooth", block: "center" });
     const timer = setTimeout(() => setHighlightDocumentKey((current) => current === documentKey ? null : current), 3000);
     return () => clearTimeout(timer);
-  }, [issue.legacyPlanDocument, location.hash, sortedDocuments]);
+  }, [legacyPlanDocument, location.hash, sortedDocuments]);
 
   useEffect(() => {
     return () => {
@@ -875,7 +982,7 @@ export function IssueDocumentsSection({
         </div>
       )}
 
-      {!hasRealPlan && issue.legacyPlanDocument ? (
+      {!hasRealPlan && legacyPlanDocument ? (
         <div
           id="document-plan"
           className={cn(
@@ -890,7 +997,7 @@ export function IssueDocumentsSection({
             </span>
           </div>
           <div className={documentBodyPaddingClassName}>
-            {renderFoldableBody(issue.legacyPlanDocument.body, documentBodyContentClassName, externalReferences)}
+            {renderFoldableBody(legacyPlanDocument.body, documentBodyContentClassName, externalReferences)}
           </div>
         </div>
       ) : null}
@@ -986,8 +1093,17 @@ export function IssueDocumentsSection({
                                         </span>
                                       ) : null}
                                     </div>
-                                    <span className="text-xs text-muted-foreground">
-                                      {relativeTime(revision.createdAt)} • {getRevisionActorLabel(revision)}
+                                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                      {relativeTime(revision.createdAt)}
+                                      {(() => {
+                                        const actor = getRevisionActor(revision, { agentMap, userProfileMap });
+                                        return (
+                                          <>
+                                            <RevisionActorAvatar actor={actor} />
+                                            <span className="truncate">{actor.name}</span>
+                                          </>
+                                        );
+                                      })()}
                                     </span>
                                   </div>
                                 </DropdownMenuRadioItem>
@@ -1007,7 +1123,7 @@ export function IssueDocumentsSection({
                     </a>
                     {!isSystemIssueDocumentKey(doc.key) ? (
                       <DocumentAnnotationsCountChip
-                        issueId={issue.id}
+                        issueId={annotationsIssueId}
                         docKey={doc.key}
                         panelOpen={annotationPanelOpenKeys.includes(doc.key)}
                         onToggle={() => toggleAnnotationPanel(doc.key)}
@@ -1333,7 +1449,7 @@ export function IssueDocumentsSection({
         if (!diffDoc) return null;
         return (
           <DocumentDiffModal
-            issueId={issue.id}
+            issueId={annotationsIssueId}
             documentKey={diffDoc.key}
             latestRevisionNumber={diffDoc.latestRevisionNumber}
             open

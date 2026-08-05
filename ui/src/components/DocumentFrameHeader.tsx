@@ -56,7 +56,7 @@ export interface DocumentFrameHeaderProps {
   actionsSlot?: ReactNode;
 }
 
-function RevisionActorAvatar({ actor }: { actor: DocumentFrameHeaderRevisionActor }) {
+export function RevisionActorAvatar({ actor }: { actor: DocumentFrameHeaderRevisionActor }) {
   return (
     <Avatar size="xs" shape={actor.kind === "agent" ? "square" : "circle"} className="shrink-0">
       {actor.kind === "agent" ? (
