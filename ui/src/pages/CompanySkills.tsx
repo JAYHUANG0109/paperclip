@@ -1435,19 +1435,28 @@ export function DiscoveryGrid({
           >
             <RefreshCw className={cn("h-4 w-4", scanPending && "animate-spin")} />
           </Button>
+          {/* Skill Studio is a first-class destination, and "Create new skill"
+              is surfaced as a direct primary button rather than buried in the New
+              dropdown (which keeps catalog/import/folder). */}
+          <Link
+            to="/skills/studio"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground no-underline transition-colors hover:bg-accent/40"
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            {t("companySkills.studio", { defaultValue: "Studio" })}
+          </Link>
+          <Button size="sm" variant="default" onClick={onCreate}>
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            {t("companySkills.createNewSkill", { defaultValue: "Create new skill" })}
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="default">
-                <Plus className="mr-1 h-3.5 w-3.5" />
+              <Button size="sm" variant="outline">
                 {t("companySkills.newButton", { defaultValue: "New" })}
                 <ChevronDown className="ml-1 h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onCreate}>
-                <Pencil className="mr-2 h-4 w-4" />
-                {t("companySkills.createNewSkill", { defaultValue: "Create new skill" })}
-              </DropdownMenuItem>
               <DropdownMenuItem onSelect={onBrowseCatalog}>
                 <Boxes className="mr-2 h-4 w-4" />
                 {t("companySkills.browseCatalog", { defaultValue: "Browse catalog" })}

@@ -216,6 +216,53 @@ function makeDetail(
   } as CompanySkillDetail;
 }
 
+function skillDetailElement(
+  versions: CompanySkillVersion[],
+  props: Partial<ComponentProps<typeof SkillDetailPage>>,
+) {
+  return (
+    <SkillDetailPage
+      detail={makeDetail(versions[0]!)}
+      loading={false}
+      activeTab="versions"
+      onTabChange={vi.fn()}
+      selectedPath="SKILL.md"
+      file={null}
+      fileLoading={false}
+      viewMode="preview"
+      editMode={false}
+      draft=""
+      setViewMode={vi.fn()}
+      setEditMode={vi.fn()}
+      setDraft={vi.fn()}
+      onSave={vi.fn()}
+      savePending={false}
+      versions={versions}
+      versionsLoading={false}
+      attachAgents={[]}
+      onSubmitAttach={vi.fn()}
+      attachPending={false}
+      expandedDirs={new Set()}
+      onToggleDir={vi.fn()}
+      onSelectPath={vi.fn()}
+      updateStatus={null}
+      updateStatusLoading={false}
+      onCheckUpdates={vi.fn()}
+      checkUpdatesPending={false}
+      onInstallUpdate={vi.fn()}
+      installUpdatePending={false}
+      onToggleStar={vi.fn()}
+      starPending={false}
+      onFork={vi.fn()}
+      onUpdateSharingScope={vi.fn()}
+      updateSharingPending={false}
+      onDelete={vi.fn()}
+      deletePending={false}
+      {...props}
+    />
+  );
+}
+
 async function renderSkillDetail(
   versions: CompanySkillVersion[],
   props: Partial<ComponentProps<typeof SkillDetailPage>> = {},
@@ -225,50 +272,33 @@ async function renderSkillDetail(
   root = createRoot(container);
 
   await act(async () => {
-    root?.render(
-      <SkillDetailPage
-        detail={makeDetail(versions[0]!)}
-        loading={false}
-        activeTab="versions"
-        onTabChange={vi.fn()}
-        selectedPath="SKILL.md"
-        file={null}
-        fileLoading={false}
-        viewMode="preview"
-        editMode={false}
-        draft=""
-        setViewMode={vi.fn()}
-        setEditMode={vi.fn()}
-        setDraft={vi.fn()}
-        onSave={vi.fn()}
-        savePending={false}
-        versions={versions}
-        versionsLoading={false}
-        attachAgents={[]}
-        onSubmitAttach={vi.fn()}
-        attachPending={false}
-        expandedDirs={new Set()}
-        onToggleDir={vi.fn()}
-        onSelectPath={vi.fn()}
-        updateStatus={null}
-        updateStatusLoading={false}
-        onCheckUpdates={vi.fn()}
-        checkUpdatesPending={false}
-        onInstallUpdate={vi.fn()}
-        installUpdatePending={false}
-        onToggleStar={vi.fn()}
-        starPending={false}
-        onFork={vi.fn()}
-        onUpdateSharingScope={vi.fn()}
-        updateSharingPending={false}
-        onDelete={vi.fn()}
-        deletePending={false}
-        {...props}
-      />,
-    );
+    root?.render(skillDetailElement(versions, props));
   });
 
   return container;
+}
+
+/** Re-render into the SAME root so component-local state (draft tags) survives. */
+async function rerenderSkillDetail(
+  versions: CompanySkillVersion[],
+  props: Partial<ComponentProps<typeof SkillDetailPage>> = {},
+) {
+  await act(async () => {
+    root?.render(skillDetailElement(versions, props));
+  });
+  return container!;
+}
+
+async function pressEnter(input: HTMLElement) {
+  await act(async () => {
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+}
+
+function tagInputOf(node: ParentNode) {
+  return Array.from(node.querySelectorAll("input")).find(
+    (input) => input.getAttribute("placeholder") === "Add a tag…",
+  ) as HTMLInputElement;
 }
 
 async function renderDiscoveryGrid(props: Partial<ComponentProps<typeof DiscoveryGrid>> = {}) {
@@ -581,7 +611,7 @@ describe("SkillDetailPage settings", () => {
     expect(node.textContent).toContain("Company / Engineering / Code Review");
   });
 
-  it("shows a direct fork action for read-only skills", async () => {
+  it("offers a fork action even for read-only skills", async () => {
     const v1 = makeVersion(1, "# Demo Skill");
     const onFork = vi.fn();
     const node = await renderSkillDetail([v1], {
@@ -596,17 +626,19 @@ describe("SkillDetailPage settings", () => {
       onFork,
     });
 
-    expect(node.textContent).not.toContain("Fork or import locally");
-
-    const forkButton = buttonsNamed(node, "Fork")[0] as HTMLButtonElement;
+    // The GitHub-style social-proof bar always surfaces a fork action, even when
+    // the skill itself is read-only. It's the "Fork" button in that bar.
+    const forkButton = Array.from(node.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Fork"),
+    ) as HTMLButtonElement | undefined;
     expect(forkButton).toBeTruthy();
 
-    await click(forkButton);
+    await click(forkButton!);
 
     expect(onFork).toHaveBeenCalledOnce();
   });
 
-  it("renders long source paths in full so they can wrap inside the sidebar", async () => {
+  it("middle-truncates a long source path but keeps the full path in its title", async () => {
     const v1 = makeVersion(1, "# Demo Skill");
     const longSourcePath = "/srv/paperclip/home/paperclipai/paperclip/.agents/skills/prepare-pr/SKILL.md";
     const node = await renderSkillDetail([v1], {
@@ -617,16 +649,16 @@ describe("SkillDetailPage settings", () => {
       }),
     });
 
-    const sourceValue = Array.from(node.querySelectorAll("div")).find((element) =>
-      element.textContent === longSourcePath,
+    // The provenance row compacts the path for the narrow sidebar (middleTruncate)
+    // but exposes the full path via the title attribute, so nothing is lost.
+    const sourceRow = Array.from(node.querySelectorAll("[title]")).find(
+      (element) => element.getAttribute("title") === longSourcePath,
     );
-
-    expect(sourceValue).toBeTruthy();
-    expect(sourceValue?.className).toContain("[overflow-wrap:anywhere]");
-    expect(node.textContent).not.toContain("...");
+    expect(sourceRow).toBeTruthy();
+    expect(sourceRow?.textContent).not.toBe(longSourcePath); // shown compactly, not verbatim
   });
 
-  it("saves normalized category edits from the settings dialog", async () => {
+  it("adds a normalized (trimmed + lowercased) tag through the sidebar tags editor", async () => {
     const v1 = makeVersion(1, "# Demo Skill");
     const onUpdateSettings = vi.fn();
     const node = await renderSkillDetail([v1], {
@@ -638,25 +670,25 @@ describe("SkillDetailPage settings", () => {
       onUpdateSettings,
     });
 
-    await click(buttonsNamed(node, "Settings")[0] as HTMLButtonElement);
-    const dialog = node.querySelector('[role="dialog"]') as HTMLElement;
-    const categoryInput = dialog.querySelector("input") as HTMLInputElement;
-    const saveButton = buttonsNamed(dialog, "Save settings")[0] as HTMLButtonElement;
+    // Categories are edited as chips in the sidebar tags editor: type + Enter adds
+    // one normalized tag and immediately persists via onUpdateSettings, carrying
+    // the current sharing scope.
+    const tagInput = tagInputOf(node);
+    expect(tagInput).toBeTruthy();
 
-    expect(categoryInput.value).toBe("engineering");
-
-    await inputValue(categoryInput, " Memory Tools, review, memory tools ,,");
-    await click(saveButton);
+    await inputValue(tagInput, "  Memory Tools  ");
+    await pressEnter(tagInput);
 
     expect(onUpdateSettings).toHaveBeenCalledWith({
       sharingScope: "company",
-      categories: ["Memory Tools", "review"],
+      categories: ["engineering", "memory tools"],
     });
   });
 
-  it("allows clearing categories and saving sharing together", async () => {
+  it("removes a tag via its chip and applies a sharing change immediately", async () => {
     const v1 = makeVersion(1, "# Demo Skill");
     const onUpdateSettings = vi.fn();
+    const onUpdateSharingScope = vi.fn();
     const node = await renderSkillDetail([v1], {
       activeTab: "overview",
       detail: makeDetail(v1, {
@@ -664,101 +696,55 @@ describe("SkillDetailPage settings", () => {
         sharingScope: "company",
       }),
       onUpdateSettings,
+      onUpdateSharingScope,
     });
 
+    // Removing the only chip clears categories (persisted immediately).
+    await click(node.querySelector('[aria-label="Remove tag engineering"]') as HTMLButtonElement);
+    expect(onUpdateSettings).toHaveBeenCalledWith({ sharingScope: "company", categories: [] });
+
+    // Sharing is applied the moment the select changes — no batched "Save".
     await click(buttonsNamed(node, "Settings")[0] as HTMLButtonElement);
-    const dialog = node.querySelector('[role="dialog"]') as HTMLElement;
-
-    await inputValue(dialog.querySelector("input") as HTMLInputElement, "");
-    await selectValue(dialog.querySelector("select") as HTMLSelectElement, "private");
-    await click(buttonsNamed(dialog, "Save settings")[0] as HTMLButtonElement);
-
-    expect(onUpdateSettings).toHaveBeenCalledWith({
-      sharingScope: "private",
-      categories: [],
-    });
+    const select = node.querySelector('[role="dialog"] select') as HTMLSelectElement;
+    await selectValue(select, "private");
+    expect(onUpdateSharingScope).toHaveBeenCalledWith("private");
   });
 
-  it("does not treat reordered categories as dirty", async () => {
+  it("ignores re-adding an existing tag case-insensitively, never re-saving", async () => {
     const v1 = makeVersion(1, "# Demo Skill");
+    const onUpdateSettings = vi.fn();
     const node = await renderSkillDetail([v1], {
       activeTab: "overview",
       detail: makeDetail(v1, {
         categories: ["memory", "review"],
         sharingScope: "company",
       }),
+      onUpdateSettings,
     });
 
-    await click(buttonsNamed(node, "Settings")[0] as HTMLButtonElement);
-    const dialog = node.querySelector('[role="dialog"]') as HTMLElement;
+    const tagInput = tagInputOf(node);
+    await inputValue(tagInput, "Memory");
+    await pressEnter(tagInput);
 
-    await inputValue(dialog.querySelector("input") as HTMLInputElement, "review, memory");
-
-    expect((buttonsNamed(dialog, "Save settings")[0] as HTMLButtonElement).disabled).toBe(true);
+    // "Memory" normalizes to the existing "memory" → no-op, and the draft clears.
+    expect(onUpdateSettings).not.toHaveBeenCalled();
+    expect(tagInput.value).toBe("");
   });
 
-  it("keeps the category draft visible while a failed save leaves detail unchanged", async () => {
+  it("keeps a partially typed tag in the input across a detail re-render", async () => {
     const v1 = makeVersion(1, "# Demo Skill");
     const detail = makeDetail(v1, {
       categories: ["engineering"],
       sharingScope: "company",
     });
-    const onUpdateSettings = vi.fn();
-    const node = await renderSkillDetail([v1], {
-      activeTab: "overview",
-      detail,
-      onUpdateSettings,
-    });
+    const node = await renderSkillDetail([v1], { activeTab: "overview", detail });
 
-    await click(buttonsNamed(node, "Settings")[0] as HTMLButtonElement);
-    const categoryInput = node.querySelector('[role="dialog"] input') as HTMLInputElement;
+    const tagInput = tagInputOf(node);
+    await inputValue(tagInput, "memo");
 
-    await inputValue(categoryInput, "memory");
-    await click(buttonsNamed(node.querySelector('[role="dialog"]') as HTMLElement, "Save settings")[0] as HTMLButtonElement);
+    // An unrelated refetch re-renders the same tree; the un-submitted draft survives.
+    await rerenderSkillDetail([v1], { activeTab: "overview", detail });
 
-    await act(async () => {
-      root?.render(
-        <SkillDetailPage
-          detail={detail}
-          loading={false}
-          activeTab="overview"
-          onTabChange={vi.fn()}
-          selectedPath="SKILL.md"
-          file={null}
-          fileLoading={false}
-          viewMode="preview"
-          editMode={false}
-          draft=""
-          setViewMode={vi.fn()}
-          setEditMode={vi.fn()}
-          setDraft={vi.fn()}
-          onSave={vi.fn()}
-          savePending={false}
-          versions={[v1]}
-          versionsLoading={false}
-          attachAgents={[]}
-          onSubmitAttach={vi.fn()}
-          attachPending={false}
-          expandedDirs={new Set()}
-          onToggleDir={vi.fn()}
-          onSelectPath={vi.fn()}
-          updateStatus={null}
-          updateStatusLoading={false}
-          onCheckUpdates={vi.fn()}
-          checkUpdatesPending={false}
-          onInstallUpdate={vi.fn()}
-          installUpdatePending={false}
-          onToggleStar={vi.fn()}
-          starPending={false}
-          onFork={vi.fn()}
-          onUpdateSettings={onUpdateSettings}
-          updateSettingsPending={false}
-          onDelete={vi.fn()}
-          deletePending={false}
-        />,
-      );
-    });
-
-    expect((node.querySelector('[role="dialog"] input') as HTMLInputElement).value).toBe("memory");
+    expect(tagInputOf(node).value).toBe("memo");
   });
 });
