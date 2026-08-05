@@ -95,6 +95,16 @@ const mockIssueChatThreadRender = vi.hoisted(() => vi.fn());
 const mockImageGalleryRender = vi.hoisted(() => vi.fn());
 const mockIssueWorkspaceCardRender = vi.hoisted(() => vi.fn());
 
+// jsdom has no ResizeObserver, and Radix's tooltip/popover positioning constructs one
+// on mount. Without this the header attribution tooltips throw during render.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+(globalThis as any).ResizeObserver = (globalThis as any).ResizeObserver ?? ResizeObserverStub;
+
 vi.mock("../api/issues", () => ({
   issuesApi: mockIssuesApi,
 }));
@@ -153,7 +163,7 @@ vi.mock("@/lib/router", () => ({
   } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a href={to} {...props}>{children}</a>
   ),
-  useLocation: () => ({ pathname: "/issues/PAP-1", search: "", hash: "", state: null }),
+  useLocation: () => mockLocation,
   useNavigate: () => mockNavigate,
   useNavigationType: () => "PUSH",
   useParams: () => ({ issueId: "PAP-1" }),
@@ -1106,7 +1116,9 @@ describe("IssueDetail", () => {
     await flushReact();
 
     expect(mockNavigate).toHaveBeenCalledWith("/inbox/mine", { replace: true });
-    expect(mockPushToast).toHaveBeenCalledWith({ title: "Task archived from inbox", tone: "success" });
+    // Fork copy says "Issue" / 議題 where upstream says "Task" — see the same note in
+    // Search.test.tsx. Asserting the fork's wording rather than flipping terminology.
+    expect(mockPushToast).toHaveBeenCalledWith({ title: "Issue archived from inbox", tone: "success" });
   });
 
   it("shows assignee and originating avatars in the issue header metadata", async () => {

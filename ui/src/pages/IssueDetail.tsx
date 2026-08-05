@@ -141,6 +141,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  deriveOriginatingActor,
   getClosedIsolatedExecutionWorkspaceMessage,
   isClosedIsolatedExecutionWorkspace,
   ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
@@ -160,6 +161,23 @@ import {
   type SuggestTasksInteraction,
   type IssueTreeControlMode,
 } from "@paperclipai/shared";
+import { Avatar, AvatarFallback, AvatarGroup, AvatarImage } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatUserLabel } from "../lib/assignees";
+import {
+  beginLocalInboxArchive,
+  boundLocalInboxArchive,
+  cancelInboxIssueQueries,
+  clearLocalInboxArchive,
+  confirmLocalInboxArchive,
+  getIssuePresenceInActiveInboxCaches,
+  invalidateInboxIssueQueries,
+  removeIssueFromInboxCaches,
+  restoreIssueToInboxCaches,
+  snapshotInboxIssueCaches,
+  type InboxIssueCacheSnapshot,
+} from "../lib/inboxArchiveCache";
+import type { CompanyUserProfile } from "../lib/company-members";
 
 type CommentReassignment = IssueCommentReassignment;
 type ActionableIssueThreadInteraction = SuggestTasksInteraction | RequestConfirmationInteraction | RequestCheckboxConfirmationInteraction;
@@ -235,13 +253,27 @@ export function canBoardResolveRecoveryAction(
   return membership.membershipRole !== "viewer" && membership.membershipRole !== null;
 }
 
-function resolveRunningIssueRun(
+/*
+ * Which run a new comment queues against, and which one an interrupt targets.
+ *
+ * The live-runs list is the fresher source, so it wins over the cached active run:
+ * the cache can still name a finished run, and trusting it marked comments as queued
+ * against a run that had already handed off, and sent interrupts to the wrong one.
+ * A queued run counts too — it has not started, but it is what the next message joins.
+ */
+function resolveInterruptibleIssueRun(
   activeRun: ActiveRunForIssue | null | undefined,
   liveRuns: readonly LiveRunForIssue[] | undefined,
 ) {
-  return activeRun?.status === "running"
-    ? activeRun
-    : (liveRuns ?? []).find((run) => run.status === "running") ?? null;
+  const issueLiveRun =
+    (liveRuns ?? []).find((run) => run.status === "running") ??
+    (liveRuns ?? []).find((run) => run.status === "queued") ??
+    null;
+  return issueLiveRun ?? (
+    activeRun?.status === "running" || activeRun?.status === "queued"
+      ? activeRun
+      : null
+  );
 }
 
 function dedupeLiveRunsById(liveRuns: readonly LiveRunForIssue[]) {
@@ -253,17 +285,31 @@ function dedupeLiveRunsById(liveRuns: readonly LiveRunForIssue[]) {
   });
 }
 
-function readIssueRunStateFromCache(queryClient: QueryClient, issueId: string) {
+function readIssueRunStateFromCache(
+  queryClient: QueryClient,
+  issueId: string,
+  issue: Pick<Issue, "executionRunId"> | null | undefined,
+) {
   const liveRuns = queryClient.getQueryData<LiveRunForIssue[]>(
     queryKeys.issues.liveRuns(issueId),
   );
   const activeRun = queryClient.getQueryData<ActiveRunForIssue | null>(
     queryKeys.issues.activeRun(issueId),
   );
+  // The cached active run can name a run that has already finished. Only believe it
+  // when the live-runs list still carries it, or the issue itself is still locked to
+  // it — otherwise a fresh comment gets optimistically queued against a dead run.
+  const activeRunIsLive = Boolean(
+    activeRun && liveRuns?.some((run) => run.id === activeRun.id),
+  );
+  const activeRunMatchesIssueLock = Boolean(
+    activeRun && issue?.executionRunId && activeRun.id === issue.executionRunId,
+  );
+  const resolvedActiveRun = activeRunIsLive || activeRunMatchesIssueLock ? activeRun : null;
   return {
     liveRuns,
-    activeRun,
-    runningIssueRun: resolveRunningIssueRun(activeRun, liveRuns),
+    activeRun: resolvedActiveRun,
+    interruptibleIssueRun: resolveInterruptibleIssueRun(resolvedActiveRun, liveRuns),
   };
 }
 
@@ -780,8 +826,8 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
   const resolvedActivity = activity ?? [];
   const resolvedLinkedRuns = linkedRuns ?? [];
 
-  const runningIssueRun = useMemo(
-    () => resolveRunningIssueRun(resolvedActiveRun, resolvedLiveRuns),
+  const interruptibleIssueRun = useMemo(
+    () => resolveInterruptibleIssueRun(resolvedActiveRun, resolvedLiveRuns),
     [resolvedActiveRun, resolvedLiveRuns],
   );
   const liveRunIds = useMemo(() => {
@@ -801,7 +847,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
     }));
   }, [liveRunIds, resolvedLinkedRuns]);
   const commentsWithRunMeta = useMemo<IssueDetailComment[]>(() => {
-    const activeRunStartedAt = runningIssueRun?.startedAt ?? runningIssueRun?.createdAt ?? null;
+    const activeRunStartedAt = interruptibleIssueRun?.startedAt ?? interruptibleIssueRun?.createdAt ?? null;
     const runMetaByCommentId = new Map<string, { runId: string; runAgentId: string | null; interruptedRunId: string | null }>();
     const followUpCommentIds = new Set<string>();
     const agentIdByRunId = new Map<string, string>();
@@ -842,7 +888,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
       const locallyQueuedComment = applyLocalQueuedIssueCommentState(nextComment, {
         queuedTargetRunId,
         targetRunIsLive: queuedTargetRunId ? liveRunIds.has(queuedTargetRunId) : false,
-        runningRunId: runningIssueRun?.id ?? null,
+        runningRunId: interruptibleIssueRun?.id ?? null,
       });
       if (locallyQueuedComment !== nextComment) {
         return locallyQueuedComment;
@@ -851,9 +897,9 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
         isQueuedIssueComment({
           comment: nextComment,
           activeRunStartedAt,
-          activeRunAgentId: runningIssueRun?.agentId ?? null,
-          activeRunCommentId: runningIssueRun?.contextCommentId ?? null,
-          activeRunWakeCommentId: runningIssueRun?.contextWakeCommentId ?? null,
+          activeRunAgentId: interruptibleIssueRun?.agentId ?? null,
+          activeRunCommentId: interruptibleIssueRun?.contextCommentId ?? null,
+          activeRunWakeCommentId: interruptibleIssueRun?.contextWakeCommentId ?? null,
           runId: meta?.runId ?? nextComment.runId ?? null,
           interruptedRunId: meta?.interruptedRunId ?? nextComment.interruptedRunId ?? null,
         })
@@ -861,7 +907,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
         return {
           ...nextComment,
           queueState: "queued" as const,
-          queueTargetRunId: runningIssueRun?.id ?? nextComment.queueTargetRunId ?? null,
+          queueTargetRunId: interruptibleIssueRun?.id ?? nextComment.queueTargetRunId ?? null,
           queueReason: queuedCommentReason,
         };
       }
@@ -874,7 +920,7 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
     queuedCommentReason,
     resolvedActivity,
     resolvedLinkedRuns,
-    runningIssueRun,
+    interruptibleIssueRun,
   ]);
   const timelineEvents = useMemo(
     () => extractIssueTimelineEvents(resolvedActivity),
@@ -951,9 +997,9 @@ const IssueDetailChatTab = memo(function IssueDetailChatTab({
         onCancelInteraction={onCancelInteraction}
         issueWorkMode={issueWorkMode}
         onWorkModeChange={onWorkModeChange}
-        onCancelRun={runningIssueRun && onPauseWorkRun
+        onCancelRun={interruptibleIssueRun && onPauseWorkRun
           ? async () => {
-              await onPauseWorkRun(runningIssueRun.id);
+              await onPauseWorkRun(interruptibleIssueRun.id);
             }
           : undefined}
         onImageClick={onImageClick}
@@ -1244,6 +1290,136 @@ export function shouldScrollIssueDetailToTopOnNavigation(input: {
   if (input.navigationType === "POP") return false;
   return input.previousIssueId !== input.nextIssueId;
 }
+
+type AttributionActor = {
+  kind: "agent" | "user";
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+};
+
+function attributionInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function AttributionAvatar({
+  label,
+  actor,
+  via,
+}: {
+  label: "Assignee" | "Originating";
+  actor: AttributionActor;
+  via?: string | null;
+}) {
+  const accessibleLabel = via ? `${label}: ${actor.name} \u00b7 via ${via}` : `${label}: ${actor.name}`;
+  const testIdLabel = label.toLowerCase();
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Avatar
+          size="xs"
+          shape={actor.kind === "agent" ? "square" : "circle"}
+          aria-label={accessibleLabel}
+          data-testid={`issue-${testIdLabel}-avatar`}
+          className="ring-2 ring-background"
+        >
+          {actor.avatarUrl ? <AvatarImage src={actor.avatarUrl} alt="" /> : null}
+          <AvatarFallback>{attributionInitials(actor.name)}</AvatarFallback>
+        </Avatar>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6} className="px-2 py-1.5">
+        <div className="flex items-center gap-2" data-testid={`issue-${testIdLabel}-tooltip`}>
+          <Avatar
+            size="sm"
+            shape={actor.kind === "agent" ? "square" : "circle"}
+            className="ring-1 ring-background/30"
+          >
+            {actor.avatarUrl ? <AvatarImage src={actor.avatarUrl} alt="" /> : null}
+            <AvatarFallback className="bg-background/20 text-background">
+              {attributionInitials(actor.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <div className="text-(length:--text-nano) font-medium uppercase leading-none text-background/70">{label}</div>
+            <div className="max-w-48 truncate text-xs font-medium leading-4 text-background">{actor.name}</div>
+            {via ? (
+              <div className="max-w-48 truncate text-(length:--text-nano) leading-3 text-background/60">via {via}</div>
+            ) : null}
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/*
+ * Who is on this task, as two avatars: who it is assigned to, and who it came from.
+ * When an agent files a task on a person's behalf the originator is that person,
+ * with the agent shown as "via" — otherwise agent-filed work looks unowned.
+ */
+function IssueAttributionByline({
+  issue,
+  agentMap,
+  userProfileMap,
+  userLabelMap,
+}: {
+  issue: Issue;
+  agentMap: Map<string, Agent>;
+  userProfileMap: ReadonlyMap<string, CompanyUserProfile>;
+  userLabelMap: ReadonlyMap<string, string>;
+}) {
+  const assignee: AttributionActor | null = issue.assigneeAgentId
+    ? {
+        kind: "agent",
+        id: issue.assigneeAgentId,
+        name: agentMap.get(issue.assigneeAgentId)?.name ?? issue.assigneeAgentId.slice(0, 8),
+      }
+    : issue.assigneeUserId
+      ? {
+          kind: "user",
+          id: issue.assigneeUserId,
+          name: formatUserLabel(issue.assigneeUserId, userLabelMap)
+            ?? userProfileMap.get(issue.assigneeUserId)?.label
+            ?? "User",
+          avatarUrl: userProfileMap.get(issue.assigneeUserId)?.image ?? null,
+        }
+      : null;
+  const originatingActor = deriveOriginatingActor(issue);
+  const originator: AttributionActor | null = originatingActor
+    ? originatingActor.kind === "agent"
+      ? {
+          kind: "agent",
+          id: originatingActor.id,
+          name: agentMap.get(originatingActor.id)?.name ?? originatingActor.id.slice(0, 8),
+        }
+      : {
+          kind: "user",
+          id: originatingActor.id,
+          name: formatUserLabel(originatingActor.id, userLabelMap)
+            ?? userProfileMap.get(originatingActor.id)?.label
+            ?? "User",
+          avatarUrl: userProfileMap.get(originatingActor.id)?.image ?? null,
+        }
+    : null;
+  const originatorVia =
+    originatingActor?.kind === "user" && originatingActor.viaAgentId
+      ? agentMap.get(originatingActor.viaAgentId)?.name ?? originatingActor.viaAgentId.slice(0, 8)
+      : null;
+  if (!assignee && !originator) return null;
+
+  return (
+    <TooltipProvider>
+      <AvatarGroup className="-space-x-1.5" aria-label="Task people" data-testid="issue-attribution-avatar-stack">
+        {assignee ? <AttributionAvatar label="Assignee" actor={assignee} /> : null}
+        {originator ? <AttributionAvatar label="Originating" actor={originator} via={originatorVia} /> : null}
+      </AvatarGroup>
+    </TooltipProvider>
+  );
+}
+
 
 export function IssueDetail() {
   const { t } = useTranslation();
@@ -2038,7 +2214,7 @@ export function IssueDetail() {
       await queryClient.cancelQueries({ queryKey: queryKeys.issues.detail(issueId!) });
 
       const previousIssue = queryClient.getQueryData<Issue>(queryKeys.issues.detail(issueId!));
-      const queuedComment = !interrupt ? readIssueRunStateFromCache(queryClient, issueId!).runningIssueRun : null;
+      const queuedComment = !interrupt ? readIssueRunStateFromCache(queryClient, issueId!, issue).interruptibleIssueRun : null;
       const optimisticComment = issue
         ? createOptimisticIssueComment({
             companyId: issue.companyId,
@@ -2260,7 +2436,7 @@ export function IssueDetail() {
       await queryClient.cancelQueries({ queryKey: queryKeys.issues.detail(issueId!) });
 
       const previousIssue = queryClient.getQueryData<Issue>(queryKeys.issues.detail(issueId!));
-      const queuedComment = !interrupt ? readIssueRunStateFromCache(queryClient, issueId!).runningIssueRun : null;
+      const queuedComment = !interrupt ? readIssueRunStateFromCache(queryClient, issueId!, issue).interruptibleIssueRun : null;
       const optimisticComment = issue
         ? createOptimisticIssueComment({
             companyId: issue.companyId,
@@ -2380,11 +2556,11 @@ export function IssueDetail() {
         previousRunState.find((state) => state.activeRun)?.activeRun ??
         null;
       const liveRunList = dedupeLiveRunsById(previousRunState.flatMap((state) => state.liveRuns ?? []));
-      const runningIssueRun = resolveRunningIssueRun(cachedActiveRun, liveRunList);
+      const interruptibleIssueRun = resolveInterruptibleIssueRun(cachedActiveRun, liveRunList);
       const targetRun =
         cachedActiveRun?.id === runId
           ? cachedActiveRun
-          : liveRunList?.find((run) => run.id === runId) ?? runningIssueRun ?? null;
+          : liveRunList?.find((run) => run.id === runId) ?? interruptibleIssueRun ?? null;
 
       if (targetRun) {
         const interruptedAt = new Date().toISOString();
@@ -2616,19 +2792,48 @@ export function IssueDetail() {
     },
   });
 
+  /*
+   * Archiving from the detail page has to prune the inbox caches itself. Without it the
+   * task is still sitting in the inbox list you are sent back to, until a refetch lands —
+   * and a failed archive left no way back. Snapshot, remove, restore on error.
+   */
   const archiveFromInbox = useMutation({
     mutationFn: (id: string) => issuesApi.archiveFromInbox(id),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      if (!selectedCompanyId) return { previousData: [] as InboxIssueCacheSnapshot };
+      beginLocalInboxArchive(selectedCompanyId, id);
+      await cancelInboxIssueQueries(queryClient, selectedCompanyId);
+      const previousData = snapshotInboxIssueCaches(queryClient, selectedCompanyId);
+      removeIssueFromInboxCaches(queryClient, selectedCompanyId, id);
+      return { companyId: selectedCompanyId, previousData };
+    },
+    onSuccess: (_data, id) => {
+      if (selectedCompanyId) {
+        removeIssueFromInboxCaches(queryClient, selectedCompanyId, id);
+      }
       invalidateIssueCollections();
       navigate(sourceBreadcrumb.href.startsWith("/inbox") ? sourceBreadcrumb.href : "/inbox", { replace: true });
       pushToast({ title: t("issues.toast.archivedFromInbox"), tone: "success" });
     },
-    onError: (err) => {
+    onError: (err, id, context) => {
+      if (context?.companyId) clearLocalInboxArchive(context.companyId, id);
+      if (context?.previousData) {
+        restoreIssueToInboxCaches(queryClient, context.previousData, id);
+      }
       pushToast({
         title: t("issues.toast.archiveFailed"),
         body: err instanceof Error ? err.message : t("issues.toast.errArchive"),
         tone: "error",
       });
+    },
+    onSettled: async (_data, error, id, context) => {
+      if (!context?.companyId) return;
+      if (!error) boundLocalInboxArchive(context.companyId, id);
+      await invalidateInboxIssueQueries(queryClient, context.companyId);
+      if (!error) {
+        const presence = getIssuePresenceInActiveInboxCaches(queryClient, context.companyId, id);
+        if (presence !== "unknown") confirmLocalInboxArchive(context.companyId, id);
+      }
     },
   });
 
@@ -3444,6 +3649,13 @@ export function IssueDetail() {
               {t("issues.props.noProject")}
             </span>
           )}
+
+          <IssueAttributionByline
+            issue={issue}
+            agentMap={agentMap}
+            userProfileMap={userProfileMap}
+            userLabelMap={userLabelMap}
+          />
 
           {(issue.labels ?? []).length > 0 && (
             <div className="hidden sm:flex items-center gap-1">

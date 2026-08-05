@@ -258,6 +258,23 @@ function isMarkdown(pathValue: string) {
   return pathValue.toLowerCase().endsWith(".md");
 }
 
+/*
+ * The server already classifies each instructions file, so trust that over the
+ * filename: agents routinely keep an extensionless `AGENTS`, which is markdown and
+ * deserves the rich editor, and a `.md` the server says isn't markdown should stay
+ * on the raw textarea. The extension is only the fallback when metadata is absent.
+ */
+function shouldUseMarkdownInstructionsEditor(input: {
+  selectedFileExists: boolean;
+  selectedPath: string;
+  detail?: { markdown?: boolean } | null;
+  summary?: { markdown?: boolean } | null;
+}) {
+  const metadataMarkdown = input.detail?.markdown ?? input.summary?.markdown;
+  if (typeof metadataMarkdown === "boolean") return metadataMarkdown;
+  return isMarkdown(input.selectedPath);
+}
+
 function formatEnvForDisplay(envValue: unknown, censorUsernameInLogs: boolean): string {
   const env = asRecord(envValue);
   if (!env) return "<unable-to-parse>";
@@ -2056,7 +2073,7 @@ function ConfigurationTab({
 
 /* ---- Prompts Tab ---- */
 
-function PromptsTab({
+export function PromptsTab({
   agent,
   companyId,
   onDirtyChange,
@@ -2296,6 +2313,12 @@ function PromptsTab({
 
   const currentContent = selectedFileExists ? (selectedFileDetail?.content ?? "") : "";
   const displayValue = draft ?? currentContent;
+  const useMarkdownEditor = shouldUseMarkdownInstructionsEditor({
+    selectedFileExists,
+    selectedPath: selectedOrEntryFile,
+    detail: selectedFileDetail,
+    summary: selectedFileSummary,
+  });
   const bundleDirty = Boolean(
     bundleDraft &&
       (
@@ -2767,14 +2790,14 @@ function PromptsTab({
 
           {selectedFileExists && fileLoading && !selectedFileDetail ? (
             <PromptEditorSkeleton />
-          ) : isMarkdown(selectedOrEntryFile) ? (
+          ) : useMarkdownEditor ? (
             <MarkdownEditor
               key={selectedOrEntryFile}
               value={displayValue}
               onChange={(value) => setDraft(value ?? "")}
               placeholder={t("agentDetail.prompts.editorPlaceholder")}
               className="min-w-0 overflow-hidden"
-              contentClassName="min-h-[420px] max-w-full break-words text-sm font-mono"
+              contentClassName="min-h-(--sz-420px) max-w-full break-words text-sm leading-7"
               imageUploadHandler={async (file) => {
                 const namespace = `agents/${agent.id}/instructions/${selectedOrEntryFile.replaceAll("/", "-")}`;
                 const asset = await uploadMarkdownImage.mutateAsync({ file, namespace });
