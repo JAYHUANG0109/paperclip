@@ -293,8 +293,11 @@ export function AgentMultiSelect({
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-80 p-0" align={contentAlign}>
-        <div className="border-b border-border p-3">
+        <PopoverContent
+          className="flex max-h-[min(70vh,var(--radix-popover-content-available-height,70vh))] w-80 flex-col p-0"
+          align={contentAlign}
+        >
+        <div className="shrink-0 border-b border-border p-3">
           <Input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
@@ -304,6 +307,9 @@ export function AgentMultiSelect({
           />
           {headerContent}
         </div>
+        {/* Teams + agents share ONE scroll region so a long team tree never
+            pushes the list (or the Save footer) off-screen. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {teams && teams.length > 0 && normalizedFilter.length === 0 ? (
           <div className="border-b border-border py-1">
             <p className="px-3 pb-0.5 pt-1 text-(length:--text-nano) font-medium uppercase tracking-wide text-muted-foreground">
@@ -320,7 +326,7 @@ export function AgentMultiSelect({
         ) : agents.length === 0 ? (
           <div className="px-3 py-4 text-sm text-muted-foreground">{emptyMessage}</div>
         ) : (
-          <div className="max-h-60 overflow-y-auto py-1">
+          <div className="py-1">
             {filteredAgents.map((agent) => {
               const description = getDescription?.(agent) ?? agent.title;
               const optionDisabled = isAgentDisabled?.(agent) ?? false;
@@ -359,7 +365,8 @@ export function AgentMultiSelect({
             ) : null}
           </div>
         )}
-          <div className="flex items-center justify-between border-t border-border px-3 py-2">
+        </div>
+          <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-2">
             <span className="text-xs text-muted-foreground">
               {workingAgentIds.size === 0 ? "No agents selected" : `${workingAgentIds.size} selected`}
             </span>
