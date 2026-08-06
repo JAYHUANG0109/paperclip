@@ -1433,222 +1433,229 @@
     {
       "idx": 204,
       "version": "7",
+      "when": 1786032087897,
+      "tag": "0210_heartbeat_context_taskkey_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
       "when": 1782289918252,
       "tag": "9001_colorful_human_cannonball",
       "breakpoints": true
     },
     {
-      "idx": 205,
+      "idx": 206,
       "version": "7",
       "when": 1782292347775,
       "tag": "9002_bright_black_tarantula",
       "breakpoints": true
     },
     {
-      "idx": 206,
+      "idx": 207,
       "version": "7",
       "when": 1782346899022,
       "tag": "9003_mighty_ares",
       "breakpoints": true
     },
     {
-      "idx": 207,
+      "idx": 208,
       "version": "7",
       "when": 1782360198071,
       "tag": "9004_smart_madame_masque",
       "breakpoints": true
     },
     {
-      "idx": 208,
+      "idx": 209,
       "version": "7",
       "when": 1782366102990,
       "tag": "9005_aromatic_khan",
       "breakpoints": true
     },
     {
-      "idx": 209,
+      "idx": 210,
       "version": "7",
       "when": 1782366103990,
       "tag": "9006_skill_sharing",
       "breakpoints": true
     },
     {
-      "idx": 210,
+      "idx": 211,
       "version": "7",
       "when": 1782366104990,
       "tag": "9007_skill_approval",
       "breakpoints": true
     },
     {
-      "idx": 211,
+      "idx": 212,
       "version": "7",
       "when": 1782366105990,
       "tag": "9008_skill_usage",
       "breakpoints": true
     },
     {
-      "idx": 212,
+      "idx": 213,
       "version": "7",
       "when": 1782366106990,
       "tag": "9009_skill_bounties",
       "breakpoints": true
     },
     {
-      "idx": 213,
+      "idx": 214,
       "version": "7",
       "when": 1782366107990,
       "tag": "9010_monthly_awards",
       "breakpoints": true
     },
     {
-      "idx": 214,
+      "idx": 215,
       "version": "7",
       "when": 1782366108990,
       "tag": "9011_skill_teams",
       "breakpoints": true
     },
     {
-      "idx": 215,
+      "idx": 216,
       "version": "7",
       "when": 1782366109990,
       "tag": "9012_skill_usage_events",
       "breakpoints": true
     },
     {
-      "idx": 216,
+      "idx": 217,
       "version": "7",
       "when": 1782366110990,
       "tag": "9013_notifications",
       "breakpoints": true
     },
     {
-      "idx": 217,
+      "idx": 218,
       "version": "7",
       "when": 1782366111990,
       "tag": "9014_user_calendar_preferences",
       "breakpoints": true
     },
     {
-      "idx": 218,
+      "idx": 219,
       "version": "7",
       "when": 1782366112990,
       "tag": "9015_skill_folders",
       "breakpoints": true
     },
     {
-      "idx": 219,
+      "idx": 220,
       "version": "7",
       "when": 1782366113990,
       "tag": "9016_skill_folder_members",
       "breakpoints": true
     },
     {
-      "idx": 220,
+      "idx": 221,
       "version": "7",
       "when": 1782366114990,
       "tag": "9017_folder_access_control",
       "breakpoints": true
     },
     {
-      "idx": 221,
+      "idx": 222,
       "version": "7",
       "when": 1782366115990,
       "tag": "9018_issue_pinned",
       "breakpoints": true
     },
     {
-      "idx": 222,
+      "idx": 223,
       "version": "7",
       "when": 1782366116990,
       "tag": "9019_folder_alpha_order",
       "breakpoints": true
     },
     {
-      "idx": 223,
+      "idx": 224,
       "version": "7",
       "when": 1782366117990,
       "tag": "9020_project_teams",
       "breakpoints": true
     },
     {
-      "idx": 224,
+      "idx": 225,
       "version": "7",
       "when": 1782366118990,
       "tag": "9021_project_instructions",
       "breakpoints": true
     },
     {
-      "idx": 225,
+      "idx": 226,
       "version": "7",
       "when": 1782366119990,
       "tag": "9022_company_skill_files",
       "breakpoints": true
     },
     {
-      "idx": 226,
+      "idx": 227,
       "version": "7",
       "when": 1785420000000,
       "tag": "9023_routine_sharing",
       "breakpoints": true
     },
     {
-      "idx": 227,
+      "idx": 228,
       "version": "7",
       "when": 1785420019000,
       "tag": "9024_agent_membership_source",
       "breakpoints": true
     },
     {
-      "idx": 228,
+      "idx": 229,
       "version": "7",
       "when": 1785420020000,
       "tag": "9025_user_memories",
       "breakpoints": true
     },
     {
-      "idx": 229,
+      "idx": 230,
       "version": "7",
       "when": 1785420021000,
       "tag": "9026_issues_title_provisional",
       "breakpoints": true
     },
     {
-      "idx": 230,
+      "idx": 231,
       "version": "7",
       "when": 1785420022000,
       "tag": "9027_user_memories_observations",
       "breakpoints": true
     },
     {
-      "idx": 231,
+      "idx": 232,
       "version": "7",
       "when": 1785420023000,
       "tag": "9028_user_memories_lifecycle",
       "breakpoints": true
     },
     {
-      "idx": 232,
+      "idx": 233,
       "version": "7",
       "when": 1785420024000,
       "tag": "9029_user_memory_import_batch",
       "breakpoints": true
     },
     {
-      "idx": 233,
+      "idx": 234,
       "version": "7",
       "when": 1785420025000,
       "tag": "9030_issue_skill_hints",
       "breakpoints": true
     },
     {
-      "idx": 234,
+      "idx": 235,
       "version": "7",
       "when": 1785420039000,
       "tag": "9031_chat_rooms",
       "breakpoints": true
     },
     {
-      "idx": 235,
+      "idx": 236,
       "version": "7",
       "when": 1785420040000,
       "tag": "9032_room_memories",
