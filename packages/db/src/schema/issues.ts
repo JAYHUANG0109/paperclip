@@ -20,8 +20,7 @@ import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { projectWorkspaces } from "./project_workspaces.js";
 import { executionWorkspaces } from "./execution_workspaces.js";
-import type { SourceTrustMetadata } from "@paperclipai/shared";
-import type { IssueUnblockDescriptor } from "@paperclipai/shared";
+import type { IssueReviewPolicy, IssueUnblockDescriptor, SourceTrustMetadata } from "@paperclipai/shared";
 
 export const issues = pgTable(
   "issues",
@@ -46,6 +45,7 @@ export const issues = pgTable(
     // Pinned tasks float to the top of the agent dashboard and never drop off
     // the recent-tasks view. Global per-task (scoped by who can see the agent).
     pinned: boolean("pinned").notNull().default(false),
+    reviewPolicy: text("review_policy").$type<IssueReviewPolicy>(),
     assigneeAgentId: uuid("assignee_agent_id").references(() => agents.id),
     assigneeUserId: text("assignee_user_id"),
     checkoutRunId: uuid("checkout_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),

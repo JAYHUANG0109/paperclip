@@ -2979,6 +2979,7 @@ const issueListSelect = {
   harnessKind: issues.harnessKind,
   priority: issues.priority,
   pinned: issues.pinned,
+  reviewPolicy: issues.reviewPolicy,
   assigneeAgentId: issues.assigneeAgentId,
   assigneeUserId: issues.assigneeUserId,
   skillHints: issues.skillHints,

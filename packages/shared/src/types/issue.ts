@@ -17,6 +17,7 @@ import type {
   IssueHarnessKind,
   IssueOriginKind,
   IssuePriority,
+  IssueReviewPolicy,
   IssueRecoveryActionKind,
   IssueRecoveryActionOutcome,
   IssueRecoveryActionOwnerType,
@@ -153,6 +154,7 @@ export interface AcceptedPlanDecompositionChild {
   priority: IssuePriority;
   /** Pinned to the top of the agent dashboard (and never dropped from recents). */
   pinned?: boolean;
+  reviewPolicy?: IssueReviewPolicy | null;
   assigneeAgentId?: string | null;
   assigneeUserId?: string | null;
   /** Optional per-task skill scoping — keys of the assignee's equipped skills to use. */
@@ -778,6 +780,7 @@ export interface Issue {
   priority: IssuePriority;
   /** Pinned to the top of the agent dashboard (and never dropped from recents). */
   pinned?: boolean;
+  reviewPolicy: IssueReviewPolicy | null;
   assigneeAgentId: string | null;
   assigneeUserId: string | null;
   /** Optional per-task skill scoping — keys of the assignee's equipped skills to use. */
@@ -866,6 +869,7 @@ export type CompactIssue = Pick<
   | "status"
   | "workMode"
   | "priority"
+  | "reviewPolicy"
   | "assigneeAgentId"
   | "assigneeUserId"
   | "checkoutRunId"

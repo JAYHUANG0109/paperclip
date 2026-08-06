@@ -10,8 +10,8 @@ import {
   buildWorkspaceValidationRecoveryNoticeSeed,
 } from "./stranded-notice.js";
 
-function allRows(metadata: { sections: Array<{ rows: unknown[] }> }) {
-  return metadata.sections.flatMap((section) => section.rows) as Array<Record<string, unknown>>;
+function allRows(metadata: { sections?: Array<{ rows: unknown[] }> }) {
+  return (metadata.sections ?? []).flatMap((section) => section.rows) as Array<Record<string, unknown>>;
 }
 
 describe("stranded recovery notice seeds", () => {

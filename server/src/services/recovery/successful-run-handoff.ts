@@ -128,51 +128,6 @@ function metadataText(value: unknown, fallback = "unknown") {
   return resolved.length > 2000 ? `${resolved.slice(0, 1997)}...` : resolved;
 }
 
-function keyValueRow(label: string, value: unknown): NonNullable<IssueCommentMetadata["sections"]>[number]["rows"][number] {
-  return { type: "key_value", label, value: metadataText(value) };
-}
-
-function issueLinkRow(
-  label: string,
-  issue: NullableNoticeIssue,
-): NonNullable<IssueCommentMetadata["sections"]>[number]["rows"][number] {
-  if (!issue) return keyValueRow(label, "unknown");
-  return {
-    type: "issue_link",
-    label,
-    issueId: issue.id,
-    identifier: issue.identifier,
-    title: issue.title,
-  };
-}
-
-function runLinkRow(
-  label: string,
-  run: NullableNoticeRun,
-): NonNullable<IssueCommentMetadata["sections"]>[number]["rows"][number] {
-  if (!run) return keyValueRow(label, "unknown");
-  return { type: "run_link", label, runId: run.id, title: run.status };
-}
-
-function agentLinkRow(
-  label: string,
-  agent: NullableNoticeAgent,
-): NonNullable<IssueCommentMetadata["sections"]>[number]["rows"][number] {
-  if (!agent) return keyValueRow(label, "unknown");
-  return { type: "agent_link", label, agentId: agent.id, name: agent.name };
-}
-
-function systemNoticePresentation(input: {
-  tone: IssueCommentPresentation["tone"];
-  title: string;
-}): IssueCommentPresentation {
-  return {
-    kind: "system_notice",
-    tone: input.tone,
-    title: input.title,
-    detailsDefaultOpen: false,
-  };
-}
 
 export function isSuccessfulRunHandoffRequiredNoticeBody(body: string) {
   const trimmed = body.trim();

@@ -20,6 +20,7 @@ import {
   ISSUE_RECOVERY_ACTION_OUTCOMES,
   ISSUE_RECOVERY_ACTION_OWNER_TYPES,
   ISSUE_RECOVERY_ACTION_STATUSES,
+  ISSUE_REVIEW_POLICIES,
   ISSUE_WORK_MODES,
   clampIssueRequestDepth,
   ISSUE_STATUSES,
@@ -450,6 +451,7 @@ const createIssueBaseSchema = z.object({
   workMode: z.enum(ISSUE_WORK_MODES).optional().default("standard"),
   harnessKind: z.enum(ISSUE_HARNESS_KINDS).optional().nullable(),
   priority: z.enum(ISSUE_PRIORITIES).optional().default("medium"),
+  reviewPolicy: z.enum(ISSUE_REVIEW_POLICIES).optional().nullable(),
   assigneeAgentId: z.string().uuid().optional().nullable(),
   assigneeUserId: z.string().optional().nullable(),
   // Optional per-task skill scoping — keys of the assignee's equipped skills to use.

@@ -96,6 +96,7 @@ import {
   type IssueWakeDiagnosticWakeRequest,
   type IssueWakeDiagnosticsResponse,
   type IssueRelationIssueSummary,
+  type IssueReviewPolicy,
   type IssueCommentPresentation,
   type IssueWatchdogDiscoveryKind,
   type ProjectWorkspace,
@@ -225,6 +226,7 @@ import {
 import { externalObjectService } from "../services/external-objects.js";
 import { toAbsoluteLink } from "../services/notifications.js";
 import { deliverAgentUnblockNotification } from "../services/routable-blocked.js";
+import { assertIssueReviewVerdictActorAllowed } from "../services/issue-review-policy.js";
 import {
   crossIssueInfluenceLimitError,
   crossIssueInfluenceRunContextError,
@@ -1775,17 +1777,6 @@ async function assertCanManageIssueMonitor(
   throw forbidden("Only the assignee agent or a board user can manage issue monitors");
 }
 
-// True when the agent is the participant of the currently pending execution-policy
-// stage. Such an agent owns the stage's signoff, so its `in_review -> done` PATCH is
-// a stage advance rather than a self-approval of its own work.
-function isPendingExecutionStageParticipant(executionState: unknown, agentId: string | null | undefined) {
-  if (!agentId) return false;
-  const state = parseIssueExecutionState(executionState);
-  if (state?.status !== "pending") return false;
-  const participant = state.currentParticipant;
-  return participant?.type === "agent" && participant.agentId === agentId;
-}
-
 function summarizeIssueMonitor(
   issue: {
     monitorNextCheckAt?: Date | null;
@@ -2286,6 +2277,7 @@ function toCompactIssue(issue: any): CompactIssue {
     status: issue.status,
     workMode: issue.workMode,
     priority: issue.priority,
+    reviewPolicy: issue.reviewPolicy,
     assigneeAgentId: issue.assigneeAgentId,
     assigneeUserId: issue.assigneeUserId,
     checkoutRunId: issue.checkoutRunId,
@@ -4103,6 +4095,31 @@ export function issueRoutes(
       return false;
     }
     return true;
+  }
+
+  async function assertPendingReviewInteractionVerdictAllowed(
+    req: Request,
+    issue: {
+      id: string;
+      companyId: string;
+      status: string;
+      reviewPolicy?: IssueReviewPolicy | null;
+      createdByAgentId?: string | null;
+      createdByUserId?: string | null;
+    },
+    interaction: { status: string },
+  ) {
+    if (
+      issue.status !== "in_review"
+      || interaction.status !== "pending"
+      || issue.reviewPolicy == null
+      || issue.reviewPolicy === "anyone"
+    ) return;
+    const actor = getActorInfo(req);
+    await assertIssueReviewVerdictActorAllowed(db, {
+      issue,
+      actor: { type: actor.actorType, id: actor.actorId },
+    });
   }
 
   async function assertIssueThreadInteractionWithdrawalAllowed(
@@ -8477,21 +8494,6 @@ export function issueRoutes(
     const existing = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
     if (!existing) return;
     assertNoAgentHostWorkspaceCommandMutation(req, collectIssueWorkspaceCommandPaths(req.body));
-    // An agent may not rubber-stamp its own `in_review` work as `done` — approving
-    // is the board's/reviewer's call (PAP-16080 §4.4). Execution-policy signoff is
-    // the explicit exception: there, the policy reassigns the issue to each stage's
-    // participant, so the current reviewer/approver *is* the assignee and their
-    // `done` PATCH is a stage advance governed by
-    // `applyIssueExecutionPolicyTransition`, not a self-approval.
-    if (
-      req.actor.type === "agent"
-      && existing.status === "in_review"
-      && req.body.status === "done"
-      && existing.assigneeAgentId === req.actor.agentId
-      && !isPendingExecutionStageParticipant(existing.executionState, req.actor.agentId)
-    ) {
-      throw forbidden("Agents cannot approve their own in-review work");
-    }
     if (req.actor.type === "agent" && req.body.onBehalfOfUserId != null) {
       await auditAgentIssueCommentAttributionSpoof({
         db,
@@ -8538,6 +8540,21 @@ export function issueRoutes(
       onBehalfOfUserId: _requestedOnBehalfOfUserId,
       ...updateFields
     } = req.body;
+    const effectiveReviewPolicy = req.body.reviewPolicy === undefined
+      ? existing.reviewPolicy
+      : req.body.reviewPolicy;
+    if (
+      existing.status === "in_review"
+      && (updateFields.status === "done" || updateFields.status === "cancelled")
+      && effectiveReviewPolicy != null
+      && effectiveReviewPolicy !== "anyone"
+    ) {
+      await assertIssueReviewVerdictActorAllowed(db, {
+        issue: existing,
+        actor: { type: actor.actorType, id: actor.actorId },
+        reviewPolicy: effectiveReviewPolicy,
+      });
+    }
     const shouldCancelActiveRunForCancelledStatus =
       existing.status !== "cancelled" && updateFields.status === "cancelled";
     if (resumeRequested === true && !commentBody) {
@@ -10308,6 +10325,7 @@ export function issueRoutes(
       const interactionSvc = issueThreadInteractionService(db);
       const current = await interactionSvc.getForIssue(issue, interactionId);
       if (!(await assertIssueThreadInteractionResolutionAllowed(req, res, issue, current))) return;
+      await assertPendingReviewInteractionVerdictAllowed(req, issue, current);
 
       const actor = getActorInfo(req);
       const { interaction, createdIssues, continuationIssue } = await interactionSvc.acceptInteraction(issue, interactionId, req.body, {
@@ -10460,6 +10478,7 @@ export function issueRoutes(
       const interactionSvc = issueThreadInteractionService(db);
       const current = await interactionSvc.getForIssue(issue, interactionId);
       if (!(await assertIssueThreadInteractionResolutionAllowed(req, res, issue, current))) return;
+      await assertPendingReviewInteractionVerdictAllowed(req, issue, current);
 
       const actor = getActorInfo(req);
       const interaction = await interactionSvc.rejectInteraction(issue, interactionId, req.body, {

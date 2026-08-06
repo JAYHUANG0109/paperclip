@@ -1,7 +1,7 @@
 import type { IssueCommentMetadata, IssueCommentPresentation } from "@paperclipai/shared";
 
-export type NoticeMetadataRow = IssueCommentMetadata["sections"][number]["rows"][number];
-export type NoticeMetadataSection = IssueCommentMetadata["sections"][number];
+export type NoticeMetadataRow = NonNullable<IssueCommentMetadata["sections"]>[number]["rows"][number];
+export type NoticeMetadataSection = NonNullable<IssueCommentMetadata["sections"]>[number];
 
 export function metadataText(value: unknown, fallback = "unknown") {
   const text = typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
