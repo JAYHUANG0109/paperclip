@@ -3,6 +3,13 @@ import type { Db } from "@paperclipai/db";
 import { agentWakeupRequests, agents, heartbeatRuns, issues } from "@paperclipai/db";
 import type { IssueCommentMetadata, IssueCommentPresentation, RunLivenessState } from "@paperclipai/shared";
 import { withRecoveryModelProfileHint } from "./model-profile-hint.js";
+import {
+  agentLinkRow,
+  issueLinkRow,
+  keyValueRow,
+  runLinkRow,
+  systemNoticePresentation,
+} from "./notice-format.js";
 
 export const FINISH_SUCCESSFUL_RUN_HANDOFF_REASON = "finish_successful_run_handoff";
 export const SUCCESSFUL_RUN_MISSING_STATE_REASON = "successful_run_missing_state";
@@ -57,7 +64,7 @@ type IssueRow = Pick<
 >;
 type AgentRow = Pick<typeof agents.$inferSelect, "id" | "companyId" | "status">;
 type NoticeIssue = Pick<typeof issues.$inferSelect, "id" | "identifier" | "title" | "status">;
-type NoticeRun = Pick<typeof heartbeatRuns.$inferSelect, "id" | "status">;
+type NoticeRun = Pick<typeof heartbeatRuns.$inferSelect, "id" | "status" | "agentId">;
 type NoticeAgent = Pick<typeof agents.$inferSelect, "id" | "name">;
 type NullableNoticeAgent = NoticeAgent | null | undefined;
 type NullableNoticeIssue = NoticeIssue | null | undefined;
