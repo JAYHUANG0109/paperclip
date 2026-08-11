@@ -286,7 +286,12 @@ export function ExecutionWorkspaceCloseDialog({
             ) : null}
 
             <div className="text-xs text-muted-foreground">
-              {t("executionWorkspaceClose.lastChecked", { time: formatDateTime(new Date()) })}
+              {t("executionWorkspaceClose.lastChecked", {
+                // When the readiness data was actually fetched, not render time --
+                // new Date() re-read "now" on every render, so a stale cached
+                // result always claimed to have just been checked.
+                time: formatDateTime(new Date(readinessQuery.dataUpdatedAt)),
+              })}
             </div>
           </div>
         ) : null}
