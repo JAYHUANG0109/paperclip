@@ -3315,7 +3315,12 @@ describe("realizeExecutionWorkspace", () => {
       },
     });
 
-    const worktreesDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-cleanup-instances-"));
+    // realpath because the cleanup service canonicalises the paths it records, and
+    // on macOS os.tmpdir() can sit under the /tmp -> /private/tmp symlink. Without
+    // this the expectation below fails here while passing on Linux.
+    const worktreesDir = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-cleanup-instances-")),
+    );
     const instanceId = deriveWorktreeInstanceId(workspace.cwd);
     const instanceRoot = path.join(worktreesDir, "instances", instanceId);
     await fs.mkdir(path.join(instanceRoot, "db"), { recursive: true });

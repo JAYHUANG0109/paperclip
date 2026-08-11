@@ -16,7 +16,11 @@ const tempRoots = new Set<string>();
 async function makeTempRoot(prefix: string): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   tempRoots.add(root);
-  return root;
+  // Resolve symlinks: on macOS os.tmpdir() can sit under /tmp, which is a symlink
+  // to /private/tmp, and the cleanup service canonicalises the paths it reports.
+  // Comparing an unresolved expectation against a resolved actual fails here while
+  // passing on Linux, where /tmp is a real directory.
+  return await fs.realpath(root);
 }
 
 async function writeWorkspaceEnv(workspacePath: string, homeDir: string, instanceId: string): Promise<void> {
