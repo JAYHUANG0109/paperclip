@@ -11,10 +11,21 @@ const execFileAsync = promisify(execFile);
 const CLAUDE_USAGE_SOURCE_OAUTH = "anthropic-oauth";
 const CLAUDE_USAGE_SOURCE_CLI = "claude-cli";
 
+/**
+ * The credential dir a single-account install owns, ignoring CLAUDE_CONFIG_DIR.
+ *
+ * Deliberately not derived from claudeConfigDir(): the legacy unsuffixed keychain
+ * item belongs to THIS path specifically, so the ownership check that gates it
+ * must not be something a caller can move by setting the env var.
+ */
+function hostDefaultClaudeConfigDir(): string {
+  return path.join(os.homedir(), ".claude");
+}
+
 export function claudeConfigDir(): string {
   const fromEnv = process.env.CLAUDE_CONFIG_DIR;
   if (typeof fromEnv === "string" && fromEnv.trim().length > 0) return fromEnv.trim();
-  return path.join(os.homedir(), ".claude");
+  return hostDefaultClaudeConfigDir();
 }
 
 function hasNonEmptyProcessEnv(key: string): boolean {
@@ -206,8 +217,11 @@ export async function readClaudeTokenForConfigDir(configDir: string): Promise<st
   const fromKeychain = await readClaudeTokenFromKeychain(keychainServiceForConfigDir(configDir));
   if (fromKeychain) return fromKeychain;
   // Legacy single-account installs kept an unsuffixed item; only the host default
-  // dir could plausibly own it, so do not offer it to pooled dirs.
-  if (path.resolve(configDir) === path.resolve(claudeConfigDir())) {
+  // dir could plausibly own it, so do not offer it to pooled dirs. Compare against
+  // the HOST DEFAULT, not claudeConfigDir(): the latter honours CLAUDE_CONFIG_DIR,
+  // which made this test true for every pooled dir and leaked the host's shared
+  // credential to any caller that set the env var.
+  if (path.resolve(configDir) === path.resolve(hostDefaultClaudeConfigDir())) {
     return readClaudeTokenFromKeychain("Claude Code-credentials");
   }
   return null;
