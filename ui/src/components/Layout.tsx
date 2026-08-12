@@ -7,6 +7,8 @@ import { ViewAsBanner } from "./ViewAsBanner";
 import { CompanySettingsSidebar } from "./CompanySettingsSidebar";
 import { InstanceSidebar } from "./InstanceSidebar";
 import { CompanySettingsNav } from "./access/CompanySettingsNav";
+import { AppsSidebar } from "./AppsSidebar";
+import { AppDetailSidebar } from "./AppConnectionSidebar";
 import { BreadcrumbBar } from "./BreadcrumbBar";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { CommandPalette } from "./CommandPalette";
@@ -31,6 +33,7 @@ import { usePanel } from "../context/PanelContext";
 import { useCompany } from "../context/CompanyContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useAppsEnabled } from "../hooks/useAppsEnabled";
 import { useCompanyPageMemory } from "../hooks/useCompanyPageMemory";
 import { healthApi } from "../api/health";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -49,12 +52,30 @@ import { NotFoundPage } from "../pages/NotFound";
 import { PluginSlotMount, resolveRouteSidebarSlot, usePluginSlots } from "../plugins/slots";
 
 function getCompanyRouteSegment(pathname: string, companyPrefix: string | undefined): string | null {
-  if (!companyPrefix) return null;
-  const segments = pathname.split("/").filter(Boolean);
-  if (segments.length < 2) return null;
-  if (segments[0]?.toUpperCase() !== companyPrefix.toUpperCase()) return null;
-  return segments[1]?.toLowerCase() ?? null;
+  return getCompanyPathSegments(pathname, companyPrefix)[0]?.toLowerCase() ?? null;
 }
+
+function getCompanyPathSegments(pathname: string, companyPrefix: string | undefined): string[] {
+  if (!companyPrefix) return [];
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length < 2) return [];
+  if (segments[0]?.toUpperCase() !== companyPrefix.toUpperCase()) return [];
+  return segments.slice(1);
+}
+
+// Everything under /apps that is a *section*, not a connection id. Anything else
+// in that position is an app-detail route and gets the AppDetailSidebar instead.
+const RESERVED_APP_SUBPATHS = new Set([
+  "browse",
+  "connections",
+  "connect",
+  "review",
+  "attention",
+  "gateways",
+  "advanced",
+  "app",
+]);
+
 
 export function Layout() {
   const { t } = useTranslation();
@@ -92,6 +113,22 @@ export function Layout() {
   // under company settings but dropped the InstanceSidebar mount, leaving the
   // desktop secondary sidebar stuck on CompanySettingsSidebar (no Plugins nav).
   const isInstanceSettingsRoute = location.pathname.includes("/company/settings/instance");
+  const { enabled: appsEnabled } = useAppsEnabled();
+  const companyPathSegments = getCompanyPathSegments(location.pathname, companyPrefix);
+  const isToolsRoute = companyPathSegments[0]?.toLowerCase() === "tools";
+  const isAppsRoute = companyPathSegments[0]?.toLowerCase() === "apps";
+  const appDetailConnectionId =
+    isAppsRoute && companyPathSegments[1] && !RESERVED_APP_SUBPATHS.has(companyPathSegments[1].toLowerCase())
+      ? companyPathSegments[1]
+      : null;
+  const appDetailApplicationId =
+    isAppsRoute && companyPathSegments[1]?.toLowerCase() === "app" && companyPathSegments[2]
+      ? companyPathSegments[2]
+      : null;
+  // Note: upstream also derives an `isSkillsStoreRoute` here to force the app nav
+  // to its rail across the Skills Store (PAP-10879). This fork's coexistence model
+  // never force-collapses (see the useLayoutEffect below), so there is nothing to
+  // derive — the Skills Store category nav renders beside a pinned app nav.
   const onboardingTriggered = useRef(false);
   const lastMainScrollTop = useRef(0);
   const previousPathname = useRef<string | null>(null);
@@ -137,6 +174,12 @@ export function Layout() {
     <InstanceSidebar />
   ) : isCompanySettingsRoute ? (
     <CompanySettingsSidebar />
+  ) : appsEnabled && appDetailConnectionId ? (
+    <AppDetailSidebar kind="connection" connectionId={appDetailConnectionId} />
+  ) : appsEnabled && appDetailApplicationId ? (
+    <AppDetailSidebar kind="application" applicationId={appDetailApplicationId} />
+  ) : appsEnabled && (isAppsRoute || isToolsRoute) ? (
+    <AppsSidebar />
   ) : routeSidebarSlot ? (
     <PluginSlotMount
       slot={routeSidebarSlot}

@@ -86,6 +86,10 @@ vi.mock("./CompanySettingsSidebar", () => ({
   CompanySettingsSidebar: () => <div>Company settings sidebar</div>,
 }));
 
+vi.mock("./InstanceSidebar", () => ({
+  InstanceSidebar: () => <div>Instance sidebar</div>,
+}));
+
 vi.mock("./AppsSidebar", () => ({
   AppsSidebar: () => <div>Apps sidebar</div>,
 }));
@@ -502,7 +506,13 @@ describe("Layout", () => {
     });
   });
 
-  it("renders the company settings sidebar on instance settings routes", async () => {
+  // Fork divergence: upstream folded the Plugins/Adapters/Environments nav INTO
+  // its CompanySettingsSidebar, so upstream shows that one sidebar here. This
+  // fork's CompanySettingsSidebar has no instance section, so #7680's move of
+  // these routes under company settings left the nav unreachable — 16b3c7e78
+  // remounts InstanceSidebar for the /instance subtree instead. Assert the
+  // fork's mount; adopting upstream's would mean adopting their settings sidebar.
+  it("renders the instance sidebar on instance settings routes", async () => {
     currentPathname = "/PAP/company/settings/instance/general";
     const root = createRoot(container);
     const queryClient = new QueryClient({
@@ -519,7 +529,7 @@ describe("Layout", () => {
     await flushReact();
     await flushReact();
 
-    expect(container.textContent).toContain("Company settings sidebar");
+    expect(container.textContent).toContain("Instance sidebar");
     expect(container.textContent).toContain("Main company nav");
     expect(container.textContent).not.toContain("Company rail");
     expect(container.textContent).not.toContain("Plugin route sidebar");
@@ -551,7 +561,10 @@ describe("Layout", () => {
     expect(container.textContent).toContain("Apps sidebar");
     expect(container.textContent).toContain("Main company nav");
     expect(container.textContent).not.toContain("Company settings sidebar");
-    expect(mockSetForceCollapsed).toHaveBeenCalledWith(true);
+    // Coexistence (PAP-10695): a secondary sidebar does not force the app nav to
+    // its rail in this fork. Upstream force-collapses here; we honor the pin.
+    expect(mockSetForceCollapsed).not.toHaveBeenCalledWith(true);
+    expect(mockSetForceCollapsed).toHaveBeenCalledWith(false);
 
     await act(async () => {
       root.unmount();
@@ -743,7 +756,13 @@ describe("Layout", () => {
     });
   });
 
-  it("forces the app sidebar rail only for the Skills Store route", async () => {
+  // Fork divergence: upstream forces the app nav to its rail for the Skills
+  // Store (its category nav would otherwise be a third column). This fork's
+  // coexistence model (PAP-10695, Layout's useLayoutEffect) never force-
+  // collapses — the user's pin always wins, Skills Store included. Assert that
+  // it stays cleared on both the Skills Store and a route that merely ends in
+  // /skills, so a regression that reintroduces force-collapsing fails here.
+  it("never forces the app sidebar rail, Skills Store included", async () => {
     async function renderAt(pathname: string) {
       currentPathname = pathname;
       const root = createRoot(container);
@@ -764,7 +783,8 @@ describe("Layout", () => {
     }
 
     let root = await renderAt("/PAP/skills/studio");
-    expect(mockSetForceCollapsed).toHaveBeenCalledWith(true);
+    expect(mockSetForceCollapsed).not.toHaveBeenCalledWith(true);
+    expect(mockSetForceCollapsed).toHaveBeenCalledWith(false);
     await act(async () => {
       root.unmount();
     });
