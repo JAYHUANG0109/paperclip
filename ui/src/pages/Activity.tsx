@@ -46,7 +46,16 @@ function activityEntityTitle(event: ActivityEvent) {
   return null;
 }
 
-export function Activity() {
+export interface ActivityProps {
+  /**
+   * Set when rendered inside the consolidated CompanyActivity page, which owns
+   * the breadcrumb and the all/agents toggle. Standalone (`/activity` before the
+   * merge, and any direct mount) keeps setting its own breadcrumb.
+   */
+  embedded?: boolean;
+}
+
+export function Activity({ embedded = false }: ActivityProps = {}) {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { t } = useTranslation();
@@ -54,8 +63,9 @@ export function Activity() {
   const teamFilter = useAgentTeamFilter(selectedCompanyId);
 
   useEffect(() => {
+    if (embedded) return;
     setBreadcrumbs([{ label: t("activityPage.breadcrumb") }]);
-  }, [setBreadcrumbs, t]);
+  }, [embedded, setBreadcrumbs, t]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: [...queryKeys.activity(selectedCompanyId!), { limit: ACTIVITY_PAGE_LIMIT }],

@@ -4807,7 +4807,11 @@
     "selectCompany": "請選擇公司以檢視活動。",
     "filterByType": "依類型篩選",
     "allTypes": "所有類型",
-    "noActivity": "尚無活動。"
+    "noActivity": "尚無活動。",
+    "tabs": {
+      "all": "全部動態",
+      "agents": "代理稽核"
+    }
   },
   "commandPalette": {
     "searchPlaceholder": "搜尋議題、代理、專案…",

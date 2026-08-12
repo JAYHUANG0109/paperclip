@@ -8,7 +8,8 @@ import { api } from "./client";
  *   GET /companies/:companyId/audit/agent-actions
  * Gated server-side by the `audit:view_agent_actions` board permission — the
  * client renders an upsell/permission-denied state when the request 403s
- * (see `ui/src/pages/CompanyAudit.tsx`). CSV export streams from the sibling
+ * (see `ui/src/pages/audit/AuditFeed.tsx`, reached via the `agents` tier of
+ * `ui/src/pages/audit/CompanyActivity.tsx`). CSV export streams from the sibling
  * `.csv` endpoint, which logs the export action itself.
  */
 

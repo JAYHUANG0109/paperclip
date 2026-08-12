@@ -117,8 +117,7 @@ const GoalDetail = lazyPage(() => import("./pages/GoalDetail"), "GoalDetail");
 const Approvals = lazyPage(() => import("./pages/Approvals"), "Approvals");
 const ApprovalDetail = lazyPage(() => import("./pages/ApprovalDetail"), "ApprovalDetail");
 const Costs = lazyPage(() => import("./pages/Costs"), "Costs");
-const Activity = lazyPage(() => import("./pages/Activity"), "Activity");
-const CompanyAudit = lazyPage(() => import("./pages/audit/CompanyAudit"), "CompanyAudit");
+const CompanyActivity = lazyPage(() => import("./pages/audit/CompanyActivity"), "CompanyActivity");
 const Inbox = lazyPage(() => import("./pages/Inbox"), "Inbox");
 const BoardChat = lazyPage(() => import("./pages/BoardChat"), "BoardChat");
 const CompanySettings = lazyPage(() => import("./pages/CompanySettings"), "CompanySettings");
@@ -365,8 +364,11 @@ function boardRoutes() {
       <Route path="approvals/all" element={<Approvals />} />
       <Route path="approvals/:approvalId" element={<ApprovalDetail />} />
       <Route path="costs" element={<Costs />} />
-      <Route path="activity" element={<Activity />} />
-      <Route path="audit" element={<CompanyAudit />} />
+      <Route path="activity" element={<CompanyActivity />} />
+      {/* The audit page merged into /activity (our take on upstream 8142e5415).
+          Keep the old path as a deep link to the privileged tier so existing
+          links, bookmarks and the sidebar item all still land somewhere real. */}
+      <Route path="audit" element={<Navigate to="../activity?mode=agents" replace />} />
       {/* Conference Room Chat surfaces (PAP-136/PAP-137): routes stay
           registered but redirect to the company home while the experimental
           flag is off. The board-level `artifacts` mount below is the new
