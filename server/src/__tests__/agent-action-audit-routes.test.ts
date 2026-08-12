@@ -115,18 +115,22 @@ describePostgres("agent action audit routes", () => {
     return { company, agent, otherAgent, issue, comment, issueDocument, run };
   }
 
-  it("denies agents and board users without the audit permission", async () => {
+  it("denies agents outright and scopes board users without the audit permission", async () => {
     const { company, agent } = await seed();
     const agentResponse = await request(await createApp(db, {
       type: "agent", agentId: agent.id, companyId: company.id, runId: null, source: "agent_jwt",
     })).get(`/api/companies/${company.id}/audit/agent-actions`);
     expect(agentResponse.status).toBe(403);
 
+    // This fork replaced upstream's all-or-nothing audit gate with graduated scoping
+    // (resolveAuditScope): a board member without audit:view_agent_actions is not
+    // refused, they are narrowed to their own visible agents and own actions. This
+    // reader has joined no agents, so the feed is empty rather than forbidden.
     const boardResponse = await request(await createApp(db, {
       type: "board", userId: "reader", companyIds: [company.id], source: "session", isInstanceAdmin: false,
     })).get(`/api/companies/${company.id}/audit/agent-actions`);
-    expect(boardResponse.status).toBe(403);
-    expect(boardResponse.body.error).toContain("audit:view_agent_actions");
+    expect(boardResponse.status).toBe(200);
+    expect(boardResponse.body.items).toEqual([]);
   });
 
   it("returns a client error for invalid audit query parameters", async () => {
@@ -323,16 +327,17 @@ describePostgres("agent action audit routes", () => {
     expect(logged[0]!.details).toMatchObject({ format: "csv", rowCount: 3, truncated: false });
   });
 
-  it("denies CSV export without the audit permission and logs nothing", async () => {
+  it("scopes CSV export for board users without the audit permission", async () => {
     const { company } = await seed();
     const response = await request(await createApp(db, {
       type: "board", userId: "reader", companyIds: [company.id], source: "session", isInstanceAdmin: false,
     })).get(`/api/companies/${company.id}/audit/agent-actions.csv`);
-    expect(response.status).toBe(403);
-    expect(response.body.error).toContain("audit:view_agent_actions");
+    // Scoped, not refused -- see the graduated-scoping note above.
+    expect(response.status).toBe(200);
 
     const logged = (await db.select().from(activityLog)).filter((row) => row.action === "audit.exported");
-    expect(logged).toHaveLength(0);
+    // The scoped export succeeds, so it is audited like any other export.
+    expect(logged).toHaveLength(1);
   });
 
   it("allows a signed-in board user with the explicit permission", async () => {
