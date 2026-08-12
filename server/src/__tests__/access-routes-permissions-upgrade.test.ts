@@ -14,6 +14,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { grantsForHumanRole } from "../services/company-member-roles.js";
 
 vi.hoisted(() => {
   process.env.PAPERCLIP_HOME = "/tmp/paperclip-test-home";
@@ -117,7 +118,68 @@ describeEmbeddedPostgres("access routes permissions upgrade compatibility", () =
     expect(unchanged.membershipRole).toBe("owner");
   }, 10_000);
 
-  it("keeps custom grants when the role-only member route changes a member role", async () => {
+  // The role-only route deliberately RE-SEEDS grants to the new role's defaults
+  // (routes/access.ts, "Re-seed grants to the new role's defaults"). Preserving
+  // custom grants across a role change is what that behaviour exists to prevent:
+  // it would let a demoted owner keep users:manage_permissions. Custom grants are
+  // set through /role-and-grants instead, which is covered separately.
+  it("re-seeds grants to the new role's defaults when the role-only route changes a role", async () => {
+    const { company, owner } = await createCompanyWithOwner(db);
+    const member = await db
+      .insert(companyMemberships)
+      .values({
+        companyId: company.id,
+        principalType: "user",
+        principalId: `admin-${randomUUID()}`,
+        status: "active",
+        membershipRole: "admin",
+      })
+      .returning()
+      .then((rows) => rows[0]!);
+    // A scoped custom grant that is NOT part of any role default, so its removal
+    // is unambiguous evidence the re-seed replaced rather than merged.
+    await db.insert(principalPermissionGrants).values({
+      companyId: company.id,
+      principalType: "user",
+      principalId: member.principalId,
+      permissionKey: "tasks:assign_scope",
+      scope: { projectIds: ["project-1"] },
+      grantedByUserId: owner.principalId,
+    });
+
+    const res = await request(await createApp(db, company.id, owner.principalId))
+      .patch(`/api/companies/${company.id}/members/${member.id}`)
+      .send({ membershipRole: "operator" });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.membershipRole).toBe("operator");
+
+    const grants = await db
+      .select()
+      .from(principalPermissionGrants)
+      .where(
+        and(
+          eq(principalPermissionGrants.companyId, company.id),
+          eq(principalPermissionGrants.principalType, "user"),
+          eq(principalPermissionGrants.principalId, member.principalId),
+        ),
+      );
+    // Derived from the source of truth rather than hardcoded, so changing a
+    // role's default grants does not silently invalidate this assertion.
+    const expected = grantsForHumanRole("operator");
+    expect(
+      grants.map((g) => ({ permissionKey: g.permissionKey, scope: g.scope })).sort((a, b) =>
+        a.permissionKey.localeCompare(b.permissionKey),
+      ),
+    ).toEqual(
+      expected
+        .map((g) => ({ permissionKey: g.permissionKey, scope: g.scope ?? null }))
+        .sort((a, b) => a.permissionKey.localeCompare(b.permissionKey)),
+    );
+    expect(grants.some((g) => g.permissionKey === "tasks:assign_scope")).toBe(false);
+  });
+
+  it("leaves grants untouched when the role-only route changes status but not role", async () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const member = await db
       .insert(companyMemberships)
@@ -142,10 +204,9 @@ describeEmbeddedPostgres("access routes permissions upgrade compatibility", () =
 
     const res = await request(await createApp(db, company.id, owner.principalId))
       .patch(`/api/companies/${company.id}/members/${member.id}`)
-      .send({ membershipRole: "operator" });
+      .send({ status: "suspended" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body.membershipRole).toBe("operator");
 
     const grants = await db
       .select()
