@@ -146,6 +146,8 @@ import { AlertTriangle, ArrowRight, Brain, Check, ChevronDown, ClipboardList, Co
 import { IssueBlockedNotice } from "./IssueBlockedNotice";
 import { IssueAssignedBacklogNotice } from "./IssueAssignedBacklogNotice";
 import { IssueRecoveryActionCard, type RecoveryResolveOutcome } from "./IssueRecoveryActionCard";
+import { CommentAttributionChip } from "./CommentAttributionChip";
+import { resolveCommentAttribution } from "../lib/comment-attribution";
 
 interface IssueChatMessageContext {
   feedbackDataSharingPreference: FeedbackDataSharingPreference;
@@ -182,6 +184,11 @@ interface IssueChatMessageContext {
     interaction: AskUserQuestionsInteraction,
   ) => Promise<void> | void;
   issueStatus?: string;
+  /**
+   * Current assignee. Agent comments from anyone else are cross-issue writes, so
+   * they carry a "for {user}" attribution chip (the open cross-task write design (attribution)).
+   */
+  issueAssigneeAgentId?: string | null;
   successfulRunHandoff?: SuccessfulRunHandoffState | null;
 }
 
@@ -321,6 +328,8 @@ interface IssueChatThreadProps {
   onDeleteComment?: (commentId: string) => Promise<void> | void;
   externalReferences?: MarkdownExternalReferenceMap;
   assigneeUserId?: string | null;
+  /** Current assignee agent, used to mark cross-issue agent comments (the open cross-task write design (attribution)). */
+  issueAssigneeAgentId?: string | null;
   onResumeFromBacklog?: () => Promise<void> | void;
   resumeFromBacklogPending?: boolean;
   companyId?: string | null;
@@ -1459,6 +1468,8 @@ function IssueChatAssistantMessage({
     stopRunLabel = t("issues.chat.stopRun"),
     stoppingRunLabel = t("issues.chat.stopping"),
     stopRunVariant = "stop",
+    userLabelMap,
+    issueAssigneeAgentId,
   } = useContext(IssueChatCtx);
   const custom = message.metadata.custom as Record<string, unknown>;
   const anchorId = typeof custom.anchorId === "string" ? custom.anchorId : undefined;
@@ -1476,6 +1487,12 @@ function IssueChatAssistantMessage({
   const agentId = authorAgentId ?? runAgentId;
   const agentIcon = agentId ? agentMap?.get(agentId)?.icon : undefined;
   const commentId = typeof custom.commentId === "string" ? custom.commentId : null;
+  const attribution = resolveCommentAttribution({
+    authorAgentId,
+    onBehalfOfUserId: typeof custom.onBehalfOfUserId === "string" ? custom.onBehalfOfUserId : null,
+    issueAssigneeAgentId,
+    resolveUserLabel: (userId) => userLabelMap?.get(userId),
+  });
   const notices = Array.isArray(custom.notices)
     ? custom.notices.filter((notice): notice is string => typeof notice === "string" && notice.length > 0)
     : [];
@@ -1550,6 +1567,13 @@ function IssueChatAssistantMessage({
           ) : (
             <div className="mb-1.5 flex items-center gap-2">
               <span className="text-sm font-medium text-foreground">{authorName}</span>
+              {/* Reads as "Fable · for Dotta" beside the author name — an agent that
+                  is not this task's assignee wrote on someone else's behalf. Ported
+                  from upstream e8ae5286e into this fork's header row (upstream renders
+                  it in its own bubble component, which this fork does not use). */}
+              {attribution ? (
+                <CommentAttributionChip agentName={authorName} userName={attribution.userName} />
+              ) : null}
               {followUpRequested ? (
                 <Badge variant="outline" className="text-[10px] uppercase tracking-[0.14em]">
                   Follow-up
@@ -3754,6 +3778,7 @@ export function IssueChatThread({
   companyId,
   projectId,
   issueStatus,
+  issueAssigneeAgentId = null,
   agentMap,
   currentUserId,
   userLabelMap,
@@ -4282,6 +4307,7 @@ export function IssueChatThread({
       onSubmitInteractionAnswers: stableOnSubmitInteractionAnswers,
       onCancelInteraction: stableOnCancelInteraction,
       issueStatus,
+      issueAssigneeAgentId,
       successfulRunHandoff,
     }),
     [
@@ -4304,6 +4330,7 @@ export function IssueChatThread({
       stableOnSubmitInteractionAnswers,
       stableOnCancelInteraction,
       issueStatus,
+      issueAssigneeAgentId,
       successfulRunHandoff,
     ],
   );

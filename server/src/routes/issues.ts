@@ -104,6 +104,10 @@ import {
   type SuccessfulRunHandoffState,
   type WorkspaceRuntimeService,
   deriveProvisionalIssueTitle,
+  issueWriteDenialCodeForResponsibleUserDenial,
+  issueWriteDenialResponse,
+  type IssueWriteDenialCode,
+  type IssueWriteDenialContext,
 } from "@paperclipai/shared";
 import { trackAgentTaskCompleted } from "@paperclipai/shared/telemetry";
 import { getTelemetryClient } from "../telemetry.js";
@@ -127,11 +131,13 @@ import {
   ISSUE_LIST_MAX_LIMIT,
   issueReferenceService,
   issueService,
+  type ActivityPublication,
   type IssueFilters,
   clampIssueListLimit,
   documentService,
   documentAnnotationService,
   logActivity,
+  publishActivity,
   projectService,
   routineService,
   workProductService,
@@ -226,7 +232,10 @@ import {
 import { externalObjectService } from "../services/external-objects.js";
 import { toAbsoluteLink } from "../services/notifications.js";
 import { deliverAgentUnblockNotification } from "../services/routable-blocked.js";
-import { assertIssueReviewVerdictActorAllowed } from "../services/issue-review-policy.js";
+import {
+  assertIssueReviewVerdictActorAllowed,
+  isIssueReviewVerdictInteraction,
+} from "../services/issue-review-policy.js";
 import {
   crossIssueInfluenceLimitError,
   crossIssueInfluenceRunContextError,
@@ -238,6 +247,13 @@ const MAX_ISSUE_COMMENT_LIMIT = 500;
 const updateIssueRouteSchema = updateIssueSchema.extend({
   interrupt: z.boolean().optional(),
 });
+
+function prefersMinimalIssueUpdateResponse(req: Request) {
+  return (req.get("Prefer") ?? "")
+    .split(",")
+    .some((preference) => preference.trim().toLowerCase() === "return=minimal");
+}
+
 const refreshExternalObjectsSchema = z.object({
   objectIds: z.array(z.string().uuid()).max(50).optional(),
 }).strict();
@@ -2814,7 +2830,14 @@ export function issueRoutes(
     });
     if (!decision || decision.allowed) return true;
 
-    res.status(429).json(crossIssueInfluenceLimitError(decision));
+    const labels = await issueWriteDenialLabels(req, {
+      identifier: issue.identifier ?? null,
+      assigneeAgentId: null,
+    });
+    res.status(429).json(crossIssueInfluenceLimitError(decision, {
+      actorLabel: labels.actorLabel,
+      issueIdentifier: labels.issueIdentifier,
+    }));
     return false;
   }
 
@@ -3436,34 +3459,61 @@ export function issueRoutes(
     };
     updateFields: Record<string, unknown>;
     actorType: string;
+    actorAgentId?: string | null;
+    actorRunId?: string | null;
+    reviewInteractionId?: string;
   }) {
     const nextStatus = typeof input.updateFields.status === "string"
       ? input.updateFields.status
       : input.existing.status;
-    if (input.actorType !== "agent" || input.existing.status === "in_review" || nextStatus !== "in_review") return;
+    if (input.actorType !== "agent" || input.existing.status === "in_review" || nextStatus !== "in_review") return null;
+
+    const interactions = await issueThreadInteractionService(db).listForIssue(input.existing.id);
+    const pendingInteractions = interactions.filter((interaction) => interaction.status === "pending");
+    if (input.reviewInteractionId) {
+      const designatedReviewConfirmation = pendingInteractions.find((interaction) =>
+        interaction.id === input.reviewInteractionId
+        && (interaction.kind === "request_confirmation" || interaction.kind === "request_checkbox_confirmation")
+        && interaction.createdByAgentId === input.actorAgentId
+        && interaction.sourceRunId === input.actorRunId
+        && !(
+          interaction.kind === "request_confirmation"
+          && interaction.payload
+          && typeof interaction.payload === "object"
+          && "toolAction" in interaction.payload
+          && interaction.payload.toolAction !== undefined
+        )
+      );
+      if (!designatedReviewConfirmation) {
+        throw unprocessable("reviewInteractionId must identify a pending non-tool confirmation created by this agent run", {
+          code: "invalid_review_interaction",
+          reviewInteractionId: input.reviewInteractionId,
+        });
+      }
+      return designatedReviewConfirmation.id;
+    }
 
     const nextAssigneeUserId = input.updateFields.assigneeUserId === undefined
       ? input.existing.assigneeUserId
       : input.updateFields.assigneeUserId;
-    if (typeof nextAssigneeUserId === "string" && nextAssigneeUserId.trim().length > 0) return;
+    if (typeof nextAssigneeUserId === "string" && nextAssigneeUserId.trim().length > 0) return null;
 
     const nextExecutionState = input.updateFields.executionState === undefined
       ? input.existing.executionState
       : input.updateFields.executionState;
-    if (hasExecutionParticipant(nextExecutionState)) return;
+    if (hasExecutionParticipant(nextExecutionState)) return null;
 
     const nextExecutionPolicy = input.updateFields.executionPolicy;
     if (hasScheduledMonitor({
       existingMonitorNextCheckAt: input.existing.monitorNextCheckAt ?? null,
       patchMonitorNextCheckAt: input.updateFields.monitorNextCheckAt,
       executionPolicy: nextExecutionPolicy,
-    })) return;
+    })) return null;
 
-    const interactions = await issueThreadInteractionService(db).listForIssue(input.existing.id);
-    if (interactions.some((interaction) => interaction.status === "pending")) return;
+    if (pendingInteractions.length > 0) return null;
 
     const approvals = await issueApprovalsSvc.listApprovalsForIssue(input.existing.id);
-    if (approvals.some((approval) => ACTIVE_REVIEW_APPROVAL_STATUSES.has(String(approval.status)))) return;
+    if (approvals.some((approval) => ACTIVE_REVIEW_APPROVAL_STATUSES.has(String(approval.status)))) return null;
 
     throw unprocessable(INVALID_AGENT_IN_REVIEW_DISPOSITION_MESSAGE, {
       code: "invalid_issue_disposition",
@@ -3727,6 +3777,73 @@ export function issueRoutes(
     });
   }
 
+  /**
+   * Map an authorization denial onto the issue-write copy contract (plan §6).
+   *
+   * The two responsible-user ceiling codes are the most specific signal, so they
+   * win. Actor-class walls (low-trust, skill-test, task-bridge scopes) stay shut
+   * by design and get their own copy. Everything else reaching a write channel is
+   * a visibility denial, because the default-open rule puts `issue:read` structurally
+   * upstream of every standard-trust write.
+   */
+  function issueWriteDenialCodeForDecision(
+    decision: Awaited<ReturnType<typeof decideIssueAccess>>,
+  ): IssueWriteDenialCode {
+    if (decision.code) return issueWriteDenialCodeForResponsibleUserDenial(decision.code);
+    if (decision.reason === "deny_low_trust_boundary" || decision.reason === "deny_policy_restricted") {
+      return "issue_write_actor_class_excluded";
+    }
+    return "issue_write_not_visible";
+  }
+
+  /**
+   * Best-effort display names for denial copy. Denials are rare, so one extra
+   * query buys an error that names who can act instead of printing raw uuids.
+   * Any failure degrades to the copy contract's generic nouns.
+   */
+  async function issueWriteDenialLabels(
+    req: Request,
+    issue: { identifier?: string | null; assigneeAgentId: string | null },
+  ): Promise<IssueWriteDenialContext> {
+    const actorAgentId = req.actor.type === "agent" ? req.actor.agentId ?? null : null;
+    const ids = [actorAgentId, issue.assigneeAgentId].filter((id): id is string => Boolean(id));
+    const nameById = new Map<string, string>();
+    if (ids.length > 0) {
+      try {
+        const rows = await db
+          .select({ id: agents.id, name: agents.name })
+          .from(agents)
+          .where(inArray(agents.id, ids));
+        for (const row of rows) if (row.name) nameById.set(row.id, row.name);
+      } catch (err) {
+        logger.warn({ err }, "failed to resolve agent names for issue write denial copy");
+      }
+    }
+    return {
+      actorLabel: actorAgentId ? nameById.get(actorAgentId) ?? null : null,
+      assigneeLabel: issue.assigneeAgentId ? nameById.get(issue.assigneeAgentId) ?? null : null,
+      issueIdentifier: issue.identifier ?? null,
+      responsibleUserName: null,
+    };
+  }
+
+  /** Respond to a denied issue write with copy that names boundary, who, and path. */
+  async function denyIssueWrite(
+    req: Request,
+    res: Response,
+    issue: { identifier?: string | null; assigneeAgentId: string | null },
+    code: IssueWriteDenialCode,
+    extraDetails: Record<string, unknown> = {},
+  ) {
+    const labels = await issueWriteDenialLabels(req, issue);
+    const { status, body } = issueWriteDenialResponse(code, labels);
+    res.status(status).json({
+      error: body.error,
+      details: { ...body.details, ...extraDetails },
+    });
+    return false as const;
+  }
+
   async function assertIssueReadAllowed(req: Request, res: Response, issue: Parameters<typeof decideIssueAccess>[1]) {
     const decision = await decideIssueAccess(req, issue, "issue:read");
     if (decision.allowed) return true;
@@ -3746,8 +3863,7 @@ export function issueRoutes(
     if ((await resolveTaskWatchdogMutationScope(db, req.actor)).kind !== "none") return true;
     const decision = await decideIssueAccess(req, issue, "issue:mutate");
     if (decision.allowed) return true;
-    res.status(403).json({ error: "Issue is outside this actor's authorization boundary" });
-    return false;
+    return denyIssueWrite(req, res, issue, issueWriteDenialCodeForDecision(decision));
   }
 
   async function assertAgentIssueCommentAllowed(
@@ -3761,6 +3877,8 @@ export function issueRoutes(
       status: string;
       assigneeAgentId: string | null;
       assigneeUserId: string | null;
+      /** Used only to name the task in denial copy (plan §6). */
+      identifier?: string | null;
     },
   ) {
     if (req.actor.type !== "agent") return true;
@@ -3786,8 +3904,7 @@ export function issueRoutes(
     }
     const boundaryDecision = await decideIssueAccess(req, issue, "issue:comment");
     if (!boundaryDecision.allowed) {
-      res.status(403).json({ error: "Issue is outside this actor's authorization boundary" });
-      return false;
+      return denyIssueWrite(req, res, issue, issueWriteDenialCodeForDecision(boundaryDecision));
     }
     return boundaryDecision;
   }
@@ -3857,6 +3974,8 @@ export function issueRoutes(
       status: string;
       assigneeAgentId: string | null;
       assigneeUserId: string | null;
+      /** Used only to name the task in denial copy (plan §6). */
+      identifier?: string | null;
     },
     options: { allowVisibleIssueWrite?: boolean } = {},
   ) {
@@ -3891,8 +4010,7 @@ export function issueRoutes(
     }
     const boundaryDecision = await decideIssueAccess(req, issue, "issue:mutate");
     if (!boundaryDecision.allowed) {
-      res.status(403).json({ error: "Issue is outside this actor's authorization boundary" });
-      return false;
+      return denyIssueWrite(req, res, issue, issueWriteDenialCodeForDecision(boundaryDecision));
     }
     if (issue.assigneeAgentId === null) {
       return true;
@@ -3902,15 +4020,17 @@ export function issueRoutes(
         return true;
       }
       if (issue.status === "in_progress") {
-        res.status(409).json({
-          error: "Issue is checked out by another agent",
-          details: {
-            issueId: issue.id,
-            assigneeAgentId: issue.assigneeAgentId,
-            actorAgentId,
-          },
+        // Run/checkout ownership stays assignee-scoped even though writes are
+        // open, so this lock clears on its own — the copy routes to comments.
+        return denyIssueWrite(req, res, issue, "issue_write_assignee_run_lock", {
+          issueId: issue.id,
+          assigneeAgentId: issue.assigneeAgentId,
+          actorAgentId,
         });
-      } else if (!options.allowVisibleIssueWrite) {
+      }
+      // Past the run lock the issue is idle, so only channels that have not
+      // adopted the default-open rule still refuse another agent's issue.
+      if (!options.allowVisibleIssueWrite) {
         res.status(403).json({
           error: "Agent cannot mutate another agent's issue",
           details: {
@@ -3921,8 +4041,9 @@ export function issueRoutes(
             securityPrinciples: ["Least Privilege", "Complete Mediation", "Fail Securely"],
           },
         });
+        return false;
       }
-      return issue.status !== "in_progress" && options.allowVisibleIssueWrite === true;
+      return true;
     }
     if (issue.status !== "in_progress") {
       return true;
@@ -4049,17 +4170,21 @@ export function issueRoutes(
     res: Response,
     issue: Parameters<typeof assertAgentIssueMutationAllowed>[2],
     interaction: {
+      id: string;
       createdByAgentId?: string | null;
+      createdByUserId?: string | null;
       sourceRunId?: string | null;
       effectiveResolverPolicy: string;
       addresseeAgentId?: string | null;
       kind: string;
+      status: string;
       payload?: unknown;
     },
   ) {
     if (req.actor.type !== "agent") {
       assertBoard(req);
-      return true;
+      await assertPendingReviewInteractionVerdictAllowed(req, issue, interaction);
+      return "standard" as const;
     }
     const actorAgentId = req.actor.agentId;
     const runId = requireAgentRunId(req, res);
@@ -4071,10 +4196,38 @@ export function issueRoutes(
     }
     if (await assertLowTrustControlPlaneDenied(req, res, issue.companyId, issue)) return false;
     if (!(await assertAgentIssueMutationAllowed(req, res, issue))) return false;
+    const isReviewConfirmationVerdict = await isPendingReviewConfirmationVerdict(issue, interaction);
+    const payload = interaction.payload && typeof interaction.payload === "object"
+      ? interaction.payload as { toolAction?: unknown }
+      : null;
+    if (interaction.kind === "request_confirmation" && payload?.toolAction !== undefined) {
+      res.status(403).json({ error: "Tool-action confirmations are always board-only" });
+      return false;
+    }
+    if (isReviewConfirmationVerdict) {
+      if (!assertAgentInteractionActorAllowed(res, interaction, actorAgentId, runId)) return false;
+      await assertPendingReviewInteractionVerdictAllowed(req, issue, interaction);
+      return "review_verdict" as const;
+    }
     if (interaction.effectiveResolverPolicy !== "board_or_agents") {
       res.status(403).json({ error: "This issue-thread interaction is board-only" });
       return false;
     }
+    return assertAgentInteractionActorAllowed(res, interaction, actorAgentId, runId)
+      ? "standard" as const
+      : false;
+  }
+
+  function assertAgentInteractionActorAllowed(
+    res: Response,
+    interaction: {
+      addresseeAgentId?: string | null;
+      createdByAgentId?: string | null;
+      sourceRunId?: string | null;
+    },
+    actorAgentId: string,
+    runId: string,
+  ) {
     if (interaction.addresseeAgentId && interaction.addresseeAgentId !== actorAgentId) {
       res.status(403).json({ error: "Only the addressed agent or a board user may resolve this issue-thread interaction" });
       return false;
@@ -4087,14 +4240,34 @@ export function issueRoutes(
       res.status(403).json({ error: "Agents cannot resolve interactions created by the same run" });
       return false;
     }
-    const payload = interaction.payload && typeof interaction.payload === "object"
-      ? interaction.payload as { toolAction?: unknown }
-      : null;
-    if (interaction.kind === "request_confirmation" && payload?.toolAction !== undefined) {
-      res.status(403).json({ error: "Tool-action confirmations are always board-only" });
-      return false;
-    }
     return true;
+  }
+
+  async function isPendingReviewConfirmationVerdict(
+    issue: {
+      id: string;
+      companyId: string;
+      status: string;
+      createdByAgentId?: string | null;
+      createdByUserId?: string | null;
+    },
+    interaction: {
+      id: string;
+      kind: string;
+      status: string;
+      createdByAgentId?: string | null;
+      createdByUserId?: string | null;
+    },
+  ) {
+    if (
+      issue.status !== "in_review"
+      || interaction.status !== "pending"
+      || (
+        interaction.kind !== "request_confirmation"
+        && interaction.kind !== "request_checkbox_confirmation"
+      )
+    ) return false;
+    return isIssueReviewVerdictInteraction(db, { issue, interaction });
   }
 
   async function assertPendingReviewInteractionVerdictAllowed(
@@ -6259,9 +6432,12 @@ export function issueRoutes(
       existing,
       updateFields,
       actorType: req.actor.type,
+      actorAgentId: actor.agentId,
+      actorRunId: actor.runId,
     });
 
     const actionStatus = outcome === "cancelled" ? "cancelled" : "resolved";
+    const postCommitActivityPublications: ActivityPublication[] = [];
     const result = await db.transaction(async (tx) => {
       let issue = existing;
       if (outcome === "blocked") {
@@ -6293,6 +6469,7 @@ export function issueRoutes(
             actorUserId: actor.actorType === "user" ? actor.actorId : null,
           },
           tx,
+          postCommitActivityPublications,
         );
         if (!updatedIssue) throw notFound("Issue not found");
         issue = updatedIssue;
@@ -6313,6 +6490,7 @@ export function issueRoutes(
 
       return { issue, recoveryAction };
     });
+    for (const publication of postCommitActivityPublications) publishActivity(publication);
 
     await routinesSvc.syncRunStatusForIssue(result.issue.id);
 
@@ -8502,7 +8680,7 @@ export function issueRoutes(
         surface: "issue.patch.comment",
         requestedValue: readNonEmptyString(req.body.onBehalfOfUserId),
       });
-      res.status(422).json({ error: "Agent comments cannot set onBehalfOfUserId" });
+      await denyIssueWrite(req, res, existing, "issue_write_attribution_spoof_rejected");
       return;
     }
     const issueMutationAccess = await assertAgentIssueMutationAllowed(
@@ -8532,6 +8710,7 @@ export function issueRoutes(
         : null;
     const {
       comment: commentBody,
+      reviewInteractionId: requestedReviewInteractionId,
       reviewRequest,
       reopen: reopenRequested,
       resume: resumeRequested,
@@ -8875,10 +9054,13 @@ export function issueRoutes(
       }
     }
 
-    await assertAgentInReviewReviewPath({
+    const reviewInteractionId = await assertAgentInReviewReviewPath({
       existing,
       updateFields,
       actorType: req.actor.type,
+      actorAgentId: actor.agentId,
+      actorRunId: actor.runId,
+      reviewInteractionId: requestedReviewInteractionId,
     });
 
     const nextAssigneeAgentId =
@@ -8940,20 +9122,63 @@ export function issueRoutes(
     const stopRelayResult: {
       value: Awaited<ReturnType<typeof svc.addStopRelayCommentIfNeeded>>;
     } = { value: null };
+    const postCommitActivityPublications: ActivityPublication[] = [];
+    const issueUpdateData = {
+      ...updateFields,
+      actorAgentId: actor.agentId ?? null,
+      actorUserId: actor.actorType === "user" ? actor.actorId : null,
+    };
+    const shouldCollectCompletionPublication =
+      actor.actorType === "user" && existing.status !== "done" && updateFields.status === "done";
+    const updateIssue = (tx?: Parameters<typeof svc.update>[2]) => {
+      if (tx) {
+        return shouldCollectCompletionPublication
+          ? svc.update(id, issueUpdateData, tx, postCommitActivityPublications)
+          : svc.update(id, issueUpdateData, tx);
+      }
+      return shouldCollectCompletionPublication
+        ? svc.update(id, issueUpdateData, db, postCommitActivityPublications)
+        : svc.update(id, issueUpdateData);
+    };
+    const persistBoundReviewActivity = async (
+      tx: Parameters<typeof svc.update>[2],
+      updated: NonNullable<Awaited<ReturnType<typeof svc.update>>>,
+    ) => {
+      if (!reviewInteractionId) return;
+      const changes = updated.changes ?? {};
+      const previous = Object.fromEntries(
+        Object.entries(changes).map(([key, change]) => [key, change.from]),
+      );
+      await logActivity(tx as unknown as Db, {
+        companyId: updated.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
+        responsibleUserIdOverride: authenticatedActorResponsibleUserId(req),
+        action: "issue.updated",
+        entityType: "issue",
+        entityId: updated.id,
+        details: {
+          ...updateFields,
+          identifier: updated.identifier,
+          authorizationReason: issueMutationAuthorizationReason,
+          changes,
+          reviewInteractionId,
+          ...(commentBody ? { source: "comment" } : {}),
+          ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
+          ...(interruptedRunId ? { interruptedRunId } : {}),
+          _previous: Object.keys(changes).length > 0 ? previous : undefined,
+        },
+      }, postCommitActivityPublications);
+    };
     let issue: Awaited<ReturnType<typeof svc.update>>;
     try {
       if (transition.decision && decisionId) {
         const decision = transition.decision;
         issue = await db.transaction(async (tx) => {
-          const updated = await svc.update(
-            id,
-            {
-              ...updateFields,
-              actorAgentId: actor.agentId ?? null,
-              actorUserId: actor.actorType === "user" ? actor.actorId : null,
-            },
-            tx,
-          );
+          const updated = await updateIssue(tx);
           if (!updated) return null;
 
           await tx.insert(issueExecutionDecisions).values({
@@ -8973,25 +9198,27 @@ export function issueRoutes(
             stopRelayResult.value = await svc.addStopRelayCommentIfNeeded(updated, tx);
           }
 
+          await persistBoundReviewActivity(tx, updated);
+
           return updated;
         });
       } else if (shouldRelayStop) {
         issue = await db.transaction(async (tx) => {
-          const updated = await svc.update(id, {
-            ...updateFields,
-            actorAgentId: actor.agentId ?? null,
-            actorUserId: actor.actorType === "user" ? actor.actorId : null,
-          }, tx);
+          const updated = await updateIssue(tx);
           if (!updated) return null;
           stopRelayResult.value = await svc.addStopRelayCommentIfNeeded(updated, tx);
+          await persistBoundReviewActivity(tx, updated);
+          return updated;
+        });
+      } else if (reviewInteractionId) {
+        issue = await db.transaction(async (tx) => {
+          const updated = await updateIssue(tx);
+          if (!updated) return null;
+          await persistBoundReviewActivity(tx, updated);
           return updated;
         });
       } else {
-        issue = await svc.update(id, {
-          ...updateFields,
-          actorAgentId: actor.agentId ?? null,
-          actorUserId: actor.actorType === "user" ? actor.actorId : null,
-        });
+        issue = await updateIssue();
       }
     } catch (err) {
       if (err instanceof HttpError && err.status === 422) {
@@ -9020,6 +9247,7 @@ export function issueRoutes(
       res.status(404).json({ error: "Issue not found" });
       return;
     }
+    for (const publication of postCommitActivityPublications) publishActivity(publication);
 
     if (enteringBlocked) {
       const blockedIssue = issue;
@@ -9100,6 +9328,8 @@ export function issueRoutes(
       updatedRelations = await svc.getRelationSummaries(issue.id);
       issueResponse = {
         ...issue,
+        blockedByIssueIds:
+          issue.blockedByIssueIds ?? [...new Set(req.body.blockedByIssueIds as string[])].sort(),
         blockedBy: updatedRelations.blockedBy,
         blocks: updatedRelations.blocks,
       };
@@ -9174,7 +9404,7 @@ export function issueRoutes(
         activeRecoveryAction: null,
       };
     }
-    await logActivity(db, {
+    if (!reviewInteractionId) await logActivity(db, {
       companyId: issue.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
@@ -9190,6 +9420,7 @@ export function issueRoutes(
         identifier: issue.identifier,
         authorizationReason: issueMutationAuthorizationReason,
         changes: issueChanges,
+        ...(reviewInteractionId ? { reviewInteractionId } : {}),
         ...(commentBody ? { source: "comment" } : {}),
         ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
         ...(reopened ? { reopened: true, reopenedFrom: reopenFromStatus } : {}),
@@ -9912,7 +10143,19 @@ export function issueRoutes(
     })();
 
     await queueTaskWatchdogEvaluation(issue, actor.runId);
-    res.json({ ...issueResponse, comment });
+    const changes = issueResponse.changes ?? {};
+    if (prefersMinimalIssueUpdateResponse(req)) {
+      res.setHeader("Preference-Applied", "return=minimal");
+      res.json({
+        id: issueResponse.id,
+        identifier: issueResponse.identifier,
+        updatedAt: issueResponse.updatedAt,
+        changes,
+        comment,
+      });
+      return;
+    }
+    res.json({ ...issueResponse, changes, comment });
   });
 
   router.delete("/issues/:id", async (req, res) => {
@@ -10324,14 +10567,17 @@ export function issueRoutes(
       if (await rejectTaskWatchdogInteractionMutation(req, res, issue)) return;
       const interactionSvc = issueThreadInteractionService(db);
       const current = await interactionSvc.getForIssue(issue, interactionId);
-      if (!(await assertIssueThreadInteractionResolutionAllowed(req, res, issue, current))) return;
-      await assertPendingReviewInteractionVerdictAllowed(req, issue, current);
+      const resolutionAuthorization = await assertIssueThreadInteractionResolutionAllowed(req, res, issue, current);
+      if (!resolutionAuthorization) return;
 
       const actor = getActorInfo(req);
       const { interaction, createdIssues, continuationIssue } = await interactionSvc.acceptInteraction(issue, interactionId, req.body, {
         agentId: actor.agentId,
         runId: actor.runId,
         userId: actor.actorType === "user" ? actor.actorId : null,
+        ...(actor.actorType === "agent" && resolutionAuthorization === "review_verdict"
+          ? { reviewVerdictAuthorized: true }
+          : {}),
       });
       const toolAction = interaction.payload && typeof interaction.payload === "object"
         ? (interaction.payload as { toolAction?: { actionRequestId?: unknown } }).toolAction
@@ -10477,14 +10723,17 @@ export function issueRoutes(
       if (await rejectTaskWatchdogInteractionMutation(req, res, issue)) return;
       const interactionSvc = issueThreadInteractionService(db);
       const current = await interactionSvc.getForIssue(issue, interactionId);
-      if (!(await assertIssueThreadInteractionResolutionAllowed(req, res, issue, current))) return;
-      await assertPendingReviewInteractionVerdictAllowed(req, issue, current);
+      const resolutionAuthorization = await assertIssueThreadInteractionResolutionAllowed(req, res, issue, current);
+      if (!resolutionAuthorization) return;
 
       const actor = getActorInfo(req);
       const interaction = await interactionSvc.rejectInteraction(issue, interactionId, req.body, {
         agentId: actor.agentId,
         runId: actor.runId,
         userId: actor.actorType === "user" ? actor.actorId : null,
+        ...(actor.actorType === "agent" && resolutionAuthorization === "review_verdict"
+          ? { reviewVerdictAuthorized: true }
+          : {}),
       });
 
       await logActivity(db, {
@@ -10672,6 +10921,7 @@ export function issueRoutes(
       const interactionSvc = issueThreadInteractionService(db);
       const current = await interactionSvc.getForIssue(issue, interactionId);
       if (!(await assertIssueThreadInteractionWithdrawalAllowed(req, res, issue, current))) return;
+      await assertPendingReviewInteractionVerdictAllowed(req, issue, current);
 
       const actor = getActorInfo(req);
       const interaction = await interactionSvc.withdrawInteraction(issue, interactionId, req.body, {
@@ -11010,7 +11260,7 @@ export function issueRoutes(
         surface: "issue.comment.create",
         requestedValue: readNonEmptyString(req.body.onBehalfOfUserId),
       });
-      res.status(422).json({ error: "Agent comments cannot set onBehalfOfUserId" });
+      await denyIssueWrite(req, res, issue, "issue_write_attribution_spoof_rejected");
       return;
     }
     const commentAccessDecision = await assertAgentIssueCommentAllowed(req, res, issue);
@@ -11260,6 +11510,7 @@ export function issueRoutes(
         sourceTrust,
       };
       let txResult: { comment: Awaited<ReturnType<typeof svc.addComment>>; issue: NonNullable<Awaited<ReturnType<typeof svc.update>>> };
+      const postCommitActivityPublications: ActivityPublication[] = [];
       try {
         txResult = await db.transaction(async (tx) => {
           const insertedComment = await svc.addComment(
@@ -11274,7 +11525,9 @@ export function issueRoutes(
             { ...commentOptions, authorizationReason: commentAuthorizationReason },
             tx,
           );
-          const updated = await svc.update(id, updatePatch, tx);
+          const updated = actor.actorType === "user" && currentIssue.status !== "done"
+            ? await svc.update(id, updatePatch, tx, postCommitActivityPublications)
+            : await svc.update(id, updatePatch, tx);
           // Throw (not return null) so drizzle rolls back the inserted comment when the issue
           // has been concurrently deleted between the initial fetch and the in-transaction update.
           if (!updated) throw new AutoApprovalIssueMissingError();
@@ -11303,6 +11556,7 @@ export function issueRoutes(
         }
         throw err;
       }
+      for (const publication of postCommitActivityPublications) publishActivity(publication);
       comment = txResult.comment;
       currentIssue = txResult.issue;
       // Mirror the normal status-change audit trail: every other in_review -> done path
