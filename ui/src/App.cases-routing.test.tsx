@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -88,13 +89,20 @@ vi.mock("./context/CompanyContext", () => ({
   CompanyProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+// Upstream's version of this test drops the QueryClientProvider, because their
+// <App> needs no query client once CloudAccessGate is mocked out. This fork's
+// <App> also renders <LocaleSync>, which useQuery's the session to pick a locale
+// — so the provider stays. Without it LocaleSync throws and <App> renders empty.
 async function renderAppAt(container: HTMLElement, path: string) {
   const root = createRoot(container);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   flushSync(() => {
     root.render(
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>,
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[path]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
   });
   return root;
