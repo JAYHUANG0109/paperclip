@@ -33,6 +33,7 @@ import { MarkdownBody } from "./MarkdownBody";
 import type { PendingAnchor } from "./DocumentAnnotationLayer";
 import type { Agent } from "@paperclipai/shared";
 import type { CompanyUserProfile } from "@/lib/company-members";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 export interface AnnotationPanelProps {
   open: boolean;
@@ -789,7 +790,7 @@ async function copyAnnotationLink(documentKey: string, threadId: string) {
   const { pathname } = window.location;
   const hash = `#document-${encodeURIComponent(documentKey)}&thread=${encodeURIComponent(threadId)}`;
   try {
-    await navigator.clipboard.writeText(`${window.location.origin}${pathname}${hash}`);
+    await copyTextToClipboard(`${window.location.origin}${pathname}${hash}`);
   } catch {
     /* swallow */
   }

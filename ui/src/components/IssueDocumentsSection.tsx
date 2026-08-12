@@ -41,6 +41,7 @@ import {
 import { Check, ChevronDown, ChevronRight, Copy, Diff, Download, FilePenLine, FileText, Lock, MoreHorizontal, Plus, Trash2, Unlock, X } from "lucide-react";
 import { DocumentDiffModal } from "./DocumentDiffModal";
 import { SourceTrustBadge } from "./SourceTrustBadge";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 type DraftState = {
   key: string;
@@ -703,7 +704,7 @@ export function IssueDocumentsSection({
 
   const copyDocumentBody = useCallback(async (key: string, body: string) => {
     try {
-      await navigator.clipboard.writeText(body);
+      await copyTextToClipboard(body);
       setCopiedDocumentKey(key);
       if (copiedDocumentTimerRef.current) {
         clearTimeout(copiedDocumentTimerRef.current);

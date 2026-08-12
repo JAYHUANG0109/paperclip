@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Check, Copy, MoreHorizontal, ThumbsDown, ThumbsUp } from "lucide-react";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -90,7 +91,7 @@ export function AgentBubbleActionRow({
         title={t("agentBubble.copyMessage", { defaultValue: "Copy message" })}
         aria-label={t("agentBubble.copyMessage", { defaultValue: "Copy message" })}
         onClick={() => {
-          void navigator.clipboard.writeText(copyText).then(() => {
+          void copyTextToClipboard(copyText).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
           });
@@ -136,7 +137,7 @@ export function AgentBubbleActionRow({
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onClick={() => {
-              void navigator.clipboard.writeText(copyText);
+              void copyTextToClipboard(copyText);
             }}
           >
             <Copy className="mr-2 h-3.5 w-3.5" />

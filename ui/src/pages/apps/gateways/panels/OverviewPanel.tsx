@@ -14,6 +14,7 @@ import {
   gatewayAppDisplayName,
   isGatewayOn,
 } from "../gateway-helpers";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 export function OverviewPanel({
   gateway,
@@ -52,7 +53,7 @@ export function OverviewPanel({
 
   async function copy(value: string, label: string) {
     try {
-      await navigator.clipboard.writeText(value);
+      await copyTextToClipboard(value);
       pushToast({ title: "Copied", body: label, tone: "success" });
     } catch {
       pushToast({ title: "Copy failed", body: "Clipboard access is unavailable.", tone: "error" });

@@ -138,6 +138,7 @@ import {
 } from "../lib/agent-skills-state";
 import { t as standaloneT, useTranslation } from "@/i18n";
 import { localizeCategory } from "@/lib/skill-i18n";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 async function loadDuplicateInstructionsBundle(
   agentId: string,
@@ -1312,7 +1313,7 @@ export function AgentDetail() {
               <button
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
                 onClick={() => {
-                  navigator.clipboard.writeText(agent.id);
+                  copyTextToClipboard(agent.id);
                   setMoreOpen(false);
                 }}
               >
@@ -5085,7 +5086,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
 
   function copyToken() {
     if (!newToken) return;
-    navigator.clipboard.writeText(newToken);
+    copyTextToClipboard(newToken);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

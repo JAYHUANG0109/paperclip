@@ -51,6 +51,7 @@ import type {
   WorkspaceFileContent,
   WorkspaceFileSelector,
 } from "@paperclipai/shared";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 const FILE_VIEWER_LABELLED_BY_ID = "paperclip-file-viewer-title";
 const FILE_VIEWER_DESCRIBED_BY_ID = "paperclip-file-viewer-description";
@@ -117,7 +118,7 @@ function isMarkdownResource(resource: ResolvedWorkspaceResource): boolean {
 
 async function copyTextWithFallback(text: string) {
   if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
+    await copyTextToClipboard(text);
     return;
   }
 

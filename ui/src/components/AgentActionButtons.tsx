@@ -37,6 +37,7 @@ import type {
   AgentInstructionsFileSummary,
   HeartbeatRun,
 } from "@paperclipai/shared";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 export function RunButton({
   onClick,
@@ -369,7 +370,7 @@ export function AgentActionButtons({
           <button
             className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
             onClick={() => {
-              navigator.clipboard.writeText(agent.id);
+              copyTextToClipboard(agent.id);
               setMoreOpen(false);
             }}
           >

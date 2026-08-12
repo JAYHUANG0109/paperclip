@@ -14,6 +14,7 @@ import { RelativeTime } from "@/pages/tools/shared";
 import { cn } from "@/lib/utils";
 import { gatewaysQueryKey } from "../NewGatewayDialog";
 import { maskedTokenLabel, TOKEN_STATUS_LABEL, tokenStatus, type TokenStatus } from "../gateway-helpers";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 const DEFAULT_ACTIONS: ToolMcpGatewayTokenAction[] = ["tools/list", "tools/call"];
 
@@ -129,7 +130,7 @@ export function TokensPanel({
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
         throw new Error("Clipboard access is unavailable.");
       }
-      await navigator.clipboard.writeText(value);
+      await copyTextToClipboard(value);
       pushToast({ title: "Copied", body: "Access token", tone: "success" });
     } catch (error) {
       pushToast({

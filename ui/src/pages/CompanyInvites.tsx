@@ -11,6 +11,7 @@ import { useToast } from "@/context/ToastContext";
 import { Link } from "@/lib/router";
 import { t, useTranslation } from "@/i18n";
 import { queryKeys } from "@/lib/queryKeys";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 function buildInviteRoleOptions() {
   return [
@@ -76,12 +77,13 @@ export function CompanyInvites() {
 
   async function copyText(text: string, unavailableBody: string, afterFallback?: () => void) {
     try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
+      // No capability guard: copyTextToClipboard does its own secure-context
+      // detection. The legacy path below still runs if it throws, because it
+      // also selects the text via afterFallback so the user can copy by hand.
+      await copyTextToClipboard(text);
+      return true;
     } catch {
-      // Fall through to the unavailable message below.
+      // Fall through to the legacy copy + unavailable message below.
     }
 
     const canUseLegacyCopy =

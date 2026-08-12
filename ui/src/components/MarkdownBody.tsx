@@ -27,6 +27,7 @@ import type {
   ExternalObjectLivenessState,
   ExternalObjectStatusCategory,
 } from "@paperclipai/shared";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 /**
  * Host-resolved external-object metadata for inline markdown decoration.
@@ -529,7 +530,7 @@ function CodeBlock({
     const text = preRef.current?.innerText ?? flattenText(children);
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
+        await copyTextToClipboard(text);
       } else {
         const textarea = document.createElement("textarea");
         textarea.value = text;

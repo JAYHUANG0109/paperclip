@@ -13,6 +13,7 @@ import {
 import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/utils";
 import { formatSnippetConfig, maskedTokenLabel, orderedSnippets } from "./gateway-helpers";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 type PanelKey = string; // snippet client key, or "raw_url"
 
@@ -55,7 +56,7 @@ export function ConnectClientDialog({
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
         throw new Error("Clipboard access is unavailable.");
       }
-      await navigator.clipboard.writeText(value);
+      await copyTextToClipboard(value);
       pushToast({ title: "Copied", body: label, tone: "success" });
     } catch (error) {
       pushToast({

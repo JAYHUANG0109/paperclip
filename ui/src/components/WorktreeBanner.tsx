@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { getWorktreeUiBranding } from "../lib/worktree-branding";
 import { useTranslation } from "@/i18n";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 export function WorktreeBanner() {
   const { t } = useTranslation();
@@ -9,7 +10,7 @@ export function WorktreeBanner() {
 
   const handleCopyName = useCallback(() => {
     if (!branding) return;
-    navigator.clipboard.writeText(branding.name).then(() => {
+    copyTextToClipboard(branding.name).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });

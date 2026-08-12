@@ -148,6 +148,7 @@ import { IssueAssignedBacklogNotice } from "./IssueAssignedBacklogNotice";
 import { IssueRecoveryActionCard, type RecoveryResolveOutcome } from "./IssueRecoveryActionCard";
 import { CommentAttributionChip } from "./CommentAttributionChip";
 import { resolveCommentAttribution } from "../lib/comment-attribution";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 interface IssueChatMessageContext {
   feedbackDataSharingPreference: FeedbackDataSharingPreference;
@@ -1067,7 +1068,7 @@ function CopyablePreBlock({ children, className }: { children: string; className
         title={t("common.copy")}
         aria-label={t("common.copy")}
         onClick={() => {
-          void navigator.clipboard.writeText(children).then(() => {
+          void copyTextToClipboard(children).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
           });
@@ -1415,7 +1416,7 @@ function IssueChatUserMessage({
                 .filter((p): p is { type: "text"; text: string } => p.type === "text")
                 .map((p) => p.text)
                 .join("\n\n");
-              void navigator.clipboard.writeText(text).then(() => {
+              void copyTextToClipboard(text).then(() => {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               });
@@ -1630,7 +1631,7 @@ function IssueChatAssistantMessage({
                   title={t("issues.chat.copyMessage")}
                   aria-label={t("issues.chat.copyMessage")}
                   onClick={() => {
-                    void navigator.clipboard.writeText(copyText).then(() => {
+                    void copyTextToClipboard(copyText).then(() => {
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
                     });
@@ -1674,7 +1675,7 @@ function IssueChatAssistantMessage({
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
                       onClick={() => {
-                        void navigator.clipboard.writeText(copyText);
+                        void copyTextToClipboard(copyText);
                       }}
                     >
                       <Copy className="mr-2 h-3.5 w-3.5" />
@@ -2407,7 +2408,7 @@ function SystemNoticeCommentRow({
   });
 
   const handleCopy = () => {
-    void navigator.clipboard.writeText(bodyText).then(() => {
+    void copyTextToClipboard(bodyText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -2416,7 +2417,7 @@ function SystemNoticeCommentRow({
   const handleCopyLink = () => {
     if (!anchorId || typeof window === "undefined") return;
     const url = `${window.location.origin}${window.location.pathname}#${anchorId}`;
-    void navigator.clipboard.writeText(url).then(() => {
+    void copyTextToClipboard(url).then(() => {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     });

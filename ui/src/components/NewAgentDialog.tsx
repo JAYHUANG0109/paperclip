@@ -28,6 +28,7 @@ import { getAdapterDisplay } from "../adapters/adapter-display-registry";
 import { useDisabledAdaptersSync } from "../adapters/use-disabled-adapters";
 import { useToast } from "../context/ToastContext";
 import { useTranslation } from "@/i18n";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 /**
  * Adapter types that are suitable for agent creation (excludes internal
@@ -142,10 +143,10 @@ export function NewAgentDialog() {
 
   async function copyText(text: string, unavailableBody: string) {
     try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
+      // No capability guard: copyTextToClipboard does its own secure-context
+      // detection and falls back to execCommand, throwing only if both fail.
+      await copyTextToClipboard(text);
+      return true;
     } catch {
       // Fall through to the unavailable message below.
     }

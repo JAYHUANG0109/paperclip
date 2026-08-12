@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 interface CopyTextProps {
   text: string;
@@ -31,23 +32,10 @@ export function CopyText({
 
   const handleClick = useCallback(async () => {
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback for non-secure contexts (e.g. HTTP on non-localhost)
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.style.position = "fixed";
-        textarea.style.left = "-9999px";
-        document.body.appendChild(textarea);
-        try {
-          textarea.select();
-          const success = document.execCommand("copy");
-          if (!success) throw new Error("execCommand copy failed");
-        } finally {
-          document.body.removeChild(textarea);
-        }
-      }
+      // copyTextToClipboard now owns both halves of what this used to inline:
+      // the secure-context gate and the off-screen-textarea execCommand fallback
+      // for HTTP on a non-localhost host.
+      await copyTextToClipboard(text);
       setLabel(copiedLabel);
     } catch {
       setLabel("Copy failed");

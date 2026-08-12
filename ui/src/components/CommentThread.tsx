@@ -27,6 +27,7 @@ import { timeAgo } from "../lib/timeAgo";
 import { cn, formatDateTime } from "../lib/utils";
 import { restoreSubmittedCommentDraft } from "../lib/comment-submit-draft";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 interface CommentWithRunMeta extends IssueComment {
   runId?: string | null;
@@ -248,7 +249,7 @@ function runStatusClass(status: string) {
 
 async function copyTextWithFallback(text: string) {
   if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
+    await copyTextToClipboard(text);
     return;
   }
 

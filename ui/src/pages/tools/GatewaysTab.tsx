@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { ErrorState, LoadingState, RelativeTime, ToolsPageHeader } from "./shared";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 type CreateGatewayDraft = {
   name: string;
@@ -218,7 +219,7 @@ export function GatewaysTab({ companyId }: { companyId: string }) {
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
         throw new Error("Clipboard access is unavailable.");
       }
-      await navigator.clipboard.writeText(value);
+      await copyTextToClipboard(value);
       pushToast({ title: "Copied to clipboard", body: label, tone: "success" });
     } catch (error) {
       pushToast({ title: "Copy failed", body: error instanceof Error ? error.message : "Clipboard access is unavailable.", tone: "error" });

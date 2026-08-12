@@ -75,6 +75,7 @@ import type {
   RoutineVariable,
 } from "@paperclipai/shared";
 import { t, useTranslation } from "@/i18n";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 const concurrencyPolicies = ["coalesce_if_active", "always_enqueue", "skip_if_active"];
 const catchUpPolicies = ["skip_missed", "enqueue_missed_with_cap"];
@@ -482,7 +483,7 @@ export function RoutineDetail() {
 
   const copySecretValue = async (label: string, value: string) => {
     try {
-      await navigator.clipboard.writeText(value);
+      await copyTextToClipboard(value);
       pushToast({ title: t("routineDetail.copied", { label }), tone: "success" });
     } catch (error) {
       pushToast({

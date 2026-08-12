@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 function deriveInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -327,7 +328,7 @@ function PersonalApiKeys() {
   async function copyToken() {
     if (!justCreated) return;
     try {
-      await navigator.clipboard.writeText(justCreated.token);
+      await copyTextToClipboard(justCreated.token);
       setCopied(true);
     } catch { /* clipboard may be blocked; the token stays visible to copy manually */ }
   }

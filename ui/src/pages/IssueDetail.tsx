@@ -184,6 +184,7 @@ import {
   type InboxIssueCacheSnapshot,
 } from "../lib/inboxArchiveCache";
 import type { CompanyUserProfile } from "../lib/company-members";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 type CommentReassignment = IssueCommentReassignment;
 type ActionableIssueThreadInteraction = SuggestTasksInteraction | RequestConfirmationInteraction | RequestCheckboxConfirmationInteraction;
@@ -3114,7 +3115,7 @@ export function IssueDetail() {
     const title = decodeEntities(issue.title);
     const body = decodeEntities(issue.description ?? "");
     const md = `# ${issue.identifier}: ${title}\n\n${body}`.trimEnd();
-    await navigator.clipboard.writeText(md);
+    await copyTextToClipboard(md);
     setCopied(true);
     pushToast({ title: t("issues.toast.copied"), tone: "success" });
     setTimeout(() => setCopied(false), 2000);
