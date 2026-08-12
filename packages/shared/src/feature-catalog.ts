@@ -88,6 +88,14 @@ export const INSTANCE_FEATURE_CATALOG: Record<InstanceFeatureKey, FeatureCatalog
     cloudDefault: false,
     selfHostedDefault: false,
   },
+  enableCloudSync: {
+    title: "Cloud Sync",
+    description:
+      "Show local Paperclip Cloud upstream connection, preview, push, retry, and activation review surfaces.",
+    tier: "managed",
+    cloudDefault: false,
+    selfHostedDefault: false,
+  },
   enableConferenceRoomChat: {
     title: "Conference Room Chat",
     description:
@@ -123,14 +131,6 @@ export const INSTANCE_FEATURE_CATALOG: Record<InstanceFeatureKey, FeatureCatalog
     title: "Status Cards",
     description:
       "Enable the experimental shared status-card board, update engine, and gated API.",
-    tier: "managed",
-    cloudDefault: false,
-    selfHostedDefault: false,
-  },
-  enableCloudSync: {
-    title: "Cloud Sync",
-    description:
-      "Show local Paperclip Cloud upstream connection, preview, push, retry, and activation review surfaces.",
     tier: "managed",
     cloudDefault: false,
     selfHostedDefault: false,

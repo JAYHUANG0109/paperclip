@@ -9,6 +9,8 @@ const items = [
   { value: "general", labelKey: "settings.nav.general", href: "/company/settings" },
   { value: "environments", labelKey: "settings.nav.environments", href: "/company/settings/environments" },
   { value: "cloud-upstream", labelKey: "settings.nav.cloudUpstream", href: "/company/settings/cloud-upstream" },
+  { value: "export", labelKey: "settings.nav.export", href: "/company/export" },
+  { value: "import", labelKey: "settings.nav.import", href: "/company/import" },
   { value: "members", labelKey: "settings.nav.members", href: "/company/settings/members" },
   { value: "invites", labelKey: "settings.nav.invites", href: "/company/settings/invites" },
   { value: "secrets", labelKey: "settings.nav.secrets", href: "/company/settings/secrets" },
@@ -61,8 +63,12 @@ export function getCompanySettingsTab(pathname: string): CompanySettingsTab {
     return "instance-environments";
   }
 
-  if (pathname.includes("/company/settings/cloud-upstream")) {
-    return "cloud-upstream";
+  if (pathname.includes("/company/export")) {
+    return "export";
+  }
+
+  if (pathname.includes("/company/import")) {
+    return "import";
   }
 
   if (pathname.includes("/company/settings/members") || pathname.includes("/company/settings/access")) {

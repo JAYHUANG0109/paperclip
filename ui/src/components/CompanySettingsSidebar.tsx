@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, CloudUpload, KeyRound, MailPlus, MonitorCog, Puzzle, Settings, SlidersHorizontal, Users } from "lucide-react";
+import { ChevronLeft, CloudUpload, Download, KeyRound, MailPlus, MonitorCog, Puzzle, Settings, SlidersHorizontal, Upload, Users } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { sidebarBadgesApi } from "@/api/sidebarBadges";
 import { instanceSettingsApi } from "@/api/instanceSettings";
@@ -82,6 +82,8 @@ export function CompanySettingsSidebar() {
               end
             />
           ) : null}
+          <SidebarNavItem to="/company/export" label={t("settings.nav.export")} icon={Download} />
+          <SidebarNavItem to="/company/import" label={t("settings.nav.import")} icon={Upload} end />
           <SidebarNavItem
             to="/company/settings/members"
             label={t("settings.nav.members")}

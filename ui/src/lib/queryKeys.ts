@@ -1,8 +1,10 @@
 export const queryKeys = {
+  cloudUpstreams: (companyId: string) => ["cloud-upstreams", companyId] as const,
   companies: {
     all: ["companies"] as const,
     detail: (id: string) => ["companies", id] as const,
     stats: ["companies", "stats"] as const,
+    exportFidelity: (companyId: string) => ["companies", companyId, "export-fidelity"] as const,
   },
   apps: {
     gallery: (companyId: string) => ["apps", companyId, "gallery"] as const,
@@ -380,7 +382,6 @@ export const queryKeys = {
     schedulerHeartbeats: ["instance", "scheduler-heartbeats"] as const,
     experimentalSettings: ["instance", "experimental-settings"] as const,
   },
-  cloudUpstreams: (companyId: string) => ["cloud-upstreams", companyId] as const,
   health: ["health"] as const,
   secrets: {
     list: (companyId: string) => ["secrets", companyId] as const,

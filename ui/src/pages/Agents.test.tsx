@@ -106,6 +106,49 @@ function makeAgent(overrides: Partial<Agent>): Agent {
   };
 }
 
+
+function makeInstanceSettings({
+  defaultEnvironmentId = null,
+  enableEnvironments = true,
+  enableBuiltInAgents = false,
+}: {
+  defaultEnvironmentId?: string | null;
+  enableEnvironments?: boolean;
+  enableBuiltInAgents?: boolean;
+} = {}) {
+  return {
+    id: "instance-settings-1",
+    defaultEnvironmentId,
+    general: {
+      censorUsernameInLogs: true,
+      keyboardShortcuts: true,
+      feedbackDataSharingPreference: "prompt",
+      backupRetention: {
+        dailyDays: 7,
+        weeklyWeeks: 4,
+        monthlyMonths: 1,
+      },
+      executionMode: "any",
+    },
+    experimental: {
+      enableEnvironments,
+      enableIsolatedWorkspaces: true,
+      enableStreamlinedLeftNavigation: false,
+      enableConferenceRoomChat: false,
+      enableTaskWatchdogs: true,
+      enableIssuePlanDecompositions: true,
+      enableExperimentalFileViewer: false,
+      enableExternalObjects: false,
+      enableBuiltInAgents,
+      autoRestartDevServerWhenIdle: false,
+      enableIssueGraphLivenessAutoRecovery: false,
+      issueGraphLivenessAutoRecoveryLookbackHours: 24,
+    },
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+  };
+}
+
 const invalidOrgChainHealth: AgentOrgChainHealth = {
   status: "invalid_org_chain",
   reason: "terminated_ancestor",

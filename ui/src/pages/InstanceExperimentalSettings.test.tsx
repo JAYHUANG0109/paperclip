@@ -61,7 +61,8 @@ const AUTO_RECOVERY_TOGGLE_SELECTOR =
 
 function defaultExperimentalSettings(): InstanceExperimentalSettingsPayload {
   return {
-    enableEnvironments: false,
+    enableCloudSync: false,
+  enableEnvironments: false,
     worktreeRunExecutionActivatedAt: null,
     worktreeRunExecutionActivationInstanceId: null,
     enableBuiltInAgents: false,
@@ -84,7 +85,6 @@ function defaultExperimentalSettings(): InstanceExperimentalSettingsPayload {
     enableExperimentalFileViewer: false,
     enableExternalObjects: false,
     enableTaskWatchdogs: false,
-    enableCloudSync: false,
     enableServerInfoDebugView: false,
     enableSmokeLab: false,
     autoRestartDevServerWhenIdle: false,

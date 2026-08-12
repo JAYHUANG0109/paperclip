@@ -13,7 +13,8 @@ import { instanceSettingsApi } from "../api/instanceSettings";
 import { queryKeys } from "../lib/queryKeys";
 import { Link } from "@/lib/router";
 import { Button } from "@/components/ui/button";
-import { Settings, CloudUpload, Download, Upload } from "lucide-react";
+import { CloudUpload,
+  Settings, Download, Upload } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -25,6 +26,13 @@ const DEFAULT_COMPANY_ATTACHMENT_MAX_MIB = DEFAULT_COMPANY_ATTACHMENT_MAX_BYTES 
 const MAX_COMPANY_ATTACHMENT_MAX_MIB = MAX_COMPANY_ATTACHMENT_MAX_BYTES / BYTES_PER_MIB;
 export function CompanySettings() {
   const { t } = useTranslation();
+  // Retained with Cloud Sync: this fork keeps the feature upstream removed, so the
+  // Send-to-Cloud button stays behind the same experimental flag as the nav entry.
+  const { data: experimentalSettings } = useQuery({
+    queryKey: queryKeys.instance.experimentalSettings,
+    queryFn: () => instanceSettingsApi.getExperimental(),
+  });
+  const cloudSyncEnabled = experimentalSettings?.enableCloudSync === true;
   const {
     companies,
     selectedCompany,
@@ -33,10 +41,6 @@ export function CompanySettings() {
   } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
-  const { data: experimentalSettings } = useQuery({
-    queryKey: queryKeys.instance.experimentalSettings,
-    queryFn: () => instanceSettingsApi.getExperimental(),
-  });
   // General settings local state
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
@@ -60,7 +64,6 @@ export function CompanySettings() {
     Number.isInteger(attachmentMaxBytes)
     && attachmentMaxBytes >= BYTES_PER_MIB
     && attachmentMaxBytes <= MAX_COMPANY_ATTACHMENT_MAX_BYTES;
-  const cloudSyncEnabled = experimentalSettings?.enableCloudSync === true;
 
   const generalDirty =
     !!selectedCompany &&

@@ -1,3 +1,4 @@
+export { cloudUpstreamService, reconcileCloudUpstreamRunsOnStartup } from "./cloud-upstreams.js";
 export { companyService } from "./companies.js";
 export { companyArtifactsService } from "./company-artifacts.js";
 export { companySearchService } from "./company-search.js";
@@ -123,7 +124,7 @@ export {
 } from "./managed-config.js";
 export { bootstrapExecutionPolicyFromEnv } from "./execution-policy-bootstrap.js";
 export { applyManagedEnvironments } from "./managed-environments.js";
-export { cloudUpstreamService, reconcileCloudUpstreamRunsOnStartup } from "./cloud-upstreams.js";
+export { buildExportFidelityReport, collectExportFidelityCounts } from "./export-fidelity.js";
 export { companyPortabilityService } from "./company-portability.js";
 export { teamsCatalogService } from "./teams-catalog.js";
 export { environmentService } from "./environments.js";

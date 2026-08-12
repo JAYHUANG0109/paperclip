@@ -9,13 +9,17 @@ const sidebarNavItemMock = vi.hoisted(() => vi.fn());
 const mockSidebarBadgesApi = vi.hoisted(() => ({
   get: vi.fn(),
 }));
-const mockInstanceSettingsApi = vi.hoisted(() => ({
-  getExperimental: vi.fn(),
-}));
 const mockPluginsApi = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 const mockUsePluginSlots = vi.hoisted(() => vi.fn());
+
+const mockInstanceSettingsApi = vi.hoisted(() => ({
+  getExperimental: vi.fn(),
+}));
+vi.mock("@/api/instanceSettings", () => ({
+  instanceSettingsApi: mockInstanceSettingsApi,
+}));
 
 vi.mock("@/lib/router", () => ({
   Link: ({
@@ -74,10 +78,6 @@ vi.mock("@/api/sidebarBadges", () => ({
   sidebarBadgesApi: mockSidebarBadgesApi,
 }));
 
-vi.mock("@/api/instanceSettings", () => ({
-  instanceSettingsApi: mockInstanceSettingsApi,
-}));
-
 vi.mock("@/api/plugins", () => ({
   pluginsApi: mockPluginsApi,
 }));
@@ -114,17 +114,11 @@ describe("CompanySettingsSidebar", () => {
       failedRuns: 0,
       joinRequests: 2,
     });
-    mockInstanceSettingsApi.getExperimental.mockResolvedValue({
-      enableCloudSync: false,
-    });
     mockPluginsApi.list.mockResolvedValue([]);
     mockUsePluginSlots.mockReturnValue({
       slots: [],
       isLoading: false,
       errorMessage: null,
-    });
-    mockInstanceSettingsApi.getExperimental.mockResolvedValue({
-      enableCloudSync: false,
     });
   });
 
@@ -155,7 +149,8 @@ describe("CompanySettingsSidebar", () => {
     expect(container.textContent).not.toContain("Instance settings");
     expect(container.textContent).toContain("General");
     expect(container.textContent).toContain("Environments");
-    expect(container.textContent).not.toContain("Cloud upstream");
+    expect(container.textContent).toContain("Export");
+    expect(container.textContent).toContain("Import");
     expect(container.textContent).toContain("Members");
     expect(container.textContent).toContain("Invites");
     expect(container.textContent).toContain("Secrets");
@@ -168,6 +163,19 @@ describe("CompanySettingsSidebar", () => {
       }),
     );
     // Our component uses /company/settings/environments (not /instance/environments)
+    expect(sidebarNavItemMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/company/export",
+        label: "Export",
+      }),
+    );
+    expect(sidebarNavItemMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/company/import",
+        label: "Import",
+        end: true,
+      }),
+    );
     expect(sidebarNavItemMock).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "/company/settings/environments",
@@ -213,38 +221,6 @@ describe("CompanySettingsSidebar", () => {
     expect(sidebarNavItemMock).not.toHaveBeenCalledWith(
       expect.objectContaining({
         to: "/company/settings/tools",
-      }),
-    );
-
-    await act(async () => {
-      root.unmount();
-    });
-  });
-
-  it("shows cloud upstream only when cloud sync is enabled", async () => {
-    mockInstanceSettingsApi.getExperimental.mockResolvedValue({
-      enableCloudSync: true,
-    });
-    const root = createRoot(container);
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={queryClient}>
-          <CompanySettingsSidebar />
-        </QueryClientProvider>,
-      );
-    });
-    await flushReact();
-
-    expect(container.textContent).toContain("Cloud upstream");
-    expect(sidebarNavItemMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "/company/settings/cloud-upstream",
-        label: "Cloud upstream",
-        end: true,
       }),
     );
 

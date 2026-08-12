@@ -1221,6 +1221,8 @@
       "company": "Company",
       "companySettings": "Company Settings",
       "general": "General",
+      "export": "Export",
+      "import": "Import",
       "environments": "Environments",
       "cloudUpstream": "Cloud upstream",
       "members": "Members",

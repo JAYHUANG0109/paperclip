@@ -1319,6 +1319,8 @@
       "company": "公司",
       "companySettings": "公司設定",
       "general": "一般",
+      "export": "匯出",
+      "import": "匯入",
       "environments": "環境",
       "cloudUpstream": "雲端上游",
       "members": "成員",

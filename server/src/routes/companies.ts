@@ -23,6 +23,8 @@ import {
   accessService,
   agentService,
   budgetService,
+  buildExportFidelityReport,
+  collectExportFidelityCounts,
   companyArtifactsService,
   companyPortabilityService,
   companyService,
@@ -304,6 +306,13 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(result);
   });
 
+  router.get("/:companyId/export/fidelity", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company export fidelity");
+    const counts = await collectExportFidelityCounts(db, companyId);
+    res.json(buildExportFidelityReport(companyId, counts));
+  });
+
   router.post("/import/preview", async (req, res) => {
     assertBoard(req);
     const body = companyPortabilityPreviewSchema.parse(req.body);
@@ -339,6 +348,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
         const activity = importedCompanyActivityContext(actor, importBody.include ?? null);
         const result = await portability.importBundle(importBody, boardUserId, {
           allowAgentOwnershipConfig: mayImportAgentOwnership(req),
+          pauseAutomations: importBody.pauseAutomations === true,
         });
         await logImportedCompanyActivity(db, activity, result);
         return result;
@@ -355,6 +365,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const activity = importedCompanyActivityContext(actor, importBody.include ?? null);
     const result = await portability.importBundle(importBody, boardUserId, {
       allowAgentOwnershipConfig: mayImportAgentOwnership(req),
+      pauseAutomations: importBody.pauseAutomations === true,
     });
     await logImportedCompanyActivity(db, activity, result);
     res.json(result);
@@ -408,6 +419,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       mode: "agent_safe",
       sourceCompanyId: companyId,
       allowAgentOwnershipConfig: mayImportAgentOwnership(req),
+      pauseAutomations: body.pauseAutomations === true,
     });
     await logActivity(db, {
       companyId: result.company.id,

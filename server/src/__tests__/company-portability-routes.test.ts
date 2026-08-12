@@ -43,6 +43,10 @@ const mockFeedbackService = vi.hoisted(() => ({
   saveIssueVote: vi.fn(),
 }));
 
+const mockInstanceSettingsService = vi.hoisted(() => ({
+  getExperimental: vi.fn(),
+}));
+
 vi.mock("../services/access.js", () => ({
   accessService: () => mockAccessService,
 }));
@@ -79,6 +83,7 @@ vi.mock("../services/index.js", () => ({
   companyPortabilityService: () => mockCompanyPortabilityService,
   companyService: () => mockCompanyService,
   feedbackService: () => mockFeedbackService,
+  instanceSettingsService: () => mockInstanceSettingsService,
   logActivity: mockLogActivity,
 }));
 
@@ -91,6 +96,7 @@ function registerCompanyRouteMocks() {
     companyPortabilityService: () => mockCompanyPortabilityService,
     companyService: () => mockCompanyService,
     feedbackService: () => mockFeedbackService,
+    instanceSettingsService: () => mockInstanceSettingsService,
     logActivity: mockLogActivity,
   }));
 }
@@ -641,7 +647,7 @@ describe.sequential("company portability routes", () => {
       // This Cloud tenant caller is an instance admin, so the bundle is allowed
       // to carry agent ownership; a non-admin importer gets false and has
       // assignedUserEmail/assignedUserRole stripped.
-      { allowAgentOwnershipConfig: true },
+      { allowAgentOwnershipConfig: true, pauseAutomations: false },
     );
     expect(mockLogActivity).not.toHaveBeenCalled();
 
@@ -734,11 +740,50 @@ describe.sequential("company portability routes", () => {
       // This Cloud tenant caller is an instance admin, so the bundle is allowed
       // to carry agent ownership; a non-admin importer gets false and has
       // assignedUserEmail/assignedUserRole stripped.
-      { allowAgentOwnershipConfig: true },
+      { allowAgentOwnershipConfig: true, pauseAutomations: false },
     );
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: "company.imported",
       companyId,
     }));
+  });
+
+  it.sequential("forwards pauseAutomations from the global import body to the portability service", async () => {
+    mockCompanyPortabilityService.importBundle.mockResolvedValueOnce(createImportResult("created"));
+    const app = await createApp(cloudTenantActor());
+
+    const res = await request(app)
+      .post("/api/companies/import")
+      .set(cloudHeaders)
+      .send({ ...importRequest, pauseAutomations: true });
+
+    expect(res.status).toBe(200);
+    expect(mockCompanyPortabilityService.importBundle).toHaveBeenCalledWith(
+      { ...importRequest, pauseAutomations: true },
+      "cloud-user-1",
+      { pauseAutomations: true },
+    );
+  });
+
+  it.sequential("forwards pauseAutomations from CEO-safe import apply bodies to the portability service", async () => {
+    mockCompanyPortabilityService.importBundle.mockResolvedValueOnce(createImportResult("created"));
+    const app = await createApp({
+      type: "agent",
+      agentId: ceoAgentId,
+      companyId,
+      source: "agent_key",
+      runId: "run-1",
+    });
+
+    const res = await request(app)
+      .post(`/api/companies/${companyId}/imports/apply`)
+      .send({ ...importRequest, pauseAutomations: true });
+
+    expect(res.status).toBe(200);
+    expect(mockCompanyPortabilityService.importBundle).toHaveBeenCalledWith(
+      { ...importRequest, pauseAutomations: true },
+      null,
+      { mode: "agent_safe", sourceCompanyId: companyId, pauseAutomations: true },
+    );
   });
 });
