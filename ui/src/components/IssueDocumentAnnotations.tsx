@@ -44,6 +44,14 @@ export interface IssueDocumentAnnotationsProps {
   onPanelOpenChange: (open: boolean) => void;
   agentMap?: ReadonlyMap<string, Pick<Agent, "id" | "name"> & Partial<Pick<Agent, "icon">>>;
   userProfileMap?: ReadonlyMap<string, CompanyUserProfile>;
+  /**
+   * Seed the comment composer with an anchor captured before this component mounted
+   * (PipelineItemBodyDocument stashes one when the user starts a comment from the
+   * body layer). Consumed once, then the caller is told to clear its copy so a later
+   * remount does not re-open the composer.
+   */
+  initialComposerAnchor?: PendingAnchor | null;
+  onInitialComposerAnchorConsumed?: () => void;
   /** Seed which thread is focused on mount. Used by Storybook/screenshot harness. */
   defaultFocusedThreadId?: string;
 }
@@ -62,6 +70,8 @@ export function IssueDocumentAnnotations({
   onPanelOpenChange,
   agentMap,
   userProfileMap,
+  initialComposerAnchor,
+  onInitialComposerAnchorConsumed,
   defaultFocusedThreadId,
 }: IssueDocumentAnnotationsProps) {
   const selectionDebugEnabled = isSelectionDebugEnabled();
@@ -71,6 +81,14 @@ export function IssueDocumentAnnotations({
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [selectionAnchor, setSelectionAnchor] = useState<PendingAnchor | null>(null);
   const [composerAnchor, setComposerAnchor] = useState<PendingAnchor | null>(null);
+  // Adopt a pre-mount anchor exactly once. Guarded on composerAnchor being empty so
+  // this never clobbers an anchor the user just made, and the caller is notified so
+  // it can drop its copy.
+  useEffect(() => {
+    if (!initialComposerAnchor || composerAnchor) return;
+    setComposerAnchor(initialComposerAnchor);
+    onInitialComposerAnchorConsumed?.();
+  }, [initialComposerAnchor, composerAnchor, onInitialComposerAnchorConsumed]);
   const [isMobile, setIsMobile] = useState(false);
   const [desktopPanelFrame, setDesktopPanelFrame] = useState<{
     left: number;

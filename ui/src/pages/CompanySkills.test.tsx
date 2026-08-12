@@ -226,6 +226,8 @@ function skillDetailElement(
       loading={false}
       activeTab="versions"
       onTabChange={vi.fn()}
+      onUpdateSettings={vi.fn()}
+      updateSettingsPending={false}
       selectedPath="SKILL.md"
       file={null}
       fileLoading={false}
@@ -312,6 +314,7 @@ async function renderDiscoveryGrid(props: Partial<ComponentProps<typeof Discover
         tab="all"
         tabCounts={{ all: 0, installed: 0, catalog: 0, bundled: 0 }}
         onTabChange={vi.fn()}
+        onAddFolder={vi.fn()}
         categories={[]}
         categoryTotal={0}
         activeCategory={null}

@@ -14,6 +14,7 @@ const consoles: FounderConsolesResponse = {
   consoles: [
     {
       key: "founder",
+      readOnly: false,
       title: "創辦人每日行事曆 (唐姐)",
       digest: {
         generatedAt: "2026-06-30T07:30:00Z",

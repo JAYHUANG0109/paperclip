@@ -158,6 +158,8 @@ function SkillDetailHarness({ initialTab = "overview" as DetailTab }: { initialT
       loading={false}
       activeTab={activeTab}
       onTabChange={setActiveTab}
+      onUpdateSettings={() => {}}
+      updateSettingsPending={false}
       selectedPath="SKILL.md"
       file={MOCK_FILE}
       fileLoading={false}

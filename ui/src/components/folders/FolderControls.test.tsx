@@ -206,7 +206,7 @@ describe("FolderControls", () => {
     });
     expect(container.querySelector('[data-testid="bulk-share"]')).not.toBeNull();
     const deleteBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("Delete"))!;
-    act(() => deleteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    act(() => { deleteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 

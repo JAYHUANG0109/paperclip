@@ -294,6 +294,7 @@ function DiscoveryGridHarness({
         setCategory(null);
       }}
       categories={categories}
+      onAddFolder={() => {}}
       categoryTotal={tabCards.length}
       activeCategory={category}
       onCategoryChange={setCategory}
