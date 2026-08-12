@@ -28,6 +28,7 @@ describe("instance settings service", () => {
       enableIsolatedWorkspaces: true,
       enableStreamlinedLeftNavigation: true,
       enableApps: false,
+      enableCloudSync: false,
       enableConferenceRoomChat: false,
       enableExternalObjects: false,
       enableSmokeLab: false,

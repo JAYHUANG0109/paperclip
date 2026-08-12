@@ -74,6 +74,11 @@ const explicitOpenApiCoverageExclusions = new Set([
   "cases.ts",
   // Smoke lab routes are experimental and not yet represented in the public OpenAPI document.
   "smoke-lab.ts",
+  // Cloud Sync is retained in this fork after upstream removed it (916c13501), which
+  // also deleted its OpenAPI paths. It is gated behind the default-off enableCloudSync
+  // flag and unused here, so it is excluded rather than carrying 89 lines of spec that
+  // upstream no longer maintains.
+  "cloud-upstreams.ts",
 ]);
 
 function createApp() {

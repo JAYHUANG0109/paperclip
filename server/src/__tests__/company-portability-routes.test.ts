@@ -761,7 +761,7 @@ describe.sequential("company portability routes", () => {
     expect(mockCompanyPortabilityService.importBundle).toHaveBeenCalledWith(
       { ...importRequest, pauseAutomations: true },
       "cloud-user-1",
-      { pauseAutomations: true },
+      { allowAgentOwnershipConfig: true, pauseAutomations: true },
     );
   });
 
@@ -783,7 +783,7 @@ describe.sequential("company portability routes", () => {
     expect(mockCompanyPortabilityService.importBundle).toHaveBeenCalledWith(
       { ...importRequest, pauseAutomations: true },
       null,
-      { mode: "agent_safe", sourceCompanyId: companyId, pauseAutomations: true },
+      { mode: "agent_safe", sourceCompanyId: companyId, allowAgentOwnershipConfig: false, pauseAutomations: true },
     );
   });
 });
