@@ -4781,7 +4781,8 @@
     "exportFiles": "匯出 {{count}} 個檔案",
     "packageFiles": "套件檔案",
     "searchFiles": "搜尋檔案…",
-    "showMoreIssues": "顯示更多議題（{{total}} 個中的 {{visible}} 個）"
+    "showMoreIssues": "顯示更多議題（{{total}} 個中的 {{visible}} 個）",
+    "filesSelectedWithSize": "已選 {{selected}} / {{total}} 個檔案 (~{{size}})"
   },
   "notFound": {
     "breadcrumb": "找不到頁面",

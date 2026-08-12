@@ -4683,7 +4683,8 @@
     "exportFiles": "Export {{count}} files",
     "packageFiles": "Package files",
     "searchFiles": "Search files...",
-    "showMoreIssues": "Show more issues ({{visible}} of {{total}})"
+    "showMoreIssues": "Show more issues ({{visible}} of {{total}})",
+    "filesSelectedWithSize": "{{selected}} / {{total}} files selected (~{{size}})"
   },
   "notFound": {
     "breadcrumb": "Not Found",

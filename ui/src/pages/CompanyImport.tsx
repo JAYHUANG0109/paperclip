@@ -908,6 +908,17 @@ export function CompanyImport() {
         ?? null;
       await applyImportedSidebarOrder(importPreview, result, sidebarOrderUserId);
       setSelectedCompanyId(importedCompany.id);
+      // Seed the activation panel and switch the page into its completion state.
+      // 916c13501 added that panel (rendered below on `importOutcome`), but this
+      // handler kept only the fork's success toast, so the panel was unreachable.
+      setActivationChecked(new Set(buildActivationItems(result).map((item) => item.key)));
+      setActivatedKeys(new Set());
+      setActivationFailures({});
+      setImportOutcome({
+        result,
+        dashboardPath: `/${importedCompany.issuePrefix}/dashboard`,
+        pausedAutomations: pauseAutomations,
+      });
       pushToast({
         tone: "success",
         title: t("companyImport.toast.importComplete"),

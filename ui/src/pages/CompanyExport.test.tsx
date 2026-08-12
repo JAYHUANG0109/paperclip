@@ -243,7 +243,7 @@ describe("CompanyExport", () => {
 
     await renderPage();
 
-    expect(container.textContent).toContain("Exporting 6 of 6 files");
+    expect(container.textContent).toContain("6 / 6 files selected");
     // The tree is a pure browser now — no per-file checkboxes.
     expect(container.querySelector('[role="tree"] input[type="checkbox"]')).toBeNull();
 
@@ -267,7 +267,7 @@ describe("CompanyExport", () => {
     await renderPage();
     await clickElement(categoryInput("tasks"));
 
-    expect(container.textContent).toContain("Exporting 4 of 6 files");
+    expect(container.textContent).toContain("4 / 6 files selected");
     // Routines can carry attachments, so Attachments stays enabled while routines remain.
     expect(categoryInput("attachments").disabled).toBe(false);
     // Excluded files render dimmed in the tree browser.
@@ -296,7 +296,7 @@ describe("CompanyExport", () => {
     const attachments = categoryInput("attachments");
     expect(attachments.disabled).toBe(true);
     expect(attachments.checked).toBe(false);
-    expect(container.textContent).toContain("Exporting 3 of 6 files");
+    expect(container.textContent).toContain("3 / 6 files selected");
     expect(container.querySelector('[data-file-tree-path="tasks"]')?.className).toContain("opacity-50");
   });
 
@@ -306,14 +306,14 @@ describe("CompanyExport", () => {
     await renderPage();
 
     const sizeText = () =>
-      container.textContent?.match(/Exporting [\d,]+ of [\d,]+ files \(~([\d.]+ [KMGT]?B)\)/)?.[1] ?? null;
+      container.textContent?.match(/[\d,]+ \/ [\d,]+ files selected \(~([\d.]+ [KMGT]?B)\)/)?.[1] ?? null;
 
     const initialSize = sizeText();
     expect(initialSize).not.toBeNull();
 
     await clickElement(categoryInput("tasks"));
 
-    expect(container.textContent).toContain("Exporting 4 of 6 files");
+    expect(container.textContent).toContain("4 / 6 files selected");
     const toggledSize = sizeText();
     expect(toggledSize).not.toBeNull();
     // Dropping the one-off task and its blob shrinks the estimated zip.

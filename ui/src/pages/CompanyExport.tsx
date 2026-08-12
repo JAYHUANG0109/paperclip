@@ -975,7 +975,13 @@ export function CompanyExport() {
               {t("companyExport.companyExportTitle", { name: selectedCompany?.name ?? t("companyExport.company") })}
             </span>
             <span className="text-muted-foreground">
-              {t("companyExport.filesSelected", { selected: selectedCount, total: totalFiles })}
+              {selectedCount > 0
+                ? t("companyExport.filesSelectedWithSize", {
+                    selected: selectedCount,
+                    total: totalFiles,
+                    size: formatBytes(estimatedZipBytes),
+                  })
+                : t("companyExport.filesSelected", { selected: selectedCount, total: totalFiles })}
             </span>
             {warnings.length > 0 && (
               <span className="text-amber-500">
