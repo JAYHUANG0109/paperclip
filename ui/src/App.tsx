@@ -368,7 +368,7 @@ function boardRoutes() {
       {/* The audit page merged into /activity (our take on upstream 8142e5415).
           Keep the old path as a deep link to the privileged tier so existing
           links, bookmarks and the sidebar item all still land somewhere real. */}
-      <Route path="audit" element={<Navigate to="../activity?mode=agents" replace />} />
+      <Route path="audit" element={<Navigate to="/activity?mode=agents" replace />} />
       {/* Conference Room Chat surfaces (PAP-136/PAP-137): routes stay
           registered but redirect to the company home while the experimental
           flag is off. The board-level `artifacts` mount below is the new
@@ -714,6 +714,15 @@ export function App() {
               company code, which is why it rendered "no company matches
               MEMORY" instead of the page. */}
           <Route path="memory" element={<UnprefixedBoardRedirect />} />
+          {/* Same omission as `memory` had: `activity` and `audit` are both in
+              BOARD_ROUTE_ROOTS, so Link/NavLink/Navigate prefix them correctly,
+              but an unprefixed URL that arrives from outside (typed, bookmarked,
+              pasted) had no redirect and fell through to `:companyPrefix`,
+              404ing as "no company matches ACTIVITY". Upstream fixed its half of
+              this in f0ed524ff. `audit` keeps its query string on the way
+              through, so /audit still lands on the agents tier. */}
+          <Route path="activity" element={<UnprefixedBoardRedirect />} />
+          <Route path="audit" element={<UnprefixedBoardRedirect />} />
           <Route path="u/:userSlug" element={<UnprefixedBoardRedirect />} />
           <Route path="skills/studio" element={<UnprefixedBoardRedirect />} />
           <Route path="skills/studio/new" element={<UnprefixedBoardRedirect />} />
