@@ -1259,6 +1259,22 @@
       "instanceExperimental": "Instance experimental",
       "instancePlugins": "Instance plugins",
       "instanceAdapters": "Instance adapters"
+    },
+    "apiKeys": {
+      "title": "API keys (personal)",
+      "subtitle": "Call the Paperclip API as yourself — with every permission you have in the UI, including editing agents' skills and instructions. Anyone holding the key acts as you, so keep it safe and revoke it when you no longer need it.",
+      "namePlaceholder": "Key name (e.g. My Claude)",
+      "create": "Create",
+      "createFailed": "Could not create the key. Please try again.",
+      "copyNow": "Key created — copy it now, it will not be shown again.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "dismiss": "Dismiss",
+      "none": "No personal keys yet.",
+      "lastUsed": "Last used {{date}}",
+      "neverUsed": "Never used",
+      "revoke": "Revoke",
+      "revokeFailed": "Could not revoke the key."
     }
   },
   "common": {
@@ -1313,7 +1329,9 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "openInNewTab": "Open in new tab",
-    "deleting": "Deleting..."
+    "deleting": "Deleting...",
+    "manage": "Manage",
+    "open": "Open"
   },
   "orgChart": {
     "breadcrumb": "Org Chart",
@@ -1660,7 +1678,10 @@
       "configuration": "Configuration",
       "runs": "Runs",
       "budget": "Budget",
-      "tools": "Tools"
+      "tools": "Tools",
+      "harness": "How it works",
+      "projects": "Projects",
+      "audit": "Audit"
     },
     "pendingApproval": "This agent is pending board approval and cannot be invoked yet.",
     "approveAgent": "Approve agent",
@@ -1758,7 +1779,10 @@
       "selectedSkills": "Selected skills",
       "failedUpdate": "Failed to update skills",
       "equipVsShareLabel": "Equip vs Share",
-      "uncategorized": "Uncategorized"
+      "uncategorized": "Uncategorized",
+      "equipHint": "Checked = the skill is equipped on THIS agent. Takes effect immediately and affects only this agent. Unrelated to sharing scope.",
+      "equipTip": "Equip (checked): this agent loads and uses this skill.",
+      "shareTip": "Sharing scope (set in the Skills library): controls who can see the skill in the library and which agents it is auto-equipped to on upload — it does not restrict agents that already have it equipped."
     },
     "runs": {
       "empty": "No runs yet."
@@ -1834,7 +1858,30 @@
     "commandNotes": "Command notes",
     "prompt": "Prompt",
     "context": "Context",
-    "environment": "Environment"
+    "environment": "Environment",
+    "harness": {
+      "intro": "How this agent operates: its instructions, skills, tools and routines.",
+      "rules": "Instructions & rules (harness)",
+      "rulesSource": "From the responsible user's memory",
+      "memory": "Memory",
+      "memoryHint": "This agent reads its responsible user's memory on every run. Each user's memory is separate and private to them.",
+      "noMemory": "No memories yet",
+      "routines": "Routines",
+      "noRoutines": "No routines assigned to this agent",
+      "noSkills": "No skills equipped yet",
+      "toolsHint": "View and connect this agent's tools on the Tools tab.",
+      "entryFile": "Entry point: {{file}}",
+      "fileCount": "{{count}} files"
+    },
+    "projects": {
+      "empty": "This agent has no tasks yet. Once tasks are assigned they appear here, grouped by the project they belong to.",
+      "addHint": "To file a task under a project: open the task and set the Project field, or pick a project when creating the task.",
+      "unfiled": "Not in a project",
+      "unknownProject": "Project",
+      "noAgentTasks": "No tasks for this agent in this project · Open project",
+      "noAgentTasksWithCount": "No tasks for this agent in this project ({{count}} in the project) · Open project",
+      "otherTasks": "{{count}} more tasks not assigned to this agent · Open project"
+    }
   },
   "projectDetail": {
     "addDescription": "Add a description...",
@@ -2068,7 +2115,8 @@
     "resetDefaultsHint": "status, id, updated",
     "user": "User",
     "filterByWorkspace": "Filter by workspace",
-    "subIssue": "Sub-issue"
+    "subIssue": "Sub-issue",
+    "viaAgent": "via {{name}}"
   },
   "sidebarProjects": {
     "pausedByBudget": "Project paused by budget",
@@ -2550,7 +2598,22 @@
     "bulkDeleteTitle": "Delete selected skills",
     "bulkDeleteDesc": "This permanently removes the selected skills from the company library and detaches them from any agents using them. This cannot be undone.",
     "bulkDeleteConfirm": "You are about to delete {{count}} skill(s).",
-    "bulkDeleteConfirmBtn": "Delete {{count}}"
+    "bulkDeleteConfirmBtn": "Delete {{count}}",
+    "studio": "Studio",
+    "uploadMultiDone": "{{count}} skills ready",
+    "uploadPartCreated": "Added {{count}}: {{names}}",
+    "uploadPartRefiled": "Refiled {{count}}: {{names}}",
+    "uploadPartFailed": "Failed {{count}}: {{names}}",
+    "uploadPartSkipped": "Already in the right place: {{count}}",
+    "uploadEquippedCompany": "(equipped to {{count}} agents, effective on their next run)",
+    "uploadEquippedTeam": "(equipped to {{count}} team agents, effective on their next run)",
+    "uploadEquippedNone": "(⚠️ no agents match the selected teams — check the team tags)",
+    "uploadFiledInFolders": "(created {{count}} folders and filed them)",
+    "uploadMergedVersions": "({{count}} files were the same skill — kept the newest version)",
+    "uploadFailedArchives": "(⚠️ {{count}} archives could not be extracted: {{names}})",
+    "uploadSkippedRefs": "({{count}} .md files are reference material inside a bundle — no skill created)",
+    "uploadPruned": "(removed {{count}} files attached by mistake)",
+    "uploadPrunedFolders": "(removed {{count}} leftover empty folders)"
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",
@@ -3411,7 +3474,16 @@
     "allGoalsSelected": "All goals already selected.",
     "targetDate": "Target date",
     "failedToCreate": "Failed to create project.",
-    "createProject": "Create project"
+    "createProject": "Create project",
+    "leadAgentHint": "Lead: {{name}}",
+    "noTeams": "No teams available to share with",
+    "scopeCompanyHint": "Visible company-wide",
+    "scopePrivateHint": "Only you and the people you invite",
+    "scopeTeamPick": "Team project (pick one or more teams)",
+    "scopeTeamWith": "Team: {{team}}",
+    "shareWith": "Share with… (only you by default)",
+    "sharedWithCount": "Shared with {{count}} people",
+    "sharePickerHint": "Click a name to add the person and their agent; or click a single tag to add just one of them."
   },
   "routines": {
     "title": "Routines",
@@ -3767,7 +3839,8 @@
       "env": "Env",
       "created": "Created",
       "updated": "Updated",
-      "targetDate": "Target Date"
+      "targetDate": "Target Date",
+      "instructions": "Project instructions"
     },
     "namePlaceholder": "Project name",
     "descriptionPlaceholder": "Add a description...",
@@ -3822,7 +3895,9 @@
     "provisionCommand": "Provision command",
     "teardownCommand": "Teardown command",
     "provisionTeardownHint": "Provision runs inside the derived worktree before agent execution. Teardown is stored here for future cleanup flows.",
-    "dangerZone": "Danger Zone"
+    "dangerZone": "Danger Zone",
+    "instructionsPlaceholder": "Instructions agents should follow when working on tasks in this project (supplied to the agent as task context)…",
+    "noInstructions": "No project instructions yet"
   },
   "routineHistory": {
     "restoredToast": "Restored revision {{from}} as revision {{to}}",
@@ -4165,7 +4240,9 @@
     "projectCount_other": "{{count}} projects",
     "scopeCompany": "Company projects",
     "scopeTeam": "Team projects",
-    "scopePersonal": "Personal projects"
+    "scopePersonal": "Personal projects",
+    "newProject": "New project",
+    "scopePrivateTag": "Private"
   },
   "sidebarAgents": {
     "resumeAgent": "Resume agent",
@@ -4894,7 +4971,36 @@
     "observingNote": "Recovery is observing without interrupting the live run.",
     "staysOpenNote": "The card stays open until an explicit decision is recorded.",
     "agentShort": "agent {{id}}",
-    "runShort": "run {{id}}"
+    "runShort": "run {{id}}",
+    "workspace": {
+      "ancestry": "Ancestry",
+      "heads": "Heads",
+      "tree": "Working tree",
+      "liveBranch": "Live branch",
+      "recordedBranch": "Recorded branch",
+      "rescueBranch": "Rescue branch",
+      "rescueTimestamp": "<timestamp>",
+      "verdictDiverged": "Diverged",
+      "verdictForwardOnly": "Forward-only",
+      "dirtyOne": "{{count}} uncommitted change",
+      "dirtyMany": "{{count}} uncommitted changes",
+      "repair": "Repair workspace",
+      "repairConfirm": "Set aside and restore",
+      "repairBlocked": "held by {{issue}}",
+      "repairRestate": "on {{live}} are moved to a rescue branch and left untouched there, then the workspace is restored to {{recorded}}.",
+      "reconcileForward": "Accept live branch",
+      "contended": "{{issue}} currently holds this workspace.",
+      "contendedActive": "{{issue}} currently holds this workspace and has an active run, so it cannot be repaired underneath them.",
+      "breakGlass": "Override",
+      "breakGlassTitle": "Override the divergence",
+      "breakGlassConfirm": "Override anyway",
+      "breakGlassReasonPlaceholder": "Why is it safe to proceed without repairing?",
+      "reissueIsolated": "Re-issue on a worktree",
+      "reissueTitle": "Re-issue on isolated workspace",
+      "reissueConfirm": "Re-issue",
+      "reissueRecommended": "Recommended:",
+      "reissueExplain": "Starts a fresh task on its own git worktree based on {{base}}, leaving this workspace untouched."
+    }
   },
   "workspaceCard": {
     "option": {
@@ -4999,7 +5105,8 @@
       "processLost": "process lost",
       "adapterFailed": "adapter failed",
       "completedWith": "completed ({{detail}})",
-      "completed": "completed"
+      "completed": "completed",
+      "unmanagedBackgroundTaskStopped": "unmanaged background task stopped"
     },
     "stopStatus": {
       "retryPending": "Retry pending",
@@ -5064,7 +5171,15 @@
     "profileUnavailable": "{{requested}} profile unavailable",
     "nextActionLabel": "Next action:",
     "olderItemsNotShown": "{{count}} older items not shown",
-    "stopLabel": "Stop"
+    "stopLabel": "Stop",
+    "onBehalfOf": "on behalf of {{name}}",
+    "onBehalfOfTitle": "This run used {{name}}'s access",
+    "denial": {
+      "unauthorizedTitle": "Responsible user not authorized",
+      "unauthorizedBody": "that user",
+      "unavailableTitle": "Responsible user unavailable",
+      "unavailableBody": "that user"
+    }
   },
   "newIssue": {
     "effort": {
@@ -5189,7 +5304,12 @@
     "createdUnassignedBody": "This task has no assignee, so no agent will pick it up. Open it to assign someone.",
     "reusingWorkspace": "Reusing {{name}} from {{source}}.",
     "taskTitleOptional": "Title (optional) — your agent will write one",
-    "agentAssigneeRequired": "Choose an agent to run this task — left unassigned, nothing will pick it up. The person responsible for that agent is notified too."
+    "agentAssigneeRequired": "Choose an agent to run this task — left unassigned, nothing will pick it up. The person responsible for that agent is notified too.",
+    "skills": "Skills (optional)",
+    "skillsCount": "Skills: {{count}}",
+    "skillsHint": "Limit which skills this task may use (none selected = all available)",
+    "clearSkills": "Clear selection",
+    "contentRequired": "Describe the task"
   },
   "routineDetail": {
     "concurrencyDesc": {
@@ -5647,7 +5767,16 @@
     "searchPlaceholder": "Search members or agents…",
     "agents": "Agents",
     "users": "Users",
-    "noResults": "No members found to add"
+    "noResults": "No members found to add",
+    "self": "This person",
+    "agent": "Agent",
+    "owner": "Owner",
+    "otherAgents": "Other agents",
+    "userAccount": "User account",
+    "team": "Team project: {{teams}}",
+    "teamAccess": "Everyone in the listed teams has access; you can add individual members as well.",
+    "changeScope": "Change scope",
+    "pickerHint": "Click a name to add the person and their agent; or click a single tag to add just one of them."
   },
   "artifacts": {
     "selectCompany": "Select a company to view artifacts.",
@@ -6038,7 +6167,10 @@
     "description": "Description",
     "commentPlaceholder": "Comment… (posted to Asana as you)",
     "postComment": "Post",
-    "commentPostError": "Couldn't post — try again."
+    "commentPostError": "Couldn't post — try again.",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "refreshHint": "Refresh from Asana (manual update)"
   },
   "founder": {
     "close": "Close",
@@ -6070,7 +6202,13 @@
     "commentPlaceholder": "Comment / question (no decision) — posted as an Asana comment",
     "postComment": "Post comment",
     "threadCount": "{{count}} comments",
-    "stale": "May be out of date — last refreshed {{when}}"
+    "stale": "May be out of date — last refreshed {{when}}",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "refreshHint": "Refresh from Asana (manual update)",
+    "readOnly": "Read-only view (this person's actual content) — refresh works; decisions and comments are theirs alone",
+    "pendingSummary": "Just pulled in from Asana. The AI summary and feedback notes are generated on the next digest.",
+    "subtasks": "Subtasks ({{count}})"
   },
   "sidebarShell": {
     "resize": "Resize sidebar"
@@ -6661,7 +6799,19 @@
     "namePlaceholder": "Short label (optional)",
     "save": "Remember",
     "subtitle": "Things your agents should remember about you. Only you and your own agents can read this.",
-    "title": "Memory"
+    "title": "Memory",
+    "autoCategory": "Auto-categorize",
+    "batchCount": "{{count}} entries",
+    "importHistory": "Import history",
+    "deleteSelected": "Delete selected ({{count}})",
+    "deleteBatchesConfirm": "Delete the {{count}} selected import batches, including all of their memories?",
+    "previewTitle": "{{count}} memories will be split and categorized automatically",
+    "previewTitleSplit": "Detected {{mem}} memories and {{harness}} instructions/rules (harness)",
+    "saveAll": "Remember all ({{count}})",
+    "selectAll": "Select all",
+    "sortCategory": "Category",
+    "sortHot": "🔥 Hottest",
+    "sortCold": "❄ Coldest"
   },
   "agentSkillsTab": {
     "available": "Available from the library",
@@ -6753,7 +6903,8 @@
     "save": "Save",
     "subtitle": "Your personal keys. Every agent you're responsible for uses them, acting as you.",
     "title": "Connections",
-    "update": "Update"
+    "update": "Update",
+    "odooHelp": "The key is verified against Odoo before saving. Read-only; create one under Settings → My API Keys."
   },
   "inboxPolicy": {
     "allowlistHeading": "Agents allowed to tidy my inbox",
@@ -6775,7 +6926,16 @@
     "saving": "Saving…"
   },
   "issueProperties": {
-    "searchProjects": "Search projects..."
+    "searchProjects": "Search projects...",
+    "skills": "Skills",
+    "allSkills": "All skills",
+    "skillsCount": "{{count}} skills",
+    "skillsHint": "Limit which skills this task may use (none selected = all available)",
+    "clearSkills": "Clear selection (all available)",
+    "noEquippedSkills": "This agent has no equipped skills",
+    "noProject": "No project",
+    "createProject": "Create a new project…",
+    "createProjectNamed": "Create new project \"{{name}}\""
   },
   "runtimeAccount": {
     "accountInUse": "Account in use",
@@ -6804,7 +6964,14 @@
     },
     "useThisAccount": "Use this account",
     "agentCount_one": "{{count}} agent",
-    "agentCount_other": "{{count}} agents"
+    "agentCount_other": "{{count}} agents",
+    "agentCount": "{{count}} agent",
+    "quota": {
+      "resetsIn": "resets in {{value}}",
+      "inDays": "{{days}}d",
+      "inHours": "{{hours}}h",
+      "inMinutes": "{{minutes}}m"
+    }
   },
   "teamPicker": {
     "crossCampus": "Cross-campus / all campuses",
@@ -6826,5 +6993,17 @@
     "caughtUpTitle": "You're all caught up",
     "noMatch": "No decisions match your filters.",
     "selectCompany": "Select a company first."
+  },
+  "taskMenu": {
+    "actions": "Task options",
+    "addToProject": "Add to project",
+    "removeFromProject": "Remove from project",
+    "noProjects": "No projects available",
+    "current": "Current",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "rename": "Rename",
+    "remove": "Remove task",
+    "removeConfirm": "Remove this task? This cannot be undone."
   }
 }

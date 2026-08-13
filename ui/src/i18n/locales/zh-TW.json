@@ -26,6 +26,13 @@
       "quotaLimited": "額度受限",
       "inUse": "使用中",
       "standby": "待命"
+    },
+    "agentCount": "{{count}} 位代理人",
+    "quota": {
+      "resetsIn": "{{value}}後重設",
+      "inDays": "{{days}} 天",
+      "inHours": "{{hours}} 小時",
+      "inMinutes": "{{minutes}} 分鐘"
     }
   },
   "audit": {
@@ -1357,6 +1364,22 @@
       "instanceExperimental": "實例實驗功能",
       "instancePlugins": "實例外掛",
       "instanceAdapters": "實例轉接器"
+    },
+    "apiKeys": {
+      "title": "API 金鑰（個人）",
+      "subtitle": "以你的身分呼叫 Paperclip API — 擁有你在介面上的全部權限（包含編輯代理人的技能與指示）。持有金鑰者即以你的身分操作，請妥善保管；不需要時請撤銷。",
+      "namePlaceholder": "金鑰名稱（例如：我的 Claude）",
+      "create": "建立",
+      "createFailed": "無法建立金鑰，請稍後再試。",
+      "copyNow": "已建立金鑰 — 請立即複製，將不會再次顯示。",
+      "copy": "複製",
+      "copied": "已複製",
+      "dismiss": "關閉",
+      "none": "尚無個人金鑰。",
+      "lastUsed": "最近使用 {{date}}",
+      "neverUsed": "尚未使用",
+      "revoke": "撤銷",
+      "revokeFailed": "無法撤銷金鑰。"
     }
   },
   "common": {
@@ -1411,7 +1434,9 @@
     "expand": "展開",
     "collapse": "收合",
     "openInNewTab": "在新分頁中開啟",
-    "deleting": "刪除中…"
+    "deleting": "刪除中…",
+    "manage": "管理",
+    "open": "開啟"
   },
   "orgChart": {
     "breadcrumb": "組織圖",
@@ -1758,7 +1783,10 @@
       "configuration": "設定",
       "runs": "執行紀錄",
       "budget": "預算",
-      "tools": "工具"
+      "tools": "工具",
+      "harness": "運作方式",
+      "projects": "專案",
+      "audit": "稽核"
     },
     "pendingApproval": "此代理正等待董事會核准，尚無法調用。",
     "approveAgent": "核准代理",
@@ -1856,7 +1884,10 @@
       "selectedSkills": "已選技能",
       "failedUpdate": "更新技能失敗",
       "equipVsShareLabel": "裝備 vs 分享",
-      "uncategorized": "未分類"
+      "uncategorized": "未分類",
+      "equipHint": "勾選＝把技能裝到「這個代理」，立即生效、只影響這個代理。與「分享範圍」無關。",
+      "equipTip": "裝備（勾選）：這個代理會載入並使用這支技能。",
+      "shareTip": "分享範圍（在技能庫設定）：決定誰在技能庫看得到、以及上傳時自動裝備給哪些代理——不會限制已裝上的代理使用。"
     },
     "runs": {
       "empty": "尚無執行紀錄。"
@@ -1932,7 +1963,30 @@
     "commandNotes": "指令備註",
     "prompt": "提示",
     "context": "情境",
-    "environment": "環境"
+    "environment": "環境",
+    "harness": {
+      "intro": "這位代理人的運作方式：它的指示、技能、工具與例行作業。",
+      "rules": "指示・守則（harness）",
+      "rulesSource": "來自負責人的記憶",
+      "memory": "記憶",
+      "memoryHint": "此代理人每次執行都會讀取負責人的記憶。每位使用者的記憶各自獨立、互不相見。",
+      "noMemory": "尚無記憶",
+      "routines": "例行作業",
+      "noRoutines": "沒有指派給此代理人的例行作業",
+      "noSkills": "尚未裝備技能",
+      "toolsHint": "在「工具」分頁檢視與連接此代理人的工具。",
+      "entryFile": "進入點：{{file}}",
+      "fileCount": "{{count}} 個檔案"
+    },
+    "projects": {
+      "empty": "這位代理人目前沒有任務。任務被指派後，會依所屬專案分組顯示在這裡。",
+      "addHint": "要把任務歸到專案：開任務 →「專案」欄位選擇，或在「新增任務」時指定專案。",
+      "unfiled": "未歸專案",
+      "unknownProject": "專案",
+      "noAgentTasks": "此代理人在此專案暫無任務 · 開啟專案",
+      "noAgentTasksWithCount": "此代理人在此專案暫無任務（專案共 {{count}} 個）· 開啟專案",
+      "otherTasks": "另有 {{count}} 個任務未指派給此代理人 · 開啟專案"
+    }
   },
   "projectDetail": {
     "addDescription": "新增描述…",
@@ -2166,7 +2220,8 @@
     "resetDefaultsHint": "狀態、ID、更新",
     "user": "使用者",
     "filterByWorkspace": "依工作區篩選",
-    "subIssue": "子議題"
+    "subIssue": "子議題",
+    "viaAgent": "經由 {{name}}"
   },
   "sidebarProjects": {
     "pausedByBudget": "專案因預算而暫停",
@@ -2648,7 +2703,22 @@
     "bulkDeleteTitle": "刪除所選技能",
     "bulkDeleteDesc": "這會從公司技能庫永久移除所選技能，並從所有使用中的代理人卸除。此動作無法復原。",
     "bulkDeleteConfirm": "你即將刪除 {{count}} 個技能。",
-    "bulkDeleteConfirmBtn": "刪除 {{count}}"
+    "bulkDeleteConfirmBtn": "刪除 {{count}}",
+    "studio": "工作室",
+    "uploadMultiDone": "{{count}} 個技能已就緒",
+    "uploadPartCreated": "新增 {{count}}：{{names}}",
+    "uploadPartRefiled": "歸檔 {{count}}：{{names}}",
+    "uploadPartFailed": "失敗 {{count}}：{{names}}",
+    "uploadPartSkipped": "已在正確位置 {{count}}",
+    "uploadEquippedCompany": "（已裝備給 {{count}} 位代理，下次執行時生效）",
+    "uploadEquippedTeam": "（已裝備給 {{count}} 位團隊代理，下次執行時生效）",
+    "uploadEquippedNone": "（⚠️ 沒有符合所選團隊的代理，請確認團隊標籤）",
+    "uploadFiledInFolders": "（已建立 {{count}} 個資料夾並歸檔）",
+    "uploadMergedVersions": "（{{count}} 個檔案為同一技能，已採用最新版本）",
+    "uploadFailedArchives": "（⚠️ {{count}} 個套件無法解壓：{{names}}）",
+    "uploadSkippedRefs": "（{{count}} 個 .md 為套件內參考檔，未建立技能）",
+    "uploadPruned": "（清除 {{count}} 個誤附檔案）",
+    "uploadPrunedFolders": "（移除 {{count}} 個空的殘留資料夾）"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",
@@ -3509,7 +3579,16 @@
     "allGoalsSelected": "所有目標皆已選取。",
     "targetDate": "目標日期",
     "failedToCreate": "無法建立專案。",
-    "createProject": "建立專案"
+    "createProject": "建立專案",
+    "leadAgentHint": "負責：{{name}}",
+    "noTeams": "沒有可分享的團隊",
+    "scopeCompanyHint": "全公司可見",
+    "scopePrivateHint": "只有你與受邀者",
+    "scopeTeamPick": "團隊專案（可選多個團隊）",
+    "scopeTeamWith": "團隊：{{team}}",
+    "shareWith": "分享給…（預設只有你）",
+    "sharedWithCount": "分享給 {{count}} 人",
+    "sharePickerHint": "點名字＝本人＋代理人；或點單一標籤只加其中一個。"
   },
   "routines": {
     "title": "例行作業",
@@ -3865,7 +3944,8 @@
       "env": "環境變數",
       "created": "建立時間",
       "updated": "更新時間",
-      "targetDate": "目標日期"
+      "targetDate": "目標日期",
+      "instructions": "專案指示"
     },
     "namePlaceholder": "專案名稱",
     "descriptionPlaceholder": "新增描述…",
@@ -3920,7 +4000,9 @@
     "provisionCommand": "佈建指令",
     "teardownCommand": "拆除指令",
     "provisionTeardownHint": "佈建會在代理執行前於衍生的 worktree 內執行。拆除指令儲存於此，供未來的清理流程使用。",
-    "dangerZone": "危險區域"
+    "dangerZone": "危險區域",
+    "instructionsPlaceholder": "代理人處理此專案任務時應遵循的指示（會在任務情境中提供給代理人）…",
+    "noInstructions": "尚無專案指示"
   },
   "routineHistory": {
     "restoredToast": "已將修訂版本 {{from}} 還原為修訂版本 {{to}}",
@@ -4263,7 +4345,9 @@
     "projectCount_other": "{{count}} 個專案",
     "scopeCompany": "公司專案",
     "scopeTeam": "團隊專案",
-    "scopePersonal": "個人專案"
+    "scopePersonal": "個人專案",
+    "newProject": "新增專案",
+    "scopePrivateTag": "私人"
   },
   "sidebarAgents": {
     "resumeAgent": "恢復代理",
@@ -4992,7 +5076,36 @@
     "observingNote": "復原機制正在觀察而不中斷進行中的執行。",
     "staysOpenNote": "在記錄明確決定之前，此卡片會持續開啟。",
     "agentShort": "代理 {{id}}",
-    "runShort": "執行 {{id}}"
+    "runShort": "執行 {{id}}",
+    "workspace": {
+      "ancestry": "分支關係",
+      "heads": "分支頂點",
+      "tree": "工作目錄",
+      "liveBranch": "目前分支",
+      "recordedBranch": "記錄的分支",
+      "rescueBranch": "救援分支",
+      "rescueTimestamp": "<timestamp>",
+      "verdictDiverged": "已分歧",
+      "verdictForwardOnly": "僅向前",
+      "dirtyOne": "{{count}} 項未提交的變更",
+      "dirtyMany": "{{count}} 項未提交的變更",
+      "repair": "修復工作區",
+      "repairConfirm": "另存後還原",
+      "repairBlocked": "由 {{issue}} 佔用中",
+      "repairRestate": "在 {{live}} 上的變更會移到救援分支原樣保留，然後工作區還原到 {{recorded}}。",
+      "reconcileForward": "採用目前分支",
+      "contended": "{{issue}} 目前佔用這個工作區。",
+      "contendedActive": "{{issue}} 目前佔用這個工作區且有進行中的執行，因此無法在其下修復。",
+      "breakGlass": "強制覆寫",
+      "breakGlassTitle": "強制覆寫分歧",
+      "breakGlassConfirm": "仍要覆寫",
+      "breakGlassReasonPlaceholder": "為什麼不修復也可以安全繼續？",
+      "reissueIsolated": "在獨立工作樹重新派工",
+      "reissueTitle": "在獨立工作區重新派工",
+      "reissueConfirm": "重新派工",
+      "reissueRecommended": "建議：",
+      "reissueExplain": "以 {{base}} 為基礎，在自己的 git 工作樹開一個新任務，這個工作區保持不動。"
+    }
   },
   "workspaceCard": {
     "option": {
@@ -5097,7 +5210,8 @@
       "processLost": "處理程序遺失",
       "adapterFailed": "轉接器失敗",
       "completedWith": "已完成（{{detail}}）",
-      "completed": "已完成"
+      "completed": "已完成",
+      "unmanagedBackgroundTaskStopped": "已停止未受管理的背景工作"
     },
     "stopStatus": {
       "retryPending": "重試待處理",
@@ -5162,7 +5276,15 @@
     "profileUnavailable": "{{requested}} 設定檔無法取得",
     "nextActionLabel": "下一步行動：",
     "olderItemsNotShown": "另有 {{count}} 個較舊項目未顯示",
-    "stopLabel": "停止"
+    "stopLabel": "停止",
+    "onBehalfOf": "代表 {{name}}",
+    "onBehalfOfTitle": "這次執行使用了 {{name}} 的存取權限",
+    "denial": {
+      "unauthorizedTitle": "負責人未獲授權",
+      "unauthorizedBody": "該使用者",
+      "unavailableTitle": "找不到負責人",
+      "unavailableBody": "該使用者"
+    }
   },
   "newIssue": {
     "effort": {
@@ -5287,7 +5409,12 @@
     "createdUnassignedBody": "此任務尚未指派負責人，因此不會有代理人接手。開啟以指派。",
     "taskTitleOptional": "標題（可留空）—你的代理人會自動擬一個",
     "reusingWorkspace": "重用 {{name}}（來自 {{source}}）。",
-    "agentAssigneeRequired": "請選擇一位代理人來執行此任務 — 留空的話任務不會被處理。指派後，該代理人負責的人也會收到通知。"
+    "agentAssigneeRequired": "請選擇一位代理人來執行此任務 — 留空的話任務不會被處理。指派後，該代理人負責的人也會收到通知。",
+    "skills": "技能（選填）",
+    "skillsCount": "技能：{{count}}",
+    "skillsHint": "限定此任務使用的技能（不選＝可用全部）",
+    "clearSkills": "清除選擇",
+    "contentRequired": "請描述這個任務"
   },
   "routineDetail": {
     "concurrencyDesc": {
@@ -5745,7 +5872,16 @@
     "searchPlaceholder": "搜尋成員或代理人…",
     "agents": "代理人",
     "users": "使用者",
-    "noResults": "沒有找到可加入的成員"
+    "noResults": "沒有找到可加入的成員",
+    "self": "本人",
+    "agent": "代理人",
+    "owner": "負責人",
+    "otherAgents": "其他代理人",
+    "userAccount": "使用者帳號",
+    "team": "團隊專案：{{teams}}",
+    "teamAccess": "所屬團隊成員均可存取；可另外加入個別成員。",
+    "changeScope": "變更範圍",
+    "pickerHint": "點名字＝加入本人＋代理人；或點單一標籤只加其中一個。"
   },
   "artifacts": {
     "selectCompany": "選擇公司以檢視產物。",
@@ -6136,7 +6272,10 @@
     "description": "描述",
     "commentPlaceholder": "留言…（將以你的身分張貼到 Asana）",
     "postComment": "送出",
-    "commentPostError": "送出失敗，請再試一次。"
+    "commentPostError": "送出失敗，請再試一次。",
+    "refresh": "更新",
+    "refreshing": "更新中…",
+    "refreshHint": "從 Asana 重新整理（手動更新）"
   },
   "founder": {
     "close": "結案",
@@ -6168,7 +6307,13 @@
     "commentPlaceholder": "留言 / 提問（不做決定）— 將張貼為 Asana 評論",
     "postComment": "送出留言",
     "threadCount": "{{count}} 則評論",
-    "stale": "資料可能過期 — 最後更新 {{when}}"
+    "stale": "資料可能過期 — 最後更新 {{when}}",
+    "refresh": "更新",
+    "refreshing": "更新中…",
+    "refreshHint": "從 Asana 重新整理（手動更新）",
+    "readOnly": "唯讀檢視（本人的實際內容）— 更新可用，裁示／留言僅本人可操作",
+    "pendingSummary": "剛從 Asana 加入，AI 摘要／回饋參考待下次彙整生成。",
+    "subtasks": "子任務 ({{count}})"
   },
   "sidebarShell": {
     "resize": "調整側邊欄大小"
@@ -6759,7 +6904,19 @@
     "deletedWindow": "刪除的記憶可在 {{days}} 天內還原，之後會永久移除。代理在你刪除的當下就不再讀取它們。",
     "noDeleted": "最近沒有刪除任何記憶。",
     "restore": "還原",
-    "purge": "永久刪除"
+    "purge": "永久刪除",
+    "autoCategory": "自動分類",
+    "batchCount": "{{count}} 筆",
+    "importHistory": "匯入紀錄",
+    "deleteSelected": "刪除所選（{{count}}）",
+    "deleteBatchesConfirm": "刪除所選的 {{count}} 個匯入批次（含其所有記憶）？",
+    "previewTitle": "將自動拆分並分類 {{count}} 筆記憶",
+    "previewTitleSplit": "偵測到 {{mem}} 筆記憶與 {{harness}} 筆指示・守則（harness）",
+    "saveAll": "全部記住（{{count}}）",
+    "selectAll": "全選",
+    "sortCategory": "分類",
+    "sortHot": "🔥 最熱",
+    "sortCold": "❄ 最冷"
   },
   "connections": {
     "title": "連結",
@@ -6777,7 +6934,8 @@
     "odooConnectedAs": "已連結為 {{login}}",
     "odooVerified": "已驗證 · {{db}}",
     "odooLoginPlaceholder": "你的 Odoo 登入帳號（例如 you@seasonart.org）",
-    "odooKeyPlaceholder": "貼上你的 Odoo API 金鑰（唯讀）"
+    "odooKeyPlaceholder": "貼上你的 Odoo API 金鑰（唯讀）",
+    "odooHelp": "金鑰在儲存前會先向 Odoo 驗證。唯讀；請在 設定 → 我的API金鑰 建立。"
   },
   "viewAs": {
     "viewAsUser": "以他人身分檢視",
@@ -6825,6 +6983,27 @@
     "emptyLibrary": "公司技能庫中沒有技能"
   },
   "issueProperties": {
-    "searchProjects": "搜尋專案…"
+    "searchProjects": "搜尋專案…",
+    "skills": "技能",
+    "allSkills": "全部技能",
+    "skillsCount": "{{count}} 個技能",
+    "skillsHint": "限定此任務使用的技能（不選＝可用全部）",
+    "clearSkills": "清除選擇（可用全部）",
+    "noEquippedSkills": "此代理人沒有已裝備的技能",
+    "noProject": "無專案",
+    "createProject": "建立新專案…",
+    "createProjectNamed": "建立新專案「{{name}}」"
+  },
+  "taskMenu": {
+    "actions": "任務選項",
+    "addToProject": "加入專案",
+    "removeFromProject": "移出專案",
+    "noProjects": "沒有可用的專案",
+    "current": "目前",
+    "pin": "釘選",
+    "unpin": "取消釘選",
+    "rename": "重新命名",
+    "remove": "移除任務",
+    "removeConfirm": "確定要移除這個任務？此動作無法復原。"
   }
 }
