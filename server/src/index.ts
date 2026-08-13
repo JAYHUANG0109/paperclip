@@ -655,20 +655,48 @@ export async function startServer(): Promise<StartedServer> {
     resolve(config.databaseBackupDir, "db-backup-to-s3.failure"),
     resolve(config.databaseBackupDir, "..", "db-backup-to-s3.failure"),
   ];
-  let databaseBackupInFlight = false;
+  // How long one backup may take before we treat it as hung. Two separate
+  // protections hang off this, because a stuck backup silently disables ALL
+  // future backups and the only symptom is a WARN line plus a "stale" health
+  // warning that nothing acts on:
+  //
+  //   1. The run itself is raced against this deadline, so a backup that never
+  //      settles surfaces as an error instead of hanging forever.
+  //   2. The in-flight guard below is time-based rather than a bare boolean, so
+  //      even a hang we failed to anticipate is abandoned on the next tick
+  //      instead of pinning the guard until the process restarts.
+  //
+  // Observed failure this guards (2026-08-10): a JavaScript-engine dump stalled
+  // ~320MB in and held the boolean for three days, skipping 70+ scheduled runs.
+  // The same thing orphaned a 242MB partial on 2026-08-02.
+  const databaseBackupMaxRuntimeMs =
+    Math.max(1, Number(process.env.PAPERCLIP_DB_BACKUP_MAX_RUNTIME_MINUTES) || 120) * 60_000;
+  let databaseBackupInFlightSince: number | null = null;
   const runServerDatabaseBackup = async (
     trigger: InstanceDatabaseBackupTrigger,
   ): Promise<InstanceDatabaseBackupRunResult | null> => {
-    if (databaseBackupInFlight) {
-      const message = "Database backup already in progress";
-      if (trigger === "scheduled") {
-        logger.warn("Skipping scheduled database backup because a previous backup is still running");
-        return null;
+    if (databaseBackupInFlightSince !== null) {
+      const heldForMs = Date.now() - databaseBackupInFlightSince;
+      if (heldForMs < databaseBackupMaxRuntimeMs) {
+        const message = "Database backup already in progress";
+        if (trigger === "scheduled") {
+          logger.warn(
+            { heldForMs },
+            "Skipping scheduled database backup because a previous backup is still running",
+          );
+          return null;
+        }
+        throw conflict(message);
       }
-      throw conflict(message);
+      // Past the deadline the previous run is not "still running", it is stuck.
+      // Abandon its guard and proceed, or backups stay dead until a restart.
+      logger.error(
+        { heldForMs, maxRuntimeMs: databaseBackupMaxRuntimeMs },
+        "Previous database backup never finished; abandoning its guard so backups can resume",
+      );
     }
 
-    databaseBackupInFlight = true;
+    databaseBackupInFlightSince = Date.now();
     const startedAt = new Date();
     const startedAtMs = Date.now();
     const label = trigger === "scheduled" ? "Automatic" : "Manual";
@@ -678,11 +706,30 @@ export async function startServer(): Promise<StartedServer> {
       const generalSettings = await backupSettingsSvc.getGeneral();
       const retention = generalSettings.backupRetention;
 
-      const result = await runDatabaseBackup({
-        connectionString: activeDatabaseConnectionString,
-        backupDir: config.databaseBackupDir,
-        retention,
-        filenamePrefix: "paperclip",
+      // Raced against the deadline: runDatabaseBackup streams a dump table by
+      // table with no internal timeout, so a stalled cursor would otherwise
+      // never settle. Losing the race abandons the dump (its partial .sql is
+      // reclaimed by the next successful run's retention prune) but frees the
+      // guard, so the following scheduled run gets a clean attempt.
+      let backupDeadline: ReturnType<typeof setTimeout> | undefined;
+      const result = await Promise.race([
+        runDatabaseBackup({
+          connectionString: activeDatabaseConnectionString,
+          backupDir: config.databaseBackupDir,
+          retention,
+          filenamePrefix: "paperclip",
+        }),
+        new Promise<never>((_, reject) => {
+          backupDeadline = setTimeout(
+            () => reject(new Error(
+              `Database backup exceeded ${Math.round(databaseBackupMaxRuntimeMs / 60_000)} minutes and was abandoned`,
+            )),
+            databaseBackupMaxRuntimeMs,
+          );
+          backupDeadline.unref?.();
+        }),
+      ]).finally(() => {
+        if (backupDeadline) clearTimeout(backupDeadline);
       });
       const finishedAt = new Date();
       const response: InstanceDatabaseBackupRunResult = {
@@ -711,7 +758,7 @@ export async function startServer(): Promise<StartedServer> {
       logger.error({ err, backupDir: config.databaseBackupDir, trigger }, `${label} database backup failed`);
       throw err;
     } finally {
-      databaseBackupInFlight = false;
+      databaseBackupInFlightSince = null;
     }
   };
   const pluginWorkerManager = createPluginWorkerManager();
