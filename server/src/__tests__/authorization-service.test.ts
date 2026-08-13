@@ -3464,6 +3464,65 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     /**
+     * Tree reach, the subtle half of the rule.
+     *
+     * Two contracts require more than the exact task: a child agent reports
+     * upward on its PARENT, and upstream's default-open deliberately extends to
+     * the grandparent and to siblings. The low-trust red-team suite proved this
+     * only by accident, while it inherited the restriction flag from the host's
+     * instance .env; now that the suite is sealed and runs with the flag off,
+     * these assertions are the only thing standing between a future narrowing and
+     * silently muting every child agent's report.
+     */
+    it("allows the parent, grandparent and a sibling of its own task", async () => {
+      const { company, unpaired, other, auth, actorFor } = await setup("unpaired-tree");
+      const grandparent = await createIssue(db, company.id, { assigneeAgentId: other.id });
+      const parent = await createIssue(db, company.id, {
+        assigneeAgentId: other.id,
+        parentId: grandparent.id,
+      });
+      // The only task actually assigned to the unpaired agent.
+      await createIssue(db, company.id, { assigneeAgentId: unpaired.id, parentId: parent.id });
+      const sibling = await createIssue(db, company.id, {
+        assigneeAgentId: other.id,
+        parentId: parent.id,
+      });
+
+      for (const [label, target] of [
+        ["parent", parent],
+        ["grandparent", grandparent],
+        ["sibling", sibling],
+      ] as const) {
+        const decision = await auth.decide({
+          actor: actorFor(unpaired.id),
+          action: "issue:read",
+          resource: { type: "issue", companyId: company.id, issueId: target.id },
+        });
+        expect(decision.allowed, `${label} should be readable`).toBe(true);
+      }
+    });
+
+    it("denies an unrelated tree, which is the reach actually removed", async () => {
+      const { company, unpaired, other, auth, actorFor } = await setup("unpaired-other-tree");
+      await createIssue(db, company.id, { assigneeAgentId: unpaired.id });
+      // A separate root with its own child — e.g. a 園長-level task in another campus.
+      const foreignRoot = await createIssue(db, company.id, { assigneeAgentId: other.id });
+      const foreignChild = await createIssue(db, company.id, {
+        assigneeAgentId: other.id,
+        parentId: foreignRoot.id,
+      });
+
+      for (const target of [foreignRoot, foreignChild]) {
+        const decision = await auth.decide({
+          actor: actorFor(unpaired.id),
+          action: "issue:read",
+          resource: { type: "issue", companyId: company.id, issueId: target.id },
+        });
+        expect(decision.allowed).toBe(false);
+      }
+    });
+
+    /**
      * Documents a KNOWN residual gap rather than asserting a fix.
      *
      * `company_scope:read` is deliberately absent from agentScopedVisibilityActions
