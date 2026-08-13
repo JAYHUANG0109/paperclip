@@ -33,6 +33,7 @@ import {
   type TrustPresetResolution,
 } from "./trust-preset-resolver.js";
 import { itEditorMayEditAgent } from "./agent-edit-policy.js";
+import { readBuiltInAgentMarker } from "./built-in-agent-metadata.js";
 import { logger } from "../middleware/logger.js";
 
 export type AuthorizationActor =
@@ -526,6 +527,47 @@ function projectPrivacyEnabled(): boolean {
   return process.env.PAPERCLIP_PROJECT_PRIVACY === "true";
 }
 
+/**
+ * Infrastructure team tokens: agents tagged with one of these keep company-wide
+ * reach even with no joined user.
+ *
+ * This encodes the intent already recorded against the unmapped-agent case —
+ * "Infrastructure agents (系統自動化, built-ins) map to nobody… scoping them to an
+ * empty set would silently break every automation on the platform." Built-ins are
+ * recognised separately by their metadata marker; this token covers the other
+ * legitimate case, an agent a PLUGIN manages, which carries no marker and is
+ * otherwise indistinguishable from an ordinary unpaired agent. `Wiki Maintainer`
+ * from plugin-llm-wiki is the live example, tagged 系統自動化 and nothing else.
+ *
+ * Same shape as leadershipTeamTokens: configurable per deployment, defaulting to
+ * this instance's team name.
+ */
+/** The team labels on an agent row (metadata.teams, or a single metadata.team). */
+function readAgentTeams(metadata: unknown): Set<string> {
+  const md = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>) : {};
+  const arr = Array.isArray(md.teams) ? md.teams : typeof md.team === "string" ? [md.team] : [];
+  const out = new Set<string>();
+  for (const t of arr) if (typeof t === "string" && t.trim()) out.add(t.trim());
+  return out;
+}
+
+function infrastructureTeamTokens(): Set<string> {
+  const raw = process.env.PAPERCLIP_INFRASTRUCTURE_TEAM_TOKENS?.trim();
+  const list = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : ["系統自動化"];
+  return new Set(list);
+}
+
+/**
+ * Escape hatch for an unpaired agent that is neither built-in nor tagged as
+ * infrastructure but still needs company-wide reach. Comma-separated UUIDs, empty
+ * by default — reach is opted into deliberately rather than inherited by omission.
+ */
+function companyWideUnpairedAgentIds(): Set<string> {
+  const raw = process.env.PAPERCLIP_COMPANY_WIDE_AGENT_IDS?.trim();
+  if (!raw) return new Set();
+  return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+}
+
 // Narrower switch: enforce PROJECT-LIST visibility for humans (sidebar, project
 // detail, and the agent 專案 tab via the viewer's filtered list) WITHOUT the riskier
 // task-visibility + agent task-scoping that the full PAPERCLIP_PROJECT_PRIVACY brings.
@@ -922,6 +964,180 @@ export function authorizationService(db: Db) {
    * actor types. Two copies of this rule would drift, and the drift would be
    * invisible until someone noticed an agent seeing more than its owner.
    */
+  /**
+   * Scope for an agent with NO joined user, under the 四季 restriction.
+   *
+   * There is no human whose visibility it can inherit, so it gets exactly its own
+   * work: itself, tasks assigned to or raised by it, and projects it has work in.
+   *
+   * This exists because the previous behaviour was fail-OPEN. `restrictedAgentActorCanRead`
+   * returned `null` ("no opinion") whenever an agent was not paired 1:1 with a
+   * non-privileged user, and `null` falls through to the company-wide allow. That
+   * was tolerable while writes needed an ownership/parent/mention grant of their
+   * own; once upstream made issue writes default-open on top of `issue:read`
+   * (59edc71fd), read reach became write reach, so an unpaired agent could comment
+   * on and assign any company-visible task.
+   *
+   * Mirrors the member rules deliberately: `company_scope:read` is refused to force
+   * per-item filtering, and a question that names no issue/project is allowed for
+   * the same reason it is for members — answering "no" would empty the list rather
+   * than narrow it.
+   */
+  async function restrictedUnpairedAgentCanRead(
+    action: RestrictableAction,
+    companyId: string,
+    actorAgentId: string,
+    resource: AuthorizationResource,
+  ): Promise<boolean> {
+    if (action === "company_scope:read") return false;
+
+    // No user behind this agent, so there is no one whose secrets it could be
+    // acting for. The paired case resolves this through the user's declarations.
+    if (action === "secrets:read") return false;
+
+    if (action === "agent:read") {
+      const agentId = resource.type === "agent" ? resource.agentId : null;
+      return agentId === actorAgentId;
+    }
+
+    if (action === "runtime:manage") {
+      // Its own runtime only. A caller naming no agent is asking the company-wide
+      // question, which does not exist for an agent scoped to itself.
+      if (resource.type === "agent" && resource.agentId) return resource.agentId === actorAgentId;
+      if (resource.type === "project" && resource.projectId) {
+        return agentHasWorkInProject(companyId, actorAgentId, resource.projectId);
+      }
+      return false;
+    }
+
+    if (action === "project:read") {
+      const projectId = resource.type === "project" ? resource.projectId : null;
+      if (!projectId) return true; // list question; routes filter per item
+      return agentHasWorkInProject(companyId, actorAgentId, projectId);
+    }
+
+    if (action === "issue:read") {
+      const issueId = resource.type === "issue" ? resource.issueId : null;
+      if (!issueId) return true; // list question; routes filter per item
+      const issue = await db
+        .select({
+          assigneeAgentId: issues.assigneeAgentId,
+          createdByAgentId: issues.createdByAgentId,
+        })
+        .from(issues)
+        .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)))
+        .then((rows) => rows[0] ?? null);
+      if (!issue) return false;
+      if (issue.assigneeAgentId === actorAgentId || issue.createdByAgentId === actorAgentId) return true;
+
+      /**
+       * The thread its own work belongs to, not just the single task.
+       *
+       * Two clauses, both required by behaviour that already exists:
+       *
+       * - DIRECT PARENT. An agent reports upward by commenting on the parent of
+       *   the task it was given; the low-trust red-team suite pins this as
+       *   "preserves direct-parent reporting". Scoping to the exact task only
+       *   would silence every child agent's report.
+       * - PARTICIPATION. It already commented on or acted on the task. The member
+       *   rule carries the same clause, for the same reason: onboarding and
+       *   chat-raised tasks are participated in rather than assigned, and
+       *   requiring assignment leaves an agent unable to read a thread it is
+       *   demonstrably already in.
+       *
+       * Both are strictly narrower than the company-wide reach this replaces.
+       */
+      // Same task TREE as work of its own: parent, grandparent, sibling, cousin.
+      // Upstream's default-open contract deliberately extends to the surrounding
+      // tree, not just the exact task — the low-trust suite asserts a standard
+      // agent may comment on the reviewGrandparent and on a sameBoundaryChild
+      // sibling. Comparing root ancestors keeps that while still refusing every
+      // OTHER tree in the company, which is the reach actually being removed.
+      if (await agentSharesIssueTree(companyId, actorAgentId, issueId)) return true;
+
+      const participated = await db
+        .select({ id: activityLog.id })
+        .from(activityLog)
+        .where(and(
+          eq(activityLog.companyId, companyId),
+          eq(activityLog.agentId, actorAgentId),
+          eq(activityLog.entityType, "issue"),
+          eq(activityLog.entityId, issueId),
+        ))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      return Boolean(participated);
+    }
+
+    return false;
+  }
+
+  /**
+   * Is the named issue in the same task tree as any work of this agent's own?
+   *
+   * "Tree" is the whole family, resolved by walking each side up to its root
+   * ancestor and comparing: parent, grandparent, sibling and cousin all match,
+   * while an unrelated tree does not. A recursive CTE does the walk in one query
+   * rather than N round trips, and `cycle` guards a malformed parent loop from
+   * hanging the request.
+   */
+  async function agentSharesIssueTree(
+    companyId: string,
+    actorAgentId: string,
+    issueId: string,
+  ): Promise<boolean> {
+    const rows = await db.execute(sql`
+      with recursive up as (
+        select id, parent_id from issues
+         where id = ${issueId} and company_id = ${companyId}
+        union all
+        select i.id, i.parent_id from issues i
+          join up on i.id = up.parent_id
+         where i.company_id = ${companyId}
+      ),
+      target_root as (
+        select id from up where parent_id is null limit 1
+      ),
+      mine as (
+        select id, parent_id from issues
+         where company_id = ${companyId}
+           and (assignee_agent_id = ${actorAgentId} or created_by_agent_id = ${actorAgentId})
+        union all
+        select i.id, i.parent_id from issues i
+          join mine on i.id = mine.parent_id
+         where i.company_id = ${companyId}
+      )
+      select 1 as hit
+        from mine
+        join target_root on target_root.id = mine.id
+       where mine.parent_id is null
+       limit 1
+    `);
+    const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+    return list.length > 0;
+  }
+
+  /** Does this agent have any task in the named project? */
+  async function agentHasWorkInProject(
+    companyId: string,
+    actorAgentId: string,
+    projectId: string,
+  ): Promise<boolean> {
+    const row = await db
+      .select({ id: issues.id })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, companyId),
+          eq(issues.projectId, projectId),
+          or(eq(issues.assigneeAgentId, actorAgentId), eq(issues.createdByAgentId, actorAgentId)),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return Boolean(row);
+  }
+
   async function restrictedAgentActorCanRead(
     action: RestrictableAction,
     companyId: string,
@@ -940,6 +1156,36 @@ export function authorizationService(db: Db) {
       );
 
     const userIds = [...new Set(memberships.map((row) => row.userId).filter(Boolean))];
+
+    if (userIds.length === 0) {
+      // Built-in agents (Reflection Coach, Summarizer) are cross-cutting by
+      // design — Reflection Coach reads other agents' runs to coach them, the
+      // Summarizer reads the tasks it summarizes — so they keep company-wide
+      // reach, recognised by their metadata marker rather than a list.
+      const agentRow = await db
+        .select({ metadata: agents.metadata })
+        .from(agents)
+        .where(and(eq(agents.id, actorAgentId), eq(agents.companyId, companyId)))
+        .then((rows) => rows[0] ?? null);
+      if (agentRow && readBuiltInAgentMarker(agentRow.metadata)) return null;
+      // Plugin-managed infrastructure (Wiki Maintainer) carries no built-in
+      // marker, only its team tag. anyTeamTokenMatches takes (tokens, teams), so
+      // the infrastructure tokens are the needles and the agent's teams the set.
+      if (agentRow && anyTeamTokenMatches([...infrastructureTeamTokens()], readAgentTeams(agentRow.metadata))) {
+        return null;
+      }
+      if (companyWideUnpairedAgentIds().has(actorAgentId)) return null;
+
+      // Everything else with no joined user is scoped to its own work. This is
+      // the fail-closed half: previously this returned null and inherited
+      // company-wide reach purely by omission.
+      return restrictedUnpairedAgentCanRead(action, companyId, actorAgentId, resource);
+    }
+
+    // More than one joined user is left as "no opinion" deliberately: the right
+    // answer is the UNION of those users' scopes, and inventing a narrower rule
+    // here would silently shrink a shared agent's view. No live agent is in this
+    // state; revisit with a real case to model against.
     if (userIds.length !== 1) return null;
     const mappedUserId = userIds[0] as string;
 

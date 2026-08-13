@@ -3107,15 +3107,38 @@ describeEmbeddedPostgres("authorization service", () => {
      * Infrastructure agents (系統自動化, built-ins) map to nobody. There is no
      * person's world to scope them to, and scoping them to an empty set would
      * silently break every automation on the platform.
+     *
+     * That reasoning is still right for INFRASTRUCTURE, and the two cases below
+     * pin it. What changed is the scope of the conclusion: it used to apply to
+     * every unmapped agent, which made company-wide reach the default for an
+     * agent nobody had joined for any reason. Harmless while writes needed their
+     * own grant; once upstream made issue writes default-open on top of
+     * issue:read (59edc71fd), that handed write reach to e.g. a staff agent whose
+     * person has no account yet. Infrastructure is now recognised positively —
+     * by built-in marker or infrastructure team token — instead of by the absence
+     * of a mapping. See the "unpaired agents" describe block for the closed side.
      */
-    it("leaves an agent that maps to nobody company-wide", async () => {
-      const { auth, actor, company, strangerAgent } = await scenario("AgentScopeUnmapped", { mapped: false });
+    it("leaves an unmapped INFRASTRUCTURE agent company-wide (team-tagged)", async () => {
+      const { auth, actor, company, strangerAgent, ownAgent } = await scenario("AgentScopeUnmappedInfra", { mapped: false });
+      await db.update(agents).set({ metadata: { teams: ["系統自動化"] } }).where(eq(agents.id, ownAgent.id));
 
       await expect(auth.decide({
         actor,
         action: "agent:read",
         resource: { type: "agent", companyId: company.id, agentId: strangerAgent.id },
       })).resolves.toMatchObject({ allowed: true, reason: "allow_company_agent" });
+    });
+
+    it("scopes an unmapped agent that is NOT infrastructure", async () => {
+      const { auth, actor, company, strangerAgent } = await scenario("AgentScopeUnmapped", { mapped: false });
+
+      // No built-in marker, no infrastructure team: a staff agent whose person
+      // has no Paperclip account. Previously company-wide by omission.
+      await expect(auth.decide({
+        actor,
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: strangerAgent.id },
+      })).resolves.toMatchObject({ allowed: false });
     });
 
     // Narrowing an admin's agent below the admin's own reach would be incoherent.
@@ -3321,5 +3344,158 @@ describeEmbeddedPostgres("authorization service", () => {
       })).resolves.toMatchObject({ allowed: true, reason: "allow_company_agent" });
     });
   });
+
+
+  /**
+   * Unpaired agents: the fail-closed half of the 四季 restriction.
+   *
+   * restrictedAgentActorCanRead used to return null ("no opinion") for ANY agent
+   * not paired 1:1 with a non-privileged user, and null falls through to the
+   * company-wide allow. That was survivable while issue writes needed their own
+   * ownership/parent/mention grant; once upstream made writes default-open on top
+   * of issue:read (59edc71fd) that read reach became WRITE reach, so an agent
+   * nobody had joined could comment on and assign any company-visible task.
+   *
+   * Live audit that prompted this: 5 staff agents whose people have no Paperclip
+   * account at all, so no pairing was even possible.
+   */
+  describe("四季 restriction (flag ON): unpaired agents are scoped to their own work", () => {
+    afterEach(() => {
+      delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+      delete process.env.PAPERCLIP_COMPANY_WIDE_AGENT_IDS;
+    });
+
+    async function setup(label: string) {
+      process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY = "true";
+      const company = await createCompany(db, label);
+      // Deliberately NO agentMemberships row: this is the unpaired case.
+      const unpaired = await createAgent(db, company.id);
+      const other = await createAgent(db, company.id);
+      return {
+        company,
+        unpaired,
+        other,
+        auth: authorizationService(db),
+        actorFor: (agentId: string) => ({
+          type: "agent" as const,
+          agentId,
+          companyId: company.id,
+          source: "agent_key" as const,
+        }),
+      };
+    }
+
+    it("denies reading a task it is not assigned and did not raise", async () => {
+      const { company, unpaired, other, auth, actorFor } = await setup("unpaired-deny");
+      const foreign = await createIssue(db, company.id, { assigneeAgentId: other.id });
+      const decision = await auth.decide({
+        actor: actorFor(unpaired.id),
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: foreign.id },
+      });
+      expect(decision.allowed).toBe(false);
+    });
+
+    it("allows reading a task assigned to it", async () => {
+      const { company, unpaired, auth, actorFor } = await setup("unpaired-own");
+      const mine = await createIssue(db, company.id, { assigneeAgentId: unpaired.id });
+      const decision = await auth.decide({
+        actor: actorFor(unpaired.id),
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: mine.id },
+      });
+      expect(decision.allowed).toBe(true);
+    });
+
+    it("denies reading another agent, allows reading itself", async () => {
+      const { company, unpaired, other, auth, actorFor } = await setup("unpaired-agent-read");
+      const foreign = await auth.decide({
+        actor: actorFor(unpaired.id),
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: other.id },
+      });
+      expect(foreign.allowed).toBe(false);
+      const self = await auth.decide({
+        actor: actorFor(unpaired.id),
+        action: "agent:read",
+        resource: { type: "agent", companyId: company.id, agentId: unpaired.id },
+      });
+      expect(self.allowed).toBe(true);
+    });
+
+    it("keeps company-wide reach for a built-in agent, recognised by its metadata marker", async () => {
+      const { company, other, auth, actorFor } = await setup("unpaired-builtin");
+      const builtIn = await db
+        .insert(agents)
+        .values({
+          companyId: company.id,
+          name: `Summarizer ${randomUUID()}`,
+          role: "engineer",
+          adapterType: "process",
+          adapterConfig: {},
+          runtimeConfig: {},
+          // Shape asserted by readBuiltInAgentMarker: key + featureKeys.
+          metadata: { paperclipBuiltInAgent: { key: "summarizer", featureKeys: ["summarizer"] } },
+        })
+        .returning()
+        .then((rows) => rows[0]!);
+      const foreign = await createIssue(db, company.id, { assigneeAgentId: other.id });
+      const decision = await auth.decide({
+        actor: actorFor(builtIn.id),
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: foreign.id },
+      });
+      // Reflection Coach reads other agents' runs to coach them; the Summarizer
+      // reads the tasks it summarizes. Scoping them to "own work" would break both.
+      expect(decision.allowed).toBe(true);
+    });
+
+    it("keeps company-wide reach for an agent named in PAPERCLIP_COMPANY_WIDE_AGENT_IDS", async () => {
+      const { company, unpaired, other, auth, actorFor } = await setup("unpaired-allowlist");
+      process.env.PAPERCLIP_COMPANY_WIDE_AGENT_IDS = unpaired.id;
+      const foreign = await createIssue(db, company.id, { assigneeAgentId: other.id });
+      const decision = await auth.decide({
+        actor: actorFor(unpaired.id),
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: foreign.id },
+      });
+      // The plugin-managed case: Wiki Maintainer carries no built-in marker.
+      expect(decision.allowed).toBe(true);
+    });
+
+    /**
+     * Documents a KNOWN residual gap rather than asserting a fix.
+     *
+     * `company_scope:read` is deliberately absent from agentScopedVisibilityActions
+     * (see the comment there): the human branch denies it to force per-item
+     * filtering, but agents reach some list endpoints by paths not yet shown to
+     * filter, so denying it could empty an agent's view of its OWN work instead of
+     * narrowing it. So it never reaches restrictedUnpairedAgentCanRead, and an
+     * unpaired agent still answers true here.
+     *
+     * That is the remaining way an unpaired agent could see beyond its own work —
+     * via a consumer that trusts company_scope:read without filtering. Closing it
+     * means auditing each consumer first, which is a separate piece of work. This
+     * test exists so that audit starts from a stated fact, and so a future change
+     * that DOES close it fails here and gets read.
+     */
+    it("still grants company_scope:read — documented gap, pending a per-consumer audit", async () => {
+      const { company, unpaired, auth, actorFor } = await setup("unpaired-company-scope");
+      const decision = await auth.decide({
+        actor: actorFor(unpaired.id),
+        action: "company_scope:read",
+        resource: { type: "company", companyId: company.id },
+      });
+      expect(decision.allowed).toBe(true);
+      // The scoped actions ARE closed, which is what the fix delivers.
+      const scoped = await auth.decide({
+        actor: actorFor(unpaired.id),
+        action: "issue:read",
+        resource: { type: "issue", companyId: company.id, issueId: randomUUID() },
+      });
+      expect(scoped.allowed).toBe(false);
+    });
+  });
+
 
 });
