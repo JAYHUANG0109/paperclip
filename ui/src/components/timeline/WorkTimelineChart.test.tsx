@@ -129,6 +129,37 @@ describe("WorkTimelineChart", () => {
     expect(axisSvg.style.transform).toBe("translateX(-240px)");
   });
 
+  /**
+   * Long CJK names used to paint straight over the first bars.
+   *
+   * The label starts at x=47 in a 176px gutter, so ~121px of room. truncate()
+   * counted characters, and at 13px a Han glyph is ~13px wide against ~7px for
+   * Latin — 16-18 characters of Chinese needs roughly 210-230px. The copy inside
+   * the scrolling plot is the visible offender, since the sticky gutter does not
+   * cover it.
+   */
+  it("keeps a long CJK actor name inside the gutter instead of over the bars", () => {
+    const data = timelineSample();
+    data.actors[0]!.name = "何惠君_人才發展_51A20901";
+    renderChart(data);
+
+    const gutter = container.querySelector<SVGSVGElement>("[data-testid='work-timeline-actor-gutter']");
+    const text = gutter?.textContent ?? "";
+    expect(text).toContain("…");
+    expect(text).not.toContain("51A20901");
+
+    // Both copies clip, so nothing can paint past the gutter regardless of length.
+    const clipped = container.querySelectorAll("text[clip-path], text[clipPath]");
+    expect(clipped.length).toBeGreaterThan(0);
+  });
+
+  it("keeps a short Latin name whole — width-fitting, not a character cap", () => {
+    renderChart(timelineSample());
+    const gutter = container.querySelector<SVGSVGElement>("[data-testid='work-timeline-actor-gutter']");
+    // A fixed CJK-sized character budget would have cut this to "CodexCod…".
+    expect(gutter?.textContent).toContain("CodexCoder");
+  });
+
   it("renders actor labels in a sticky gutter outside the horizontally scrolling SVG", () => {
     renderChart(timelineSample());
 

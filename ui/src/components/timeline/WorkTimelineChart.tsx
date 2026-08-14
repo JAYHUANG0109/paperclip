@@ -103,6 +103,38 @@ const GEOM: Omit<LayoutOptions, "pxPerMinute" | "nowMs"> = {
   laneGap: 4,
 };
 const AVATAR_R = 11;
+/** Where the actor name starts, just right of the avatar. */
+const LABEL_X = 26 + 11 + 10;
+
+/**
+ * Trim an actor name to the gutter by ESTIMATED WIDTH, not character count.
+ *
+ * A fixed character budget cannot serve both alphabets here: at 13px a Han glyph
+ * is roughly full-width (~13px) while Latin averages ~7px, so a count that keeps
+ * "何惠君_人才發展_51A20901" inside 121px also chops "CodexCoder" to "CodexCod…".
+ * Measuring per character keeps short Latin names whole and still trims the long
+ * CJK ones. The clipPath remains the hard guarantee; this only decides where the
+ * ellipsis goes.
+ */
+function fitLabel(name: string, maxPx: number): string {
+  const widthOf = (ch: string) => (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 13 : 7);
+  let total = 0;
+  for (const ch of name) total += widthOf(ch);
+  if (total <= maxPx) return name;
+  const budget = maxPx - 8; // room for the ellipsis
+  let used = 0;
+  let out = "";
+  for (const ch of name) {
+    const w = widthOf(ch);
+    if (used + w > budget) break;
+    out += ch;
+    used += w;
+  }
+  return `${out}…`;
+}
+
+/** Text width available before the gutter divider (8px right padding). */
+const LABEL_MAX_PX = 176 - LABEL_X - 8;
 const CHIP_R = 9;
 
 interface TooltipState {
@@ -302,6 +334,7 @@ export function WorkTimelineChart({
   if (defaultNowRef.current == null) defaultNowRef.current = Date.now();
   const now = nowMs ?? defaultNowRef.current;
   const pxPerMinute = zoomScale ?? zoomScaleForLevel(zoom, viewportW || DEFAULT_VIEWPORT_W);
+  const plotLabelClipId = svgFragmentId("plot-label-clip");
   const layout = useMemo(
     () => computeLayout(data, { ...GEOM, pxPerMinute, nowMs: now }),
     [data, pxPerMinute, now],
@@ -502,6 +535,11 @@ export function WorkTimelineChart({
                 <stop offset="0%" stopColor="var(--color-foreground)" stopOpacity={0.28} />
                 <stop offset="100%" stopColor="var(--color-foreground)" stopOpacity={0} />
               </linearGradient>
+              {/* Hard stop for actor names at the gutter edge, so no name can
+                  paint over the bars however long it is. */}
+              <clipPath id={plotLabelClipId}>
+                <rect x={0} y={0} width={GEOM.gutter - 8} height={layout.height} />
+              </clipPath>
             </defs>
 
             {/* row backgrounds */}
@@ -575,8 +613,18 @@ export function WorkTimelineChart({
             return (
               <g key={`row-${row.actor.id}`}>
                 <ActorGlyph actor={row.actor} cx={26} cy={cy} r={AVATAR_R} clipId={actorGlyphId} />
-                <text x={26 + AVATAR_R + 10} y={cy + 4} fontSize={13} fill="var(--color-foreground)">
-                  {truncate(row.actor.name, 18)}
+                {/* Same fit as the sticky gutter. This copy lives INSIDE the
+                    scrolling plot, so an overflowing name is not hidden behind
+                    the gutter — it paints straight over the first bars, which is
+                    the overlap seen at the left edge of the chart. */}
+                <text
+                  x={LABEL_X}
+                  y={cy + 4}
+                  fontSize={13}
+                  fill="var(--color-foreground)"
+                  clipPath={`url(#${plotLabelClipId})`}
+                >
+                  {fitLabel(row.actor.name, LABEL_MAX_PX)}
                 </text>
 
                 {Array.from({ length: row.laneCount }).map((_, ln) => {
@@ -697,6 +745,7 @@ export function WorkTimelineChart({
 }
 
 function ActorGutter({ rows, height }: { rows: ReturnType<typeof computeLayout>["rows"]; height: number }) {
+  const gutterClipId = svgFragmentId("gutter-label-clip");
   return (
     <svg
       aria-hidden="true"
@@ -706,6 +755,12 @@ function ActorGutter({ rows, height }: { rows: ReturnType<typeof computeLayout>[
       viewBox={`0 0 ${GEOM.gutter} ${height}`}
       className="sticky left-0 z-20 block bg-card"
     >
+      <defs>
+        {/* Right edge sits 8px inside the gutter so the divider line stays clean. */}
+        <clipPath id={gutterClipId}>
+          <rect x={0} y={0} width={GEOM.gutter - 8} height={height} />
+        </clipPath>
+      </defs>
       <rect x={0} y={0} width={GEOM.gutter} height={height} fill="var(--color-card)" />
       {rows.map((row, i) => {
         const cy = row.y + AXIS_H + row.h / 2;
@@ -721,8 +776,19 @@ function ActorGutter({ rows, height }: { rows: ReturnType<typeof computeLayout>[
               opacity={i % 2 ? 0.35 : 1}
             />
             <ActorGlyph actor={row.actor} cx={26} cy={cy} r={AVATAR_R} clipId={actorGlyphId} />
-            <text x={26 + AVATAR_R + 10} y={cy + 4} fontSize={13} fill="var(--color-foreground)">
-              {truncate(row.actor.name, 16)}
+            {/* Clipped to the gutter so a long name can never paint over the bars.
+                truncate() counts CHARACTERS, but this fork's names are CJK — at
+                13px a Han glyph is ~13px wide against ~6.5px for Latin, so 16
+                characters could need ~208px in a 129px space. The clip is the
+                guarantee; fitLabel just keeps the ellipsis honest. */}
+            <text
+              x={LABEL_X}
+              y={cy + 4}
+              fontSize={13}
+              fill="var(--color-foreground)"
+              clipPath={`url(#${gutterClipId})`}
+            >
+              {fitLabel(row.actor.name, LABEL_MAX_PX)}
             </text>
           </g>
         );
@@ -830,7 +896,11 @@ function MiniMap({
   onVisibleRangeChange: (fromMs: number, toMs: number) => void;
 }) {
   const documentDragCleanupRef = useRef<(() => void) | null>(null);
-  const W = Math.max(320, viewportW || 900);
+  // The wrapper below pads px-3.5 (14px a side), so the svg gets viewportW MINUS
+  // that padding. Using the raw viewport width made the scrubber start 14px in on
+  // the left and hang 14px past the card on the right.
+  const MINIMAP_PAD_X = 14 * 2;
+  const W = Math.max(320, (viewportW || 900) - MINIMAP_PAD_X);
   const H = 54;
   const pad = 8;
   const spanMs = layout.toMs - layout.fromMs || 1;

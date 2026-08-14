@@ -26,7 +26,6 @@ import {
   Bot,
   ListChecks,
   GanttChartSquare,
-  ScrollText,
   LayoutGrid,
   Brain,
 } from "lucide-react";
@@ -359,10 +358,10 @@ export function Sidebar() {
           <SidebarNavItem to="/timeline" label={t("nav.timeline", { defaultValue: "Timeline" })} icon={GanttChartSquare} />
           <SidebarNavItem to="/costs" label={t("nav.costs", { defaultValue: "Costs" })} icon={DollarSign} />
           <SidebarNavItem to="/activity" label={t("nav.activity", { defaultValue: "Activity" })} icon={History} />
-          {/* Audit is now a tier of the Activity page, not its own surface. The
-              item stays so privileged readers can still find it directly; it
-              deep-links to the tab rather than a separate page. */}
-          <SidebarNavItem to="/activity?mode=agents" label={t("nav.audit", { defaultValue: "Audit" })} icon={ScrollText} />
+          {/* Audit used to be its own nav item. It is now a tier of the Activity
+              page, so two entries pointing at one page read as two destinations
+              and the second one lands you on a tab you can reach in a click.
+              Dropped; /audit still redirects for bookmarks and old links. */}
           <SidebarNavItem to="/company/settings" label={t("nav.settings", { defaultValue: "Settings" })} icon={Settings} />
         </SidebarSection>
 
