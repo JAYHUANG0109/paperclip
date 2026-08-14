@@ -62,6 +62,64 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
   }
 
   /**
+   * Narrow a workspace LIST to what the caller may actually see.
+   *
+   * `company_scope:read` is a company-wide shortcut, and it answers differently
+   * for the two kinds of caller: a non-privileged member is DENIED it (the human
+   * branch refuses it precisely to force per-item filtering), while an agent
+   * skips that branch and is allowed. So gating a list on it alone handed an
+   * unpaired agent every workspace in the company.
+   *
+   * Filtering rather than denying, because denying would empty an agent's view of
+   * its OWN work instead of narrowing it — the failure the authorization comment
+   * on agentScopedVisibilityActions warns about. Every execution workspace has a
+   * mandatory projectId, so `project:read` is the natural per-item question, and
+   * verdicts are memoised per project: a list is many workspaces across few
+   * projects, and re-deciding per row turns one page into hundreds of queries.
+   */
+  /** Does this caller get the company-wide answer, or must the list be narrowed? */
+  async function isCompanyScoped(req: Request, companyId: string): Promise<boolean> {
+    const decision = await access.decide({
+      actor: req.actor,
+      action: "company_scope:read",
+      resource: { type: "company", companyId },
+    });
+    return decision.allowed;
+  }
+
+  async function narrowWorkspacesForActor<T>(
+    req: Request,
+    companyId: string,
+    rows: T[],
+    projectIdOf: (row: T) => string | null | undefined,
+  ): Promise<T[]> {
+    const verdicts = new Map<string, Promise<boolean>>();
+    const mayRead = (projectId: string) => {
+      const cached = verdicts.get(projectId);
+      if (cached) return cached;
+      const pending = access
+        .decide({
+          actor: req.actor,
+          action: "project:read",
+          resource: { type: "project", companyId, projectId },
+        })
+        .then((d) => d.allowed);
+      verdicts.set(projectId, pending);
+      return pending;
+    };
+
+    const keep = await Promise.all(
+      rows.map(async (row) => {
+        const projectId = projectIdOf(row);
+        // No resolvable project means no basis to allow it. Fail closed: an
+        // unattributable workspace is exactly the kind this narrowing exists for.
+        return projectId ? await mayRead(projectId) : false;
+      }),
+    );
+    return rows.filter((_, i) => keep[i]);
+  }
+
+  /**
    * Runtime control is scoped to the workspace's PROJECT, not the company.
    *
    * Every caller already holds the workspace row, and a workspace belongs to a
@@ -95,7 +153,11 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
   router.get("/companies/:companyId/execution-workspaces", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    if (!(await assertExecutionWorkspaceReadAllowed(req, res, companyId))) return;
+    // NO company_scope:read gate here. Company membership is still enforced above;
+    // beyond that this list NARROWS rather than refuses, because refusing would
+    // empty a scoped caller's view of its own work instead of scoping it. The
+    // single-workspace routes below keep the gate — one named resource has
+    // nothing to narrow.
     const filters = {
       projectId: req.query.projectId as string | undefined,
       projectWorkspaceId: req.query.projectWorkspaceId as string | undefined,
@@ -103,10 +165,31 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       status: req.query.status as string | undefined,
       reuseEligible: req.query.reuseEligible === "true",
     };
-    const workspaces = req.query.summary === "true"
-      ? await svc.listSummaries(companyId, filters)
-      : await svc.list(companyId, filters);
-    res.json(workspaces);
+    const companyScoped = await isCompanyScoped(req, companyId);
+
+    if (req.query.summary === "true") {
+      const summaries = await svc.listSummaries(companyId, filters);
+      // Company-scoped callers get summary mode as intended: ONE lightweight
+      // query. ExecutionWorkspaceSummary omits projectId, so narrowing needs the
+      // full rows — a cost only a scoped caller pays, and only then.
+      if (companyScoped) {
+        res.json(summaries);
+        return;
+      }
+      const full = await svc.list(companyId, filters);
+      const projectById = new Map(full.map((w) => [w.id, w.projectId]));
+      res.json(
+        await narrowWorkspacesForActor(req, companyId, summaries, (s) => projectById.get(s.id)),
+      );
+      return;
+    }
+
+    const workspaces = await svc.list(companyId, filters);
+    if (companyScoped) {
+      res.json(workspaces);
+      return;
+    }
+    res.json(await narrowWorkspacesForActor(req, companyId, workspaces, (w) => w.projectId));
   });
 
   router.get("/companies/:companyId/workspace-overview", async (req, res) => {

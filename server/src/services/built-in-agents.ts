@@ -7,7 +7,7 @@ import { readPaperclipSkillSyncPreference, writePaperclipSkillSyncPreference } f
 import { and, desc, eq, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents, builtInManagedResources, companies, issueThreadInteractions, issues, routines, routineTriggers } from "@paperclipai/db";
-import { syncRoutineVariablesWithTemplate } from "@paperclipai/shared";
+import { SYSTEM_AUTOMATION_TEAM, syncRoutineVariablesWithTemplate } from "@paperclipai/shared";
 import type { Agent, Approval, CompanySkill, PermissionKey, Routine, RoutineTrigger, RoutineVariable } from "@paperclipai/shared";
 import { conflict, HttpError, notFound, unprocessable } from "../errors.js";
 import { logActivity } from "./activity-log.js";
@@ -738,10 +738,34 @@ export function deriveBuiltInAgentStatus(agent: Pick<Agent, "adapterType" | "ada
 }
 
 function builtInMetadata(definition: BuiltInAgentDefinition, existing?: Record<string, unknown> | null) {
-  return withBuiltInAgentMarker(existing, {
+  const withMarker = withBuiltInAgentMarker(existing, {
     key: definition.key,
     featureKeys: definition.featureKeys,
   });
+
+  /**
+   * File built-ins under the system-automation team by default.
+   *
+   * routes/agents.ts has applyDefaultTeamPlacement for exactly this — "keep 未分組
+   * empty, so an agent appearing there is a real signal rather than the normal
+   * resting state" — but it runs on the hire and create ROUTES, and built-ins are
+   * provisioned straight through this service, so they bypassed it and landed in
+   * Ungrouped. That is how the Summarizer got there.
+   *
+   * A built-in is infrastructure by definition: it has no owner email, so the
+   * "an owner but no team is a person's agent missing its campus" caveat that
+   * makes the route rule conditional cannot apply here.
+   *
+   * An EXISTING placement always wins, so moving a built-in to another team by
+   * hand still sticks and a later reconcile will not drag it back.
+   */
+  const existingTeams = Array.isArray((withMarker as { teams?: unknown }).teams)
+    ? ((withMarker as { teams?: unknown }).teams as unknown[]).filter(
+        (t): t is string => typeof t === "string" && t.trim().length > 0,
+      )
+    : [];
+  if (existingTeams.length > 0) return withMarker;
+  return { ...withMarker, teams: [SYSTEM_AUTOMATION_TEAM] };
 }
 
 function definitionPatch(definition: BuiltInAgentDefinition, input: BuiltInAgentProvisionInput = {}) {

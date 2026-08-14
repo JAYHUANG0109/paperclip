@@ -85,6 +85,51 @@ describe.sequential("execution workspace routes", () => {
     mockHeartbeatService.wakeup.mockResolvedValue(null);
   });
 
+  /**
+   * The company_scope:read leak, closed.
+   *
+   * That action answers differently per caller kind: a non-privileged member is
+   * DENIED it (the human branch refuses it precisely to force per-item filtering)
+   * while an agent skips that branch and is allowed. Gating this list on it alone
+   * therefore handed an unpaired agent every workspace in the company. Audited in
+   * doc/audits/company-scope-read-audit.md.
+   */
+  it("narrows the workspace list to projects the caller may read", async () => {
+    // Company-wide answer refused; project:read allowed for one project only.
+    mockAccessService.decide.mockImplementation(async (input: any) => {
+      if (input.action === "company_scope:read") return { allowed: false };
+      if (input.action === "project:read") {
+        return { allowed: input.resource?.projectId === "project-mine" };
+      }
+      return { allowed: true };
+    });
+    mockExecutionWorkspaceService.list.mockResolvedValue([
+      { id: "ws-mine", projectId: "project-mine", name: "mine" },
+      { id: "ws-theirs", projectId: "project-theirs", name: "theirs" },
+    ]);
+
+    const res = await request(createApp({
+      type: "agent",
+      agentId: "agent-unpaired",
+      companyId: "company-1",
+      companyIds: ["company-1"],
+      source: "agent_key",
+    })).get("/api/companies/company-1/execution-workspaces");
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((w: { id: string }) => w.id)).toEqual(["ws-mine"]);
+  });
+
+  it("still returns the whole company list to a company-scoped caller", async () => {
+    mockExecutionWorkspaceService.list.mockResolvedValue([
+      { id: "ws-a", projectId: "project-a", name: "a" },
+      { id: "ws-b", projectId: "project-b", name: "b" },
+    ]);
+    const res = await request(createApp()).get("/api/companies/company-1/execution-workspaces");
+    expect(res.status).toBe(200);
+    expect(res.body.map((w: { id: string }) => w.id)).toEqual(["ws-a", "ws-b"]);
+  });
+
   it("uses summary mode for lightweight workspace lookups", async () => {
     const res = await request(createApp())
       .get("/api/companies/company-1/execution-workspaces?summary=true&reuseEligible=true");
