@@ -51,7 +51,7 @@
  * confuse it with.
  */
 
-import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agentMemberships,
@@ -66,6 +66,7 @@ import { MEMORY_CATEGORY_IDS, memoryStrength } from "@paperclipai/shared";
 import { logger } from "../middleware/logger.js";
 import { issueService } from "./issues.js";
 import { getMemorySettings } from "./personal-memory.js";
+import { listRoomMemories, resolveRoomScope, roomMemoryEnabled } from "./room-memory.js";
 
 /** Marks the tasks this pass creates, so it can recognise its own work. */
 export const MEMORY_DISTILLATION_ORIGIN_KIND = "memory_distillation";
@@ -227,6 +228,74 @@ export function renderDistillationTask(digest: DistillationDigest): { title: str
   return {
     title: "Update what you remember about your user",
     description: lines.filter((line, index, all) => !(line === "" && all[index - 1] === "")).join("\n"),
+  };
+}
+
+export const ROOM_MEMORY_DISTILLATION_ORIGIN_KIND = "room_memory_distillation";
+
+/** Rooms need less accumulation than a person before a pass is worth it. */
+export const DEFAULT_MIN_ROOM_ISSUES_BEFORE_DISTILLATION = 4;
+
+export type RoomDistillationDigest = {
+  companyId: string;
+  roomScopeId: string;
+  since: Date | null;
+  issuesSince: number;
+  recentIssueTitles: string[];
+  existingMemories: Array<{ name: string; memoryType: string; description: string; timesObserved: number }>;
+};
+
+/**
+ * The room analogue of renderDistillationTask: distil the ROOM's shared context,
+ * saved to the room store, never to any one person. The prompt names the room API
+ * explicitly (which the agent may address because it serves an issue in this room).
+ */
+export function renderRoomDistillationTask(digest: RoomDistillationDigest): { title: string; description: string } {
+  const lines: string[] = [
+    `Review this chat room's recent activity since ${digest.since ? digest.since.toISOString().slice(0, 10) : "it started"} and update what the ROOM remembers.`,
+    "",
+    "This is the room's memory pass. These facts belong to the SHARED ROOM, not to any one person — anyone in the room should benefit from them. Never put an individual's private details here.",
+    "",
+    "## What to do",
+    "",
+    "For each durable thing about how this room works, exactly one of:",
+    "",
+    "- **Add** it, if durable and not already remembered.",
+    "- **Revise** an existing entry by reusing its exact name.",
+    "- **Confirm** it by re-saving the same fact (raises confidence).",
+    "- **Nothing** — most passes should add little or nothing. Do not invent memories to look busy.",
+    "",
+    "## What counts as room memory",
+    "",
+    "- Shared conventions, recurring topics, and how this group works together.",
+    "- Standing decisions or constraints the whole room relies on.",
+    "",
+    "## What does not",
+    "",
+    "- Anything private to one person (that is their personal memory, not the room's).",
+    "- A log of what happened; secrets; health/financial/identity details.",
+    "",
+    `Save with PUT /api/companies/{companyId}/room-memories/{name} — a short kebab-case slug and \`roomScopeId\` of \`${digest.roomScopeId}\` in the body, a \`memoryType\` of ${MEMORY_CATEGORY_IDS.join(", ")}. Under 1500 characters, at most 10 new.`,
+    "",
+    "## What the room already remembers",
+    "",
+  ];
+  if (digest.existingMemories.length === 0) {
+    lines.push("Nothing yet. This is the first pass.", "");
+  } else {
+    for (const m of digest.existingMemories) {
+      lines.push(`- \`${m.name}\` [${m.memoryType}, ${memoryStrength(m.timesObserved)}] — ${m.description}`);
+    }
+    lines.push("");
+  }
+  if (digest.recentIssueTitles.length) {
+    lines.push("## Recent activity in this room", "");
+    for (const title of digest.recentIssueTitles) lines.push(`- ${title}`);
+    lines.push("");
+  }
+  return {
+    title: "Update what this room remembers",
+    description: lines.filter((line, i, all) => !(line === "" && all[i - 1] === "")).join("\n"),
   };
 }
 
@@ -518,5 +587,143 @@ export function memoryDistillationService(db: Db, deps?: { enqueueWakeup?: Enque
     return result;
   }
 
-  return { reconcileMemoryDistillations, renderDistillationTask, buildDigest, digestIsWorthDistilling };
+  /** The last room-distillation task for this room, whatever its status. */
+  async function lastRoomDistillation(companyId: string, roomScopeId: string) {
+    const [row] = await db
+      .select({ id: issues.id, status: issues.status, createdAt: issues.createdAt })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, companyId),
+          eq(issues.originKind, ROOM_MEMORY_DISTILLATION_ORIGIN_KIND),
+          eq(issues.originId, roomScopeId),
+        ),
+      )
+      .orderBy(desc(issues.createdAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * The room analogue of reconcileMemoryDistillations. Flag-gated: does nothing
+   * unless per-room memory is enabled. For each group chat room with enough recent
+   * activity, create one room-distillation task (assigned to an agent that serves
+   * the room, originId = roomScopeId so the run reads/writes the ROOM's memory).
+   */
+  async function reconcileRoomMemoryDistillations(opts?: {
+    now?: Date;
+    companyId?: string;
+    thresholds?: Partial<MemoryDistillationThresholds>;
+  }) {
+    const result = { scanned: 0, created: 0, openAlready: 0, tooSoon: 0, notEnoughActivity: 0, failed: 0, issueIds: [] as string[] };
+    if (!roomMemoryEnabled()) return result;
+
+    const now = opts?.now ?? new Date();
+    const minInterval = opts?.thresholds?.minIntervalMs ?? DEFAULT_MIN_DISTILLATION_INTERVAL_MS;
+    const minIssues = opts?.thresholds?.minRuns ?? DEFAULT_MIN_ROOM_ISSUES_BEFORE_DISTILLATION;
+    const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Recent room chat issues (never the distillation tasks themselves), newest
+    // first. Grouped in JS into candidate rooms with a serving agent.
+    const rows = (await db
+      .select({
+        companyId: issues.companyId,
+        roomScopeId: issues.originId,
+        assigneeAgentId: issues.assigneeAgentId,
+        title: issues.title,
+        originKind: issues.originKind,
+        createdAt: issues.createdAt,
+      })
+      .from(issues)
+      .where(
+        and(
+          opts?.companyId ? eq(issues.companyId, opts.companyId) : undefined,
+          like(issues.originId, "google_chat:%"),
+          isNotNull(issues.assigneeAgentId),
+          gt(issues.createdAt, cutoff),
+        ),
+      )
+      .orderBy(desc(issues.createdAt))
+      .limit(MAX_CANDIDATES_PER_SWEEP * 8)) as Array<{
+        companyId: string;
+        roomScopeId: string;
+        assigneeAgentId: string;
+        title: string;
+        originKind: string;
+        createdAt: Date;
+      }>;
+
+    // company|room -> { servingAgent (most recent), titles }
+    const rooms = new Map<string, { companyId: string; roomScopeId: string; agentId: string; titles: string[] }>();
+    for (const r of rows) {
+      if (r.originKind === ROOM_MEMORY_DISTILLATION_ORIGIN_KIND) continue;
+      if (!resolveRoomScope(r.roomScopeId)) continue;
+      const key = `${r.companyId}|${r.roomScopeId}`;
+      const cur = rooms.get(key);
+      if (!cur) rooms.set(key, { companyId: r.companyId, roomScopeId: r.roomScopeId, agentId: r.assigneeAgentId, titles: [r.title] });
+      else if (cur.titles.length < 12) cur.titles.push(r.title);
+    }
+
+    for (const room of rooms.values()) {
+      result.scanned += 1;
+      try {
+        const previous = await lastRoomDistillation(room.companyId, room.roomScopeId);
+        if (previous && !["done", "cancelled"].includes(previous.status)) { result.openAlready += 1; continue; }
+        if (previous && now.getTime() - previous.createdAt.getTime() < minInterval) { result.tooSoon += 1; continue; }
+
+        const since = previous?.createdAt ?? null;
+        const issuesSince = room.titles.length; // recent room issues gathered in-window (capped)
+        if (issuesSince < minIssues) { result.notEnoughActivity += 1; continue; }
+
+        const existing = (await listRoomMemories(db, room.companyId, room.roomScopeId)).map((m) => ({
+          name: m.name, memoryType: m.memoryType, description: m.description, timesObserved: m.timesObserved,
+        }));
+        const task = renderRoomDistillationTask({
+          companyId: room.companyId,
+          roomScopeId: room.roomScopeId,
+          since,
+          issuesSince,
+          recentIssueTitles: room.titles,
+          existingMemories: existing,
+        });
+        const created = await issuesSvc.create(room.companyId, {
+          title: task.title,
+          description: task.description,
+          status: "todo",
+          priority: "low",
+          assigneeAgentId: room.agentId,
+          originKind: ROOM_MEMORY_DISTILLATION_ORIGIN_KIND,
+          originId: room.roomScopeId,
+          originFingerprint: `room-memory-distillation:${room.roomScopeId}:${now.toISOString().slice(0, 10)}`,
+        });
+        result.created += 1;
+        result.issueIds.push(created.id);
+
+        if (deps?.enqueueWakeup) {
+          await deps.enqueueWakeup(room.agentId, {
+            source: "assignment",
+            triggerDetail: "system",
+            reason: "issue_assigned",
+            requestedByActorType: "system",
+            requestedByActorId: "room_memory_distillation",
+            payload: { issueId: created.id },
+            contextSnapshot: { issueId: created.id, taskId: created.id, wakeReason: "issue_assigned", source: ROOM_MEMORY_DISTILLATION_ORIGIN_KIND },
+          });
+        }
+      } catch (err) {
+        result.failed += 1;
+        logger.warn({ err, companyId: room.companyId, roomScopeId: room.roomScopeId }, "room memory distillation skipped a room");
+      }
+    }
+    return result;
+  }
+
+  return {
+    reconcileMemoryDistillations,
+    reconcileRoomMemoryDistillations,
+    renderDistillationTask,
+    renderRoomDistillationTask,
+    buildDigest,
+    digestIsWorthDistilling,
+  };
 }

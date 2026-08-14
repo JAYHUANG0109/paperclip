@@ -13228,6 +13228,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     return memoryDistillations.reconcileMemoryDistillations(opts);
   }
 
+  async function reconcileRoomMemoryDistillations(opts?: { now?: Date; companyId?: string }) {
+    return memoryDistillations.reconcileRoomMemoryDistillations(opts);
+  }
+
   async function reconcileTaskWatchdogs(opts?: { companyId?: string | null; runId?: string | null }) {
     return taskWatchdogs.reconcileTaskWatchdogs({ ...opts, issueCreatedAtGte: await getWorktreeExecutionCutoff() });
   }
@@ -18837,6 +18841,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     reconcileProductivityReviews,
 
     reconcileMemoryDistillations,
+    reconcileRoomMemoryDistillations,
 
     reconcileTaskWatchdogs,
 

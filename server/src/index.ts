@@ -1312,6 +1312,12 @@ export async function startServer(): Promise<StartedServer> {
               if (distilled.created > 0 || distilled.failed > 0) {
                 logger.info({ ...distilled }, "periodic memory distillation created capture work");
               }
+              // Room memory's write half — same idea, keyed on group chat rooms.
+              // No-op unless per-room memory is enabled (flag checked inside).
+              const roomDistilled = await heartbeat.reconcileRoomMemoryDistillations();
+              if (roomDistilled.created > 0 || roomDistilled.failed > 0) {
+                logger.info({ ...roomDistilled }, "periodic room memory distillation created capture work");
+              }
             })
             .then(async () => {
               // Tombstones past the recovery window. Without this, "deleted"
