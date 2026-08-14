@@ -44,6 +44,74 @@ die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 restart() { launchctl kickstart -k "gui/$UID_NUM/$LABEL"; }
 current_release() { readlink "$CURRENT" 2>/dev/null || true; }
 
+# The commit a release directory was built from. Release dirs are named
+# <timestamp>-<sha8>, but read it from the checkout so a renamed dir cannot lie.
+release_commit() {
+  [ -n "${1:-}" ] && [ -d "$1" ] || return 0
+  git -C "$1" rev-parse HEAD 2>/dev/null || true
+}
+
+# ── Concurrency guard ─────────────────────────────────────────────────────────
+# Two agents share this machine and this instance. On 2026-08-14 two deploys ran
+# 64 seconds apart and the second silently reverted the first: whoever flips the
+# `current` symlink last wins, and neither one knows the other ran.
+#
+# mkdir is atomic on every filesystem we care about, and macOS has no flock(1),
+# so the lock is a directory. The pid inside lets a stale lock be diagnosed
+# rather than guessed at.
+LOCK="$ROOT/.deploy.lock"
+acquire_lock() {
+  local waited=0 owner
+  until mkdir "$LOCK" 2>/dev/null; do
+    owner="$(cat "$LOCK/pid" 2>/dev/null || echo '?')"
+    if [ -n "$owner" ] && [ "$owner" != "?" ] && ! kill -0 "$owner" 2>/dev/null; then
+      warn "Removing stale deploy lock from dead pid $owner"
+      rm -rf "$LOCK"
+      continue
+    fi
+    [ "$waited" -eq 0 ] && log "Waiting for the deploy lock (held by pid $owner)"
+    sleep 2
+    waited=$((waited + 2))
+    [ "$waited" -ge 600 ] && die "Deploy lock held by pid $owner for 10m — investigate, then rm -rf $LOCK"
+  done
+  echo "$$" > "$LOCK/pid"
+  trap 'rm -rf "$LOCK"' EXIT INT TERM
+}
+
+# ── Regression guard ──────────────────────────────────────────────────────────
+# Refuse to move `current` BACKWARDS. If what is live is not an ancestor of what
+# we are about to deploy, then someone deployed something this build does not
+# contain, and flipping would silently undo their work. Overridable, because a
+# deliberate roll-forward to an older ref is a legitimate (if rare) operation.
+assert_not_a_regression() {
+  local new_sha="$1" live_sha
+  live_sha="$(release_commit "$(current_release)")"
+  [ -n "$live_sha" ] || return 0
+  [ "$live_sha" = "$new_sha" ] && return 0
+  # A commit the cache has never seen must not be reported as "not an ancestor" —
+  # that is a different problem with a different fix, and mislabelling it sends
+  # you looking for a phantom concurrent deploy.
+  local missing=""
+  git --git-dir="$CACHE" cat-file -e "$live_sha^{commit}" 2>/dev/null || missing="live ($(echo "$live_sha" | cut -c1-8))"
+  git --git-dir="$CACHE" cat-file -e "$new_sha^{commit}" 2>/dev/null  || missing="${missing:+$missing and }new ($(echo "$new_sha" | cut -c1-8))"
+  if [ -n "$missing" ]; then
+    warn "Cannot compare releases: the deploy cache does not contain $missing."
+    warn "That usually means the commit was never pushed, or the cache needs a fetch."
+    die "Refusing to flip blind. Push the commit, or run: git --git-dir=$CACHE fetch --prune origin '+refs/heads/*:refs/heads/*'"
+  fi
+  if git --git-dir="$CACHE" merge-base --is-ancestor "$live_sha" "$new_sha" 2>/dev/null; then
+    return 0
+  fi
+  warn "The live release ($(echo "$live_sha" | cut -c1-8)) is NOT an ancestor of $(echo "$new_sha" | cut -c1-8)."
+  warn "Deploying would discard whatever is live but missing from this build —"
+  warn "most likely another session deployed while this build was running."
+  if [ "${PAPERCLIP_ALLOW_DEPLOY_REGRESSION:-}" = "true" ]; then
+    warn "PAPERCLIP_ALLOW_DEPLOY_REGRESSION=true — proceeding anyway."
+    return 0
+  fi
+  die "Refusing to regress. Merge or rebase onto the live commit, or re-run with PAPERCLIP_ALLOW_DEPLOY_REGRESSION=true"
+}
+
 healthy() {
   for _ in $(seq 1 "$HEALTH_TRIES"); do
     [ "$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 4 "$HEALTH_URL" 2>/dev/null)" = "200" ] && return 0
@@ -108,8 +176,12 @@ build_release() {
 }
 
 deploy() {
+  acquire_lock
   build_release "${1:-origin/$BRANCH}"
   local rel="$REL" prev
+  # Checked AFTER the build, not before: the build takes minutes, which is exactly
+  # the window in which another session can deploy underneath us.
+  assert_not_a_regression "$(release_commit "$rel")"
   prev="$(current_release)"
   log "Switching current → $(basename "$rel") and restarting"
   ln -sfn "$rel" "$CURRENT"
@@ -178,6 +250,7 @@ setup() {
 }
 
 rollback() {
+  acquire_lock
   local prev; prev="$(cat "$ROOT/.previous-release" 2>/dev/null || true)"
   if [ -n "$prev" ] && [ -d "$prev" ]; then
     # Normal case: flip the symlink back to the previous release + restart.
