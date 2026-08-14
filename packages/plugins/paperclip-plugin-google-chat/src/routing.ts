@@ -135,7 +135,14 @@ export async function dispatchToAgent(
     companyId: params.companyId,
     title,
     description,
-    assigneeAgentId: params.agentId
+    assigneeAgentId: params.agentId,
+    // Per-room scope (Phase 1b): stamp the originating space id onto the issue so
+    // the run can later resolve which room it belongs to. `originId` already flows
+    // through the create RPC and is server-visible; reusing it is safe here because
+    // the only uniqueness on originId is partial (routine_execution issues only),
+    // so this never dedups or collapses chat messages. No behaviour change yet —
+    // per-room memory (Phase 2) is what will read it, behind a flag.
+    originId: params.target.spaceName
   });
   await ctx.issues.update(issue.id, { status: "todo" }, params.companyId);
   await rememberChatTarget(ctx, issue.id, params.target);
