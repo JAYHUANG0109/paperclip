@@ -410,7 +410,9 @@
       "noRunOutput": "No run output yet.",
       "conversationEmpty": "This issue conversation is empty. Start with a message below.",
       "legacyRecoveryLabel": "Legacy recovery issue",
-      "legacyRecoveryBody": "Legacy recovery issue. Newer recovery actions live on the source issue"
+      "legacyRecoveryBody": "Legacy recovery issue. Newer recovery actions live on the source issue",
+      "noAdditionalDetails": "No additional details.",
+      "deletedThisComment": "deleted this comment"
     },
     "fallbackTitle": "Issue",
     "noCompanySelected": "No company selected",
@@ -572,7 +574,10 @@
       "docImportFailed": "Document import failed",
       "deleteFailed": "Delete failed"
     },
-    "backToIssues": "Issues"
+    "backToIssues": "Issues",
+    "detail": {
+      "taskPeople": "Task people"
+    }
   },
   "dashboard": {
     "welcome": "Welcome to Paperclip. Set up your first company and agent to get started.",
@@ -6833,7 +6838,13 @@
     "selectAll": "Select all",
     "sortCategory": "Category",
     "sortHot": "🔥 Hottest",
-    "sortCold": "❄ Coldest"
+    "sortCold": "❄ Coldest",
+    "harnessTitle": "harness — operating rule",
+    "hotTitle": "hot — recently relevant",
+    "coldTitle": "cold — not seen in a while",
+    "harnessTag": "harness",
+    "hotTag": "hot",
+    "coldTag": "cold"
   },
   "agentSkillsTab": {
     "available": "Available from the library",
@@ -7033,5 +7044,12 @@
     "itemReasonPlaceholder": "Give the agent a reason so it can act on this item.",
     "chooseVerdict": "Choose a verdict",
     "itemsToReview": "Items to review"
+  },
+  "decisions": {
+    "loadingDecided": "Loading decided decisions…",
+    "noDecided": "No decided decisions.",
+    "loadingExpired": "Loading expired decisions…",
+    "noExpired": "No expired decisions.",
+    "adjustFilters": "Adjust or clear the filters to see the rest."
   }
 }

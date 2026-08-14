@@ -2300,8 +2300,9 @@ function StaleDispositionWarningDetails({
 }: {
   sections: SystemNoticeMetadataSection[];
 }) {
+  const { t } = useTranslation();
   if (sections.length === 0) {
-    return <div className="text-xs leading-5 text-muted-foreground">No additional details.</div>;
+    return <div className="text-xs leading-5 text-muted-foreground">{t("issues.chat.noAdditionalDetails", { defaultValue: "No additional details." })}</div>;
   }
 
   return (
@@ -3225,6 +3226,7 @@ function IssueChatDeletedComment({
   message: ThreadMessage;
   deletedAt: string;
 }) {
+  const { t } = useTranslation();
   const custom = issueChatMessageCustom(message);
   const anchorId = typeof custom.anchorId === "string" ? custom.anchorId : undefined;
   const authorName = typeof custom.authorName === "string" ? custom.authorName : "Comment";
@@ -3238,7 +3240,7 @@ function IssueChatDeletedComment({
       </div>
       <div className="min-w-0 rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
         <span className="font-medium text-foreground/80">{authorName}</span>
-        <span> deleted this comment</span>
+        <span> {t("issues.chat.deletedThisComment", { defaultValue: "deleted this comment" })}</span>
         {deletedDateLabel ? <span className="text-xs"> · {deletedDateLabel}</span> : null}
       </div>
     </div>

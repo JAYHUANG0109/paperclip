@@ -1443,7 +1443,7 @@ function IssueAttributionByline({
 
   return (
     <TooltipProvider>
-      <AvatarGroup className="-space-x-1.5" aria-label="Task people" data-testid="issue-attribution-avatar-stack">
+      <AvatarGroup className="-space-x-1.5" aria-label={t("issues.detail.taskPeople", { defaultValue: "Task people" })} data-testid="issue-attribution-avatar-stack">
         {assignee ? <AttributionAvatar label="Assignee" actor={assignee} /> : null}
         {originator ? <AttributionAvatar label="Originating" actor={originator} via={originatorVia} /> : null}
       </AvatarGroup>

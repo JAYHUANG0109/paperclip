@@ -731,7 +731,7 @@ export function WhatNeedsMe() {
           onToggle={() => setDecidedOpen((prev) => !prev)}
         >
           {decidedDecisionsLoading ? (
-            <p className="text-xs text-muted-foreground">Loading decided decisions…</p>
+            <p className="text-xs text-muted-foreground">{t("decisions.loadingDecided", { defaultValue: "Loading decided decisions…" })}</p>
           ) : (decidedDecisions?.length ?? 0) > 0 ? (
             decidedDecisions!.slice(0, DECISION_HISTORY_VISIBLE_LIMIT).map((decision) => (
               <DecisionResolver
@@ -743,7 +743,7 @@ export function WhatNeedsMe() {
               />
             ))
           ) : (
-            <p className="text-xs text-muted-foreground">No decided decisions.</p>
+            <p className="text-xs text-muted-foreground">{t("decisions.noDecided", { defaultValue: "No decided decisions." })}</p>
           )}
         </Curtain>
 
@@ -754,7 +754,7 @@ export function WhatNeedsMe() {
           onToggle={() => setExpiredOpen((prev) => !prev)}
         >
           {expiredDecisionsLoading ? (
-            <p className="text-xs text-muted-foreground">Loading expired decisions…</p>
+            <p className="text-xs text-muted-foreground">{t("decisions.loadingExpired", { defaultValue: "Loading expired decisions…" })}</p>
           ) : (expiredDecisions?.length ?? 0) > 0 ? (
             expiredDecisions!.slice(0, DECISION_HISTORY_VISIBLE_LIMIT).map((decision) => (
               <DecisionResolver
@@ -766,7 +766,7 @@ export function WhatNeedsMe() {
               />
             ))
           ) : (
-            <p className="text-xs text-muted-foreground">No expired decisions.</p>
+            <p className="text-xs text-muted-foreground">{t("decisions.noExpired", { defaultValue: "No expired decisions." })}</p>
           )}
         </Curtain>
       </div>
@@ -832,7 +832,7 @@ function CaughtUpNote({ filtered }: { filtered: boolean }) {
         {filtered ? t("whatNeedsMe.noMatch", { defaultValue: "No decisions match your filters." }) : t("whatNeedsMe.caughtUp", { defaultValue: "You're all caught up." })}
       </p>
       {filtered && (
-        <p className="mt-1 text-xs text-muted-foreground">Adjust or clear the filters to see the rest.</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("decisions.adjustFilters", { defaultValue: "Adjust or clear the filters to see the rest." })}</p>
       )}
     </div>
   );

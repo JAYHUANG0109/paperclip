@@ -2203,7 +2203,7 @@ function StaleDispositionWarningDetails({
   sections: SystemNoticeMetadataSection[];
 }) {
   if (sections.length === 0) {
-    return <div className="text-xs leading-5 text-muted-foreground">No additional details.</div>;
+    return <div className="text-xs leading-5 text-muted-foreground">{t("issues.chat.noAdditionalDetails", { defaultValue: "No additional details." })}</div>;
   }
 
   return (

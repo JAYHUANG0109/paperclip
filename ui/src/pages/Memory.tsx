@@ -526,7 +526,7 @@ export function Memory() {
                 />
                 <span className="min-w-0 flex-1 text-xs">
                   {isHarnessCategory(entry.category) ? (
-                    <span className="mr-1 rounded bg-violet-500/15 px-1 py-0.5 text-[10px] text-violet-600 dark:text-violet-400" title="harness — operating rule">⚙️ harness</span>
+                    <span className="mr-1 rounded bg-violet-500/15 px-1 py-0.5 text-[10px] text-violet-600 dark:text-violet-400" title={t("memory.harnessTitle", { defaultValue: "harness — operating rule" })}>⚙️ {t("memory.harnessTag", { defaultValue: "harness" })}</span>
                   ) : null}
                   {entry.content}
                 </span>
@@ -818,13 +818,14 @@ export function Memory() {
 
 /** Small recency badge: 🔥 hot / warm / cold, derived from when the fact was last seen. */
 function RecencyBadge({ recency }: { recency: MemoryRecency }) {
+  const { t } = useTranslation();
   if (recency === "hot") {
-    return <span className="rounded-full bg-orange-500/15 px-1.5 py-0.5 text-orange-600 dark:text-orange-400" title="hot — recently relevant">🔥 hot</span>;
+    return <span className="rounded-full bg-orange-500/15 px-1.5 py-0.5 text-orange-600 dark:text-orange-400" title={t("memory.hotTitle", { defaultValue: "hot — recently relevant" })}>🔥 {t("memory.hotTag", { defaultValue: "hot" })}</span>;
   }
   if (recency === "warm") {
     return <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-amber-600 dark:text-amber-400" title="warm">warm</span>;
   }
-  return <span className="rounded-full border border-border px-1.5 py-0.5 text-muted-foreground/70" title="cold — not seen in a while">cold</span>;
+  return <span className="rounded-full border border-border px-1.5 py-0.5 text-muted-foreground/70" title={t("memory.coldTitle", { defaultValue: "cold — not seen in a while" })}>{t("memory.coldTag", { defaultValue: "cold" })}</span>;
 }
 
 export default Memory;

@@ -515,7 +515,9 @@
       "noRunOutput": "尚無執行輸出。",
       "conversationEmpty": "此議題對話是空的。請在下方輸入訊息開始。",
       "legacyRecoveryLabel": "舊式復原議題",
-      "legacyRecoveryBody": "舊式復原議題。較新的復原動作位於來源議題"
+      "legacyRecoveryBody": "舊式復原議題。較新的復原動作位於來源議題",
+      "noAdditionalDetails": "沒有其他細節。",
+      "deletedThisComment": "刪除了這則留言"
     },
     "fallbackTitle": "議題",
     "noCompanySelected": "未選擇公司",
@@ -677,7 +679,10 @@
       "docImportFailed": "文件匯入失敗",
       "deleteFailed": "刪除失敗"
     },
-    "backToIssues": "議題"
+    "backToIssues": "議題",
+    "detail": {
+      "taskPeople": "任務相關人員"
+    }
   },
   "dashboard": {
     "welcome": "歡迎使用 Paperclip。請先建立您的第一家公司與助理以開始使用。",
@@ -6938,7 +6943,13 @@
     "selectAll": "全選",
     "sortCategory": "分類",
     "sortHot": "🔥 最熱",
-    "sortCold": "❄ 最冷"
+    "sortCold": "❄ 最冷",
+    "harnessTitle": "harness — 運作守則",
+    "hotTitle": "熱門 — 近期相關",
+    "coldTitle": "冷門 — 有一段時間未出現",
+    "harnessTag": "運作守則",
+    "hotTag": "熱門",
+    "coldTag": "冷門"
   },
   "connections": {
     "title": "連結",
@@ -7033,5 +7044,12 @@
     "itemReasonPlaceholder": "請提供原因，代理人才能處理這個項目。",
     "chooseVerdict": "選擇裁決",
     "itemsToReview": "待審項目"
+  },
+  "decisions": {
+    "loadingDecided": "正在載入已裁決的決議…",
+    "noDecided": "沒有已裁決的決議。",
+    "loadingExpired": "正在載入已逾期的決議…",
+    "noExpired": "沒有已逾期的決議。",
+    "adjustFilters": "調整或清除篩選條件即可看到其餘項目。"
   }
 }
