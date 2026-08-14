@@ -5281,9 +5281,10 @@
     "onBehalfOfTitle": "這次執行使用了 {{name}} 的存取權限",
     "denial": {
       "unauthorizedTitle": "負責人未獲授權",
-      "unauthorizedBody": "該使用者",
+      "unauthorizedBody": "這次執行已停止，因為 {{name}} 沒有所需的存取權限。重試沒有幫助——請先授予權限，再重新執行。",
       "unavailableTitle": "找不到負責人",
-      "unavailableBody": "該使用者"
+      "unavailableBody": "這次執行需要 {{name}}，但聯繫不到對方，因此無法自行繼續。請將工作標記為受阻，或改指派給其他有空的人。",
+      "thatUser": "該使用者"
     }
   },
   "newIssue": {
@@ -5341,7 +5342,7 @@
     "executionWorkspace": "執行工作區",
     "executionWorkspaceDesc": "控制此議題要在共用工作區、新的隔離工作區或現有工作區中執行。",
     "reusingFrom": "正在重用 {{name}}，來源為 {{from}}。",
-    "existingExecutionWorkspace": "現有執行工作區",
+    "existingExecutionWorkspace": "既有的執行工作區",
     "parentWorkspaceWarning": "警告：此子議題將不再使用上層議題的工作區",
     "modelLane": "模型通道",
     "lane": {

@@ -5176,9 +5176,10 @@
     "onBehalfOfTitle": "This run used {{name}}'s access",
     "denial": {
       "unauthorizedTitle": "Responsible user not authorized",
-      "unauthorizedBody": "that user",
+      "unauthorizedBody": "This run stopped because {{name}} does not have access to what it needed. Retrying will not help — grant the access, then re-run.",
       "unavailableTitle": "Responsible user unavailable",
-      "unavailableBody": "that user"
+      "unavailableBody": "This run needed {{name}} and could not reach them, so it cannot proceed on its own. Mark the work blocked, or reassign it to someone available.",
+      "thatUser": "that user"
     }
   },
   "newIssue": {

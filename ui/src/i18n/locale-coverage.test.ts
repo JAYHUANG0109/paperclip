@@ -47,9 +47,57 @@ function sourceFiles(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
-// t("some.key", { ...opts, defaultValue: "text", ...opts })
-const T_CALL_WITH_DEFAULT =
-  /\bt\(\s*["'`]([\w.\-]+)["'`]\s*,\s*\{[^}]*?defaultValue:\s*(["'])((?:\\.|(?!\2).)*)\2/gs;
+// t("some.key", { ... }) — the options object is found by brace depth, not by a
+// naive [^}]*? scan.
+//
+// That naive form is wrong in a way that silently corrupts data: an option value
+// may itself be a t() call with its own defaultValue, e.g.
+//
+//   t("runLedger.denial.unauthorizedBody", {
+//     name: label ?? t("runLedger.denial.thatUser", { defaultValue: "that user" }),
+//     defaultValue: "This run stopped because {{name}} …",
+//   })
+//
+// There is no `}` between the outer `{` and the INNER defaultValue, so the scan
+// walks straight into the nested call and pairs the OUTER key with the INNER
+// text. Doing exactly that wrote "that user" over two real user-facing messages,
+// and hid the nested keys entirely — the extractor never emitted them, so this
+// test could not report them missing either.
+const T_CALL_OPEN = /\bt\(\s*["'`]([\w.\-]+)["'`]\s*,\s*\{/g;
+const DEFAULT_VALUE = /defaultValue:\s*(["'])((?:\\.|(?!\1).)*)\1/;
+
+/** Every (key, defaultValue) pair in a source file, nesting-aware. */
+function extractPairs(src: string): Array<{ key: string; defaultValue: string; index: number }> {
+  const out: Array<{ key: string; defaultValue: string; index: number }> = [];
+  for (const open of src.matchAll(T_CALL_OPEN)) {
+    const key = open[1]!;
+    // Walk to the matching close brace of this options object.
+    let depth = 1;
+    let i = open.index + open[0].length;
+    const start = i;
+    while (i < src.length && depth > 0) {
+      const ch = src[i];
+      if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+      i += 1;
+    }
+    const block = src.slice(start, i - 1);
+    // The defaultValue belonging to THIS call is the one at depth 0 of its block.
+    let d = 0;
+    let cursor = 0;
+    while (cursor < block.length) {
+      const ch = block[cursor];
+      if (ch === "{") { d += 1; cursor += 1; continue; }
+      if (ch === "}") { d -= 1; cursor += 1; continue; }
+      if (d === 0 && block.startsWith("defaultValue:", cursor)) {
+        const m = DEFAULT_VALUE.exec(block.slice(cursor));
+        if (m) { out.push({ key, defaultValue: m[2]!, index: open.index }); break; }
+      }
+      cursor += 1;
+    }
+  }
+  return out;
+}
 
 const CJK = /[㐀-䶿一-鿿　-〿＀-￯]/;
 
@@ -63,11 +111,11 @@ function collectUsages(): Usage[] {
   const usages: Usage[] = [];
   for (const file of sourceFiles(UI_SRC)) {
     const src = fs.readFileSync(file, "utf8");
-    for (const match of src.matchAll(T_CALL_WITH_DEFAULT)) {
-      const line = src.slice(0, match.index).split("\n").length;
+    for (const pair of extractPairs(src)) {
+      const line = src.slice(0, pair.index).split("\n").length;
       usages.push({
-        key: match[1]!,
-        defaultValue: match[3]!,
+        key: pair.key,
+        defaultValue: pair.defaultValue,
         where: `${path.relative(UI_SRC, file)}:${line}`,
       });
     }
