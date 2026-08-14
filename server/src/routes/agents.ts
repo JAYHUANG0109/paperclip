@@ -97,6 +97,7 @@ import {
 } from "../adapters/index.js";
 import { redactEventPayload } from "../redaction.js";
 import { redactCurrentUserValue } from "../log-redaction.js";
+import { redactSecretsValue, secretRedactionEnabled } from "../secret-redaction.js";
 import { renderOrgChartSvg, renderOrgChartPng, type OrgNode, type OrgChartStyle, ORG_CHART_STYLES } from "./org-chart-svg.js";
 import {
   instanceSettingsService,
@@ -4718,7 +4719,7 @@ export function agentRoutes(
     });
 
     res.set("Cache-Control", "no-cache, no-store");
-    res.json(result);
+    res.json(redactSecretsValue(result, { enabled: secretRedactionEnabled() }));
   });
 
   router.get("/heartbeat-runs/:runId/workspace-operations", async (req, res) => {
@@ -4745,7 +4746,7 @@ export function agentRoutes(
     });
 
     res.set("Cache-Control", "no-cache, no-store");
-    res.json(result);
+    res.json(redactSecretsValue(result, { enabled: secretRedactionEnabled() }));
   });
 
   router.get("/issues/:issueId/live-runs", async (req, res) => {
