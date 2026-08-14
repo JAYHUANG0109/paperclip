@@ -1003,6 +1003,58 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     expect(row?.status).toBe("accepted");
   });
 
+  /**
+   * Live bug: EVERY Google Chat form answer failed.
+   *
+   * answerQuestions resolves to the INTERACTION itself, while
+   * acceptInteraction/rejectInteraction return a ResolvedInteractionResult
+   * wrapper. The answer branch read `result.interaction` through an `as any`, so
+   * it typechecked and was always undefined at runtime — `resolved.id` then threw
+   * "Cannot read properties of undefined (reading 'id')". The person in Chat saw
+   * "處理你的回覆時發生問題" and their answer was discarded. Four occurrences in the
+   * live log before this was found; the `as any` is why no test or typecheck
+   * caught it.
+   */
+  it("respondInteraction with decision=answer resolves the interaction", async () => {
+    const { companyId } = await seedCompanyAndAgent();
+    const operatorUserId = randomUUID();
+    await db.insert(companyMemberships).values({
+      companyId, principalType: "user", principalId: operatorUserId, status: "active", membershipRole: "operator",
+    });
+    const issueId = randomUUID();
+    await db.insert(issues).values({
+      id: issueId, companyId, title: "Question", status: "in_review", priority: "medium",
+    });
+    const interactionId = await seedInteraction(companyId, issueId, {
+      kind: "ask_user_questions",
+      payload: {
+        version: 1,
+        questions: [{
+          id: "q1",
+          prompt: "Pick one",
+          selectionMode: "single",
+          options: [{ id: "o1", label: "Option 1" }],
+        }],
+      } as never,
+    });
+
+    const services = buildHostServices(db, "plugin-record-id", "paperclip.gateway", createEventBusStub());
+    const result = await services.issues.respondInteraction({
+      issueId,
+      interactionId,
+      companyId,
+      action: "answer",
+      actorUserId: operatorUserId,
+      answers: [{ questionId: "q1", optionIds: ["o1"] }],
+    } as never);
+
+    // Before the fix this threw a TypeError instead of returning.
+    expect(result.applied).toBe(true);
+    expect(result.interaction?.id).toBe(interactionId);
+    const [row] = await db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, interactionId));
+    expect(row?.status).toBe("answered");
+  });
+
   it("respondInteraction converges (applied:false) when the interaction is already resolved", async () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
     const humanUserId = randomUUID();

@@ -2578,14 +2578,22 @@ export function buildHostServices(
         };
         if (decision === "answer") {
           // ask_user_questions answers — the fork's Google Chat form path.
-          const result = (await interactions.answerQuestions(
+          //
+          // answerQuestions resolves to the INTERACTION ITSELF, unlike
+          // acceptInteraction/rejectInteraction which return a
+          // ResolvedInteractionResult wrapper. This previously read
+          // `result.interaction` through an `as any`, which typechecked fine and
+          // was always undefined at runtime — so `resolved.id` below threw
+          // "Cannot read properties of undefined (reading 'id')" and EVERY Google
+          // Chat form answer failed with "處理你的回覆時發生問題", discarding the
+          // person's answer. There is no continuation on this path either, so the
+          // applyContinuation call was a permanent no-op.
+          resolved = (await interactions.answerQuestions(
             { id: issue.id, companyId },
             params.interactionId,
             { version: 1, answers: params.answers ?? [] } as any,
             actor,
-          )) as any;
-          resolved = result.interaction as typeof current;
-          applyContinuation(result.continuationIssue);
+          )) as typeof current;
         } else if (decision === "accept") {
           const result = await interactions.acceptInteraction(
             { id: issue.id, companyId, projectId: issue.projectId ?? null, goalId: issue.goalId ?? null },

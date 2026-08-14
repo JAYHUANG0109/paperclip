@@ -669,8 +669,14 @@ export async function startServer(): Promise<StartedServer> {
   // Observed failure this guards (2026-08-10): a JavaScript-engine dump stalled
   // ~320MB in and held the boolean for three days, skipping 70+ scheduled runs.
   // The same thing orphaned a 242MB partial on 2026-08-02.
+  // 30 minutes, chosen from measurement rather than caution. Across 267 recorded
+  // runs on this instance: median 11.1s, min 6.5s, and the slowest run that
+  // actually COMPLETED took 15.4 minutes. So 30 leaves roughly 2x headroom over
+  // the worst legitimate case while catching a hang four times sooner than the
+  // 120 this started at — which was a guess, and let a real stall on 2026-08-13
+  // burn two hours before the guard fired.
   const databaseBackupMaxRuntimeMs =
-    Math.max(1, Number(process.env.PAPERCLIP_DB_BACKUP_MAX_RUNTIME_MINUTES) || 120) * 60_000;
+    Math.max(1, Number(process.env.PAPERCLIP_DB_BACKUP_MAX_RUNTIME_MINUTES) || 30) * 60_000;
   let databaseBackupInFlightSince: number | null = null;
   const runServerDatabaseBackup = async (
     trigger: InstanceDatabaseBackupTrigger,
