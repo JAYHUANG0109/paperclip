@@ -32,16 +32,46 @@ export function containsCjk(s: string): boolean {
 }
 
 /**
- * Internal ops/heartbeat notes the agent writes to itself (English self-talk).
- * This is now the PRIMARY filter (we no longer require CJK), so it must catch
- * the common status-chatter phrasings. Kept conservative to avoid swallowing a
- * real answer that merely mentions one of these words in passing.
+ * Internal ops/heartbeat notes the agent writes to itself. This is the PRIMARY
+ * filter (we no longer require CJK), so it must catch the common status-chatter
+ * phrasings. Kept conservative to avoid swallowing a real answer that merely
+ * mentions one of these words in passing.
  */
 export function looksLikeInternalNote(body: string): boolean {
-  return /heartbeat|no action needed|no new human input|wake (was triggered|comment|received)|duplicate wake|marked \w+ again|(stays|remains|still) blocked|blocked posture|re-?comment needed|dedup rule|re-?closed|re-?opened|no (new |further )?(reply|response|action) (needed|required|is needed)|nothing to (do|report)/i.test(
-    body
-  );
+  return ENGLISH_INTERNAL_NOTE_RE.test(body) || CHINESE_INTERNAL_NOTE_RE.test(body);
 }
+
+const ENGLISH_INTERNAL_NOTE_RE =
+  /heartbeat|no action needed|no new human input|wake (was triggered|comment|received)|duplicate wake|marked \w+ again|(stays|remains|still) blocked|blocked posture|re-?comment needed|dedup rule|re-?closed|re-?opened|no (new |further )?(reply|response|action) (needed|required|is needed)|nothing to (do|report)/i;
+
+/**
+ * The same self-talk in 中文.
+ *
+ * The filter used to be English-only, which is backwards for a company that
+ * works in Chinese: an agent reporting "本次不新增、不改寫、不刪除任何 memory"
+ * is the textbook "nothing to report" case, and it sailed straight through into
+ * people's Google Chat DMs.
+ *
+ * Deliberately anchored on CONCLUSION phrasings ("無需…", "本次不…", "沒有任何…"),
+ * not on topic words. A real answer can easily contain 新增 or 變更 on its own;
+ * it is the "there was nothing to do" framing that marks a note as internal.
+ */
+const CHINESE_INTERNAL_NOTE_RE = new RegExp(
+  [
+    "無需(增修|新增|修改|變更|調整|處理|回覆|回報|行動|動作)",
+    "不需(要)?(增修|修改|變更|調整|處理|回覆|回報)",
+    "(本次|這次|此次)(不|未|無)(新增|異動|變更|修改|更新|處理)",
+    "不(新增|改寫|刪除)任何",
+    "沒有(任何)?(新的)?(變更|異動|更新|需要|進展)",
+    "無(任何)?(異動|變更|更新|進展)",
+    "無事可(做|報)",
+    "沒有需要(處理|回報|回覆|記錄)",
+    "維持(原狀|不變)",
+    "仍(然)?(封鎖|阻塞|受阻|卡住)",
+    "重複喚醒",
+    "心跳",
+  ].join("|"),
+);
 
 /**
  * A comment is forwarded to Chat if it's a user-facing answer: non-empty, not a
