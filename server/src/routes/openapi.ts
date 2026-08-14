@@ -3828,6 +3828,9 @@ for (const route of [
   ["post", "/api/companies/{companyId}/users/{userId}/memories/import", "Import files or a folder into a user's memory"],
   ["get", "/api/companies/{companyId}/users/{userId}/memories/import-batches", "List a user's memory import batches"],
   ["post", "/api/companies/{companyId}/users/{userId}/memories/import-batches/delete", "Delete a memory import batch"],
+  ["get", "/api/companies/{companyId}/room-memories", "List a chat room's shared memories (agent-in-room only)"],
+  ["put", "/api/companies/{companyId}/room-memories/{name}", "Create or revise a chat room's shared memory (agent-in-room only)"],
+  ["delete", "/api/companies/{companyId}/room-memories/{name}", "Delete a chat room's shared memory (agent-in-room only)"],
 ] as const) {
   registerCurrentRoute({ method: route[0], path: route[1], tags: ["memory"], summary: route[2] });
 }

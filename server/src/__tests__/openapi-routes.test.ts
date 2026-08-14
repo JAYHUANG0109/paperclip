@@ -47,6 +47,7 @@ const apiPrefixes: Record<string, string> = {
   "notifications.ts": "/api",
   "openapi.ts": "/api",
   "personal-memory.ts": "/api",
+  "room-memory.ts": "/api",
   "plugin-ui-static.ts": "/api",
   "plugins.ts": "/api",
   "projects.ts": "/api",
