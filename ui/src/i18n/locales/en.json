@@ -63,7 +63,8 @@
     "audit": "Audit",
     "pipelines": "Pipelines",
     "apps": "Apps",
-    "timeline": "Timeline"
+    "timeline": "Timeline",
+    "decisionsBadge": "decisions"
   },
   "sort": {
     "top": "Top",

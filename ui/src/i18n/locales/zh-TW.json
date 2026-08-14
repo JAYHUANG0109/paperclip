@@ -168,7 +168,8 @@
     "audit": "稽核",
     "pipelines": "流程",
     "apps": "應用程式",
-    "timeline": "時間軸"
+    "timeline": "時間軸",
+    "decisionsBadge": "待決議"
   },
   "sort": {
     "top": "置頂",

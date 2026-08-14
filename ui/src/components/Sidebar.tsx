@@ -268,10 +268,10 @@ export function Sidebar() {
           {showDecisions ? (
             <SidebarNavItem
               to="/decisions"
-              label="Decisions"
+              label={t("nav.decisions", { defaultValue: "Decisions" })}
               icon={ListChecks}
               badge={attentionCount}
-              badgeLabel="decisions"
+              badgeLabel={t("nav.decisionsBadge", { defaultValue: "decisions" })}
             />
           ) : null}
           {showStatusCards ? (
@@ -280,7 +280,6 @@ export function Sidebar() {
           {conferenceRoomChatEnabled ? (
             <SidebarNavItem to="/board-chat" label={t("nav.conferenceRoom", { defaultValue: "Conference Room" })} icon={MessagesSquare} />
           ) : null}
-          <SidebarNavItem to="/decisions" label={t("nav.decisions", { defaultValue: "Decisions" })} icon={ListChecks} />
         </div>
 
         <SidebarSection label={t("nav.work", { defaultValue: "Work" })}>
