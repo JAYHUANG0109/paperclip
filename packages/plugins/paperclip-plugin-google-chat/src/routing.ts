@@ -166,11 +166,17 @@ export async function dispatchToAgent(
   } catch {
     /* logging view is non-critical; ignore */
   }
-  // Best-effort nudge so the agent picks the task up promptly.
+  // Best-effort nudge so the agent picks the task up promptly. Unlike the
+  // follow-up path below, the "scheduler will still pick it up" reasoning does
+  // hold here: this issue was just created, so it has no blockers to refuse on.
+  // Still log it — a silent failure is one nobody can diagnose.
   try {
     await ctx.issues.requestWakeup(issue.id, params.companyId);
-  } catch {
-    /* scheduler will still pick up the todo issue */
+  } catch (err) {
+    ctx.logger.warn("requestWakeup failed for a newly dispatched issue", {
+      issueId: issue.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
   return issue.id;
 }
@@ -273,17 +279,36 @@ export async function getLastUserMessage(
 export async function appendToConversation(
   ctx: PluginContext,
   params: { issueId: string; companyId: string; text: string; senderEmail?: string }
-): Promise<string> {
+): Promise<{ commentId: string; wakeBlocked: boolean }> {
   const comment = await ctx.issues.createComment(params.issueId, params.text, params.companyId, {
     authorUserEmail: params.senderEmail,
   });
   await ctx.issues.update(params.issueId, { status: "todo" }, params.companyId);
+  let wakeBlocked = false;
   try {
     await ctx.issues.requestWakeup(params.issueId, params.companyId);
-  } catch {
-    /* scheduler will still pick up the todo issue */
+  } catch (err) {
+    /**
+     * This used to swallow the error on the grounds that "the scheduler will
+     * still pick up the todo issue". That is true for a transient failure and
+     * FALSE for the most common one: the wake is refused with "Issue is blocked
+     * by unresolved blockers", and a blocked task is exactly what the scheduler
+     * will not pick up. So the person's message landed as a comment and then
+     * nothing happened — no reply, and no explanation, because the webhook still
+     * returned 200. 14 occurrences in the live log before this was noticed.
+     *
+     * Report it to the caller so the Chat reply can say so, and log at warn
+     * rather than silently: a refusal is information, not noise.
+     */
+    const message = err instanceof Error ? err.message : String(err);
+    wakeBlocked = /blocked by unresolved blockers/i.test(message);
+    ctx.logger.warn("requestWakeup refused after appending a Chat follow-up", {
+      issueId: params.issueId,
+      wakeBlocked,
+      error: message,
+    });
   }
-  return comment.id ?? "";
+  return { commentId: comment.id ?? "", wakeBlocked };
 }
 
 /** Pick the agent's most recent comment body as the human-facing reply. */

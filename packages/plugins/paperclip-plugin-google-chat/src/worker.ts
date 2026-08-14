@@ -718,25 +718,107 @@ interface DeliveredRecord {
 
 const DELIVERED_CAP = 200;
 
+/**
+ * How many issues may hold a `delivered:` row at once.
+ *
+ * DELIVERED_CAP bounds the size of each record; nothing bounded the NUMBER of
+ * records. Every issue that ever mirrored a comment kept its own instance-scoped
+ * row for good — 462 rows / 561 kB on the live instance by 2026-08-14, oldest
+ * 2026-06-02, roughly +180/month — because a conversation ends by simply never
+ * being mentioned again and no code path ever deleted one.
+ *
+ * `ctx.state` deliberately exposes only get/set/delete on an exact key (no
+ * list), so the plugin cannot enumerate its own rows to sweep them. It therefore
+ * has to remember what it wrote: this index holds issue ids in least-recently-
+ * delivered order, and evicting from it deletes the row it points at. The
+ * footprint becomes at most DELIVERED_ISSUE_CAP rows plus the index.
+ *
+ * Recency, not status, is the safe key. 393 of those rows belong to issues
+ * already `done`, which looks tidier to prune on — but issues legitimately churn
+ * through `done` before the agent's real answer is written (see the note above
+ * the issue.comment.created handler), so dropping a record on `done` re-mirrors
+ * whatever arrives afterwards.
+ */
+export const DELIVERED_ISSUE_CAP = 500;
+
+const DELIVERED_INDEX = { scopeKind: "instance" as const, stateKey: "delivered:index" };
+
 function deliveredKey(issueId: string) {
   return { scopeKind: "instance" as const, stateKey: `delivered:${issueId}` };
 }
 
-async function getDelivered(ctx: PluginContext, issueId: string): Promise<DeliveredRecord> {
+/**
+ * Mark this issue as most-recently-delivered and drop rows past the cap.
+ *
+ * Eviction removes whichever issue has gone longest without mirroring. Losing a
+ * record forgets its delivered ids, so a later comment on that issue could be
+ * mirrored twice — hence a generous cap ordered by recency: an evicted issue has
+ * had 500 others deliver since it last spoke. A long thread already forgets its
+ * oldest ids to DELIVERED_CAP for the same reason.
+ *
+ * The read-modify-write is not atomic. Two simultaneous deliveries can lose an
+ * index entry, which leaks one row (never evicted) rather than deleting a live
+ * one, so the bound holds and nothing user-visible breaks; not worth a lock.
+ */
+async function touchDeliveredIndex(ctx: PluginContext, issueId: string): Promise<void> {
+  try {
+    const rec = (await ctx.state.get(DELIVERED_INDEX)) as { issueIds?: string[] } | null;
+    const ids = (rec?.issueIds ?? []).filter((id) => id !== issueId);
+    ids.push(issueId);
+    const evicted =
+      ids.length > DELIVERED_ISSUE_CAP ? ids.splice(0, ids.length - DELIVERED_ISSUE_CAP) : [];
+    await ctx.state.set(DELIVERED_INDEX, { issueIds: ids });
+    for (const id of evicted) {
+      await ctx.state.delete(deliveredKey(id));
+    }
+    if (evicted.length) {
+      ctx.logger.info("Pruned delivered records past the cap", { pruned: evicted.length });
+    }
+  } catch (err) {
+    // Housekeeping must never break the mirror a person is waiting on. Worst
+    // case the leak continues at its old rate.
+    ctx.logger.warn("Could not update the delivered index", {
+      issueId,
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+}
+
+/** Forget an issue's delivered record — its conversation is over. */
+export async function dropDelivered(ctx: PluginContext, issueId: string): Promise<void> {
+  try {
+    await ctx.state.delete(deliveredKey(issueId));
+    const rec = (await ctx.state.get(DELIVERED_INDEX)) as { issueIds?: string[] } | null;
+    if (rec?.issueIds?.includes(issueId)) {
+      await ctx.state.set(DELIVERED_INDEX, {
+        issueIds: rec.issueIds.filter((id) => id !== issueId)
+      });
+    }
+  } catch (err) {
+    ctx.logger.warn("Could not drop the delivered record", {
+      issueId,
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+}
+
+export async function getDelivered(ctx: PluginContext, issueId: string): Promise<DeliveredRecord> {
   const rec = (await ctx.state.get(deliveredKey(issueId))) as DeliveredRecord | null;
   return { ids: rec?.ids ?? [], sigs: rec?.sigs ?? [] };
 }
 
-async function saveDelivered(
+export async function saveDelivered(
   ctx: PluginContext,
   issueId: string,
   rec: DeliveredRecord
 ): Promise<void> {
-  // Bound growth: keep only the most recent ids/sigs.
+  // Bound growth: keep only the most recent ids/sigs...
   await ctx.state.set(deliveredKey(issueId), {
     ids: rec.ids.slice(-DELIVERED_CAP),
     sigs: rec.sigs.slice(-DELIVERED_CAP)
   });
+  // ...and bound the NUMBER of records, which nothing did before.
+  await touchDeliveredIndex(ctx, issueId);
 }
 
 /**
@@ -862,7 +944,12 @@ async function routeToAgent(
     inbound.spaceType === "DM" &&
     /^\s*(\/new|＋?\s*開?新(對話|任務)|new(\s+(chat|task|conversation))?)\s*$/i.test(inbound.text ?? "")
   ) {
-    await clearConversationIssue(ctx, conversationKey({ spaceType: "DM", spaceName: inbound.spaceName }));
+    // Ending the session ends the need for its delivered record; drop it now
+    // rather than waiting for the LRU to evict it 500 issues from now.
+    const endingKey = conversationKey({ spaceType: "DM", spaceName: inbound.spaceName });
+    const ending = await getConversationIssue(ctx, endingKey);
+    if (ending) await dropDelivered(ctx, ending);
+    await clearConversationIssue(ctx, endingKey);
     return "✅ 好的，下一則訊息會開一個新任務。/ New task — your next message starts a fresh one.";
   }
 
@@ -979,7 +1066,7 @@ async function routeToAgent(
       const commentBody = safeFollow.hadSecret
         ? `${inbound.text}\n\n---\n⚠️ 含 Asana 權杖明文。請依 onboarding 指示用 POST /api/companies/${companyId}/connections/asana 儲存後,立即編輯本留言移除明文。`
         : inbound.text;
-      const commentId = await appendToConversation(ctx, {
+      const { commentId, wakeBlocked } = await appendToConversation(ctx, {
         issueId: existingIssueId,
         companyId,
         text: commentBody,
@@ -1014,6 +1101,16 @@ async function routeToAgent(
         inbound,
         target
       });
+      // Do not promise work that will not happen. When requestWakeup was refused
+      // because the task is blocked, the comment is saved but nothing picks it
+      // up, so "處理中" is simply false — the person waits for a reply that never
+      // comes. Say what actually happened instead.
+      if (wakeBlocked) {
+        return (
+          "📝 已記錄你的訊息。這個任務目前被其他未完成的任務卡住，所以助理還不會開始處理；等阻擋解除後就會接手。" +
+          "\n(Saved. This task is blocked by unresolved blockers, so the agent will not start yet.)"
+        );
+      }
       return "⏳ 處理中，請稍候… (Working on it…)";
     } catch (err) {
       ctx.logger.warn("Append to conversation failed; starting a new issue", {
@@ -1361,8 +1458,24 @@ const plugin = definePlugin({
     // the real answer whenever the issue churned through `done` (e.g. a CEO
     // dispatching to a sub-issue) before the answer was written.
     ctx.events.on("issue.comment.created", async (event) => {
+      // Hoisted so the catch can (a) say WHICH mirror failed and (b) persist the
+      // comments that DID post. Everything it needs — issue, comment, space, the
+      // record itself — used to be scoped inside the try, which is why a live
+      // failure was undiagnosable (you knew a mirror broke, never which one) and
+      // why a mid-batch failure re-sent the successful ones: saveDelivered ran
+      // only after the loop, so posting 2 of 5 recorded neither, and the next
+      // agent comment mirrored those 2 to Chat a second time.
+      const diag: {
+        issueId?: string;
+        commentId?: string;
+        space?: string;
+        thread?: string;
+        posted: number;
+        delivered?: DeliveredRecord;
+      } = { posted: 0 };
       try {
         const issueId = event.entityId;
+        diag.issueId = issueId ?? undefined;
         if (!issueId) return;
         const config = await getConfig(ctx);
         let target: { spaceName: string; threadName?: string; companyId: string; senderEmail?: string; spaceType?: string } | null =
@@ -1375,8 +1488,11 @@ const plugin = definePlugin({
         }
         if (!target) return; // not Chat-originated and no reachable owner DM
 
+        diag.space = target.spaceName;
+        diag.thread = target.threadName;
         const comments = await ctx.issues.listComments(issueId, target.companyId);
         const delivered = await getDelivered(ctx, issueId);
+        diag.delivered = delivered;
         // Label the reply with the question it answers, so parallel conversations
         // are easy to match. Derive it from the ACTUAL thread — the latest
         // user-authored comment — rather than per-issue stored state, which can go
@@ -1390,6 +1506,7 @@ const plugin = definePlugin({
 
         for (const comment of orderedForwardable(comments)) {
           const id = comment.id ?? "";
+          diag.commentId = id;
           if (id && delivered.ids.includes(id)) continue;
           const sig = commentSignature(comment.body ?? "");
           if (delivered.sigs.includes(sig)) {
@@ -1412,12 +1529,32 @@ const plugin = definePlugin({
           await postFormatted(ctx, config, target, body, dmButtons);
           if (id) delivered.ids.push(id);
           delivered.sigs.push(sig);
+          diag.posted += 1;
           ctx.logger.info("Mirrored agent comment to Chat", { issueId, commentId: id });
         }
         await saveDelivered(ctx, issueId, delivered);
       } catch (err) {
+        // Record what actually reached Chat before the failure, so those comments
+        // are not mirrored a second time on the next event.
+        if (diag.posted > 0 && diag.issueId && diag.delivered) {
+          try {
+            await saveDelivered(ctx, diag.issueId, diag.delivered);
+          } catch {
+            /* the mirror already failed; do not mask it with a state error */
+          }
+        }
+        // The Chat API errors already carry status + response body in their
+        // message (see postCardJson / sendMessage); what was missing is which
+        // mirror they belong to and how far the batch got before dying.
         ctx.logger.error("Failed to mirror comment to Chat", {
-          error: err instanceof Error ? err.message : String(err)
+          issueId: diag.issueId,
+          commentId: diag.commentId,
+          space: diag.space,
+          thread: diag.thread,
+          posted: diag.posted,
+          error: err instanceof Error ? err.message : String(err),
+          errorName: err instanceof Error ? err.name : undefined,
+          stack: err instanceof Error ? err.stack : undefined
         });
       }
     });
@@ -1655,7 +1792,10 @@ const plugin = definePlugin({
     if (click?.fn === NEW_CONVERSATION_FN) {
       // "＋開新對話": end the DM session so the next message opens a fresh task.
       if (click.spaceName) {
-        await clearConversationIssue(ctx, conversationKey({ spaceType: "DM", spaceName: click.spaceName }));
+        const clickKey = conversationKey({ spaceType: "DM", spaceName: click.spaceName });
+        const clicked = await getConversationIssue(ctx, clickKey);
+        if (clicked) await dropDelivered(ctx, clicked);
+        await clearConversationIssue(ctx, clickKey);
       }
       ctx.logger.info("Reset DM conversation via button", { space: click.spaceName });
       return chatTextResponse("✅ 好的，下一則訊息會開一個新任務。/ New task — your next message starts a fresh one.");
