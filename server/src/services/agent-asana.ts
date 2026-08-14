@@ -3,6 +3,7 @@ import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { secretService } from "./secrets.js";
+import { recordEgress } from "./egress-audit.js";
 
 /**
  * Server-side Asana writes using an agent's OWN stored token. This lets
@@ -127,8 +128,10 @@ async function tokenFor(db: Db, companyId: string, agentId: string) {
 }
 
 async function asanaGetJson(token: string, pathAndQuery: string): Promise<{ data?: unknown } | null> {
+  const url = `${ASANA_API}${pathAndQuery}`;
+  recordEgress(url, { source: "asana", method: "GET" });
   try {
-    const res = await fetch(`${ASANA_API}${pathAndQuery}`, {
+    const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(10_000),
     });

@@ -174,6 +174,41 @@ def _load_config(explicit=None):
     return cfg, login, conns, path
 
 
+def _audit_egress(url, db, model, method, uid, login):
+    """Append one log-only JSONL line per Odoo query so agent access to real ERP
+    data is observable. Best-effort and silent: any failure here must never break
+    the query. Records WHO (login/uid + agent env) queried WHAT (model/method)
+    WHERE (url/db) and WHEN — never the data or the API key."""
+    try:
+        import datetime, glob
+        company = (os.environ.get("PAPERCLIP_COMPANY_ID") or "").strip()
+        agent = (os.environ.get("PAPERCLIP_AGENT_ID") or "").strip()
+        record = {
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "source": "odoo_client",
+            "url": url, "db": db, "model": model, "method": method,
+            "uid": uid, "login": login,
+            "companyId": company or None, "agentId": agent or None,
+        }
+        # Prefer the per-agent dir the connection file already lives in; else HOME.
+        target_dir = None
+        if company and agent:
+            base = os.path.expanduser("~/.paperclip/instances")
+            for inst in ([os.path.join(base, "default")] + sorted(glob.glob(os.path.join(base, "*")))):
+                cand = os.path.join(inst, "companies", company, "agents", agent)
+                if os.path.isdir(cand):
+                    target_dir = cand
+                    break
+        if not target_dir:
+            target_dir = os.path.expanduser("~/.claude")
+        os.makedirs(target_dir, exist_ok=True)
+        path = os.path.join(target_dir, "odoo-egress.jsonl")
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001  — auditing must never affect the query
+        pass
+
+
 class Odoo:
     """A live, authenticated connection to one Odoo backend."""
 
@@ -195,6 +230,10 @@ class Odoo:
                 f"'{method}' on {model} is a write op but this connection is "
                 f"read-only (set readOnly:false or pass --allow-writes)."
             )
+        # Egress audit (Step 1, log-only): every Odoo query passes through here,
+        # so this is where the real HR-data access is recorded. Best-effort —
+        # never let auditing affect the query.
+        _audit_egress(self.url, self.db, model, method, self.uid, self.login)
         # execute_kw takes positional args as a list and kwargs as a dict.
         pos = list(args)
         return self._models.execute_kw(self.db, self.uid, self._key, model, method, pos, kwargs or {})

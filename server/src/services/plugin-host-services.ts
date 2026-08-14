@@ -31,6 +31,7 @@ import type {
 import type { CreateIssueThreadInteraction, InviteJoinType, IssueDocumentSummary, PermissionKey, PrincipalType } from "@paperclipai/shared";
 import { pluginOperationIssueOriginKind } from "@paperclipai/shared";
 import { companyService } from "./companies.js";
+import { recordEgress } from "./egress-audit.js";
 import { normalizeIssueAttachmentMaxBytes } from "../attachment-types.js";
 import { agentService } from "./agents.js";
 import { projectService } from "./projects.js";
@@ -1580,6 +1581,9 @@ export function buildHostServices(
 
     http: {
       async fetch(params) {
+        // Egress audit (Step 1, log-only): plugins can fetch arbitrary URLs, so
+        // this is the main surface where unexpected egress hosts would appear.
+        recordEgress(params.url, { source: "plugin_fetch", method: (params.init as RequestInit | undefined)?.method ?? "GET" });
         // SSRF protection: validate protocol whitelist + block private IPs.
         // Resolve once, then connect directly to that IP to prevent DNS rebinding.
         const target = await validateAndResolveFetchUrl(params.url);

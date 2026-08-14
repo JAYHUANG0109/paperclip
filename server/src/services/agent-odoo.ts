@@ -16,6 +16,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { logger } from "../middleware/logger.js";
+import { recordEgress } from "./egress-audit.js";
 
 /**
  * The per-user secret key each user stores their personal Odoo API key under.
@@ -144,8 +145,10 @@ export async function probeOdoo(
   apiKey: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ProbeResult> {
+  const target = `${url.replace(/\/+$/, "")}/xmlrpc/2/common`;
+  recordEgress(target, { source: "odoo", method: "POST" });
   try {
-    const res = await fetchImpl(`${url.replace(/\/+$/, "")}/xmlrpc/2/common`, {
+    const res = await fetchImpl(target, {
       method: "POST",
       headers: { "content-type": "text/xml" },
       body: buildAuthenticateCall(db, login, apiKey),
