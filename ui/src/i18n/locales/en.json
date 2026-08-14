@@ -1891,7 +1891,10 @@
       "noAgentTasks": "No tasks for this agent in this project · Open project",
       "noAgentTasksWithCount": "No tasks for this agent in this project ({{count}} in the project) · Open project",
       "otherTasks": "{{count}} more tasks not assigned to this agent · Open project"
-    }
+    },
+    "escalationPaused": "Escalation path is paused",
+    "invalidReportingChain": "Invalid reporting chain",
+    "changeRoleIcon": "Change role icon"
   },
   "projectDetail": {
     "addDescription": "Add a description...",
@@ -2623,7 +2626,13 @@
     "uploadFailedArchives": "(⚠️ {{count}} archives could not be extracted: {{names}})",
     "uploadSkippedRefs": "({{count}} .md files are reference material inside a bundle — no skill created)",
     "uploadPruned": "(removed {{count}} files attached by mistake)",
-    "uploadPrunedFolders": "(removed {{count}} leftover empty folders)"
+    "uploadPrunedFolders": "(removed {{count}} leftover empty folders)",
+    "catalogProvenance": "Installed from the app-shipped skills catalog. Provenance is signed by package version and content hash.",
+    "invalidSkillMarkdown": "This skill cannot be installed — its content is not valid Agent Skills markdown.",
+    "catalogHashChanged": "Catalog content hash has changed since this skill was installed.",
+    "noTagsYet": "No tags yet.",
+    "addTagPlaceholder": "Add a tag…",
+    "installedOnAgents": "Agents in this company that currently have this skill installed."
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",
@@ -7017,5 +7026,11 @@
     "rename": "Rename",
     "remove": "Remove task",
     "removeConfirm": "Remove this task? This cannot be undone."
+  },
+  "interactionCard": {
+    "rejectReasonPlaceholder": "Optional: tell the agent why, so it doesn't retry the same call.",
+    "itemReasonPlaceholder": "Give the agent a reason so it can act on this item.",
+    "chooseVerdict": "Choose a verdict",
+    "itemsToReview": "Items to review"
   }
 }

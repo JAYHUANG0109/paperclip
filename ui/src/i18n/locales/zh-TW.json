@@ -1996,7 +1996,10 @@
       "noAgentTasks": "此代理人在此專案暫無任務 · 開啟專案",
       "noAgentTasksWithCount": "此代理人在此專案暫無任務（專案共 {{count}} 個）· 開啟專案",
       "otherTasks": "另有 {{count}} 個任務未指派給此代理人 · 開啟專案"
-    }
+    },
+    "escalationPaused": "呈報路徑已暫停",
+    "invalidReportingChain": "回報鏈結無效",
+    "changeRoleIcon": "變更角色圖示"
   },
   "projectDetail": {
     "addDescription": "新增描述…",
@@ -2728,7 +2731,13 @@
     "uploadFailedArchives": "（⚠️ {{count}} 個套件無法解壓：{{names}}）",
     "uploadSkippedRefs": "（{{count}} 個 .md 為套件內參考檔，未建立技能）",
     "uploadPruned": "（清除 {{count}} 個誤附檔案）",
-    "uploadPrunedFolders": "（移除 {{count}} 個空的殘留資料夾）"
+    "uploadPrunedFolders": "（移除 {{count}} 個空的殘留資料夾）",
+    "catalogProvenance": "從應用內建的技能庫安裝。來源以套件版本與內容雜湊簽章驗證。",
+    "invalidSkillMarkdown": "此技能無法安裝——其內容不是有效的 Agent Skills markdown。",
+    "catalogHashChanged": "自此技能安裝後，技能庫的內容雜湊已變更。",
+    "noTagsYet": "尚無標籤。",
+    "addTagPlaceholder": "新增標籤…",
+    "installedOnAgents": "目前已安裝此技能的公司代理人。"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",
@@ -7017,5 +7026,11 @@
     "rename": "重新命名",
     "remove": "移除任務",
     "removeConfirm": "確定要移除這個任務？此動作無法復原。"
+  },
+  "interactionCard": {
+    "rejectReasonPlaceholder": "選填：告訴代理人原因，避免它重試同一個呼叫。",
+    "itemReasonPlaceholder": "請提供原因，代理人才能處理這個項目。",
+    "chooseVerdict": "選擇裁決",
+    "itemsToReview": "待審項目"
   }
 }
