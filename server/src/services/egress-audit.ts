@@ -26,6 +26,20 @@ const ALLOWED_HOSTS: ReadonlySet<string> = new Set([
   "seasonart-test.aiuptop.com",
   "app.asana.com",
   "api.anthropic.com",
+  // Google integrations (Chat plugin + Workspace). Added after the Step 1 audit
+  // observed legitimate `would_deny` hits on the Google Chat plugin's OAuth
+  // refresh (oauth2.googleapis.com) and message send (chat.googleapis.com). The
+  // rest are the other first-party Google API hosts the installed Google
+  // integrations reach, allow-listed so Step 2 enforcement never breaks them.
+  "oauth2.googleapis.com",
+  "chat.googleapis.com",
+  "accounts.google.com",
+  "www.googleapis.com",
+  "gmail.googleapis.com",
+  "docs.googleapis.com",
+  "docs.google.com",
+  "sheets.googleapis.com",
+  "slides.googleapis.com",
 ]);
 
 export type EgressSource = "odoo" | "asana" | "plugin_fetch";
