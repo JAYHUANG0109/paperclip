@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "@paperclipai/shared";
 import {
   IssueChatThread,
@@ -312,6 +312,24 @@ function createFileDragEvent(type: string, files: File[]) {
 
 describe("IssueChatThread", () => {
   let container: HTMLDivElement;
+  // The three issue-chat-scroll mocks wrap the REAL implementations (see the
+  // vi.mock factory above), and one test replaces them outright with
+  // mockReturnValue(true) / mockReturnValue({ composerViewportTop: 420 }).
+  // afterEach only called mockClear(), which resets recorded calls but NOT the
+  // implementation — so once that test ran, `shouldPreserveComposerViewport`
+  // returned true and `captureComposerViewportSnapshot` returned that snapshot
+  // for every remaining test in the file. In declaration order the default-
+  // behaviour test runs first and passes; a shuffled run fails it, and every
+  // later test was quietly exercising stubs instead of the real scroll logic —
+  // a false green, which is the worse half of the bug. Keep the originals so
+  // afterEach can put them back.
+  let realScroll: typeof import("../lib/issue-chat-scroll");
+
+  beforeAll(async () => {
+    realScroll = await vi.importActual<typeof import("../lib/issue-chat-scroll")>(
+      "../lib/issue-chat-scroll",
+    );
+  });
 
   beforeEach(() => {
     container = document.createElement("div");
@@ -325,9 +343,14 @@ describe("IssueChatThread", () => {
     vi.useRealTimers();
     appendMock.mockReset();
     markdownEditorFocusMock.mockReset();
-    captureComposerViewportSnapshotMock.mockClear();
-    restoreComposerViewportSnapshotMock.mockClear();
-    shouldPreserveComposerViewportMock.mockClear();
+    // mockReset (not mockClear) to drop any per-test override, then restore the
+    // real implementation the factory installed.
+    captureComposerViewportSnapshotMock.mockReset();
+    captureComposerViewportSnapshotMock.mockImplementation(realScroll.captureComposerViewportSnapshot);
+    restoreComposerViewportSnapshotMock.mockReset();
+    restoreComposerViewportSnapshotMock.mockImplementation(realScroll.restoreComposerViewportSnapshot);
+    shouldPreserveComposerViewportMock.mockReset();
+    shouldPreserveComposerViewportMock.mockImplementation(realScroll.shouldPreserveComposerViewport);
     markdownBodyRenderMock.mockClear();
   });
 

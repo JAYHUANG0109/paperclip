@@ -1019,6 +1019,18 @@ describe("IssueDetail", () => {
     });
     mockIssuesApi.listAcceptedPlanDecompositions.mockResolvedValue([]);
     conferenceRoomChatFlag.enabled = true;
+    // These two are vi.hoisted(vi.fn()) at module scope, so afterEach's
+    // vi.restoreAllMocks() does NOT touch them — that only restores vi.spyOn
+    // spies. Their call history therefore accumulated across every test in this
+    // file, which made assertions depend on execution order in both directions:
+    // "removes an inbox-origin archived issue…" asserts
+    // `expect(mockNavigate).not.toHaveBeenCalled()` and passed only because it
+    // happened to run before any navigating test (a shuffled run fails it on a
+    // leftover navigate to PAP-10), and the toHaveBeenCalledWith assertions could
+    // just as easily pass on a PREVIOUS test's matching call — a false green,
+    // which is worse. Clear them like the render spies below.
+    mockNavigate.mockClear();
+    mockPushToast.mockClear();
     mockIssuesListRender.mockClear();
     mockIssueChatThreadRender.mockClear();
     mockIssueChatThreadClassicRender.mockClear();
