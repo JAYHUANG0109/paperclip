@@ -466,8 +466,17 @@ export function memoryDistillationService(db: Db, deps?: { enqueueWakeup?: Enque
     now?: Date;
     companyId?: string;
     thresholds?: Partial<MemoryDistillationThresholds>;
+    /**
+     * Cap how many capture tasks this sweep creates. Undefined = unlimited (the
+     * scheduled behaviour). A caller wanting exactly N consolidations on demand
+     * passes `limit: N` so the sweep stops after N instead of enqueuing one per
+     * qualifying agent — the difference between "5 tasks" and "one per agent in a
+     * 38-agent company".
+     */
+    limit?: number;
   }) {
     const now = opts?.now ?? new Date();
+    const createLimit = opts?.limit != null && opts.limit >= 0 ? Math.trunc(opts.limit) : Infinity;
     const thresholds: MemoryDistillationThresholds = {
       minRuns: opts?.thresholds?.minRuns ?? DEFAULT_MIN_RUNS_BEFORE_DISTILLATION,
       minIntervalMs: opts?.thresholds?.minIntervalMs ?? DEFAULT_MIN_DISTILLATION_INTERVAL_MS,
@@ -510,6 +519,7 @@ export function memoryDistillationService(db: Db, deps?: { enqueueWakeup?: Enque
       }>;
 
     for (const candidate of candidates) {
+      if (result.created >= createLimit) break;
       result.scanned += 1;
       try {
         // Paused means paused. Writes are already refused at the gate, so
