@@ -11,6 +11,7 @@ export { builtInManagedResources } from "./built_in_managed_resources.js";
 export { agentMemberships } from "./agent_memberships.js";
 export { userMemories, userMemorySettings } from "./user_memories.js";
 export { chatRooms } from "./chat_rooms.js";
+export { roomMemories } from "./room_memories.js";
 export { boardApiKeys } from "./board_api_keys.js";
 export { cliAuthChallenges } from "./cli_auth_challenges.js";
 export { companyMemberships } from "./company_memberships.js";

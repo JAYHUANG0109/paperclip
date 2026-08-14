@@ -136,13 +136,20 @@ export async function dispatchToAgent(
     title,
     description,
     assigneeAgentId: params.agentId,
-    // Per-room scope (Phase 1b): stamp the originating space id onto the issue so
-    // the run can later resolve which room it belongs to. `originId` already flows
-    // through the create RPC and is server-visible; reusing it is safe here because
-    // the only uniqueness on originId is partial (routine_execution issues only),
-    // so this never dedups or collapses chat messages. No behaviour change yet —
-    // per-room memory (Phase 2) is what will read it, behind a flag.
-    originId: params.target.spaceName
+    // Per-room scope (Phase 1b): stamp the originating GROUP space id onto the
+    // issue so the run can later resolve which room it belongs to. Only group
+    // spaces (SPACE/ROOM) get this — DMs stay per-user, so a DM issue carries no
+    // room originId and Phase 2 leaves its memory exactly as today. `originId`
+    // already flows through the create RPC and is server-visible; reusing it is
+    // safe because the only uniqueness on originId is partial (routine_execution
+    // issues only), so this never dedups or collapses chat messages. No behaviour
+    // change yet — per-room memory (Phase 2) is what will read it, behind a flag.
+    // Surface-prefixed so Phase 2 recognises a room run by a simple prefix check
+    // (matches the server's deriveRoomScopeId: `${surface}:${spaceName}`).
+    originId:
+      params.target.spaceType && params.target.spaceType !== "DM"
+        ? `google_chat:${params.target.spaceName.trim()}`
+        : undefined
   });
   await ctx.issues.update(issue.id, { status: "todo" }, params.companyId);
   await rememberChatTarget(ctx, issue.id, params.target);

@@ -78,6 +78,30 @@ export function resolveUserMemoryDir(input: { companyId: string; userId: string 
   );
 }
 
+/**
+ * Resolve one room's materialized memory directory:
+ * `<instanceRoot>/memory/rooms/<companyId>/<roomScopeId>`.
+ *
+ * Kept under a distinct `rooms/` segment so a room bucket can never collide with
+ * a user bucket, and both segments are sanitized into single path components — a
+ * roomScopeId is opaque text (e.g. `google_chat:spaces/AAA`) and must never be
+ * able to introduce a separator and escape into another room's or user's dir.
+ */
+export function resolveRoomMemoryDir(input: { companyId: string; roomScopeId: string }): string {
+  const companyId = input.companyId.trim();
+  const roomScopeId = input.roomScopeId.trim();
+  if (!companyId || !roomScopeId) {
+    throw new Error("Room memory path requires companyId and roomScopeId.");
+  }
+  return path.resolve(
+    resolvePaperclipInstanceRoot(),
+    "memory",
+    "rooms",
+    sanitizeFriendlyPathSegment(companyId, "company"),
+    sanitizeFriendlyPathSegment(roomScopeId, "room"),
+  );
+}
+
 function sanitizeFriendlyPathSegment(value: string | null | undefined, fallback = "_default"): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return fallback;
