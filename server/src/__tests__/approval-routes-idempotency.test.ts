@@ -249,6 +249,50 @@ describe("approval routes idempotent retries", () => {
     expect(mockApprovalService.requestRevision).not.toHaveBeenCalled();
   });
 
+  /**
+   * The company_scope:read leak on the approvals queue, closed.
+   *
+   * That action is DENIED to a non-privileged member (the human branch refuses it
+   * to force per-item filtering) but ALLOWED to an agent, which skips that
+   * branch — so gating this list on it handed an unpaired agent every approval in
+   * the company. Approvals carry no issue or project, so the per-item question is
+   * about the requester. See doc/audits/company-scope-read-audit.md.
+   */
+  it("narrows the approvals queue to the caller's own world", async () => {
+    mockAccessService.decide.mockImplementation(async (input: any) => {
+      if (input.action === "company_scope:read") return { allowed: false };
+      if (input.action === "agent:read") {
+        return { allowed: input.resource?.agentId === "agent-visible" };
+      }
+      return { allowed: true };
+    });
+    mockApprovalService.list.mockResolvedValue([
+      { id: "ap-visible", companyId: "company-1", requestedByAgentId: "agent-visible", payload: {} },
+      { id: "ap-foreign", companyId: "company-1", requestedByAgentId: "agent-foreign", payload: {} },
+      { id: "ap-mine", companyId: "company-1", requestedByUserId: "user-1", payload: {} },
+      { id: "ap-orphan", companyId: "company-1", payload: {} },
+    ]);
+
+    const app = await createApp();
+    const res = await request(app).get("/api/companies/company-1/approvals");
+
+    expect(res.status).toBe(200);
+    // Visible agent's request and the caller's own; not another agent's, and not
+    // one tied to nobody.
+    expect(res.body.map((a: { id: string }) => a.id)).toEqual(["ap-visible", "ap-mine"]);
+  });
+
+  it("still returns the full queue to a company-scoped caller", async () => {
+    mockApprovalService.list.mockResolvedValue([
+      { id: "ap-a", companyId: "company-1", requestedByAgentId: "agent-a", payload: {} },
+      { id: "ap-b", companyId: "company-1", requestedByAgentId: "agent-b", payload: {} },
+    ]);
+    const app = await createApp();
+    const res = await request(app).get("/api/companies/company-1/approvals");
+    expect(res.status).toBe(200);
+    expect(res.body.map((a: { id: string }) => a.id)).toEqual(["ap-a", "ap-b"]);
+  });
+
   it("derives approval attribution from the authenticated actor on approve", async () => {
     mockApprovalService.getById.mockResolvedValue({
       id: "approval-4",

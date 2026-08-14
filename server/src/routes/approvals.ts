@@ -252,6 +252,55 @@ export function approvalRoutes(
     return false;
   }
 
+  /**
+   * Narrow an approval LIST to what the caller may actually see.
+   *
+   * The gate above answers `company_scope:read`, which a non-privileged member is
+   * DENIED (the human branch refuses it precisely to force per-item filtering)
+   * while an agent skips that branch and is allowed — so gating the list on it
+   * alone handed an unpaired agent every approval in the company. Audited in
+   * doc/audits/company-scope-read-audit.md.
+   *
+   * Approvals carry no issue or project, so the per-item question is about the
+   * REQUESTER: an approval raised by an agent in your world is yours to see, as is
+   * one you raised yourself. Verdicts are memoised per agent, since a queue is
+   * many approvals from few agents.
+   *
+   * Filtering rather than refusing, for the same reason as the workspace list:
+   * refusing empties a scoped caller's own queue instead of scoping it.
+   */
+  async function narrowApprovalsForActor<T extends {
+    requestedByAgentId?: string | null;
+    requestedByUserId?: string | null;
+  }>(req: Request, companyId: string, rows: T[]): Promise<T[]> {
+    const verdicts = new Map<string, Promise<boolean>>();
+    const mayReadAgent = (agentId: string) => {
+      const cached = verdicts.get(agentId);
+      if (cached) return cached;
+      const pending = access
+        .decide({
+          actor: req.actor,
+          action: "agent:read",
+          resource: { type: "agent", companyId, agentId },
+        })
+        .then((d) => d.allowed);
+      verdicts.set(agentId, pending);
+      return pending;
+    };
+
+    const actorUserId = req.actor.userId ?? null;
+    const keep = await Promise.all(
+      rows.map(async (row) => {
+        if (actorUserId && row.requestedByUserId === actorUserId) return true;
+        if (row.requestedByAgentId) return await mayReadAgent(row.requestedByAgentId);
+        // Raised by neither a visible agent nor this caller: nothing ties it to
+        // them, so it stays out. Fail closed.
+        return false;
+      }),
+    );
+    return rows.filter((_, i) => keep[i]);
+  }
+
   async function assertApprovalMutationAllowedByRunContext(req: Request, res: any, companyId: string) {
     if (req.actor.type !== "agent") return true;
     const runId = req.actor.runId?.trim();
@@ -286,10 +335,20 @@ export function approvalRoutes(
   router.get("/companies/:companyId/approvals", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    if (!(await assertApprovalAccessAllowed(req, res, companyId))) return;
+    // No company_scope:read gate: this list NARROWS rather than refuses. Company
+    // membership is still enforced above, and the single-approval routes below
+    // keep their own checks.
     const status = req.query.status as string | undefined;
+    const companyScope = await access.decide({
+      actor: req.actor,
+      action: "company_scope:read",
+      resource: { type: "company", companyId },
+    });
     const result = await svc.list(companyId, status);
-    res.json(result.map((approval) => redactApprovalPayload(approval)));
+    const visible = companyScope.allowed
+      ? result
+      : await narrowApprovalsForActor(req, companyId, result);
+    res.json(visible.map((approval) => redactApprovalPayload(approval)));
   });
 
   router.get("/approvals/:id", async (req, res) => {

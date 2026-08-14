@@ -3602,30 +3602,29 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     /**
-     * Documents a KNOWN residual gap rather than asserting a fix.
+     * The gap this block used to DOCUMENT is now closed.
      *
-     * `company_scope:read` is deliberately absent from agentScopedVisibilityActions
-     * (see the comment there): the human branch denies it to force per-item
-     * filtering, but agents reach some list endpoints by paths not yet shown to
-     * filter, so denying it could empty an agent's view of its OWN work instead of
-     * narrowing it. So it never reaches restrictedUnpairedAgentCanRead, and an
-     * unpaired agent still answers true here.
+     * company_scope:read was deliberately excluded from agentScopedVisibilityActions
+     * because agents reached list endpoints by paths not shown to filter, so denying
+     * it could empty an agent's view of its own work rather than narrowing it. All 13
+     * consumers were then audited (doc/audits/company-scope-read-audit.md) and the two
+     * that gated a LIST on it — execution-workspaces and approvals — were changed to
+     * narrow per item instead. costs and company search legitimately refuse a
+     * non-privileged caller either way.
      *
-     * That is the remaining way an unpaired agent could see beyond its own work —
-     * via a consumer that trusts company_scope:read without filtering. Closing it
-     * means auditing each consumer first, which is a separate piece of work. This
-     * test exists so that audit starts from a stated fact, and so a future change
-     * that DOES close it fails here and gets read.
+     * So the action is now scoped for agents too, and an unpaired agent is refused
+     * the company-wide shortcut exactly as a non-privileged member already was.
      */
-    it("still grants company_scope:read — documented gap, pending a per-consumer audit", async () => {
+    it("refuses company_scope:read to an unpaired agent, like a member", async () => {
       const { company, unpaired, auth, actorFor } = await setup("unpaired-company-scope");
       const decision = await auth.decide({
         actor: actorFor(unpaired.id),
         action: "company_scope:read",
         resource: { type: "company", companyId: company.id },
       });
-      expect(decision.allowed).toBe(true);
-      // The scoped actions ARE closed, which is what the fix delivers.
+      expect(decision.allowed).toBe(false);
+
+      // And the scoped actions stay closed, which is the substance of the fix.
       const scoped = await auth.decide({
         actor: actorFor(unpaired.id),
         action: "issue:read",

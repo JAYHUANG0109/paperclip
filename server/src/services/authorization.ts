@@ -3077,7 +3077,29 @@ export function authorizationService(db: Db) {
      * so denying it could quietly empty an agent's view of its own work rather
      * than narrowing it. It belongs in this set once each consumer is checked.
      */
-    const agentScopedVisibilityActions = ["agent:read", "issue:read", "project:read", "secrets:read", "runtime:manage"] as const;
+    const agentScopedVisibilityActions = [
+      "agent:read",
+      "issue:read",
+      "project:read",
+      "secrets:read",
+      "runtime:manage",
+      // Added once every consumer was audited (doc/audits/company-scope-read-audit.md).
+      // Until then an agent skipped the human branch — which DENIES this to force
+      // per-item filtering — and received the company-wide allow, so an unpaired
+      // agent read every workspace and every approval in the company.
+      //
+      // Safe now because each of the 13 consumers was handled first:
+      //   9 already narrowed per item and simply lose a shortcut;
+      //   execution-workspaces and approvals now narrow their LISTS instead of
+      //     gating on this, so a denial scopes them rather than emptying them;
+      //   costs (7 aggregate endpoints) and company search legitimately refuse a
+      //     non-privileged caller — members are already denied, and an agent has
+      //     no more claim to company-wide spend or search than they do.
+      //
+      // Order mattered in one direction only: flipping this before those two lists
+      // narrowed would have 403'd agents out of their own work.
+      "company_scope:read",
+    ] as const;
     if (
       restrictAgentVisibilityEnabled() &&
       (agentScopedVisibilityActions as readonly string[]).includes(input.action)
