@@ -40,6 +40,40 @@ export async function getDmTarget(
   return (await ctx.state.get(dmKey(email))) as DmTarget | null;
 }
 
+function chatUserKey(userName: string) {
+  return { scopeKind: "instance" as const, stateKey: `chat-user:${userName.trim()}` };
+}
+
+/**
+ * Remember that a Chat user resource name belongs to an email.
+ *
+ * Mentions identify people by "users/{id}" only — never by email — so without
+ * this index there is no way to turn "@Jay" into the person Paperclip knows.
+ * Unlike a DM space, this is pure identity, so it is safe (and useful) to learn
+ * it from ROOM messages too: anyone who has ever spoken in any space becomes
+ * addressable by mention, not just people who have DM'd the bot.
+ */
+export async function rememberChatUserEmail(
+  ctx: PluginContext,
+  userName: string | undefined,
+  email: string | undefined
+): Promise<void> {
+  const user = userName?.trim();
+  const mail = email?.trim().toLowerCase();
+  if (!user || !mail) return;
+  await ctx.state.set(chatUserKey(user), mail);
+}
+
+/** Email for a Chat user resource name, or null when we have never seen them speak. */
+export async function lookupChatUserEmail(
+  ctx: PluginContext,
+  userName: string
+): Promise<string | null> {
+  if (!userName?.trim()) return null;
+  const found = await ctx.state.get(chatUserKey(userName));
+  return typeof found === "string" && found ? found : null;
+}
+
 /**
  * Resolve which DM space to post into for a given email:
  *  1. The learned space (set when the person last DM'd the bot).

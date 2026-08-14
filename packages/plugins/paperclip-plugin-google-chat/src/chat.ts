@@ -17,6 +17,8 @@ export interface InboundMessage {
   /** Sender's user resource name (e.g. "users/123456789"). Lets us re-discover
    *  the DM space later via spaces.findDirectMessage. */
   senderUserName?: string;
+  /** People @mentioned in this message, from the event's annotations. */
+  mentions?: InboundMention[];
   /** Resource name of the message (e.g. spaces/X/messages/Y) — idempotency key. */
   messageName?: string;
   /** File attachments on the message (uploaded files and/or Drive links). */
@@ -40,6 +42,46 @@ interface ChatMessage {
   sender?: { displayName?: string; name?: string; email?: string };
   attachment?: unknown;
   attachments?: unknown;
+  annotations?: unknown;
+}
+
+/** One person @mentioned in a Chat message. */
+export interface InboundMention {
+  /** User resource name, e.g. "users/123456789" — stable, unlike a display name. */
+  userName: string;
+  displayName?: string;
+}
+
+/**
+ * Pull the @mentioned HUMANS out of a Chat message's annotations.
+ *
+ * Google reports mentions structurally rather than in the text, so this is the
+ * only reliable way to know who was addressed — matching on the visible name
+ * would break on duplicates, nicknames and renames. Bot mentions are dropped:
+ * "@SeasonartsAI" addresses the app itself, not a person, and every message in
+ * a space carries one.
+ */
+export function extractMentions(message: { annotations?: unknown }): InboundMention[] {
+  const raw = message.annotations;
+  if (!Array.isArray(raw)) return [];
+  const out: InboundMention[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const ann = item as Record<string, any>;
+    if (ann.type !== "USER_MENTION") continue;
+    const user = ann.userMention?.user;
+    const userName = typeof user?.name === "string" ? user.name.trim() : "";
+    if (!userName || seen.has(userName)) continue;
+    // "BOT" is the app itself; only HUMAN mentions name a person we can route to.
+    if (user?.type && user.type !== "HUMAN") continue;
+    seen.add(userName);
+    out.push({
+      userName,
+      ...(typeof user?.displayName === "string" ? { displayName: user.displayName } : {}),
+    });
+  }
+  return out;
 }
 
 /** Normalise the Chat message `attachment`/`attachments` list into our shape. */
@@ -91,7 +133,8 @@ export function extractInboundMessage(body: unknown): InboundMessage | null {
         senderEmail: message.sender?.email ?? root.chat?.user?.email,
         senderUserName: message.sender?.name ?? root.chat?.user?.name,
         messageName: message.name,
-        attachments
+        attachments,
+        mentions: extractMentions(message)
       };
     }
   }
@@ -111,7 +154,8 @@ export function extractInboundMessage(body: unknown): InboundMessage | null {
         senderEmail: message.sender?.email ?? root.user?.email,
         senderUserName: message.sender?.name ?? root.user?.name,
         messageName: message.name,
-        attachments
+        attachments,
+        mentions: extractMentions(message)
       };
     }
   }

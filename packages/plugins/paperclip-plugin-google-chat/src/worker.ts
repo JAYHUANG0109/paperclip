@@ -14,7 +14,7 @@ import {
 import { extractCardClick, extractInboundMessage, extractSpaceRef, type InboundMessage, sendMessage, splitFirstImage,
   listSpaceHumanMemberIds,
 } from "./chat.js";
-import { getDmTarget, rememberDmTarget, resolveDmSpace } from "./dm.js";
+import { getDmTarget, lookupChatUserEmail, rememberChatUserEmail, rememberDmTarget, resolveDmSpace } from "./dm.js";
 import { learnSpaceFromApi, listKnownSpaces, rememberSpace, resolveSpaceName } from "./spaces.js";
 import {
   type AgentAssignment,
@@ -43,7 +43,8 @@ import {
   resolveAgentId,
   resolveCompanyId,
   redactSecrets,
-  setConversationIssue
+  setConversationIssue,
+  type ChatTarget
 } from "./routing.js";
 
 interface GoogleChatConfig {
@@ -744,6 +745,107 @@ async function saveDelivered(
  * agent's actual reply arrives later as an issue comment, mirrored to Chat by
  * the issue.comment.created handler registered in setup().
  */
+interface MentionRoute {
+  email: string;
+  agentId: string;
+  companyId: string;
+  displayName?: string;
+}
+
+/**
+ * Turn the @mentions on a message into the agents that should answer.
+ *
+ * Google identifies a mention only by "users/{id}", so each one is resolved
+ * through the chat-user index to an email and then through the assignments map
+ * to that person's agent. Every step is skip-on-miss: a mention of someone who
+ * has never spoken to the bot, or who has no agent, must not stop the message
+ * from being handled — it just falls through to the sender's own agent.
+ *
+ * The bot's own mention is already filtered out during parsing, so "@SeasonartsAI
+ * do X" still routes by sender the way it always has.
+ */
+async function resolveMentionRoutes(
+  ctx: PluginContext,
+  inbound: InboundMessage
+): Promise<MentionRoute[]> {
+  const mentions = inbound.mentions ?? [];
+  if (mentions.length === 0) return [];
+  const senderEmail = inbound.senderEmail?.trim().toLowerCase();
+  const routes: MentionRoute[] = [];
+  const seenAgents = new Set<string>();
+  for (const mention of mentions) {
+    const email = await lookupChatUserEmail(ctx, mention.userName);
+    if (!email) {
+      ctx.logger.info("Mention skipped: unknown Chat user", {
+        userName: mention.userName,
+        displayName: mention.displayName
+      });
+      continue;
+    }
+    // Mentioning yourself is not a redirection — let the normal sender path run.
+    if (email === senderEmail) continue;
+    const assignment = await getAssignment(ctx, email);
+    if (!assignment) {
+      ctx.logger.info("Mention skipped: no agent assigned", { email });
+      continue;
+    }
+    if (seenAgents.has(assignment.agentId)) continue;
+    seenAgents.add(assignment.agentId);
+    routes.push({
+      email,
+      agentId: assignment.agentId,
+      companyId: assignment.companyId,
+      ...(mention.displayName ? { displayName: mention.displayName } : {})
+    });
+  }
+  return routes;
+}
+
+/**
+ * Wake the OTHER agents named in a message.
+ *
+ * The conversation (space+thread) belongs to one issue and therefore one agent,
+ * so additional mentions each get their own issue pointed at the same Chat
+ * target — every mentioned person's agent actually runs, and each reply lands
+ * back in the room the message came from. Best-effort per agent: one failure
+ * must not stop the rest, nor the primary answer that has already been queued.
+ */
+async function wakeAdditionalMentionedAgents(
+  ctx: PluginContext,
+  input: {
+    routes: MentionRoute[];
+    excludeAgentId: string;
+    text: string;
+    inbound: InboundMessage;
+    target: ChatTarget;
+  }
+): Promise<void> {
+  for (const route of input.routes) {
+    if (route.agentId === input.excludeAgentId) continue;
+    try {
+      const issueId = await dispatchToAgent(ctx, {
+        companyId: route.companyId,
+        agentId: route.agentId,
+        text: input.text,
+        senderDisplayName: input.inbound.senderDisplayName,
+        target: input.target
+      });
+      await rememberChatTarget(ctx, issueId, input.target);
+      ctx.logger.info("Woke additionally mentioned agent", {
+        issueId,
+        agentId: route.agentId,
+        mentioned: route.email
+      });
+    } catch (err) {
+      ctx.logger.warn("Failed to wake mentioned agent", {
+        agentId: route.agentId,
+        mentioned: route.email,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+}
+
 async function routeToAgent(
   ctx: PluginContext,
   config: GoogleChatConfig,
@@ -764,13 +866,23 @@ async function routeToAgent(
     return "✅ 好的，下一則訊息會開一個新任務。/ New task — your next message starts a fresh one.";
   }
 
-  // Access control: a sender's assignment decides which agent answers them.
-  // When gating is on, anyone without an assignment is turned away politely and
-  // no agent run is created.
+  // Who answers. An @mention names the person being addressed, so it WINS over
+  // the sender's own agent — "@Jay 幫我看 X" should reach Jay's agent, matching
+  // how @-mentioning an agent already behaves in Paperclip issue comments. With
+  // no mention, the sender's assignment decides, exactly as before.
+  //
+  // Mentions resolve through the chat-user index (users/{id} → email), which is
+  // learned whenever someone speaks. An unknown or unassigned mention is simply
+  // skipped rather than failing the message — the sender still gets an answer.
+  const mentionRoutes = await resolveMentionRoutes(ctx, inbound);
+
   const assignment = await getAssignment(ctx, inbound.senderEmail);
   let companyId: string;
   let agentId: string;
-  if (assignment) {
+  if (mentionRoutes.length > 0) {
+    companyId = mentionRoutes[0]!.companyId;
+    agentId = mentionRoutes[0]!.agentId;
+  } else if (assignment) {
     companyId = assignment.companyId;
     agentId = assignment.agentId;
   } else if (config.gateUnassigned) {
@@ -893,6 +1005,15 @@ async function routeToAgent(
       }
       await attachInboundFiles(ctx, config, existingIssueId, companyId, inbound);
       ctx.logger.info("Appended follow-up to conversation", { issueId: existingIssueId, convKey });
+      // A follow-up may name someone new; they should still be woken even though
+      // the thread's own issue belongs to another agent.
+      await wakeAdditionalMentionedAgents(ctx, {
+        routes: mentionRoutes,
+        excludeAgentId: agentId,
+        text: inbound.text,
+        inbound,
+        target
+      });
       return "⏳ 處理中，請稍候… (Working on it…)";
     } catch (err) {
       ctx.logger.warn("Append to conversation failed; starting a new issue", {
@@ -917,6 +1038,13 @@ async function routeToAgent(
   await rememberLastUserMessage(ctx, issueId, redactSecrets(inbound.text).text);
   await attachInboundFiles(ctx, config, issueId, companyId, inbound);
   ctx.logger.info("Dispatched Chat message to agent", { issueId, agentId, convKey });
+  await wakeAdditionalMentionedAgents(ctx, {
+    routes: mentionRoutes,
+    excludeAgentId: agentId,
+    text: dispatchText,
+    inbound,
+    target
+  });
   return "⏳ 處理中，請稍候… (Working on it…)";
 }
 
@@ -1717,6 +1845,12 @@ const plugin = definePlugin({
         userName: inbound.senderUserName
       });
     }
+
+    // Identity, unlike a DM channel, is safe to learn from ANY space: this is
+    // what lets a later "@someone" resolve to a person. Without it a mention is
+    // just an opaque users/{id}. Indexing room speakers too means people become
+    // mentionable without having to DM the bot first.
+    await rememberChatUserEmail(ctx, inbound.senderUserName, inbound.senderEmail);
 
     if (config.routingEnabled) {
       try {
