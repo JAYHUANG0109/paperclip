@@ -19,10 +19,10 @@
  * enabled deliberately, and so a security posture (#3) can drive it.
  */
 
-export function secretRedactionEnabled(): boolean {
-  const v = (process.env.PAPERCLIP_TRANSCRIPT_SECRET_REDACTION ?? "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
-}
+// Delegates to the security-posture resolver, which applies the precedence
+// contract: explicit PAPERCLIP_TRANSCRIPT_SECRET_REDACTION > posture bundle >
+// legacy default (off). Kept as a named export so call-sites stay stable.
+export { transcriptSecretRedactionEnabled as secretRedactionEnabled } from "./services/security-posture.js";
 
 type SecretPattern = { name: string; regex: RegExp };
 
