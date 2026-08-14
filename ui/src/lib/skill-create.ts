@@ -19,6 +19,16 @@ export type SkillCreateDraft = {
   categories: string[];
   markdown: string;
   sharingScope: Exclude<CompanySkillSharingScope, "public_link">;
+  /** For sharingScope="team": the team(s) the skill is shared with. */
+  sharingTeams: string[];
+  /**
+   * Agents to share the skill with explicitly. For a private skill the server
+   * also grants their owners access, which is what makes "private, but these
+   * people too" work.
+   */
+  equipAgentIds: string[];
+  /** Equip every agent already inside the chosen sharing scope. */
+  equipOnCreate: boolean;
   forkedFromSkillId: string | null;
   forkedFromName: string | null;
   /** Destination folder for the new skill (null = Unfiled / top level). */
@@ -92,6 +102,9 @@ export function buildBlankSkillDraft(): SkillCreateDraft {
     categories: [],
     markdown: defaultSkillMarkdown("", ""),
     sharingScope: "company",
+    sharingTeams: [],
+    equipAgentIds: [],
+    equipOnCreate: false,
     forkedFromSkillId: null,
     forkedFromName: null,
     folderId: null,
@@ -110,6 +123,9 @@ export function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft
     categories: skill.categories,
     markdown: skill.markdown.replace(/^name:\s*.*$/m, `name: ${name}`),
     sharingScope: "company",
+    sharingTeams: [],
+    equipAgentIds: [],
+    equipOnCreate: false,
     forkedFromSkillId: skill.id,
     forkedFromName: skill.name,
     folderId: null,
@@ -131,6 +147,11 @@ export function skillCreateDraftToPayload(draft: SkillCreateDraft): CompanySkill
     tagline: draft.tagline.trim() || null,
     categories: draft.categories,
     sharingScope: draft.sharingScope,
+    // Only send the teams when they apply — a stale list on a company/private
+    // skill would be persisted and resurface if the scope is switched back.
+    sharingTeams: draft.sharingScope === "team" ? draft.sharingTeams : [],
+    equipAgentIds: draft.equipAgentIds,
+    equipOnCreate: draft.equipOnCreate,
     forkedFromSkillId: draft.forkedFromSkillId,
     folderId: draft.folderId ?? undefined,
   };

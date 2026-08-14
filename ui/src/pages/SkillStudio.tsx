@@ -26,6 +26,7 @@ import {
 import type {
   Agent,
   CompanySkillDetail,
+  CompanySkillSharingScope,
   CompanySkillListItem,
   CompanySkillTestInput,
   CompanySkillTestRun,
@@ -51,6 +52,7 @@ import { useOptionalToastActions } from "../context/ToastContext";
 import { classifySkillDenial } from "@/lib/skill-policy-denial";
 import { agentsApi } from "@/api/agents";
 import { companySkillsApi } from "@/api/companySkills";
+import { SkillSharingPanel } from "@/components/SkillSharingPanel";
 import { issuesApi } from "@/api/issues";
 import { queryKeys } from "@/lib/queryKeys";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -462,6 +464,38 @@ function StudioNewSkillPanel({
     setDraft((current) => ({ ...current, ...patch }));
   }
 
+  // Only the teams the creator actually belongs to — sharing with a team you
+  // are not on is not a case the picker should invite.
+  const myTeamsQuery = useQuery({
+    queryKey: queryKeys.companySkills.myTeams(companyId),
+    queryFn: () => companySkillsApi.myTeams(companyId),
+    enabled: draft.sharingScope === "team",
+    staleTime: 60_000,
+  });
+  const agentsQuery = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+    staleTime: 60_000,
+  });
+  const shareableAgents = useMemo(
+    () => (agentsQuery.data ?? []).filter((agent) => agent.status !== "terminated"),
+    [agentsQuery.data],
+  );
+
+  function toggleTeam(team: string) {
+    const next = draft.sharingTeams.includes(team)
+      ? draft.sharingTeams.filter((t) => t !== team)
+      : [...draft.sharingTeams, team];
+    patchDraft({ sharingTeams: next });
+  }
+
+  function toggleShareAgent(agentId: string) {
+    const next = draft.equipAgentIds.includes(agentId)
+      ? draft.equipAgentIds.filter((id) => id !== agentId)
+      : [...draft.equipAgentIds, agentId];
+    patchDraft({ equipAgentIds: next });
+  }
+
   const createSkill = useMutation({
     mutationFn: () => companySkillsApi.create(companyId, skillCreateDraftToPayload({
       ...draft,
@@ -647,31 +681,101 @@ function StudioNewSkillPanel({
           <p className="text-xs text-muted-foreground">Choose who can discover this skill inside Paperclip.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          {(["company", "private"] as const).map((scope) => (
+          {SKILL_SHARING_SCOPES.map((option) => (
             <button
-              key={scope}
+              key={option.scope}
               type="button"
-              onClick={() => patchDraft({ sharingScope: scope })}
+              onClick={() => patchDraft({ sharingScope: option.scope })}
               className={cn(
                 "rounded-md border px-3 py-2 text-left text-sm",
-                draft.sharingScope === scope ? "border-foreground bg-accent/50" : "border-border",
+                draft.sharingScope === option.scope ? "border-foreground bg-accent/50" : "border-border",
               )}
             >
-              <span className="block font-medium">{scope === "company" ? "Company" : "Private"}</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                {scope === "company" ? "Visible inside this company." : "Only visible in your library."}
-              </span>
+              <span className="block font-medium">{option.label}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{option.hint}</span>
             </button>
           ))}
-          <button
-            type="button"
-            disabled
-            className="rounded-md border border-dashed border-border px-3 py-2 text-left text-sm text-muted-foreground"
-          >
-            <span className="block font-medium">Public</span>
-            <span className="mt-1 block text-xs">Coming later.</span>
-          </button>
         </div>
+
+        {draft.sharingScope === "team" && (
+          <div className="space-y-2 rounded-md border border-border px-3 py-3">
+            <Label className="text-xs">Teams</Label>
+            {myTeamsQuery.isLoading ? (
+              <p className="text-xs text-muted-foreground">Loading your teams…</p>
+            ) : (myTeamsQuery.data?.teams ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                You are not on a team yet, so there is nobody to share with. Pick Company or Private
+                instead.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {(myTeamsQuery.data?.teams ?? []).map((team) => (
+                  <button
+                    key={team}
+                    type="button"
+                    onClick={() => toggleTeam(team)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs",
+                      draft.sharingTeams.includes(team)
+                        ? "border-foreground bg-accent/50 text-foreground"
+                        : "border-border text-muted-foreground",
+                    )}
+                  >
+                    {team}
+                  </button>
+                ))}
+              </div>
+            )}
+            {draft.sharingTeams.length === 0 && (myTeamsQuery.data?.teams ?? []).length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Pick at least one team, or the skill stays visible only to you.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="space-y-2 rounded-md border border-border px-3 py-3">
+          <Label className="text-xs">
+            {draft.sharingScope === "private" ? "Also share with these agents" : "Share with specific agents"}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {draft.sharingScope === "private"
+              ? "A private skill is yours alone. Named agents get it too, and so do the people they belong to."
+              : "Optional. These agents get the skill equipped regardless of the scope above."}
+          </p>
+          {agentsQuery.isLoading ? (
+            <p className="text-xs text-muted-foreground">Loading agents…</p>
+          ) : (
+            <div className="max-h-(--sz-11rem) space-y-1 overflow-y-auto">
+              {shareableAgents.map((agent) => (
+                <label key={agent.id} className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={draft.equipAgentIds.includes(agent.id)}
+                    onChange={() => toggleShareAgent(agent.id)}
+                  />
+                  <span className="truncate">{agent.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={draft.equipOnCreate}
+            onChange={(event) => patchDraft({ equipOnCreate: event.target.checked })}
+          />
+          <span>
+            <span className="block font-medium">Equip it now</span>
+            <span className="block text-xs text-muted-foreground">
+              Give the skill to every agent already inside the sharing scope above. Leave off to
+              share it without installing it anywhere.
+            </span>
+          </span>
+        </label>
       </section>
 
       <details className="rounded-md border border-border px-3 py-2">
@@ -695,6 +799,22 @@ function StudioNewSkillPanel({
     </div>
   );
 }
+
+/**
+ * The fork's sharing model: company-wide, one-or-more teams, or private with an
+ * explicit share list. Upstream's Skill Studio shipped only company/private
+ * (plus a disabled "Public"), which silently dropped team sharing — the scope
+ * every 資訊部 / campus-scoped skill depends on.
+ */
+const SKILL_SHARING_SCOPES: Array<{
+  scope: Exclude<CompanySkillSharingScope, "public_link">;
+  label: string;
+  hint: string;
+}> = [
+  { scope: "company", label: "Company", hint: "Visible to everyone in this company." },
+  { scope: "team", label: "Team", hint: "Visible only to the teams you choose." },
+  { scope: "private", label: "Private", hint: "Only you, plus anyone you share with below." },
+];
 
 function StudioMessage({ message }: { message: string }) {
   return (
@@ -1435,17 +1555,26 @@ function SkillPane({
     <PaneScaffold
       title={<SkillPaneTitle skillName={skill.name} folder={currentFolder || "root"} />}
       action={
-        <SkillFileActions
-          readOnly={readOnly}
-          selectedFile={selectedFile}
-          currentFolder={currentFolder}
-          canDeleteFile={selectedFile !== "SKILL.md"}
-          pending={createMutation.isPending || deleteMutation.isPending || dirty}
-          onAddFile={() => setCreateDialog("file")}
-          onAddFolder={() => setCreateDialog("folder")}
-          onDeleteFile={() => deleteMutation.mutate({ path: selectedFile, target: "file" })}
-          onDeleteFolder={() => setDeleteFolderOpen(true)}
-        />
+        <div className="flex items-center gap-2">
+          <SkillSharingPanel
+            companyId={companyId}
+            skillId={skillId}
+            scope={skill.sharingScope ?? "company"}
+            sharingTeams={skill.sharingTeams ?? []}
+            canManage={!readOnly}
+          />
+          <SkillFileActions
+            readOnly={readOnly}
+            selectedFile={selectedFile}
+            currentFolder={currentFolder}
+            canDeleteFile={selectedFile !== "SKILL.md"}
+            pending={createMutation.isPending || deleteMutation.isPending || dirty}
+            onAddFile={() => setCreateDialog("file")}
+            onAddFolder={() => setCreateDialog("folder")}
+            onDeleteFile={() => deleteMutation.mutate({ path: selectedFile, target: "file" })}
+            onDeleteFolder={() => setDeleteFolderOpen(true)}
+          />
+        </div>
       }
     >
       <div className="flex min-h-0 flex-1 flex-col">
