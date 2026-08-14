@@ -349,7 +349,7 @@
       "custom": "自訂",
       "adapterOptionsSuffix": " 轉接器選項",
       "primaryModel": "主要模型",
-      "modelLane": "模型通道",
+      "modelLane": "模型等級",
       "primary": "主要",
       "cheap": "經濟",
       "sends": "送出",
@@ -413,7 +413,17 @@
       "archivedByTooltip": "由 {{name}} 於 {{when}} 封存",
       "unarchive": "取消封存",
       "unarchiving": "取消封存中…",
-      "unarchiveFailed": "無法取消封存此議題，請再試一次。"
+      "unarchiveFailed": "無法取消封存此議題，請再試一次。",
+      "watchdogAgent": "守望代理人",
+      "selectAgent": "選擇代理人",
+      "noAgentsFound": "找不到代理人。",
+      "watchdogPlaceholder": "守望代理人要盯什麼？又該如何推動工作繼續進行？",
+      "noMatches": "沒有符合的項目。",
+      "noMatchingTasks": "沒有符合的任務。",
+      "relatedTasks": "相關任務",
+      "openWatchdogTask": "開啟守望任務",
+      "nextCheckLabel": "下次檢查",
+      "lastTriggeredLabel": "上次觸發"
     },
     "actions": {
       "newSubIssue": "新增子議題",

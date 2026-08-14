@@ -308,7 +308,17 @@
       "archivedByTooltip": "Archived by {{name}} · {{when}}",
       "unarchive": "Unarchive",
       "unarchiving": "Unarchiving…",
-      "unarchiveFailed": "Failed to unarchive this issue. Please try again."
+      "unarchiveFailed": "Failed to unarchive this issue. Please try again.",
+      "watchdogAgent": "Watchdog agent",
+      "selectAgent": "Select agent",
+      "noAgentsFound": "No agents found.",
+      "watchdogPlaceholder": "What should the watchdog watch for and how should it keep work moving?",
+      "noMatches": "No matches.",
+      "noMatchingTasks": "No matching tasks.",
+      "relatedTasks": "Related tasks",
+      "openWatchdogTask": "Open watchdog task",
+      "nextCheckLabel": "Next check",
+      "lastTriggeredLabel": "Last triggered"
     },
     "actions": {
       "newSubIssue": "New Sub-issue",
