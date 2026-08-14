@@ -83,6 +83,27 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await tempDb?.cleanup();
   });
 
+  it("lets any actor share to every company team, not just their own", async () => {
+    const companyId = randomUUID();
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values([
+      { id: randomUUID(), companyId, name: "A", role: "engineer", adapterType: "codex_local", metadata: { teams: ["數位資訊部"] } },
+      { id: randomUUID(), companyId, name: "B", role: "engineer", adapterType: "codex_local", metadata: { teams: ["總管理處", "教學組"] } },
+    ]);
+
+    // A non-privileged actor (isPrivileged=false) who belongs to none of these
+    // teams still gets the full company team list and canShareToAll — the point
+    // of opening cross-team sharing to everyone.
+    const result = await svc.getShareableTeams(companyId, randomUUID(), false);
+    expect(result.canShareToAll).toBe(true);
+    expect([...result.teams].sort()).toEqual(["數位資訊部", "總管理處", "教學組"].sort());
+  });
+
   it("lists skills without exposing markdown content", async () => {
     const companyId = randomUUID();
     const skillId = randomUUID();

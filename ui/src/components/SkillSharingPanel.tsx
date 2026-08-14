@@ -43,9 +43,11 @@ function ScopeIcon({ scope }: { scope: CompanySkillSharingScope }) {
 export function SkillSharingPanel({ companyId, skillId, scope, sharingTeams, canManage }: Props) {
   const queryClient = useQueryClient();
 
-  const myTeamsQuery = useQuery({
-    queryKey: queryKeys.companySkills.myTeams(companyId),
-    queryFn: () => companySkillsApi.myTeams(companyId),
+  // All company teams — re-scoping a skill to a team may target any team, not
+  // only the manager's own (see getShareableTeams on the server).
+  const teamsQuery = useQuery({
+    queryKey: queryKeys.companySkills.shareableTeams(companyId),
+    queryFn: () => companySkillsApi.shareableTeams(companyId),
     enabled: canManage,
     staleTime: 60_000,
   });
@@ -61,7 +63,7 @@ export function SkillSharingPanel({ companyId, skillId, scope, sharingTeams, can
     },
   });
 
-  const teams = myTeamsQuery.data?.teams ?? [];
+  const teams = teamsQuery.data?.teams ?? [];
   const current = (scope === "public_link" ? "company" : scope) as EditableScope;
 
   function chooseScope(next: EditableScope) {

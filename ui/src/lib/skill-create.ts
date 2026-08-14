@@ -104,7 +104,9 @@ export function buildBlankSkillDraft(): SkillCreateDraft {
     sharingScope: "company",
     sharingTeams: [],
     equipAgentIds: [],
-    equipOnCreate: false,
+    // Equipping is the default: creating/sharing a skill installs it onto the
+    // agents in its scope unless the author unchecks "Equip it now".
+    equipOnCreate: true,
     forkedFromSkillId: null,
     forkedFromName: null,
     folderId: null,
@@ -125,7 +127,7 @@ export function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft
     sharingScope: "company",
     sharingTeams: [],
     equipAgentIds: [],
-    equipOnCreate: false,
+    equipOnCreate: true,
     forkedFromSkillId: skill.id,
     forkedFromName: skill.name,
     folderId: null,

@@ -97,6 +97,7 @@ export const queryKeys = {
   companySkills: {
     list: (companyId: string) => ["company-skills", companyId] as const,
     myTeams: (companyId: string) => ["company-skills", companyId, "my-teams"] as const,
+    shareableTeams: (companyId: string) => ["company-skills", companyId, "shareable-teams"] as const,
     listRecent: (companyId: string) =>
       ["company-skills", companyId, "recent-updated"] as const,
     detail: (companyId: string, skillId: string) => ["company-skills", companyId, skillId] as const,

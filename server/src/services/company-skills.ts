@@ -7330,12 +7330,10 @@ export function companySkillService(db: Db) {
 
   // Set of private skill ids a user may see (creator + explicit members).
   // The set of team names a user belongs to: the union of metadata.teams across
-  // every agent the user has joined. Used for team-scoped skill visibility and
-  // to populate the "share with team" multiselect.
-  // Members of this team (the IT department) may share skills to ANY team, not
-  // just their own — they run cross-team enablement. Overridable per deployment.
-  const CROSS_TEAM_SHARE_TEAM = process.env.PAPERCLIP_CROSS_TEAM_SHARE_TEAM?.trim() || "資訊部";
-
+  // every agent the user has joined. Used for team-scoped skill VISIBILITY (a
+  // team-scoped skill is visible to members of its shared teams). Note: team
+  // SHARING targets are no longer restricted to a user's own teams — see
+  // getShareableTeams — so this is now a visibility helper only.
   async function getUserTeams(companyId: string, userId: string): Promise<Set<string>> {
     const joined = await db
       .select({ agentId: agentMemberships.agentId })
@@ -7374,23 +7372,24 @@ export function companySkillService(db: Db) {
     return out;
   }
 
-  // The set of teams a user may SHARE a skill/folder TO. Everyone may target
-  // their OWN teams; members of the IT department (資訊部) and company
-  // admins/owners may target ANY team (they run cross-team enablement).
-  // `canShareToAll` lets the UI offer the full team list and skips the
-  // server-side subset check.
+  // The set of teams an actor may SHARE a skill/folder/project TO.
+  //
+  // Opened up (product decision 2026-08-15): EVERY actor may target ANY team in
+  // the company, not just their own — previously this was gated to the actor's
+  // own teams unless they were an admin/owner or a member of the IT department
+  // (資訊部, `CROSS_TEAM_SHARE_TEAM`). Sharing to a team only ever makes a thing
+  // visible/equippable to that team; the founder wants cross-team sharing to be
+  // universal. `canShareToAll: true` populates the full team list in every
+  // sharing picker and makes `assertSharingTeamsAllowed` accept any company team.
+  //
+  // The `userId`/`isPrivileged` args are retained for call-site compatibility (and
+  // in case the gate is re-narrowed later) but no longer change the result.
   async function getShareableTeams(
     companyId: string,
-    userId: string | null,
-    isPrivileged: boolean,
+    _userId: string | null,
+    _isPrivileged: boolean,
   ): Promise<{ teams: Set<string>; canShareToAll: boolean }> {
-    if (isPrivileged) return { teams: await getAllCompanyTeams(companyId), canShareToAll: true };
-    if (!userId) return { teams: new Set<string>(), canShareToAll: false };
-    const own = await getUserTeams(companyId, userId);
-    if (own.has(CROSS_TEAM_SHARE_TEAM)) {
-      return { teams: await getAllCompanyTeams(companyId), canShareToAll: true };
-    }
-    return { teams: own, canShareToAll: false };
+    return { teams: await getAllCompanyTeams(companyId), canShareToAll: true };
   }
 
   // ---- Folder registry (scoped, owned folders) ----

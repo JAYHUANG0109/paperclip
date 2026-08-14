@@ -464,11 +464,11 @@ function StudioNewSkillPanel({
     setDraft((current) => ({ ...current, ...patch }));
   }
 
-  // Only the teams the creator actually belongs to — sharing with a team you
-  // are not on is not a case the picker should invite.
-  const myTeamsQuery = useQuery({
-    queryKey: queryKeys.companySkills.myTeams(companyId),
-    queryFn: () => companySkillsApi.myTeams(companyId),
+  // Every team in the company — anyone may share a skill to any team, not just
+  // the teams they belong to (see getShareableTeams on the server).
+  const teamsQuery = useQuery({
+    queryKey: queryKeys.companySkills.shareableTeams(companyId),
+    queryFn: () => companySkillsApi.shareableTeams(companyId),
     enabled: draft.sharingScope === "team",
     staleTime: 60_000,
   });
@@ -700,16 +700,16 @@ function StudioNewSkillPanel({
         {draft.sharingScope === "team" && (
           <div className="space-y-2 rounded-md border border-border px-3 py-3">
             <Label className="text-xs">Teams</Label>
-            {myTeamsQuery.isLoading ? (
-              <p className="text-xs text-muted-foreground">Loading your teams…</p>
-            ) : (myTeamsQuery.data?.teams ?? []).length === 0 ? (
+            {teamsQuery.isLoading ? (
+              <p className="text-xs text-muted-foreground">Loading teams…</p>
+            ) : (teamsQuery.data?.teams ?? []).length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                You are not on a team yet, so there is nobody to share with. Pick Company or Private
-                instead.
+                This company has no teams yet, so there is nobody to share with. Pick Company or
+                Private instead.
               </p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {(myTeamsQuery.data?.teams ?? []).map((team) => (
+                {(teamsQuery.data?.teams ?? []).map((team) => (
                   <button
                     key={team}
                     type="button"
@@ -726,7 +726,7 @@ function StudioNewSkillPanel({
                 ))}
               </div>
             )}
-            {draft.sharingTeams.length === 0 && (myTeamsQuery.data?.teams ?? []).length > 0 && (
+            {draft.sharingTeams.length === 0 && (teamsQuery.data?.teams ?? []).length > 0 && (
               <p className="text-xs text-muted-foreground">
                 Pick at least one team, or the skill stays visible only to you.
               </p>
@@ -734,32 +734,37 @@ function StudioNewSkillPanel({
           </div>
         )}
 
-        <div className="space-y-2 rounded-md border border-border px-3 py-3">
-          <Label className="text-xs">
-            {draft.sharingScope === "private" ? "Also share with these agents" : "Share with specific agents"}
-          </Label>
-          <p className="text-xs text-muted-foreground">
-            {draft.sharingScope === "private"
-              ? "A private skill is yours alone. Named agents get it too, and so do the people they belong to."
-              : "Optional. These agents get the skill equipped regardless of the scope above."}
-          </p>
-          {agentsQuery.isLoading ? (
-            <p className="text-xs text-muted-foreground">Loading agents…</p>
-          ) : (
-            <div className="max-h-(--sz-11rem) space-y-1 overflow-y-auto">
-              {shareableAgents.map((agent) => (
-                <label key={agent.id} className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={draft.equipAgentIds.includes(agent.id)}
-                    onChange={() => toggleShareAgent(agent.id)}
-                  />
-                  <span className="truncate">{agent.name}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Company scope reaches every agent already, so a per-agent share list is
+            redundant there — only offer it for team (optional extra equips) and
+            private (the explicit share list that also grants visibility). */}
+        {draft.sharingScope !== "company" && (
+          <div className="space-y-2 rounded-md border border-border px-3 py-3">
+            <Label className="text-xs">
+              {draft.sharingScope === "private" ? "Also share with these agents" : "Share with specific agents"}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {draft.sharingScope === "private"
+                ? "A private skill is yours alone. Named agents get it too, and so do the people they belong to."
+                : "Optional. These agents get the skill equipped regardless of the scope above."}
+            </p>
+            {agentsQuery.isLoading ? (
+              <p className="text-xs text-muted-foreground">Loading agents…</p>
+            ) : (
+              <div className="max-h-(--sz-11rem) space-y-1 overflow-y-auto">
+                {shareableAgents.map((agent) => (
+                  <label key={agent.id} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={draft.equipAgentIds.includes(agent.id)}
+                      onChange={() => toggleShareAgent(agent.id)}
+                    />
+                    <span className="truncate">{agent.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <label className="flex items-start gap-2 text-sm">
           <input
