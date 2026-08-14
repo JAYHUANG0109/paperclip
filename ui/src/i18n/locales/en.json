@@ -6738,7 +6738,8 @@
   },
   "notifications": {
     "title": "Notifications",
-    "markAllRead": "Mark all read"
+    "markAllRead": "Mark all read",
+    "collapsedCount": "{{count}} hidden"
   },
   "schedule": {
     "title": "My Schedule",

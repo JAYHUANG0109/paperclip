@@ -6843,7 +6843,8 @@
   },
   "notifications": {
     "title": "通知",
-    "markAllRead": "全部標為已讀"
+    "markAllRead": "全部標為已讀",
+    "collapsedCount": "已收合 {{count}} 則"
   },
   "schedule": {
     "newEvent": "新增活動",
