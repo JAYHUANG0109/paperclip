@@ -3347,6 +3347,85 @@ describeEmbeddedPostgres("authorization service", () => {
 
 
   /**
+   * Team-shared projects under the 四季 restriction.
+   *
+   * The New Project dialog offers "團隊專案（可選多個團隊）" and the members panel
+   * promises 所屬團隊成員均可存取, but restrictedMemberCanReadProject only knew
+   * owner / explicit member / has-work-in. The team rule existed in
+   * decideProjectVisibility and was unreachable: with the restriction on, this
+   * function answers first and TOTALLY, so the flagged path never ran. A live dry
+   * run found a project shared with 數位資訊部 readable by zero non-privileged
+   * members — the five people it was shared with all saw nothing.
+   */
+  describe("四季 restriction (flag ON): team-shared projects", () => {
+    afterEach(() => {
+      delete process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY;
+    });
+
+    async function teamScenario(label: string, visibility: "team" | "private", projectTeams: string[]) {
+      process.env.PAPERCLIP_RESTRICT_AGENT_VISIBILITY = "true";
+      const company = await createCompany(db, label);
+      const [project] = await db.insert(projects).values({
+        companyId: company.id,
+        name: `Project ${randomUUID()}`,
+        visibility,
+        teams: projectTeams,
+      }).returning();
+
+      // A member is "on a team" through the teams tag of an agent they joined.
+      const make = async (teams: string[]) => {
+        const userId = `user-${randomUUID()}`;
+        await db.insert(companyMemberships).values({
+          companyId: company.id, principalType: "user", principalId: userId,
+          status: "active", membershipRole: "operator",
+        });
+        const [agent] = await db.insert(agents).values({
+          companyId: company.id, name: `Agent ${randomUUID()}`, role: "engineer",
+          adapterType: "process", adapterConfig: {}, runtimeConfig: {},
+          metadata: { teams },
+        }).returning();
+        await db.insert(agentMemberships).values({
+          companyId: company.id, agentId: agent!.id, userId, state: "joined",
+        });
+        return userId;
+      };
+
+      return {
+        company,
+        project: project!,
+        make,
+        auth: authorizationService(db),
+        canRead: async (userId: string) => (await authorizationService(db).decide({
+          actor: { type: "board", userId, source: "session" },
+          action: "project:read",
+          resource: { type: "project", companyId: company.id, projectId: project!.id },
+        })).allowed,
+      };
+    }
+
+    it("lets a team member read a project shared with their team", async () => {
+      const s = await teamScenario("TeamShareMatch", "team", ["數位資訊部"]);
+      expect(await s.canRead(await s.make(["數位資訊部"]))).toBe(true);
+    });
+
+    it("still hides a team project from someone on a different team", async () => {
+      const s = await teamScenario("TeamShareMiss", "team", ["數位資訊部"]);
+      expect(await s.canRead(await s.make(["幼教學組"]))).toBe(false);
+    });
+
+    it("keeps a PRIVATE project hidden from an ordinary peer on the same team", async () => {
+      const s = await teamScenario("TeamSharePrivatePeer", "private", ["數位資訊部"]);
+      expect(await s.canRead(await s.make(["數位資訊部"]))).toBe(false);
+    });
+
+    it("lets a leadership member oversee a private project in their own area", async () => {
+      const s = await teamScenario("TeamSharePrivateLead", "private", ["數位資訊部"]);
+      // 領導團隊 is the default leadership token; the head carries both.
+      expect(await s.canRead(await s.make(["領導團隊", "數位資訊部"]))).toBe(true);
+    });
+  });
+
+  /**
    * Unpaired agents: the fail-closed half of the 四季 restriction.
    *
    * restrictedAgentActorCanRead used to return null ("no opinion") for ANY agent

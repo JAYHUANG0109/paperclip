@@ -1227,7 +1227,12 @@ export function authorizationService(db: Db) {
     if (!projectId) return true;
 
     const project = await db
-      .select({ ownerUserId: projects.ownerUserId })
+      .select({
+        ownerUserId: projects.ownerUserId,
+        visibility: projects.visibility,
+        teams: projects.teams,
+        team: projects.team,
+      })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
       .then((rows) => rows[0] ?? null);
@@ -1246,6 +1251,38 @@ export function authorizationService(db: Db) {
       )
       .limit(1);
     if (explicitMember.length > 0) return true;
+
+    /**
+     * Team sharing. Without this, tagging a project `team: 數位資訊部` granted
+     * NOTHING — the New Project dialog offers "團隊專案（可選多個團隊）" and the
+     * members panel says 所屬團隊成員均可存取, but only an owner, an explicit member,
+     * or somebody with work in the project could actually read it.
+     *
+     * The rule already existed in decideProjectVisibility; it was simply
+     * unreachable, because under the 四季 restriction this function answers first
+     * and totally and never falls through to it. Rather than invent a second
+     * semantic, mirror that one exactly:
+     *   - `team` project    → any member whose team token matches;
+     *   - `private` project → only a LEADERSHIP member whose token matches, so a
+     *     campus/department head oversees their own area's private projects while
+     *     regular peers on the same team still cannot.
+     *
+     * Matching is by token, so a sub-team project tagged [campus, sub] is covered
+     * by the head's campus token, including sub-teams created later. A campus is
+     * deliberately NOT expanded to its children: names like 幼教學組 repeat across
+     * campuses, so expanding would leak sibling campuses' projects.
+     */
+    const projectTeams = (project.teams && project.teams.length > 0)
+      ? project.teams
+      : (project.team ? [project.team] : []);
+    if (projectTeams.length > 0 && (project.visibility === "team" || project.visibility === "private")) {
+      const actorTeams = await resolveActorTeams(companyId, { type: "board", userId, source: "session" });
+      if (actorTeams.size > 0 && anyTeamTokenMatches(projectTeams, actorTeams)) {
+        if (project.visibility === "team") return true;
+        const leadership = leadershipTeamTokens();
+        for (const token of actorTeams) if (leadership.has(token)) return true;
+      }
+    }
 
     const visible = await getVisibleAgentIdsForUser(companyId, userId);
     const agentIds = [...visible];
