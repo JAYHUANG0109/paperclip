@@ -14610,6 +14610,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         const runMemory = await prepareRunMemory(db, {
           companyId: agent.companyId,
           agentId: agent.id,
+          // Lets prepareRunMemory recognise a group-chat room run (flag-gated) and
+          // project the ROOM's shared memory instead of the mapped user's.
+          issueId: issueId ?? null,
         });
         if (runMemory) {
           const existingRuntimeEnv = parseObject(runtimeConfig.env);
@@ -14624,6 +14627,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             dir: runMemory.dir,
             indexPath: runMemory.indexPath,
             userId: runMemory.userId,
+            roomScopeId: runMemory.roomScopeId,
             entryCount: runMemory.entryCount,
           };
         } else {

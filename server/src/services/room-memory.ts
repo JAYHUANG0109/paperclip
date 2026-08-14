@@ -12,8 +12,11 @@
  * `originId` matching the room scope. A room owner is a room, never a human, so
  * this never grants an agent access to any person's personal memory.
  */
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { roomMemories, type Db } from "@paperclipai/db";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { resolveRoomMemoryDir } from "../home-paths.js";
 
 /** Surfaces that can own a room. Google Chat today; LINE reserved. */
 const KNOWN_SURFACES = ["google_chat", "line"] as const;
@@ -88,6 +91,60 @@ export async function listRoomMemories(
     )
     .orderBy(desc(roomMemories.updatedAt));
   return rows;
+}
+
+const ROOM_MEMORY_INDEX = "MEMORY.md";
+
+/** A single path component: room memory names are slugs, but never trust them. */
+function safeMemoryFileName(name: string): string | null {
+  const base = name.trim().replace(/\.md$/i, "");
+  if (!base || base.includes("/") || base.includes("\\") || base.includes("..") || base.startsWith(".")) return null;
+  return `${base}.md`;
+}
+
+export interface MaterializeRoomResult {
+  dir: string;
+  indexPath: string;
+  written: string[];
+}
+
+/**
+ * Project a room's memory onto disk for the run to read:
+ * `<instanceRoot>/memory/rooms/<company>/<room>/<name>.md` + a `MEMORY.md` index.
+ * Mirrors the personal-memory materializer's shape (index + one file per memory)
+ * so the agent reads room memory exactly the way it reads personal memory. The
+ * directory is wiped and rewritten each run, so a deleted memory stops reaching
+ * the agent immediately.
+ */
+export async function materializeRoomMemory(
+  db: Db,
+  input: { companyId: string; roomScopeId: string },
+): Promise<MaterializeRoomResult> {
+  const dir = resolveRoomMemoryDir(input);
+  const rows = await listRoomMemories(db, input.companyId, input.roomScopeId);
+
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+
+  const written: string[] = [];
+  const indexLines: string[] = [];
+  for (const row of rows) {
+    const file = safeMemoryFileName(row.name);
+    if (!file) continue;
+    const seen = row.timesObserved > 1 ? ` (seen ${row.timesObserved}×)` : "";
+    const header = `---\nname: ${row.name}\ntype: ${row.memoryType}\ndescription: ${row.description}\n---\n\n`;
+    await fs.writeFile(path.join(dir, file), header + row.content, "utf8");
+    written.push(file);
+    indexLines.push(`- [${row.name}](${file}) — ${row.description}${seen}`);
+  }
+
+  const indexPath = path.join(dir, ROOM_MEMORY_INDEX);
+  const body = indexLines.length
+    ? `# Room memory\n\nShared memory for this chat room. Facts here belong to the room, not to any one person.\n\n${indexLines.join("\n")}\n`
+    : `# Room memory\n\nNo room memories yet.\n`;
+  await fs.writeFile(indexPath, body, "utf8");
+
+  return { dir, indexPath, written };
 }
 
 export interface UpsertRoomMemoryInput {
