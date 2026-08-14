@@ -64,6 +64,7 @@ import {
 // there would diverge a file upstream also edits.
 import type { HeartbeatNotificationToolGateway } from "./services/heartbeat.js";
 import { queueIssueAssignmentWakeup } from "./services/issue-assignment-wakeup.js";
+import { memoryDistillationService } from "./services/memory-distillation.js";
 import { purgeExpiredMemories } from "./services/personal-memory.js";
 import { resolveWorktreeRunExecutionActivationState } from "./services/instance-settings.js";
 import {
@@ -1355,7 +1356,25 @@ export async function startServer(): Promise<StartedServer> {
       });
     }, backupIntervalMs);
   }
-  
+
+  // One-shot on-boot memory-distillation sweep. Ops lever for "consolidate N
+  // agents' memory now" without an authenticated trigger route: set
+  // PAPERCLIP_DISTILL_ON_BOOT=N, restart, then unset it. Capped by N (via the
+  // reconcile `limit`), lowered thresholds so recently-active agents qualify,
+  // and NO wakeup — the tasks land in the queue as `todo` and are picked up on
+  // the agents' next heartbeat rather than firing N runs at once. Fire-and-forget
+  // so a slow sweep never blocks startup.
+  {
+    const distillOnBoot = Number(process.env.PAPERCLIP_DISTILL_ON_BOOT);
+    if (Number.isFinite(distillOnBoot) && distillOnBoot > 0) {
+      const distiller = memoryDistillationService(db);
+      void distiller
+        .reconcileMemoryDistillations({ limit: distillOnBoot, thresholds: { minRuns: 1, minIntervalMs: 0 } })
+        .then((r) => logger.info({ ...r }, `on-boot memory distillation sweep created ${r.created} capture task(s)`))
+        .catch((err) => logger.error({ err }, "on-boot memory distillation sweep failed"));
+    }
+  }
+
   // Wait for external adapters to finish loading before accepting requests.
   // Without this, adapter type validation (assertKnownAdapterType) would
   // reject valid external adapter types during the startup loading window.
