@@ -53,8 +53,16 @@ export function SkillSharingPanel({ companyId, skillId, scope, sharingTeams, can
   });
 
   const setSharing = useMutation({
-    mutationFn: (body: { sharingScope: EditableScope; sharingTeams: string[] }) =>
-      companySkillsApi.update(companyId, skillId, body),
+    mutationFn: async (body: { sharingScope: EditableScope; sharingTeams: string[] }) => {
+      await companySkillsApi.update(companyId, skillId, body);
+      // Unify view + equip: after (re)scoping, equip every agent now in scope so
+      // sharing to a team/company both makes the skill VISIBLE to them AND
+      // installs it — matching the expectation that "share" hands the skill over,
+      // not merely changes who can see it. equipScope resolves the skill's
+      // just-saved scope (company → all agents, team → the shared teams' agents,
+      // private → the creator's) and is idempotent.
+      return companySkillsApi.equipScope(companyId, skillId);
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(companyId, skillId) }),

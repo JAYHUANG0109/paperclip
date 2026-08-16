@@ -8,6 +8,7 @@ import {
   type SkillLang,
 } from "@/lib/skill-i18n";
 import { SkillMembersPanel } from "../components/SkillMembersPanel";
+import { SkillSharingPanel } from "../components/SkillSharingPanel";
 import { TeamScopePicker } from "../components/TeamScopePicker";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
@@ -4405,10 +4406,22 @@ export function SkillDetailPage({
                 className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
               >
                 <option value="company">{t("companySkills.sharingCompany", { defaultValue: "Company — visible inside this company" })}</option>
+                <option value="team">{t("companySkills.sharingTeam", { defaultValue: "Team — visible to the selected teams" })}</option>
                 <option value="private">{t("companySkills.sharingPrivate", { defaultValue: "Private — only visible in your library" })}</option>
               </select>
               <p className="text-xs text-muted-foreground">{t("companySkills.publicLinkComingLater", { defaultValue: "Public link sharing is coming later." })}</p>
             </div>
+            {detail.sharingScope === "team" ? (
+              <div className="rounded-md border border-border p-3">
+                <SkillSharingPanel
+                  companyId={detail.companyId}
+                  skillId={detail.id}
+                  scope={detail.sharingScope}
+                  sharingTeams={detail.sharingTeams ?? []}
+                  canManage={detail.editable}
+                />
+              </div>
+            ) : null}
             {detail.sharingScope === "private" ? (
               <div className="rounded-md border border-border p-3">
                 <SkillMembersPanel skillId={detail.id} companyId={detail.companyId} canManage={detail.editable} />
@@ -7313,7 +7326,23 @@ export function CompanySkills() {
           onToggleStar={() => toggleStar.mutate()}
           starPending={toggleStar.isPending}
           onFork={() => activeDetail && navigate(skillStudioNewRoute(activeDetail.id))}
-          onUpdateSharingScope={(sharingScope) => activeDetail && updateSkillSettings.mutate({ skillId: activeDetail.id, updates: { sharingScope } })}
+          onUpdateSharingScope={(sharingScope) => {
+            if (!activeDetail) return;
+            const skillId = activeDetail.id;
+            // Unify view + equip: changing the scope also equips that scope's
+            // agents (company → all, private → the creator's; team equips as the
+            // teams are picked in the panel below). Best-effort equip so a scope
+            // change is never blocked by it.
+            void (async () => {
+              await updateSkillSettings.mutateAsync({ skillId, updates: { sharingScope } });
+              try {
+                await companySkillsApi.equipScope(selectedCompanyId ?? "", skillId);
+              } catch {
+                /* equip is best-effort; the visibility change already stuck */
+              }
+              void queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(selectedCompanyId ?? "", skillId) });
+            })();
+          }}
           canReview={canReviewSkills}
           onApprove={(skillId) => approveSkill.mutate(skillId)}
           onReject={(skillId, note) => rejectSkill.mutate({ skillId, note })}
