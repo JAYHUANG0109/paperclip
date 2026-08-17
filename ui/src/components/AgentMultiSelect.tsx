@@ -294,7 +294,7 @@ export function AgentMultiSelect({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="flex max-h-[min(70vh,var(--radix-popover-content-available-height,70vh))] w-80 flex-col p-0"
+          className="flex max-h-[min(70vh,var(--radix-popover-content-available-height,70vh))] w-80 flex-col overflow-hidden p-0"
           align={contentAlign}
         >
         <div className="shrink-0 border-b border-border p-3">
