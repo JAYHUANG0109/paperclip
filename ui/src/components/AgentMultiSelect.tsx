@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
-import { ChevronRight, Users } from "lucide-react";
+import { ChevronRight, Globe, Users } from "lucide-react";
 import { AgentIcon } from "@/components/AgentIconPicker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -318,6 +318,31 @@ export function AgentMultiSelect({
         <div className="min-h-0 flex-1 overflow-y-auto" style={{ maxHeight: "55vh" }}>
         {teams && teams.length > 0 && normalizedFilter.length === 0 ? (
           <div className="border-b border-border py-1">
+            {(() => {
+              // "Share to entire company" = select every agent in one click, so
+              // all teams + agents below reflect as checked. A convenience above
+              // the per-team rows.
+              const allIds = agents.map((a) => a.id);
+              const selectedCount = allIds.filter((id) => workingAgentIds.has(id)).length;
+              const allSelected = allIds.length > 0 && selectedCount === allIds.length;
+              const someSelected = selectedCount > 0 && !allSelected;
+              return (
+                <label className="flex cursor-pointer items-center gap-2 border-b border-border py-1.5 pl-3 pr-3 hover:bg-accent/30">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    aria-label={t("agentMultiSelect.shareCompany", { defaultValue: "Share to entire company" })}
+                    onCheckedChange={() => setSelection(new Set(allSelected ? [] : allIds))}
+                  />
+                  <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                    {t("agentMultiSelect.shareCompany", { defaultValue: "Share to entire company" })}
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {selectedCount}/{allIds.length}
+                  </span>
+                </label>
+              );
+            })()}
             <p className="px-3 pb-0.5 pt-1 text-(length:--text-nano) font-medium uppercase tracking-wide text-muted-foreground">
               {teamsLabel}
             </p>

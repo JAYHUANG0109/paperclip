@@ -2282,7 +2282,8 @@
   "agentMultiSelect": {
     "filter": "Filter agents",
     "noneSelected": "No agents selected",
-    "nSelected": "{{count}} selected"
+    "nSelected": "{{count}} selected",
+    "shareCompany": "Share to entire company"
   },
   "companySkills": {
     "skillNamePlaceholder": "Skill name",

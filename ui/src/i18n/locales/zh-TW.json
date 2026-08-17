@@ -2387,7 +2387,8 @@
   "agentMultiSelect": {
     "filter": "篩選代理人",
     "noneSelected": "尚未選擇代理人",
-    "nSelected": "已選擇 {{count}} 個"
+    "nSelected": "已選擇 {{count}} 個",
+    "shareCompany": "分享給整個公司"
   },
   "companySkills": {
     "folderSettings": "資料夾設定",
