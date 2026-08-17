@@ -35,7 +35,7 @@ function SelectField({
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
+      <PopoverContent className="max-h-60 w-[var(--radix-popover-trigger-width)] overflow-y-auto p-1" align="start">
         {options.map((opt) => (
           <button
             key={opt.value}

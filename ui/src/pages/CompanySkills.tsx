@@ -3986,14 +3986,33 @@ export function SkillDetailPage({
             {attached.length} {attached.length === 1 ? "agent" : "agents"} attached
             {selectedVersion ? ` · ${versionLabel(selectedVersion)}` : " · Latest"}
           </p>
-          <AttachAgentsPopover
-            agents={attachAgents}
-            attachedAgentIds={attached.map((agent) => agent.id)}
-            versions={versions}
-            selectedVersionId={currentVersionSelection(skill)}
-            pending={attachPending}
-            onSubmit={onSubmitAttach}
-          />
+          <div className="flex items-center gap-2">
+            {skill.editable && skill.sharingScope !== "company" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={updateSharingPending}
+                onClick={() => onUpdateSharingScope("company")}
+                title={t("companySkills.shareToCompanyHint", { defaultValue: "Make this skill visible to everyone in the company and equip every company agent" })}
+              >
+                <Globe className="mr-1.5 h-4 w-4" />
+                {t("companySkills.shareToCompany", { defaultValue: "Share to entire company" })}
+              </Button>
+            ) : skill.editable && skill.sharingScope === "company" ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Globe className="h-3.5 w-3.5" />
+                {t("companySkills.sharedWithCompany", { defaultValue: "Shared with the whole company" })}
+              </span>
+            ) : null}
+            <AttachAgentsPopover
+              agents={attachAgents}
+              attachedAgentIds={attached.map((agent) => agent.id)}
+              versions={versions}
+              selectedVersionId={currentVersionSelection(skill)}
+              pending={attachPending}
+              onSubmit={onSubmitAttach}
+            />
+          </div>
         </div>
         {attached.length === 0 ? (
           <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">

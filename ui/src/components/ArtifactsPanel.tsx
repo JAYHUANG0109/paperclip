@@ -153,7 +153,7 @@ export function ArtifactsPanel({ taskId, isAgentWorking, openDocKey, openDocTitl
       </div>
 
       {/* Work products list */}
-      <div className="flex-1 overflow-y-auto scrollbar-auto-hide">
+      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-auto-hide">
         {isLoading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -279,7 +279,7 @@ function DocumentViewer({
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto scrollbar-auto-hide p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-auto-hide p-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />

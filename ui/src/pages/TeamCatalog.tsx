@@ -703,7 +703,7 @@ export function TeamDetailPane({
   );
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="min-h-0 flex-1 overflow-auto">
       <div className="space-y-5 p-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">

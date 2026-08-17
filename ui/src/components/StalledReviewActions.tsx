@@ -56,6 +56,10 @@ export function StalledReviewActions({
       queryClient.invalidateQueries({ queryKey: queryKeys.attention(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issueId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.activity(issueId) });
+      // The sidebar "待決議 / pending decisions" badge is a separate count query;
+      // without this it stayed stuck (e.g. "1") after an approve, so the action
+      // read as "didn't save" and prompted repeated clicks.
+      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
       setNote("");
       pushToast({ title: ACTION_PAST_TENSE[action], tone: "success" });
       onResolved?.(action);

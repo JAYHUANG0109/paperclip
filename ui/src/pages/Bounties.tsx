@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useToastActions } from "../context/ToastContext";
 
 const STATUS_META: Record<
   "open" | "claimed" | "done",
@@ -45,13 +46,19 @@ export function Bounties() {
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKeys.bounties(selectedCompanyId ?? "") });
+  const { pushToast } = useToastActions();
+  // Without onError these fired from a click and failed silently — the button
+  // looked dead. Surface failures as a toast.
+  const onMutationError = (error: unknown) =>
+    pushToast({ title: "Action failed", body: error instanceof Error ? error.message : "Please try again.", tone: "error" });
   const create = useMutation({
     mutationFn: () => bountiesApi.create(selectedCompanyId!, { title, description, estimatedMinutes: estMinutes }),
     onSuccess: () => { invalidate(); setCreateOpen(false); setTitle(""); setDescription(""); setEstMinutes(0); },
+    onError: onMutationError,
   });
-  const claim = useMutation({ mutationFn: (id: string) => bountiesApi.claim(selectedCompanyId!, id), onSuccess: invalidate });
-  const complete = useMutation({ mutationFn: (id: string) => bountiesApi.complete(selectedCompanyId!, id), onSuccess: invalidate });
-  const remove = useMutation({ mutationFn: (id: string) => bountiesApi.remove(selectedCompanyId!, id), onSuccess: invalidate });
+  const claim = useMutation({ mutationFn: (id: string) => bountiesApi.claim(selectedCompanyId!, id), onSuccess: invalidate, onError: onMutationError });
+  const complete = useMutation({ mutationFn: (id: string) => bountiesApi.complete(selectedCompanyId!, id), onSuccess: invalidate, onError: onMutationError });
+  const remove = useMutation({ mutationFn: (id: string) => bountiesApi.remove(selectedCompanyId!, id), onSuccess: invalidate, onError: onMutationError });
 
   const byStatus = (status: BountyStatus) => (bounties ?? []).filter((b) => b.status === status);
 

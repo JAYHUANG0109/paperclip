@@ -444,7 +444,7 @@ function PolicySimulator({
           </SheetTitle>
           <SheetDescription>Pick an agent and an action to see what Paperclip would do.</SheetDescription>
         </SheetHeader>
-        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Agent</Label>

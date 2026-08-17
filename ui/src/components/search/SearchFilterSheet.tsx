@@ -147,7 +147,7 @@ export function SearchFilterSheet({
           </button>
         </SheetHeader>
 
-        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           <ChipToggleGroup
             title="Status"
             options={options.status}

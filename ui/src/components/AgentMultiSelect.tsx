@@ -308,8 +308,11 @@ export function AgentMultiSelect({
           {headerContent}
         </div>
         {/* Teams + agents share ONE scroll region so a long team tree never
-            pushes the list (or the Save footer) off-screen. */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+            pushes the list (or the Save footer) off-screen. Explicit inline
+            maxHeight (not a Tailwind/flex/Radix-var chain) so the list ALWAYS
+            has a bounded height to scroll within, regardless of how the popover
+            container's height resolves. */}
+        <div className="min-h-0 flex-1 overflow-y-auto" style={{ maxHeight: "55vh" }}>
         {teams && teams.length > 0 && normalizedFilter.length === 0 ? (
           <div className="border-b border-border py-1">
             <p className="px-3 pb-0.5 pt-1 text-(length:--text-nano) font-medium uppercase tracking-wide text-muted-foreground">
