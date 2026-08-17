@@ -726,6 +726,7 @@
     "moreRuns_other": "還有 {{count}} 個進行中／近期的執行"
   },
   "interaction": {
+    "other": "其他",
     "status": {
       "pending": "待處理",
       "accepted": "已接受",
@@ -2383,6 +2384,11 @@
     "fullErrorOutput": "完整錯誤輸出",
     "noStoredError": "沒有儲存的錯誤訊息。"
   },
+  "agentMultiSelect": {
+    "filter": "篩選代理人",
+    "noneSelected": "尚未選擇代理人",
+    "nSelected": "已選擇 {{count}} 個"
+  },
   "companySkills": {
     "folderSettings": "資料夾設定",
     "manageFolder": "編輯與分享",
@@ -2715,6 +2721,11 @@
     "bulkDelete": "刪除",
     "bulkDeselect": "取消全選",
     "bulkShare": "分享給代理人",
+    "addToAgent": "加入代理人",
+    "shareToCompany": "分享給整個公司",
+    "shareToCompanyHint": "讓公司所有人都能看到此技能，並為每位公司代理人裝備",
+    "sharedWithCompany": "已分享給整間公司",
+    "sharingTeam": "團隊 — 僅所選團隊可見",
     "bulkSharedTitle": "技能已分享",
     "bulkSharedBody": "已將 {{skills}} 個技能分享給 {{agents}} 位代理人。",
     "bulkDeletedTitle": "技能已刪除",

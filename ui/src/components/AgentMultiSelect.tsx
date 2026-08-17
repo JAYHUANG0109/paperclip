@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTranslation } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 export interface AgentMultiSelectOption {
@@ -51,6 +52,7 @@ export function AgentSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const { t } = useTranslation();
   const selectedAgent = agents.find((agent) => agent.id === value);
   const normalizedFilter = filter.trim().toLowerCase();
   const filteredAgents = useMemo(
@@ -89,7 +91,7 @@ export function AgentSelect({
           <Input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter agents"
+            placeholder={t("agentMultiSelect.filter", { defaultValue: "Filter agents" })}
             className="h-8"
             autoFocus
           />
@@ -230,6 +232,7 @@ export function AgentMultiSelect({
   showSelectionPreview?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [draftAgentIds, setDraftAgentIds] = useState<Set<string>>(new Set(selectedAgentIds));
@@ -301,7 +304,7 @@ export function AgentMultiSelect({
           <Input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter agents"
+            placeholder={t("agentMultiSelect.filter", { defaultValue: "Filter agents" })}
             className="h-8"
             autoFocus
           />
@@ -371,12 +374,14 @@ export function AgentMultiSelect({
         </div>
           <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-2">
             <span className="text-xs text-muted-foreground">
-              {workingAgentIds.size === 0 ? "No agents selected" : `${workingAgentIds.size} selected`}
+              {workingAgentIds.size === 0
+                ? t("agentMultiSelect.noneSelected", { defaultValue: "No agents selected" })
+                : t("agentMultiSelect.nSelected", { defaultValue: "{{count}} selected", count: workingAgentIds.size })}
             </span>
             <div className="flex items-center gap-2">
               {staged ? (
                 <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={pending}>
-                  Cancel
+                  {t("common.cancel", { defaultValue: "Cancel" })}
                 </Button>
               ) : null}
               <Button
@@ -388,7 +393,9 @@ export function AgentMultiSelect({
                 }}
                 disabled={pending}
               >
-                {staged ? (pending ? "Saving…" : "Save") : "Done"}
+                {staged
+                  ? (pending ? t("common.saving", { defaultValue: "Saving…" }) : t("common.save", { defaultValue: "Save" }))
+                  : t("common.done", { defaultValue: "Done" })}
               </Button>
             </div>
           </div>

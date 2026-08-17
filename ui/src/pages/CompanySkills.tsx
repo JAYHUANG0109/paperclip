@@ -3005,7 +3005,7 @@ function AttachAgentsPopover({
       selectedAgentIds={attachedIds}
       onSave={(nextIds) => onSubmit(Array.from(nextIds), draftVersionId)}
       pending={pending}
-      triggerLabel="Add to agent"
+      triggerLabel={t("companySkills.addToAgent", { defaultValue: "Add to agent" })}
       triggerIcon={<Plus className="mr-1.5 h-3.5 w-3.5" />}
       triggerVariant="default"
       triggerSize="sm"

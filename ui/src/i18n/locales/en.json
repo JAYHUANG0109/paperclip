@@ -621,6 +621,7 @@
     "moreRuns_other": "{{count}} more active/recent runs"
   },
   "interaction": {
+    "other": "Other",
     "status": {
       "pending": "Pending",
       "accepted": "Accepted",
@@ -2278,6 +2279,11 @@
     "fullErrorOutput": "Full error output",
     "noStoredError": "No stored error message."
   },
+  "agentMultiSelect": {
+    "filter": "Filter agents",
+    "noneSelected": "No agents selected",
+    "nSelected": "{{count}} selected"
+  },
   "companySkills": {
     "skillNamePlaceholder": "Skill name",
     "slugPlaceholder": "optional-shortname",
@@ -2610,6 +2616,11 @@
     "bulkDelete": "Delete",
     "bulkDeselect": "Deselect all",
     "bulkShare": "Share to agents",
+    "addToAgent": "Add to agent",
+    "shareToCompany": "Share to entire company",
+    "shareToCompanyHint": "Make this skill visible to everyone in the company and equip every company agent",
+    "sharedWithCompany": "Shared with the whole company",
+    "sharingTeam": "Team — visible to the selected teams",
     "bulkSharedTitle": "Skills shared",
     "bulkSharedBody": "{{skills}} skill(s) shared to {{agents}} agent(s).",
     "bulkDeletedTitle": "Skills deleted",
