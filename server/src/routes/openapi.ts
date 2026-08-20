@@ -4531,6 +4531,15 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "delete",
+  path: "/api/companies/{companyId}/skills/{skillId}/agents/{agentId}/access",
+  tags: ["skills"],
+  summary: "Remove an agent's access to a skill",
+  request: { params: z.object({ companyId: z.string(), skillId: z.string(), agentId: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
+});
+
+registry.registerPath({
   method: "get",
   path: "/api/companies/{companyId}/skills/{skillId}/update-status",
   tags: ["skills"],

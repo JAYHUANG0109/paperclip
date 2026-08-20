@@ -3650,6 +3650,7 @@ export function SkillDetailPage({
   versionsLoading,
   attachAgents,
   onSubmitAttach,
+  onRemoveAgentAccess,
   attachPending,
   expandedDirs,
   onToggleDir,
@@ -3696,6 +3697,7 @@ export function SkillDetailPage({
   versionsLoading: boolean;
   attachAgents: AttachAgentOption[];
   onSubmitAttach: (ids: string[], versionId: string | null) => void;
+  onRemoveAgentAccess?: (agentId: string) => void;
   attachPending: boolean;
   expandedDirs: Set<string>;
   onToggleDir: (path: string) => void;
@@ -4043,6 +4045,16 @@ export function SkillDetailPage({
                   >
                     View
                   </Link>
+                  {agent.canRemove ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveAgentAccess?.(agent.id)}
+                      className="shrink-0 text-xs text-destructive no-underline hover:underline"
+                      title={t("companySkills.removeAccessHint", { defaultValue: "Remove this agent's access to the skill" })}
+                    >
+                      {t("companySkills.removeAccess", { defaultValue: "Remove" })}
+                    </button>
+                  ) : null}
                 </div>
               );
             })}
@@ -6489,6 +6501,24 @@ export function CompanySkills() {
     },
   });
 
+  async function handleRemoveAgentAccess(agentId: string) {
+    if (!activeDetail || !selectedCompanyId) return;
+    try {
+      await companySkillsApi.removeAgentAccess(selectedCompanyId, activeDetail.id, agentId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(selectedCompanyId, activeDetail.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId) }),
+      ]);
+      pushToast({ tone: "success", title: t("companySkills.accessRemoved", { defaultValue: "Access removed" }) });
+    } catch (error) {
+      pushToast({
+        tone: "error",
+        title: t("companySkills.removeAccessFailed", { defaultValue: "Couldn't remove access" }),
+        body: error instanceof Error ? error.message : undefined,
+      });
+    }
+  }
+
   async function handleAttachSubmit(nextAgentIds: string[], versionId: string | null = null) {
     if (!activeDetail) return;
     const skillKey = activeDetail.key;
@@ -7320,6 +7350,7 @@ export function CompanySkills() {
           versionsLoading={versionsQuery.isLoading}
           attachAgents={eligibleAgentsForAttach}
           onSubmitAttach={handleAttachSubmit}
+          onRemoveAgentAccess={handleRemoveAgentAccess}
           attachPending={attachAgentsMutation.isPending}
           expandedDirs={expandedDirs[selectedSkillId] ?? new Set<string>()}
           onToggleDir={(path) => {

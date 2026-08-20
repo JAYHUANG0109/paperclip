@@ -2650,7 +2650,11 @@
     "catalogHashChanged": "Catalog content hash has changed since this skill was installed.",
     "noTagsYet": "No tags yet.",
     "addTagPlaceholder": "Add a tag…",
-    "installedOnAgents": "Agents in this company that currently have this skill installed."
+    "installedOnAgents": "Agents in this company that currently have this skill installed.",
+    "removeAccess": "Remove",
+    "removeAccessHint": "Remove this agent's access to the skill",
+    "accessRemoved": "Access removed",
+    "removeAccessFailed": "Couldn't remove access"
   },
   "secrets": {
     "secondsAgo": "{{count}}s ago",

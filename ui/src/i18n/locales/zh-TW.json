@@ -2755,7 +2755,11 @@
     "catalogHashChanged": "自此技能安裝後，技能庫的內容雜湊已變更。",
     "noTagsYet": "尚無標籤。",
     "addTagPlaceholder": "新增標籤…",
-    "installedOnAgents": "目前已安裝此技能的公司代理人。"
+    "installedOnAgents": "目前已安裝此技能的公司代理人。",
+    "removeAccess": "移除",
+    "removeAccessHint": "移除此代理人對此技能的存取權",
+    "accessRemoved": "已移除存取權",
+    "removeAccessFailed": "無法移除存取權"
   },
   "secrets": {
     "secondsAgo": "{{count}} 秒前",

@@ -173,6 +173,13 @@ export interface CompanySkillUsageAgent {
    */
   actualState: string | null;
   versionId: string | null;
+  /**
+   * Whether the requesting viewer may REMOVE this agent's access to the skill:
+   * true for owners/admins (full access) and for a viewer who manages this agent
+   * (it reports up to one of the viewer's agents). Absent on list projections
+   * that don't compute per-viewer authority.
+   */
+  canRemove?: boolean;
 }
 
 export interface CompanySkillDetail extends CompanySkill {

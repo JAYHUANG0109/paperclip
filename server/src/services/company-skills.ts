@@ -3646,11 +3646,20 @@ export function companySkillService(db: Db) {
     return summaries;
   }
 
-  async function detail(companyId: string, id: string, actor?: SkillActor | null): Promise<CompanySkillDetail | null> {
+  async function detail(
+    companyId: string,
+    id: string,
+    actor?: SkillActor | null,
+    viewer?: { userId: string | null; isPrivileged: boolean },
+  ): Promise<CompanySkillDetail | null> {
     await ensureSkillInventoryCurrent(companyId);
     const skill = await getByRouteRef(companyId, id);
     if (!skill) return null;
-    const usedByAgents = await usage(companyId, skill.key);
+    let usedByAgents = await usage(companyId, skill.key);
+    if (viewer) {
+      const manageable = await manageableAgentIds(companyId, viewer.userId, viewer.isPrivileged);
+      usedByAgents = usedByAgents.map((u) => ({ ...u, canRemove: manageable === "all" || manageable.has(u.id) }));
+    }
     const existingForks = await existingForkSummaries(companyId, skill.id, actor);
     return enrichSkill(
       skill,
@@ -7184,6 +7193,67 @@ export function companySkillService(db: Db) {
     return { pruned: rows.length };
   }
 
+  // Agent ids whose skill access the given actor may REMOVE. "all" for
+  // owners/admins (full access). Otherwise the actor's OWN agents plus every
+  // agent that reports (transitively) up to one of them — the actor's reports-to
+  // subtree. An ancestor is never in a descendant's subtree, so "lower ranks
+  // cannot remove upper people" holds by construction.
+  async function manageableAgentIds(
+    companyId: string,
+    actorUserId: string | null,
+    isPrivileged: boolean,
+  ): Promise<Set<string> | "all"> {
+    if (isPrivileged) return "all";
+    if (!actorUserId) return new Set<string>();
+    const ownRows = await db
+      .select({ agentId: agentMemberships.agentId })
+      .from(agentMemberships)
+      .where(and(
+        eq(agentMemberships.companyId, companyId),
+        eq(agentMemberships.userId, actorUserId),
+        eq(agentMemberships.state, "joined"),
+      ));
+    const own = new Set(ownRows.map((r) => r.agentId));
+    if (own.size === 0) return new Set<string>();
+    const all = await db
+      .select({ id: agentsTable.id, reportsTo: agentsTable.reportsTo })
+      .from(agentsTable)
+      .where(eq(agentsTable.companyId, companyId));
+    const parentOf = new Map<string, string | null>(all.map((a) => [a.id, a.reportsTo]));
+    const result = new Set<string>(own);
+    for (const a of all) {
+      if (result.has(a.id)) continue;
+      let cur: string | null | undefined = a.id;
+      const seen = new Set<string>();
+      while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        const p: string | null = parentOf.get(cur) ?? null;
+        if (!p) break;
+        if (own.has(p)) { result.add(a.id); break; }
+        cur = p;
+      }
+    }
+    return result;
+  }
+
+  // Detach a skill from ONE agent's desiredSkills. Authority is enforced by the
+  // caller. Returns true if the agent had the skill and was changed.
+  async function detachSkillFromAgent(companyId: string, skillKey: string, agentId: string): Promise<boolean> {
+    const skills = await listReferenceTargets(companyId);
+    const agentRows = await agents.list(companyId, { includeTerminated: true });
+    const agent = agentRows.find((a) => a.id === agentId);
+    if (!agent) return false;
+    const adapterConfig = agent.adapterConfig as Record<string, unknown>;
+    const desiredEntries = resolveDesiredSkillEntries(skills, adapterConfig);
+    if (!desiredEntries.some((entry) => entry.key === skillKey)) return false;
+    const nextEntries = desiredEntries.filter((entry) => entry.key !== skillKey);
+    await db
+      .update(agentsTable)
+      .set({ adapterConfig: writePaperclipSkillSyncPreference(adapterConfig, nextEntries), updatedAt: new Date() })
+      .where(and(eq(agentsTable.companyId, companyId), eq(agentsTable.id, agentId)));
+    return true;
+  }
+
   // Detach a skill from every agent that lists it in desiredSkills. Returns the
   // number of agents changed. Used by force-delete so the user doesn't have to
   // visit each agent to detach manually.
@@ -7602,6 +7672,8 @@ export function companySkillService(db: Db) {
     },
     categoryCounts,
     detail,
+    detachSkillFromAgent,
+    manageableAgentIds,
     forkPrecheck,
     listVersions,
     getVersion,

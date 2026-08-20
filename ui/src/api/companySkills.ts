@@ -273,6 +273,11 @@ export const companySkillsApi = {
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/equip-scope`,
       {},
     ),
+  // Remove one agent's access to a skill (unequip). Authority enforced server-side.
+  removeAgentAccess: (companyId: string, skillId: string, agentId: string) =>
+    api.delete<{ ok: boolean; changed: boolean }>(
+      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/agents/${encodeURIComponent(agentId)}/access`,
+    ),
   delete: (companyId: string, skillId: string, opts?: { force?: boolean }) =>
     api.delete<CompanySkill>(
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}${opts?.force ? "?force=true" : ""}`,

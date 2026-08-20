@@ -483,12 +483,39 @@ export function companySkillRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     const skillId = req.params.skillId as string;
     assertCompanyAccess(req, companyId);
-    const result = await svc.detail(companyId, skillId, skillActor(req));
+    const viewerUserId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    const isPriv = isPrivilegedMemberViewer(req, companyId, true);
+    const result = await svc.detail(companyId, skillId, skillActor(req), { userId: viewerUserId, isPrivileged: isPriv });
     if (!result) {
       res.status(404).json({ error: "Skill not found" });
       return;
     }
     res.json(result);
+  });
+
+  // Remove ONE agent's access to a skill (unequip it from that agent). Authority
+  // is enforced server-side: owners/admins have full access; everyone else may
+  // only remove an agent that reports up to one of their own agents (their
+  // reports-to subtree) — lower ranks can never remove an upper one.
+  router.delete("/companies/:companyId/skills/:skillId/agents/:agentId/access", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    const agentId = req.params.agentId as string;
+    assertCompanyAccess(req, companyId);
+    const viewerUserId = req.actor.type === "board" ? req.actor.userId ?? null : null;
+    const isPriv = isPrivilegedMemberViewer(req, companyId, true);
+    const manageable = await svc.manageableAgentIds(companyId, viewerUserId, isPriv);
+    if (manageable !== "all" && !manageable.has(agentId)) {
+      res.status(403).json({ error: "You don't manage that agent, so you can't remove its access." });
+      return;
+    }
+    const skill = await svc.detail(companyId, skillId, skillActor(req));
+    if (!skill) {
+      res.status(404).json({ error: "Skill not found" });
+      return;
+    }
+    const changed = await svc.detachSkillFromAgent(companyId, skill.key, agentId);
+    res.json({ ok: true, changed });
   });
 
   // ---- Skill approval (review queue) ----
