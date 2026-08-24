@@ -24,6 +24,7 @@ import {
   Lightbulb,
   Building2,
   Bot,
+  BotMessageSquare,
   ListChecks,
   GanttChartSquare,
   LayoutGrid,
@@ -71,7 +72,7 @@ const NAV_ADMIN_EMAILS = new Set([
 
 export function Sidebar() {
   const { t } = useTranslation();
-  const { openNewIssue } = useDialogActions();
+  const { openNewIssue, openNewAgent } = useDialogActions();
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { isMobile, collapsed, collapseLocked, peeking, toggleCollapsed, setCollapsed } = useSidebar();
   const rail = collapsed && !peeking;
@@ -250,6 +251,30 @@ export function Sidebar() {
               </Tooltip>
             ) : (
               newTaskButton
+            );
+          })()}
+          {/* New Agent — same dialog as the Agents page button, surfaced here so
+              onboarding a person does not require finding the Agents section first. */}
+          {(() => {
+            const newAgentLabel = t("agents.newAgent", { defaultValue: "New Agent" });
+            const newAgentButton = (
+              <button
+                onClick={() => openNewAgent()}
+                data-slot="icon-button"
+                aria-label={rail ? newAgentLabel : undefined}
+                className="flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium text-foreground/80 hover:bg-accent/50 hover:text-foreground transition-colors"
+              >
+                <BotMessageSquare className="h-4 w-4 shrink-0" />
+                <span className={rail ? SIDEBAR_RAIL_HIDDEN_LABEL : "truncate"}>{newAgentLabel}</span>
+              </button>
+            );
+            return rail ? (
+              <Tooltip>
+                <TooltipTrigger asChild>{newAgentButton}</TooltipTrigger>
+                <TooltipContent side="right">{newAgentLabel}</TooltipContent>
+              </Tooltip>
+            ) : (
+              newAgentButton
             );
           })()}
           <SidebarNavItem to="/dashboard" label={t("nav.dashboard", { defaultValue: "Dashboard" })} icon={LayoutDashboard} liveCount={liveRunCount} />

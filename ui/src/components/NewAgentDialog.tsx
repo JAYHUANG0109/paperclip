@@ -19,8 +19,10 @@ import {
   Check,
   MailPlus,
   Settings2,
+  UserRoundPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NewColleagueAgentForm } from "@/components/NewColleagueAgentForm";
 import { buildAgentOnboardingPrompt } from "@/lib/agent-onboarding-prompt";
 import { listUIAdapters } from "../adapters";
 import { isVisualAdapterChoice } from "../adapters/metadata";
@@ -36,7 +38,7 @@ import { copyTextToClipboard } from "@/lib/clipboard";
  */
 const SYSTEM_ADAPTER_TYPES = new Set(["process", "http"]);
 
-type NewAgentDialogMode = "choices" | "runtime" | "invite" | "prompt";
+type NewAgentDialogMode = "choices" | "colleague" | "runtime" | "invite" | "prompt";
 
 function isAgentAdapterType(type: string): boolean {
   return !SYSTEM_ADAPTER_TYPES.has(type);
@@ -124,6 +126,27 @@ export function NewAgentDialog() {
       assigneeAgentId: ceoAgent?.id,
       title: t("newAgent.askCeoIssueTitle"),
       description: t("newAgent.askCeoIssueDesc"),
+    });
+  }
+
+  function handleAddColleague() {
+    setMode("colleague");
+  }
+
+  /**
+   * The six fields go out as a task for the CEO agent rather than straight to
+   * POST /agents: setting `assignedUserEmail` is an ownership grant restricted to
+   * company owner/admin, and the reporting line has to be derived from the org
+   * chart. Handing a structured request to an agent that holds both keeps this
+   * button usable by IT without widening who can grant company access.
+   */
+  function handleColleagueSubmit(_draft: unknown, body: string) {
+    closeNewAgent();
+    resetDialogState();
+    openNewIssue({
+      assigneeAgentId: ceoAgent?.id,
+      title: t("newAgent.askCeoIssueTitle"),
+      description: body,
     });
   }
 
@@ -268,6 +291,10 @@ export function NewAgentDialog() {
               </Button>
 
               <div className="grid gap-2">
+                <Button variant="outline" className="w-full" onClick={handleAddColleague}>
+                  <UserRoundPlus className="h-4 w-4 mr-2" />
+                  新增同仁代理人
+                </Button>
                 <Button variant="outline" className="w-full" onClick={handleAdvancedConfig}>
                   <Settings2 className="h-4 w-4 mr-2" />
                   {t("newAgent.configureRuntime")}
@@ -282,6 +309,25 @@ export function NewAgentDialog() {
                   </p>
                 </div>
               </div>
+            </>
+          ) : mode === "colleague" ? (
+            <>
+              <div className="space-y-2">
+                <button
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setMode("choices")}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  {t("common.back")}
+                </button>
+                <p className="text-sm text-muted-foreground">
+                  填這六欄就好，其餘（指令、技能、權限、回報線）由代理人依組織圖建置。
+                </p>
+              </div>
+              <NewColleagueAgentForm
+                onSubmit={handleColleagueSubmit}
+                onBack={() => setMode("choices")}
+              />
             </>
           ) : mode === "runtime" ? (
             <>
