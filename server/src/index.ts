@@ -572,7 +572,20 @@ export async function startServer(
   }
 
   const requestedListenPort = config.port;
-  const listenPort = await detectPort(requestedListenPort);
+  /**
+   * Cluster workers must bind the CONFIGURED port, never a probed one.
+   *
+   * detectPort() exists so a lone dev server slides to the next free port when
+   * something else holds it. Inside a cluster that is actively wrong: the first
+   * worker takes the port, and every later worker then "detects" it as busy and
+   * picks a different one — so instead of N workers sharing one port you get
+   * them scattered across N ports and the ingress only ever reaches the first.
+   * Observed exactly that in testing: workers landed on 3199, 3200, 3200.
+   *
+   * In cluster mode listen() is intercepted and served from the primary's shared
+   * handle, so binding the same port in every worker is the correct thing to do.
+   */
+  const listenPort = cluster.isWorker ? requestedListenPort : await detectPort(requestedListenPort);
   if (config.authBaseUrlMode === "explicit" && config.authPublicBaseUrl) {
     config.authPublicBaseUrl = rewriteLocalUrlPort(config.authPublicBaseUrl, listenPort);
   }
