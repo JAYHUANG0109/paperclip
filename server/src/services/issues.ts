@@ -4,6 +4,7 @@ import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, ne, notInArray,
 import type { Db } from "@paperclipai/db";
 import {
   activityLog,
+  agentMemberships,
   agentWakeupRequests,
   agents,
   authUsers,
@@ -261,6 +262,7 @@ async function resolveResponsibleUserIdForIssueCreate(
     originRunId?: string | null;
     actorRunId?: string | null;
     actorResponsibleUserId?: string | null;
+    assigneeAgentId?: string | null;
     trustExplicitResponsibleUserId?: boolean;
   },
 ) {
@@ -299,6 +301,29 @@ async function resolveResponsibleUserIdForIssueCreate(
       .then((rows) => rows[0] ?? null);
     if (parent?.responsibleUserId) return parent.responsibleUserId;
     if (parent?.createdByUserId) return parent.createdByUserId;
+  }
+
+  // The human who OWNS the assigned agent, before any company-wide default.
+  // Without this step an agent-assigned issue inherits whoever happened to
+  // create it (or, downstream in heartbeat, companies.default_responsible_user_id),
+  // and the run then injects THAT person's Google/Asana credentials — which is
+  // how one person's agent ends up acting as another. Mirrors step 1 of
+  // resolveAgentResponsibleUserId(); read through `reader` so it stays inside
+  // the caller's transaction.
+  const assigneeAgentId = readStringFromRecord(input, "assigneeAgentId");
+  if (assigneeAgentId) {
+    const owner = await reader
+      .select({ userId: agentMemberships.userId })
+      .from(agentMemberships)
+      .where(and(
+        eq(agentMemberships.companyId, companyId),
+        eq(agentMemberships.agentId, assigneeAgentId),
+        eq(agentMemberships.state, "joined"),
+      ))
+      .orderBy(asc(agentMemberships.createdAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (owner?.userId) return owner.userId;
   }
 
   return input.createdByUserId ?? null;
@@ -6984,6 +7009,7 @@ export function issueService(db: Db) {
           originRunId: issueData.originRunId ?? null,
           actorRunId: actorRunId ?? null,
           actorResponsibleUserId: actorResponsibleUserId ?? null,
+          assigneeAgentId: issueData.assigneeAgentId ?? null,
           trustExplicitResponsibleUserId: trustExplicitResponsibleUserId === true,
         });
 

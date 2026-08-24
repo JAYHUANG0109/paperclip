@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   activityLog,
   agents,
+  agentMemberships,
   agentRuntimeState,
   agentWakeupRequests,
   companies,
@@ -106,6 +107,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     await db.delete(agentWakeupRequests);
     await db.delete(agentRuntimeState);
     await db.delete(issues);
+    await db.delete(agentMemberships);
     await db.delete(agents);
     await db.delete(companySkills);
     await db.delete(companyMemberships);
@@ -148,6 +150,43 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
 
     return { companyId, ownerUserId, agentId };
   }
+
+  // Regression: companies.default_responsible_user_id used to win over the
+  // agent's own owner, so a run injected the DEFAULT user's Google/Asana
+  // credentials and the agent acted as the wrong human.
+  it("prefers the agent owner over the company default responsible user", async () => {
+    const { companyId, ownerUserId: companyDefaultUserId, agentId } = await seedCompany();
+    const agentOwnerUserId = `agent-owner-${randomUUID()}`;
+    await db.insert(agentMemberships).values({
+      companyId,
+      agentId,
+      userId: agentOwnerUserId,
+      state: "joined",
+    });
+
+    const issueId = randomUUID();
+    await db.insert(issues).values({
+      id: issueId,
+      companyId,
+      title: "Unattributed agent work",
+      status: "todo",
+      assigneeAgentId: agentId,
+      // Deliberately null: this is the path that used to fall through to the
+      // company default instead of resolving the agent's owner.
+      responsibleUserId: null,
+    });
+
+    const run = await heartbeat.wakeup(agentId, {
+      source: "automation",
+      triggerDetail: "system",
+      reason: "issue_commented",
+      taskId: issueId,
+    });
+    const settled = await waitForRun(db, run.id);
+
+    expect(settled?.responsibleUserId).toBe(agentOwnerUserId);
+    expect(settled?.responsibleUserId).not.toBe(companyDefaultUserId);
+  });
 
   it("uses the issue responsible user for comment, mention, and dependency wakes", async () => {
     const { companyId, agentId } = await seedCompany();

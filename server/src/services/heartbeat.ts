@@ -30,6 +30,7 @@ import {
 import {
   agents,
   agentConfigRevisions,
+  agentMemberships,
   agentRuntimeState,
   agentTaskSessions,
   agentWakeupRequests,
@@ -7286,6 +7287,32 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     };
   }
 
+  /**
+   * The human who OWNS an agent (agent_memberships, state "joined").
+   *
+   * Deliberately membership-ONLY: unlike resolveAgentResponsibleUserId() in
+   * agent-asana.ts, this does NOT fall back to the responsible user of the
+   * agent's most recent run. Past runs are exactly what got mis-attributed by
+   * the company-default fallback below, so consulting them here would
+   * re-propagate the wrong user and defeat any backfill. Inlined rather than
+   * imported to avoid the hot-path import cycle noted above.
+   */
+  async function resolveAgentOwnerUserId(companyId: string, agentId: string | null | undefined) {
+    if (!agentId) return null;
+    const owner = await db
+      .select({ userId: agentMemberships.userId })
+      .from(agentMemberships)
+      .where(and(
+        eq(agentMemberships.companyId, companyId),
+        eq(agentMemberships.agentId, agentId),
+        eq(agentMemberships.state, "joined"),
+      ))
+      .orderBy(asc(agentMemberships.createdAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return readNonEmptyString(owner?.userId);
+  }
+
   async function resolveCompanyDefaultResponsibleUserId(companyId: string) {
     const company = await db
       .select({ defaultResponsibleUserId: companies.defaultResponsibleUserId })
@@ -7354,6 +7381,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
   async function resolveResponsibleUserIdForRunSeed(input: {
     companyId: string;
+    agentId?: string | null;
     contextSnapshot: Record<string, unknown>;
     issueContext: Awaited<ReturnType<typeof getIssueExecutionContext>> | null;
     routineEnvContext: Awaited<ReturnType<typeof getRoutineEnvForExecutionIssue>>;
@@ -7374,6 +7402,15 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     if (input.issueContext?.responsibleUserId) return input.issueContext.responsibleUserId;
     const parentResponsibleUserId = await resolveParentIssueResponsibleUserId(input.companyId, input.issueContext?.parentId);
     if (parentResponsibleUserId) return parentResponsibleUserId;
+    // Own the run as the agent's OWNER before falling back to the company-wide
+    // default. Skipping this is what let companies.default_responsible_user_id
+    // become the de-facto identity for every unattributed run, so an agent
+    // executed with someone else's injected Google/Asana credentials.
+    const agentOwnerUserId = await resolveAgentOwnerUserId(
+      input.companyId,
+      input.agentId ?? input.issueContext?.assigneeAgentId ?? null,
+    );
+    if (agentOwnerUserId) return agentOwnerUserId;
     if (input.issueContext) return resolveCompanyDefaultResponsibleUserId(input.companyId);
     if (requestedUserId) return requestedUserId;
     return resolveCompanyDefaultResponsibleUserId(input.companyId);
@@ -7387,6 +7424,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
   }) {
     const responsibleUserId = await resolveResponsibleUserIdForRunSeed({
       companyId: input.run.companyId,
+      agentId: input.run.agentId,
       contextSnapshot: input.contextSnapshot,
       issueContext: input.issueContext,
       routineEnvContext: input.routineEnvContext,
@@ -16557,6 +16595,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         );
         const promotedResponsibleUserId = await resolveResponsibleUserIdForRunSeed({
           companyId: deferredAgent.companyId,
+          agentId: deferredAgent.id,
           contextSnapshot: promotedContextSnapshot,
           issueContext: issue,
           routineEnvContext: await getRoutineEnvForExecutionIssue(deferredAgent.companyId, issue),
@@ -16857,6 +16896,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       }, "normal_model");
       const responsibleUserId = await resolveResponsibleUserIdForRunSeed({
         companyId: issue.companyId,
+        agentId: recoveryAgent.id,
         contextSnapshot: recoveryContextSnapshot,
         issueContext: issue,
         routineEnvContext: await getRoutineEnvForExecutionIssue(issue.companyId, issue),
@@ -17155,6 +17195,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         const queuedRoutineEnvContext = await getRoutineEnvForExecutionIssue(agent.companyId, queuedIssueContext);
         const queuedResponsibleUserId = await resolveResponsibleUserIdForRunSeed({
           companyId: agent.companyId,
+          agentId,
           contextSnapshot: enrichedContextSnapshot,
           issueContext: queuedIssueContext,
           routineEnvContext: queuedRoutineEnvContext,
