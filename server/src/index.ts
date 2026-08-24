@@ -1644,7 +1644,34 @@ function resolveClusterWorkerCount(): number {
   return parsed;
 }
 
+/**
+ * Split the connection budget across processes.
+ *
+ * Every process opens its OWN pool, so clustering multiplies connections by the
+ * process count. The fork default is 40 per pool against a server whose real
+ * `max_connections` is 100 (the comment in packages/db/src/client.ts claims 200
+ * — it is wrong for this instance), so 4 workers plus the primary asked for 200
+ * and Postgres answered "sorry, too many clients already". Measured: ~90% of
+ * requests failed with 500 the first time clustering was switched on.
+ *
+ * Budget is deliberately below max_connections: psql, the CLI, backups and agent
+ * subprocesses all need connections that are not in any pool.
+ */
+function resolvePerProcessPoolMax(processCount: number): number {
+  const total = Number(process.env.PAPERCLIP_DB_POOL_TOTAL?.trim() || "70");
+  const budget = Number.isInteger(total) && total > 0 ? total : 70;
+  return Math.max(4, Math.floor(budget / Math.max(1, processCount)));
+}
+
 async function startClusterPrimary(workerCount: number): Promise<void> {
+  // Size the PRIMARY's pool before it connects — startServer() builds it.
+  const perProcess = resolvePerProcessPoolMax(workerCount + 1);
+  process.env.DATABASE_POOL_MAX = String(perProcess);
+  logger.info(
+    { workerCount, perProcessPoolMax: perProcess, totalPlanned: perProcess * (workerCount + 1) },
+    "Sizing database pools for cluster",
+  );
+
   const started = await startServer({ skipListen: true });
   const workerEnv = {
     PAPERCLIP_PROCESS_ROLE: "worker",
@@ -1652,6 +1679,7 @@ async function startClusterPrimary(workerCount: number): Promise<void> {
     // a worker reaches the embedded branch, so this is the contract that keeps
     // them off the shared data directory.
     DATABASE_URL: started.databaseUrl,
+    DATABASE_POOL_MAX: String(perProcess),
   };
   cluster.setupPrimary({ serialization: "advanced" });
   for (let i = 0; i < workerCount; i += 1) cluster.fork(workerEnv);
