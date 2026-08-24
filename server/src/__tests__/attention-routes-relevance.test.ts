@@ -178,4 +178,41 @@ describe("the decisions feed", () => {
 
     expect(res.body.countsBySourceKind).toEqual({ approval: 1, review: 1 });
   });
+
+  /**
+   * Reported as "待決議 17" sitting above an empty page that said 你都處理完了.
+   * The service computes deskBadgeCount company-wide, BEFORE the relevance
+   * filter above; spreading it through unchanged made the sidebar advertise
+   * other people's decisions, which reads as "something is hidden from me".
+   */
+  it("recounts the desk badge after filtering, so it can never exceed the list", async () => {
+    const today = new Date().toISOString();
+    feedItems.current = [
+      { ...issueItem("issue-mine", "approval"), createdAt: today },
+      { ...issueItem("issue-theirs", "approval"), createdAt: today },
+      { ...issueItem("issue-theirs", "review"), createdAt: today },
+    ];
+    relevance.current.set("issue-mine", true);
+
+    const res = await request(createApp()).get(`/companies/${COMPANY}/attention`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.deskBadgeCount).toBe(1);
+    expect(res.body.deskBadgeCount).toBeLessThanOrEqual(res.body.totalCount);
+  });
+
+  it("shows a zero badge when nothing is relevant, not the company-wide count", async () => {
+    const today = new Date().toISOString();
+    feedItems.current = [
+      { ...issueItem("issue-theirs", "approval"), createdAt: today },
+      { ...issueItem("issue-other", "review"), createdAt: today },
+    ];
+    // nothing marked relevant → the page is empty, so the badge must be too
+
+    const res = await request(createApp()).get(`/companies/${COMPANY}/attention`);
+
+    expect(res.body.items).toHaveLength(0);
+    expect(res.body.deskBadgeCount).toBe(0);
+  });
 });

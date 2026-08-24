@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import type { AttentionSortMode } from "@paperclipai/shared";
 import { attentionService } from "../services/attention.js";
+import { deskBadgeCountFor } from "../services/attention-desk.js";
 import { accessService } from "../services/access.js";
 import { badRequest } from "../errors.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
@@ -124,10 +125,17 @@ export function attentionRoutes(db: Db) {
     );
     const items = feed.items.filter((_, index) => keep[index]);
 
+    // The badge has to count the SAME items this response returns. The service
+    // computes deskBadgeCount company-wide, before the per-user relevance filter
+    // above — so spreading it through unchanged showed people a count of other
+    // people's decisions next to an empty page ("待決議 17" over 你都處理完了),
+    // which reads as "something is hidden from me" rather than "nothing to do".
+    const badgeNow = Date.now();
     res.json({
       ...feed,
       items,
       totalCount: items.length,
+      deskBadgeCount: deskBadgeCountFor(items, badgeNow),
       countsBySourceKind: items.reduce(
         (counts, item) => ({ ...counts, [item.sourceKind]: (counts[item.sourceKind] ?? 0) + 1 }),
         {} as Record<string, number>,

@@ -1,4 +1,13 @@
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import {
+  decideOrder,
+  deskBadgeCountFor,
+  endOfUtcDay,
+  endOfUtcWeek,
+  isDecideNow,
+  isNewToday,
+  startOfUtcDay,
+} from "./attention-desk.js";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
@@ -459,46 +468,6 @@ function readMetadataAgentId(item: AttentionItem) {
   const value = metadata?.originAgentId ?? metadata?.createdByAgentId ?? metadata?.requestedByAgentId
     ?? metadata?.agentId ?? (item.subject.kind === "agent" ? item.subject.id : null);
   return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function startOfUtcDay(now: number) {
-  const value = new Date(now);
-  return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
-}
-
-function endOfUtcDay(now: number) {
-  return startOfUtcDay(now) + 24 * 60 * 60 * 1_000 - 1;
-}
-
-function endOfUtcWeek(now: number) {
-  const start = startOfUtcDay(now);
-  const weekday = new Date(start).getUTCDay();
-  // Use an ISO-style Monday-Sunday week. Sunday (0) is already the last
-  // day of the current week; every other day advances only to that Sunday.
-  const daysUntilSunday = weekday === 0 ? 0 : 7 - weekday;
-  return start + (daysUntilSunday + 1) * 24 * 60 * 60 * 1_000 - 1;
-}
-
-function decideOrder(item: AttentionItem, now: number): [number, number] {
-  if (item.decideBy === "today") return [0, endOfUtcDay(now)];
-  if (item.decideBy === "this_week") return [0, endOfUtcWeek(now)];
-  if (item.decideBy && /^\d{4}-\d{2}-\d{2}$/.test(item.decideBy)) {
-    const deadline = Date.parse(`${item.decideBy}T23:59:59.999Z`);
-    if (Number.isFinite(deadline)) return [0, deadline];
-  }
-  if (item.decideBy === "whenever") return [1, Number.MAX_SAFE_INTEGER];
-  return [2, Number.MAX_SAFE_INTEGER];
-}
-
-function isDecideNow(item: AttentionItem, now: number) {
-  const [bucket, deadline] = decideOrder(item, now);
-  return bucket === 0 && deadline <= endOfUtcDay(now);
-}
-
-/** Surfaced today (arrival). Mirrors `attentionIsNewToday` in `ui/src/lib/attention.ts`. */
-function isNewToday(item: AttentionItem, now: number) {
-  const ts = timestamp(item.createdAt);
-  return ts > 0 && ts >= startOfUtcDay(now);
 }
 
 function compareDecideItems(left: AttentionItem, right: AttentionItem, now: number) {
@@ -2020,7 +1989,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
         // today OR carry an explicit decide-by deadline due today/past. Counted
         // over the full ranked set (pre-pagination) so the sidebar badge stays
         // company-wide accurate even on a small first page.
-        deskBadgeCount: rankedItems.filter((item) => isNewToday(item, now) || isDecideNow(item, now)).length,
+        deskBadgeCount: deskBadgeCountFor(rankedItems, now),
         nextCursor,
         countsBySourceKind,
         items,
