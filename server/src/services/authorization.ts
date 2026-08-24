@@ -674,7 +674,50 @@ export function authorizationDeniedDetails(decision: AuthorizationDecision) {
 export function authorizationService(db: Db) {
   // Visible agent set for a restricted member: joined agents + their reports-to
   // subtree (manager-of-a-joined-agent style). Empty when the user joined none.
+  /**
+   * Short-lived memo for `getVisibleAgentIdsForUser`.
+   *
+   * The uncached function loads EVERY agent in the company and BFS-walks the
+   * org tree, and callers ask it once per item: the 待決議 feed resolves one
+   * verdict per distinct issue, so a 50-issue page recomputed the identical
+   * answer 50 times and issued 100 queries to do it. Measured at 30 concurrent
+   * users that path took ~841ms per request and pinned the single Node thread.
+   *
+   * The entry holds the in-flight PROMISE, not the resolved value, so a burst of
+   * concurrent lookups collapses into one computation instead of stampeding.
+   *
+   * TTL is deliberately seconds, not minutes: this is a permission set, so a
+   * revoked membership must not stay usable for long. Anything longer belongs
+   * behind explicit invalidation.
+   */
+  const VISIBLE_AGENTS_TTL_MS = 5_000;
+  const visibleAgentsCache = new Map<string, { expiresAt: number; value: Promise<Set<string>> }>();
+
   async function getVisibleAgentIdsForUser(companyId: string, userId: string): Promise<Set<string>> {
+    const key = `${companyId}:${userId}`;
+    const now = Date.now();
+    const cached = visibleAgentsCache.get(key);
+    if (cached && cached.expiresAt > now) return cached.value;
+
+    const value = computeVisibleAgentIdsForUser(companyId, userId).catch((err) => {
+      // Never cache a failure: drop the entry so the next caller retries rather
+      // than inheriting a rejected promise for the rest of the TTL.
+      visibleAgentsCache.delete(key);
+      throw err;
+    });
+    visibleAgentsCache.set(key, { expiresAt: now + VISIBLE_AGENTS_TTL_MS, value });
+
+    // Opportunistic sweep so the map cannot grow without bound on a long-lived
+    // process; cheap because entries are few and short-lived.
+    if (visibleAgentsCache.size > 256) {
+      for (const [k, entry] of visibleAgentsCache) {
+        if (entry.expiresAt <= now) visibleAgentsCache.delete(k);
+      }
+    }
+    return value;
+  }
+
+  async function computeVisibleAgentIdsForUser(companyId: string, userId: string): Promise<Set<string>> {
     const joinedRows = await db
       .select({ agentId: agentMemberships.agentId })
       .from(agentMemberships)
