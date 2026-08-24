@@ -4,6 +4,7 @@
 // instrumentationReady before opening DB connections or constructing the
 // HTTP server, so trace coverage does not depend on incidental timing.
 import { instrumentationReady, shutdownInstrumentation } from "./instrumentation.js";
+import { isSchedulerLeader, ownsSingletonResources, processRoleLabel } from "./lib/process-role.js";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
@@ -340,9 +341,27 @@ export async function startServer(): Promise<StartedServer> {
     | { mode: "external-postgres"; connectionString: string }
     | { mode: "embedded-postgres"; dataDir: string; port: number };
   assertCloudDatabaseContract();
+  /**
+   * Singleton startup resources are the leader's alone.
+   *
+   * A clustered worker must inherit DATABASE_URL from the primary and take the
+   * external-PostgreSQL branch below. If it ever reaches the embedded branch it
+   * would initialise/start a second server against the SAME data directory,
+   * which is a corruption risk rather than a slow path — so fail loudly at boot
+   * instead of degrading quietly.
+   */
+  if (!config.databaseUrl && !ownsSingletonResources()) {
+    throw new Error(
+      "Worker process has no DATABASE_URL: embedded PostgreSQL is leader-only. "
+      + "The primary must start the database and pass its connection string to workers.",
+    );
+  }
   if (config.databaseUrl) {
     const migrationUrl = config.databaseMigrationUrl ?? config.databaseUrl;
-    migrationSummary = await ensureMigrations(migrationUrl, "PostgreSQL");
+    // Migrations are a singleton too: concurrent runners race the same journal.
+    migrationSummary = ownsSingletonResources()
+      ? await ensureMigrations(migrationUrl, "PostgreSQL")
+      : "skipped";
   
     db = createDb(config.databaseUrl);
     pluginMigrationDb = config.databaseMigrationUrl ? createDb(config.databaseMigrationUrl) : db;
@@ -1154,9 +1173,12 @@ export async function startServer(): Promise<StartedServer> {
       const notifications = await retentionExecutor.deliverNotifications();
       return { archived, ...notifications };
     };
-    await runRetentionSweep();
+    // Boot sweep is scheduler work: ungated it runs once per worker.
+    if (isSchedulerLeader()) await runRetentionSweep();
 
-    heartbeatSchedulerInterval = setInterval(() => {
+    // Only the leader dispatches agent runs. A second dispatcher would claim and
+    // execute the same queued run twice.
+    heartbeatSchedulerInterval = !isSchedulerLeader() ? null : setInterval(() => {
       // Async so the suppression checks below can honor the override-aware
       // resolver (e.g. worktree run-execution opt-in). The gated work is still
       // wrapped in trackHeartbeatSchedulerWork with its own error handling.
@@ -1350,11 +1372,15 @@ export async function startServer(): Promise<StartedServer> {
       },
       "Automatic database backups enabled",
     );
-    setInterval(() => {
-      void runServerDatabaseBackup("scheduled").catch(() => {
-        // runServerDatabaseBackup already logs the failure with context.
-      });
-    }, backupIntervalMs);
+    // One backup per interval, not one per process: concurrent pg_dump runs
+    // against the same directory would collide and eat the box.
+    if (isSchedulerLeader()) {
+      setInterval(() => {
+        void runServerDatabaseBackup("scheduled").catch(() => {
+          // runServerDatabaseBackup already logs the failure with context.
+        });
+      }, backupIntervalMs);
+    }
   }
 
   // One-shot on-boot memory-distillation sweep. Ops lever for "consolidate N
@@ -1402,7 +1428,7 @@ export async function startServer(): Promise<StartedServer> {
     server.once("error", onError);
     server.listen(listenPort, config.host, () => {
       server.off("error", onError);
-      logger.info(`Server listening on ${config.host}:${listenPort}`);
+      logger.info(`Server listening on ${config.host}:${listenPort} (role: ${processRoleLabel()})`);
       if (process.env.PAPERCLIP_OPEN_ON_LISTEN === "true") {
         const openHost = config.host === "0.0.0.0" || config.host === "::" ? "127.0.0.1" : config.host;
         const url = `http://${openHost}:${listenPort}`;

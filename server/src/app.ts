@@ -81,6 +81,7 @@ import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { readBrandedStaticIndexHtml } from "./static-index-html.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
+import { isSchedulerLeader } from "./lib/process-role.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader, type PluginLoader } from "./services/plugin-loader.js";
 import {
   SELF_HOSTED_AUTO_INSTALL_KEYS,
@@ -730,7 +731,10 @@ export async function createApp(
     }
   };
 
-  feedbackExportTimer = opts.feedbackExportService
+  // Scheduler duties belong to ONE process; see lib/process-role.ts. Running
+  // these in every clustered worker would multiply agent dispatch and staff
+  // notifications, which no rollback can undo.
+  feedbackExportTimer = opts.feedbackExportService && isSchedulerLeader()
     ? setInterval(() => {
       void flushPendingFeedbackExports();
     }, FEEDBACK_EXPORT_FLUSH_INTERVAL_MS)
@@ -762,7 +766,7 @@ export async function createApp(
       logger.error({ err }, "scheduled wiki distillation failed");
     }
   };
-  if (opts.wikiDistillEnabled && opts.wikiRoot) {
+  if (opts.wikiDistillEnabled && opts.wikiRoot && isSchedulerLeader()) {
     wikiDistillTimer = setInterval(() => {
       void runWikiDistillation();
     }, opts.wikiDistillIntervalMs ?? 24 * 60 * 60 * 1000);
@@ -785,10 +789,12 @@ export async function createApp(
       logger.warn({ err }, "skill auto-adopt pass failed");
     }
   };
-  skillAutoAdoptTimer = setInterval(() => {
-    void runSkillAutoAdopt();
-  }, 3 * 60 * 1000);
-  skillAutoAdoptTimer.unref?.();
+  skillAutoAdoptTimer = isSchedulerLeader()
+    ? setInterval(() => {
+      void runSkillAutoAdopt();
+    }, 3 * 60 * 1000)
+    : null;
+  skillAutoAdoptTimer?.unref?.();
   void runSkillAutoAdopt();
 
   // Monthly leaderboard rollup: a daily idempotent check that freezes the
@@ -833,9 +839,12 @@ export async function createApp(
       logger.error({ err }, "scheduled monthly rollup failed");
     }
   };
-  monthlyRollupTimer = setInterval(() => { void runMonthlyRollups(); }, 24 * 60 * 60 * 1000);
-  monthlyRollupTimer.unref?.();
-  void runMonthlyRollups();
+  monthlyRollupTimer = isSchedulerLeader()
+    ? setInterval(() => { void runMonthlyRollups(); }, 24 * 60 * 60 * 1000)
+    : null;
+  monthlyRollupTimer?.unref?.();
+  // Gate the immediate pass too: an ungated boot call fires once PER WORKER.
+  if (isSchedulerLeader()) void runMonthlyRollups();
 
   // "Tasks done" summaries → each user's inbox. WEEKLY ONLY (Fri) after ~17:45
   // Asia/Taipei. The daily summary was intentionally disabled to save tokens —
@@ -864,9 +873,11 @@ export async function createApp(
       logger.warn({ err }, "scheduled summaries tick failed");
     }
   };
-  summaryTimer = setInterval(() => { void runDueSummaries(); }, 5 * 60 * 1000);
-  summaryTimer.unref?.();
-  void runDueSummaries();
+  summaryTimer = isSchedulerLeader()
+    ? setInterval(() => { void runDueSummaries(); }, 5 * 60 * 1000)
+    : null;
+  summaryTimer?.unref?.();
+  if (isSchedulerLeader()) void runDueSummaries();
 
   // Daily Asana "you have N tasks" reminder → each user's inbox (the Google Chat
   // plugin forwards it to their DM). Replaces the retired per-user agent digest
@@ -893,9 +904,11 @@ export async function createApp(
       logger.warn({ err }, "scheduled Asana digest ping tick failed");
     }
   };
-  digestPingTimer = setInterval(() => { void runDueDigestPings(); }, 5 * 60 * 1000);
-  digestPingTimer.unref?.();
-  void runDueDigestPings();
+  digestPingTimer = isSchedulerLeader()
+    ? setInterval(() => { void runDueDigestPings(); }, 5 * 60 * 1000)
+    : null;
+  digestPingTimer?.unref?.();
+  if (isSchedulerLeader()) void runDueDigestPings();
   void toolDispatcher.initialize().catch((err) => {
     logger.error({ err }, "Failed to initialize plugin tool dispatcher");
   });
