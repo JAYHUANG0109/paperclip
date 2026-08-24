@@ -1138,9 +1138,26 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
           .where(eq(agents.companyId, companyId))
         : [];
       const companyAgentMap = new Map(companyAgentRows.map((agent) => [agent.id, agent]));
+      /**
+       * Memo per addressee.
+       *
+       * evaluateAgentInvokability walks the agent's whole org chain against every
+       * agent in the company, and the same agent addresses many interactions — so
+       * filtering N rows re-walked the same chains N times, O(N × agents). That
+       * showed up as ~5% of server CPU under load, entirely recomputation.
+       * companyAgentRows is fixed for this call, so the verdict is too.
+       */
+      const invokableByAgentId = new Map<string, boolean>();
+      const isAddresseeInvokable = (agentId: string) => {
+        const cached = invokableByAgentId.get(agentId);
+        if (cached !== undefined) return cached;
+        const value = evaluateAgentInvokability(companyAgentMap.get(agentId), companyAgentRows).invokable;
+        invokableByAgentId.set(agentId, value);
+        return value;
+      };
       const boardInteractionRows = interactionRows.filter((row) =>
         row.addresseeAgentId === null ||
-        !evaluateAgentInvokability(companyAgentMap.get(row.addresseeAgentId), companyAgentRows).invokable
+        !isAddresseeInvokable(row.addresseeAgentId)
       );
       const visibleInteractionRows = collapsePendingConfirmationsToNewest(boardInteractionRows);
       const [interactionIssueMap, interactionImageMap, interactionPlanDocumentMap] = await Promise.all([
