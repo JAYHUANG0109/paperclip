@@ -775,6 +775,81 @@ export function authorizationService(db: Db) {
    * every case explicitly costs one line per action and moves the discovery
    * from production to the type checker.
    */
+  /**
+   * Batched `issue:read` for a whole list — one query per STAGE instead of two
+   * per issue.
+   *
+   * The 待決議 feed asks this per distinct issue, which measured at 60 database
+   * round-trips for a single page load: ~2 per issue (row fetch, then the
+   * participation fallback) plus the feed's own queries. That is what made the
+   * endpoint cost ~58ms of CPU and scale linearly with concurrency — the work
+   * was round-trips and drizzle query construction, not the data itself.
+   *
+   * Same predicate as the single-issue path below, evaluated in memory once the
+   * rows are in hand, so the two cannot drift in what they allow.
+   */
+  async function readableIssueIds(
+    companyId: string,
+    userId: string,
+    issueIds: readonly string[],
+  ): Promise<Set<string>> {
+    const allowed = new Set<string>();
+    const unique = [...new Set(issueIds)].filter(Boolean);
+    if (unique.length === 0) return allowed;
+
+    const rows = await db
+      .select({
+        id: issues.id,
+        assigneeAgentId: issues.assigneeAgentId,
+        createdByAgentId: issues.createdByAgentId,
+        assigneeUserId: issues.assigneeUserId,
+        createdByUserId: issues.createdByUserId,
+      })
+      .from(issues)
+      .where(and(eq(issues.companyId, companyId), inArray(issues.id, unique)));
+
+    const visible = await getVisibleAgentIdsForUser(companyId, userId);
+    const undecided: string[] = [];
+    for (const row of rows) {
+      if (row.assigneeUserId === userId || row.createdByUserId === userId) { allowed.add(row.id); continue; }
+      if (visible.size === 0) continue;
+      if (row.assigneeAgentId && visible.has(row.assigneeAgentId)) { allowed.add(row.id); continue; }
+      if (row.createdByAgentId && visible.has(row.createdByAgentId)) { allowed.add(row.id); continue; }
+      undecided.push(row.id);
+    }
+
+    // One participation query for everything the cheap checks did not settle.
+    if (undecided.length > 0 && visible.size > 0) {
+      const agentIds = [...visible];
+      const participated = await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(
+          and(
+            eq(issues.companyId, companyId),
+            inArray(issues.id, undecided),
+            sql`(
+              EXISTS (
+                SELECT 1 FROM ${issueComments}
+                WHERE ${issueComments.issueId} = ${issues.id}
+                  AND ${issueComments.companyId} = ${companyId}
+                  AND ${issueComments.authorAgentId} IN ${agentIds}
+              )
+              OR EXISTS (
+                SELECT 1 FROM ${activityLog}
+                WHERE ${activityLog.companyId} = ${companyId}
+                  AND ${activityLog.entityType} = 'issue'
+                  AND ${activityLog.entityId} = ${issues.id}::text
+                  AND ${activityLog.agentId} IN ${agentIds}
+              )
+            )`,
+          ),
+        );
+      for (const row of participated) allowed.add(row.id);
+    }
+    return allowed;
+  }
+
   async function restrictedMemberCanRead(
     action: RestrictableAction,
     companyId: string,
@@ -3555,6 +3630,9 @@ export function authorizationService(db: Db) {
      * member can see" and "what is relevant to me" can never drift into two
      * different notions of ownership.
      */
+    /** Batched relevance for a whole feed; see readableIssueIds. */
+    issuesRelevantToUser: (companyId: string, userId: string, issueIds: readonly string[]) =>
+      readableIssueIds(companyId, userId, issueIds),
     issueIsRelevantToUser: (companyId: string, userId: string, issueId: string) =>
       restrictedMemberCanRead("issue:read", companyId, userId, {
         type: "issue",

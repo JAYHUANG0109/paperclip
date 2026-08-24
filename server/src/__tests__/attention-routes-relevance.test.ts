@@ -47,6 +47,16 @@ vi.mock("../services/access.js", () => ({
       relevanceCalls.push(issueId);
       return relevance.current.get(issueId) ?? false;
     },
+    // Batched form the route now uses. Same map, same semantics — records each
+    // id so the "asks once per distinct issue" assertions still hold.
+    issuesRelevantToUser: async (_companyId: string, _userId: string, issueIds: readonly string[]) => {
+      const out = new Set<string>();
+      for (const id of new Set(issueIds)) {
+        relevanceCalls.push(id);
+        if (relevance.current.get(id) === true) out.add(id);
+      }
+      return out;
+    },
   }),
 }));
 
