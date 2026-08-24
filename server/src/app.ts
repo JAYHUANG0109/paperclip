@@ -779,14 +779,34 @@ export async function createApp(
   // distributable without the agent having to call the create API. Idempotent
   // and adopt-only; runs on startup and every few minutes.
   let skillAutoAdoptTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * setInterval does NOT wait for the previous run, and this pass walks EVERY
+   * agent in the company doing several database round-trips each. Once a pass
+   * takes longer than the interval, passes overlap and keep compounding — the
+   * instance was measured at ~957 database transactions per second with zero
+   * user traffic, which is what left no headroom for real requests.
+   *
+   * Skip rather than queue: this is a periodic reconcile, so a missed tick is
+   * picked up by the next one and running two at once buys nothing.
+   */
+  let skillAutoAdoptInFlight = false;
   const runSkillAutoAdopt = async () => {
+    if (skillAutoAdoptInFlight) {
+      logger.warn("skill auto-adopt still running; skipping this tick");
+      return;
+    }
+    skillAutoAdoptInFlight = true;
+    const startedAt = Date.now();
     try {
       const result = await reconcileUserInstalledSkills(db);
-      if (result.adopted > 0) {
-        logger.info(result, "skill auto-adopt pass complete");
+      const durationMs = Date.now() - startedAt;
+      if (result.adopted > 0 || durationMs > 60_000) {
+        logger.info({ ...result, durationMs }, "skill auto-adopt pass complete");
       }
     } catch (err) {
       logger.warn({ err }, "skill auto-adopt pass failed");
+    } finally {
+      skillAutoAdoptInFlight = false;
     }
   };
   skillAutoAdoptTimer = isSchedulerLeader()
