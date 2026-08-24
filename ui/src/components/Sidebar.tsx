@@ -128,7 +128,12 @@ export function Sidebar() {
     queryKey: queryKeys.attention(selectedCompanyId!),
     queryFn: () => attentionApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId && showDecisions,
-    refetchInterval: 60_000,
+    // Jittered, not a flat 60s. Every client that loads at 08:00 would otherwise
+    // poll in lockstep forever, turning steady background load into synchronised
+    // waves — the failure mode is a burst, not throughput (80 users at 60s is
+    // only ~1.3 req/s, but 80 arriving in the same tick is 80 concurrent).
+    // Spread over 60-75s so the herd decoheres after the first few rounds.
+    refetchInterval: () => 60_000 + Math.floor(Math.random() * 15_000),
   });
   const attentionCount = attentionBadgeCount(attentionFeed);
   const showCases = experimentalSettings?.enableCases === true;
