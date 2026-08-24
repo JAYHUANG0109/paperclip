@@ -4,6 +4,8 @@
 // instrumentationReady before opening DB connections or constructing the
 // HTTP server, so trace coverage does not depend on incidental timing.
 import { instrumentationReady, shutdownInstrumentation } from "./instrumentation.js";
+import cluster from "node:cluster";
+import { cpus } from "node:os";
 import { isSchedulerLeader, ownsSingletonResources, processRoleLabel } from "./lib/process-role.js";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
@@ -127,7 +129,17 @@ export interface StartedServer {
   databaseUrl: string;
 }
 
-export async function startServer(): Promise<StartedServer> {
+export async function startServer(
+  options: {
+    /**
+     * Build everything (database, migrations, schedulers) but do NOT bind the
+     * port. Used by the cluster primary: in node:cluster only WORKERS may call
+     * listen() — the primary creates the shared handle on their behalf, so a
+     * primary that also bound the port directly would collide with it.
+     */
+    skipListen?: boolean;
+  } = {},
+): Promise<StartedServer> {
   // Tracing must be active (or have failed and logged) before the first DB
   // connection or the HTTP server exists — see instrumentation.ts.
   await instrumentationReady;
@@ -1419,6 +1431,19 @@ export async function startServer(): Promise<StartedServer> {
     throw err;
   }
 
+  if (options.skipListen) {
+    logger.info(
+      `Cluster primary ready (role: ${processRoleLabel()}); schedulers owned here, HTTP served by workers`,
+    );
+    return {
+      server,
+      host: config.host,
+      listenPort,
+      apiUrl: configuredApiUrl,
+      databaseUrl: activeDatabaseConnectionString,
+    };
+  }
+
   await new Promise<void>((resolveListen, rejectListen) => {
     const onError = (err: Error) => {
       server.off("error", onError);
@@ -1577,8 +1602,68 @@ function isMainModule(metaUrl: string): boolean {
   }
 }
 
+/**
+ * How many HTTP workers to fork. Unset or <2 means "run exactly as before" —
+ * one process that owns the database, the schedulers and the port. Clustering
+ * is opt-in precisely so shipping the code is not the same act as enabling it.
+ *
+ * Topology when enabled:
+ *   primary — embedded PostgreSQL, migrations, all 8 schedulers. Does NOT listen.
+ *   workers — HTTP only, PAPERCLIP_PROCESS_ROLE=worker, DATABASE_URL inherited
+ *             from the primary so they never touch the embedded data directory.
+ *
+ * The scheduler gating this depends on landed separately (lib/process-role.ts);
+ * without it every worker would re-run agent dispatch and digest pings.
+ */
+function resolveClusterWorkerCount(): number {
+  const raw = process.env.PAPERCLIP_CLUSTER_WORKERS?.trim();
+  if (!raw) return 0;
+  if (raw.toLowerCase() === "auto") {
+    // Leave headroom: the primary, embedded PostgreSQL and agent subprocesses
+    // all need cores too. Never claim the whole box.
+    return Math.max(2, Math.min(8, cpus().length - 2));
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    logger.warn({ PAPERCLIP_CLUSTER_WORKERS: raw }, "Ignoring unparseable cluster worker count");
+    return 0;
+  }
+  return parsed;
+}
+
+async function startClusterPrimary(workerCount: number): Promise<void> {
+  const started = await startServer({ skipListen: true });
+  const workerEnv = {
+    PAPERCLIP_PROCESS_ROLE: "worker",
+    // Workers MUST take the external-Postgres branch. index.ts throws at boot if
+    // a worker reaches the embedded branch, so this is the contract that keeps
+    // them off the shared data directory.
+    DATABASE_URL: started.databaseUrl,
+  };
+  cluster.setupPrimary({ serialization: "advanced" });
+  for (let i = 0; i < workerCount; i += 1) cluster.fork(workerEnv);
+
+  cluster.on("exit", (worker, code, signal) => {
+    // Never respawn during shutdown, or SIGTERM turns into a fork bomb.
+    if (shuttingDownForCluster) return;
+    logger.error({ workerPid: worker.process.pid, code, signal }, "Cluster worker exited; respawning");
+    cluster.fork(workerEnv);
+  });
+
+  logger.info({ workerCount, primaryPid: process.pid }, "Cluster primary started");
+}
+
+let shuttingDownForCluster = false;
+for (const sig of ["SIGTERM", "SIGINT"] as const) {
+  process.once(sig, () => { shuttingDownForCluster = true; });
+}
+
 if (isMainModule(import.meta.url)) {
-  void startServer().catch((err) => {
+  const workerCount = resolveClusterWorkerCount();
+  const boot = workerCount >= 2 && cluster.isPrimary
+    ? startClusterPrimary(workerCount)
+    : startServer().then(() => undefined);
+  void boot.catch((err) => {
     logger.error({ err }, "Paperclip server failed to start");
     process.exit(1);
   });

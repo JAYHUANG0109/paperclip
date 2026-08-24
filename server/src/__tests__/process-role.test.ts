@@ -44,3 +44,36 @@ describe("process role", () => {
     expect(processRole()).toBe("worker");
   });
 });
+
+describe("cluster worker count parsing", () => {
+  // Mirrors resolveClusterWorkerCount in index.ts. Clustering must be OFF unless
+  // deliberately turned on: shipping the code should not enable it.
+  function resolve(raw: string | undefined, cpuCount = 14): number {
+    if (!raw) return 0;
+    if (raw.trim().toLowerCase() === "auto") return Math.max(2, Math.min(8, cpuCount - 2));
+    const parsed = Number(raw.trim());
+    if (!Number.isInteger(parsed) || parsed < 0) return 0;
+    return parsed;
+  }
+
+  it("is off when unset", () => {
+    expect(resolve(undefined)).toBe(0);
+    expect(resolve("")).toBe(0);
+  });
+
+  it("treats 0 and 1 as not-clustered", () => {
+    expect(resolve("0")).toBe(0);
+    expect(resolve("1")).toBe(1); // < 2, so the caller runs single-process
+  });
+
+  it("leaves headroom on auto rather than claiming every core", () => {
+    expect(resolve("auto", 14)).toBe(8);
+    expect(resolve("auto", 4)).toBe(2);
+  });
+
+  it("ignores garbage instead of guessing a worker count", () => {
+    expect(resolve("banana")).toBe(0);
+    expect(resolve("-3")).toBe(0);
+    expect(resolve("2.5")).toBe(0);
+  });
+});
