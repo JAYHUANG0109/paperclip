@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -63,7 +64,13 @@ function Chips({
   );
 }
 
-/** Compose the request body the fulfilling agent reads. */
+/**
+ * Compose the request body the fulfilling agent reads.
+ *
+ * i18n-exempt: this is written FOR an agent, not shown to a user. It names
+ * Chinese org-chart concepts (校區／組別／職位) that the agent matches against
+ * doc/sa-org-chart.md, so translating it would break the lookup.
+ */
 export function buildColleagueAgentRequest(draft: ColleagueAgentDraft): string {
   const line = (k: string, v: string) => `- **${k}**：${v || "（未填）"}`;
   return [
@@ -99,6 +106,7 @@ export function NewColleagueAgentForm({
   assigneeAgentId?: string | null;
   onAssigneeAgentIdChange?: (agentId: string) => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<ColleagueAgentDraft>({
     name: "", nickname: "", email: "", campuses: [], groups: [], positions: [],
   });
@@ -124,25 +132,25 @@ export function NewColleagueAgentForm({
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-1.5">
-          <span className="text-xs font-medium">姓名 <span className="text-destructive">*</span></span>
+          <span className="text-xs font-medium">{t("newAgent.colleague.name")} <span className="text-destructive">*</span></span>
           <Input
             value={draft.name}
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-            placeholder="王小明"
+            placeholder={t("newAgent.colleague.namePlaceholder")}
           />
         </label>
         <label className="space-y-1.5">
-          <span className="text-xs font-medium">綽號</span>
+          <span className="text-xs font-medium">{t("newAgent.colleague.nickname")}</span>
           <Input
             value={draft.nickname}
             onChange={(e) => setDraft((d) => ({ ...d, nickname: e.target.value }))}
-            placeholder="小明"
+            placeholder={t("newAgent.colleague.nicknamePlaceholder")}
           />
         </label>
       </div>
 
       <label className="space-y-1.5 block">
-        <span className="text-xs font-medium">公司 Email <span className="text-destructive">*</span></span>
+        <span className="text-xs font-medium">{t("newAgent.colleague.email")} <span className="text-destructive">*</span></span>
         <Input
           type="email"
           value={draft.email}
@@ -150,36 +158,36 @@ export function NewColleagueAgentForm({
           placeholder="someone@seasonart.org"
         />
         <span className="text-xs text-muted-foreground">
-          本人用這個帳號登入後，會自動取得公司權限並綁定這支代理人。填錯就無法配對。
+          {t("newAgent.colleague.emailHint")}
         </span>
       </label>
 
       <div className="space-y-1.5">
-        <span className="text-xs font-medium">校區</span>
+        <span className="text-xs font-medium">{t("newAgent.colleague.campus")}</span>
         <Chips options={CAMPUSES} selected={draft.campuses} onToggle={toggle("campuses")} />
       </div>
 
       <div className="space-y-1.5">
-        <span className="text-xs font-medium">組別／部門</span>
+        <span className="text-xs font-medium">{t("newAgent.colleague.group")}</span>
         <Chips
           options={groupOptions}
           selected={draft.groups}
           onToggle={toggle("groups")}
-          emptyHint="請先選校區。"
+          emptyHint={t("newAgent.colleague.groupNeedsCampus")}
         />
       </div>
 
       <div className="space-y-1.5">
-        <span className="text-xs font-medium">職位</span>
+        <span className="text-xs font-medium">{t("newAgent.colleague.position")}</span>
         <Chips options={POSITIONS} selected={draft.positions} onToggle={toggle("positions")} />
       </div>
 
       {assignableAgents.length > 0 && onAssigneeAgentIdChange ? (
         <div className="space-y-1.5">
-          <span className="text-xs font-medium">交辦給</span>
+          <span className="text-xs font-medium">{t("newAgent.colleague.assignTo")}</span>
           <Select value={assigneeAgentId ?? undefined} onValueChange={onAssigneeAgentIdChange}>
             <SelectTrigger className="w-full text-xs">
-              <SelectValue placeholder="選擇代理人" />
+              <SelectValue placeholder={t("newAgent.colleague.assignToPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
               {assignableAgents.map((a) => (
@@ -188,23 +196,23 @@ export function NewColleagueAgentForm({
             </SelectContent>
           </Select>
           <span className="text-xs text-muted-foreground">
-            預設交給你自己的代理人；他會依 `paperclip-create-agent` 技能與組織圖建置，必要時再往上呈報。
+            {t("newAgent.colleague.assignToHint")}
           </span>
         </div>
       ) : null}
 
       <div className="flex items-center gap-2 pt-1">
-        <Button variant="outline" onClick={onBack} disabled={submitting}>返回</Button>
+        <Button variant="outline" onClick={onBack} disabled={submitting}>{t("newAgent.colleague.back")}</Button>
         <Button
           className="flex-1"
           disabled={!canSubmit}
           onClick={() => onSubmit(draft, buildColleagueAgentRequest(draft))}
         >
-          建立代理人請求
+          {t("newAgent.colleague.submit")}
         </Button>
       </div>
       {draft.email.trim() && !emailLooksValid ? (
-        <p className="text-xs text-destructive">Email 格式看起來不正確。</p>
+        <p className="text-xs text-destructive">{t("newAgent.colleague.emailInvalid")}</p>
       ) : null}
     </div>
   );

@@ -321,7 +321,7 @@ export function NewAgentDialog() {
               <div className="grid gap-2">
                 <Button variant="outline" className="w-full" onClick={handleAddColleague}>
                   <UserRoundPlus className="h-4 w-4 mr-2" />
-                  新增同仁代理人
+                  {t("newAgent.colleague.addColleague")}
                 </Button>
                 <Button variant="outline" className="w-full" onClick={handleAdvancedConfig}>
                   <Settings2 className="h-4 w-4 mr-2" />
@@ -349,7 +349,7 @@ export function NewAgentDialog() {
                   {t("common.back")}
                 </button>
                 <p className="text-sm text-muted-foreground">
-                  填這六欄就好，其餘（指令、技能、權限、回報線）由代理人依組織圖建置。
+                  {t("newAgent.colleague.intro")}
                 </p>
               </div>
               <NewColleagueAgentForm

@@ -2032,7 +2032,27 @@
     "promptTitle": "Agent onboarding prompt",
     "promptSendHint": "Send this prompt to the external agent that should join this company.",
     "copiedPrompt": "Copied prompt",
-    "copyPrompt": "Copy prompt"
+    "copyPrompt": "Copy prompt",
+    "colleague": {
+      "addColleague": "Add a colleague's agent",
+      "intro": "Fill in these six fields; the rest (instructions, skills, permissions, reporting line) is built by an agent from the org chart.",
+      "name": "Name",
+      "namePlaceholder": "Wang Xiao-ming",
+      "nickname": "Nickname",
+      "nicknamePlaceholder": "Ming",
+      "email": "Company email",
+      "emailHint": "When this person signs in with this account they automatically get company access and are bound to this agent. A wrong address cannot be paired.",
+      "emailInvalid": "That email address does not look right.",
+      "campus": "Campus",
+      "group": "Group / department",
+      "groupNeedsCampus": "Pick a campus first.",
+      "position": "Position",
+      "assignTo": "Assign to",
+      "assignToPlaceholder": "Choose an agent",
+      "assignToHint": "Defaults to your own agent; it builds the new agent from the `paperclip-create-agent` skill and the org chart, escalating if it needs to.",
+      "submit": "Create agent request",
+      "back": "Back"
+    }
   },
   "transcript": {
     "inspectInput": "Inspect {{name}} input",

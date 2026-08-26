@@ -234,7 +234,7 @@ describe("NewAgentDialog", () => {
     await flushReact();
 
     const colleagueButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("新增同仁代理人"),
+      (button) => button.textContent?.includes("Add a colleague's agent"),
     );
     await act(async () => {
       colleagueButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -258,7 +258,7 @@ describe("NewAgentDialog", () => {
     await flushReact();
 
     const submitButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "建立代理人請求",
+      (button) => button.textContent === "Create agent request",
     );
     await act(async () => {
       submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

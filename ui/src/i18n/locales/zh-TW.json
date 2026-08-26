@@ -2137,7 +2137,27 @@
     "promptTitle": "代理上線提示",
     "promptSendHint": "將此提示傳送給應加入此公司的外部代理。",
     "copiedPrompt": "已複製提示",
-    "copyPrompt": "複製提示"
+    "copyPrompt": "複製提示",
+    "colleague": {
+      "addColleague": "新增同仁代理人",
+      "intro": "填這六欄就好，其餘（指令、技能、權限、回報線）由代理人依組織圖建置。",
+      "name": "姓名",
+      "namePlaceholder": "王小明",
+      "nickname": "綽號",
+      "nicknamePlaceholder": "小明",
+      "email": "公司 Email",
+      "emailHint": "本人用這個帳號登入後，會自動取得公司權限並綁定這支代理人。填錯就無法配對。",
+      "emailInvalid": "Email 格式看起來不正確。",
+      "campus": "校區",
+      "group": "組別／部門",
+      "groupNeedsCampus": "請先選校區。",
+      "position": "職位",
+      "assignTo": "交辦給",
+      "assignToPlaceholder": "選擇代理人",
+      "assignToHint": "預設交給你自己的代理人；他會依 `paperclip-create-agent` 技能與組織圖建置，必要時再往上呈報。",
+      "submit": "建立代理人請求",
+      "back": "返回"
+    }
   },
   "transcript": {
     "inspectInput": "檢視 {{name}} 的輸入",
