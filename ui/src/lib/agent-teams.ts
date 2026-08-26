@@ -39,6 +39,15 @@ const TEAM_EN: Record<string, string> = {
   "總管理處": "General Administration",
   // Departments / teams (second level)
   "幼教學組": "Preschool Teaching",
+  // The org writes the preschool group as 幼教教學組 (not 幼教學組) and splits it
+  // into teaching and admin, and does the same for ESL. Without these five the
+  // sidebar and the team chips render raw Chinese to English users — which is
+  // how 幼教教學組 sat untranslated next to a translated "ESL Teaching".
+  "幼教教學組": "Preschool Teaching",
+  "幼教教學": "Preschool Instruction",
+  "幼教行政": "Preschool Administration",
+  "ESL教學": "ESL Instruction",
+  "ESL行政": "ESL Administration",
   "外師教學組": "Foreign Teachers",
   "ESL教學組": "ESL Teaching",
   "註冊組": "Registration",

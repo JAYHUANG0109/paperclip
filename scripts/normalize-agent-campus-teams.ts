@@ -6,8 +6,12 @@
  * campus agents carried `01市政`/`05黎明`, and 家秀/雅雅 carried `北屯` against
  * `03北屯` — the 統籌總園長 could not see the campuses they coordinate.
  *
- * The numbered form wins: it is the complete ordered set (00–06), it is what the
- * UI's team filter shows, and the plain forms are partial strays.
+ * The PLAIN form wins. The numbered variants (`00總管理處`, `01市政`, …) look
+ * canonical in a DB census, but the UI's vocabulary is the plain name: TEAM_EN,
+ * CAMPUS_TEAMS, CAMPUS_DEPARTMENTS, CAMPUS_ORDER and DEPARTMENT_ROOM in
+ * ui/src/lib/agent-teams.ts all key off it. A numbered token matches none of
+ * them, so it is not recognized as a campus, gets no English label, and renders
+ * as a literal "00總管理處" in the sidebar.
  *
  * Agents with no campus token get one derived from their title, which already
  * records it — `(仁美校 · 註冊組)` → `06仁美`. It is APPENDED, never made first:
@@ -25,24 +29,24 @@ import { loadConfig } from "../server/src/config.js";
 
 const APPLY = process.argv.includes("--apply");
 
-/** Stray spelling → canonical numbered token. */
+/** Stray numbered spelling → canonical plain token. */
 const CANONICAL: Record<string, string> = {
-  "總管理處": "00總管理處",
-  "市政": "01市政",
-  "西屯": "02西屯",
-  "北屯": "03北屯",
-  "黎明": "05黎明",
-  "仁美": "06仁美",
+  "00總管理處": "總管理處",
+  "01市政": "市政",
+  "02西屯": "西屯",
+  "03北屯": "北屯",
+  "05黎明": "黎明",
+  "06仁美": "仁美",
 };
 
 /** Campus named in a title → canonical token. */
 const FROM_TITLE: Array<[RegExp, string]> = [
-  [/仁美校/, "06仁美"],
-  [/市政校/, "01市政"],
-  [/西屯校/, "02西屯"],
-  [/黎明校/, "05黎明"],
-  [/北屯校/, "03北屯"],
-  [/總部|總管理處/, "00總管理處"],
+  [/仁美校/, "仁美"],
+  [/市政校/, "市政"],
+  [/西屯校/, "西屯"],
+  [/黎明校/, "黎明"],
+  [/北屯校/, "北屯"],
+  [/總部|總管理處/, "總管理處"],
 ];
 
 const CANONICAL_SET = new Set(Object.values(CANONICAL));
@@ -85,7 +89,7 @@ async function main() {
       let campus = FROM_TITLE.find(([re]) => re.test(title))?.[1] ?? null;
       // 跨校巡輔 exists only at 仁美 (doc/sa-org-chart.md), so the team itself
       // names the campus even when the title does not.
-      if (!campus && teams.includes("跨校巡輔")) campus = "06仁美";
+      if (!campus && teams.includes("跨校巡輔")) campus = "仁美";
       // Otherwise inherit from the manager — but only when the manager belongs to
       // exactly one campus. A 統籌總園長 spans three, and picking one of those
       // would invent a placement rather than derive it.
