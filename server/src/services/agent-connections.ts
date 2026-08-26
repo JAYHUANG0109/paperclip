@@ -27,6 +27,16 @@ import { logger } from "../middleware/logger.js";
  * `adapterConfig.env.ASANA_TOKEN_PATH` to point at it. Called by the agent itself
  * (agent-actor) the moment a user hands over their token.
  */
+/**
+ * A run-time reference to the responsible user's own value for `key`, as opposed
+ * to the connection file, which is a snapshot frozen when it was written. Never
+ * required: an agent whose owner has not supplied that credential must still run
+ * (and fail loudly on the call that needs it) rather than refuse to start.
+ */
+function userSecretRef(key: string) {
+  return { type: "user_secret_ref", key, version: "latest", required: false, allowMissingOverride: true } as const;
+}
+
 const ASANA_PAT = /^2\/\d{8,}\/\d{8,}:[0-9a-f]{16,}$/;
 const SEASON_ARTS_WS = "1200850800726786";
 
@@ -130,13 +140,7 @@ export async function storeAsanaTokenForAgent(
   // responsible user's ASANA_TOKEN at run time, so a token rotated in 我的密鑰
   // reaches the agent on its next run instead of silently going nowhere. Not
   // required: an agent whose owner has no token yet must still run.
-  env.ASANA_TOKEN = {
-    type: "user_secret_ref",
-    key: ASANA_USER_SECRET_KEY,
-    version: "latest",
-    required: false,
-    allowMissingOverride: true,
-  };
+  env.ASANA_TOKEN = userSecretRef(ASANA_USER_SECRET_KEY);
   ac.env = env;
   await db.update(agents).set({ adapterConfig: ac, updatedAt: new Date() }).where(eq(agents.id, agentId));
   // The raw update above bypasses the agent-PATCH path, so declare the binding
@@ -221,8 +225,17 @@ export async function storeOdooCredentialsForAgent(
   env.ODOO_LOGIN = { type: "plain", value: login };
   env.ODOO_URL = { type: "plain", value: target.url };
   env.ODOO_DB = { type: "plain", value: target.db };
+  // Same reasoning as ASANA_TOKEN: the file is a snapshot, the ref is live, so a
+  // key rotated in 我的密鑰 reaches the agent on its next run.
+  env.ODOO_API_KEY = userSecretRef(ODOO_USER_SECRET_KEY);
   ac.env = env;
   await db.update(agents).set({ adapterConfig: ac, updatedAt: new Date() }).where(eq(agents.id, agentId));
+  await syncAgentAdapterEnvBindings({
+    secretsSvc: secretService(db),
+    companyId,
+    agentId,
+    adapterConfig: ac,
+  });
 
   await mirrorToUserSecret(db, companyId, agentId, ODOO_SECRET_DEF, apiKey);
   logger.info(
