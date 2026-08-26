@@ -102,7 +102,11 @@ describe("NewAgentDialog", () => {
       { id: "agent-ceo", role: "ceo", name: "CEO" },
       { id: "agent-mine", role: "member", name: "My Agent" },
     ]);
-    myAgentsMock.mockResolvedValue([{ id: "agent-mine", role: "member", name: "My Agent" }]);
+    // Mirrors the server: every joined agent, with the email-paired one flagged.
+    myAgentsMock.mockResolvedValue([
+      { id: "agent-wiki", role: "knowledge-maintainer", name: "Wiki Maintainer" },
+      { id: "agent-mine", role: "member", name: "My Agent", paired: true },
+    ]);
     listAdaptersMock.mockResolvedValue([]);
     createCompanyInviteMock.mockResolvedValue({
       id: "invite-1",

@@ -67,6 +67,7 @@ import {
 import { syncAgentAssignments } from "../services/agent-assignment-sync.js";
 import { redactForRosterView } from "../services/agent-roster-projection.js";
 import { assertBoard, assertCompanyAccess, assertInstanceAdmin, buildActorSecretContext, getAccessibleResource, getActorInfo, getVisibleAgentIds, getJoinedAgentIds, hasCompanyAccess, isPrivilegedMemberViewer } from "./authz.js";
+import { emailForUserId, resolveOwnAgentId } from "../services/asana-digest.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
   collectAgentAdapterWorkspaceCommandPaths,
@@ -2713,16 +2714,24 @@ export function agentRoutes(
     const mine = (await svc.list(companyId)).filter(
       (agent) => joined.has(agent.id) && agent.status !== "terminated",
     );
-    res.json(
-      mine.map((agent) => ({
-        id: agent.id,
-        urlKey: agent.urlKey,
-        name: agent.name,
-        role: agent.role,
-        title: agent.title,
-        status: agent.status,
-      })),
-    );
+    // "Joined" is every agent this user can act through — for an owner or admin
+    // that is most of the company, so the first row is arbitrary. The agent that
+    // is actually *theirs* is the one paired to their email (the same pairing
+    // adapterConfig.assignedUserEmail drives), so mark it and sort it first:
+    // callers that take [0] as "my agent" (sidebar, onboarding, default
+    // assignees) then get the paired one instead of whoever sorted first.
+    const pairedAgentId = await resolveOwnAgentId(db, companyId, await emailForUserId(db, userId));
+    const payload = mine.map((agent) => ({
+      id: agent.id,
+      urlKey: agent.urlKey,
+      name: agent.name,
+      role: agent.role,
+      title: agent.title,
+      status: agent.status,
+      paired: agent.id === pairedAgentId,
+    }));
+    payload.sort((a, b) => Number(b.paired) - Number(a.paired));
+    res.json(payload);
   });
 
   router.get("/instance/scheduler-heartbeats", async (req, res) => {

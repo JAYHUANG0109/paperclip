@@ -99,7 +99,11 @@ export function NewAgentDialog() {
   });
 
   const ceoAgent = (agents ?? []).find((a) => a.role === "ceo");
-  const myAgent = myAgents?.[0];
+  // Only the agent PAIRED to this user's email counts as "mine". `mine` returns
+  // every agent they have joined — for an owner/admin that is most of the
+  // company, including built-ins like Wiki Maintainer — so taking [0] would
+  // hand the request to whichever system agent happened to sort first.
+  const myAgent = (myAgents ?? []).find((a) => a.paired) ?? null;
   const defaultColleagueAssigneeId = myAgent?.id ?? ceoAgent?.id ?? null;
   const effectiveColleagueAssigneeId = colleagueAssigneeId ?? defaultColleagueAssigneeId;
   const assignableAgents = useMemo(

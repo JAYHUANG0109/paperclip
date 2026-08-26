@@ -122,7 +122,11 @@ export const agentsApi = {
   // filter). Used to populate the office floor + catalog for every user;
   // interaction (查看代理人) stays gated by myVisibleAgents.
   officeRoster: (companyId: string) => api.get<Agent[]>(`/companies/${companyId}/agents/office-roster`),
-  mine: (companyId: string) => api.get<Agent[]>(`/companies/${companyId}/agents/mine`),
+  // `paired` marks the one agent bound to the caller's own email; the server
+  // sorts it first, so `[0]` is "my agent" even for an owner who has joined
+  // most of the company.
+  mine: (companyId: string) =>
+    api.get<(Agent & { paired?: boolean })[]>(`/companies/${companyId}/agents/mine`),
   org: (companyId: string) => api.get<OrgNode[]>(`/companies/${companyId}/org`),
   listConfigurations: (companyId: string) =>
     api.get<Record<string, unknown>[]>(`/companies/${companyId}/agent-configurations`),
