@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { CAMPUSES, POSITIONS, groupsForCampuses } from "@/lib/org-chart-options";
 
@@ -87,11 +88,16 @@ export function buildColleagueAgentRequest(draft: ColleagueAgentDraft): string {
 }
 
 export function NewColleagueAgentForm({
-  onSubmit, onBack, submitting,
+  onSubmit, onBack, submitting, assignableAgents = [], assigneeAgentId, onAssigneeAgentIdChange,
 }: {
   onSubmit: (draft: ColleagueAgentDraft, body: string) => void;
   onBack: () => void;
   submitting?: boolean;
+  /** Agents this user may hand the request to. Empty hides the picker. */
+  assignableAgents?: readonly { id: string; name: string }[];
+  /** Defaults to the requester's own paired agent; see NewAgentDialog. */
+  assigneeAgentId?: string | null;
+  onAssigneeAgentIdChange?: (agentId: string) => void;
 }) {
   const [draft, setDraft] = useState<ColleagueAgentDraft>({
     name: "", nickname: "", email: "", campuses: [], groups: [], positions: [],
@@ -167,6 +173,25 @@ export function NewColleagueAgentForm({
         <span className="text-xs font-medium">職位</span>
         <Chips options={POSITIONS} selected={draft.positions} onToggle={toggle("positions")} />
       </div>
+
+      {assignableAgents.length > 0 && onAssigneeAgentIdChange ? (
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium">交辦給</span>
+          <Select value={assigneeAgentId ?? undefined} onValueChange={onAssigneeAgentIdChange}>
+            <SelectTrigger className="w-full text-xs">
+              <SelectValue placeholder="選擇代理人" />
+            </SelectTrigger>
+            <SelectContent>
+              {assignableAgents.map((a) => (
+                <SelectItem key={a.id} value={a.id} className="text-xs">{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground">
+            預設交給你自己的代理人；他會依 `paperclip-create-agent` 技能與組織圖建置，必要時再往上呈報。
+          </span>
+        </div>
+      ) : null}
 
       <div className="flex items-center gap-2 pt-1">
         <Button variant="outline" onClick={onBack} disabled={submitting}>返回</Button>

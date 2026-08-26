@@ -55,6 +55,7 @@ export function NewAgentDialog() {
   const [agentMessage, setAgentMessage] = useState("");
   const [latestAgentPrompt, setLatestAgentPrompt] = useState<string | null>(null);
   const [latestAgentPromptCopied, setLatestAgentPromptCopied] = useState(false);
+  const [colleagueAssigneeId, setColleagueAssigneeId] = useState<string | null>(null);
   const disabledTypes = useDisabledAdaptersSync();
 
   function resetDialogState() {
@@ -62,6 +63,7 @@ export function NewAgentDialog() {
     setAgentMessage("");
     setLatestAgentPrompt(null);
     setLatestAgentPromptCopied(false);
+    setColleagueAssigneeId(null);
   }
 
   useEffect(() => {
@@ -86,7 +88,24 @@ export function NewAgentDialog() {
     enabled: !!selectedCompanyId && newAgentOpen,
   });
 
+  // The agent this user is paired with. Creating an agent is work like any
+  // other, so it goes to your own agent by default — same source as the
+  // sidebar's "My Agent" and NewIssueDialog's default assignee, so all three
+  // agree. The CEO is only the fallback for a user who has no agent yet.
+  const { data: myAgents } = useQuery({
+    queryKey: queryKeys.agents.mine(selectedCompanyId!),
+    queryFn: () => agentsApi.mine(selectedCompanyId!),
+    enabled: !!selectedCompanyId && newAgentOpen,
+  });
+
   const ceoAgent = (agents ?? []).find((a) => a.role === "ceo");
+  const myAgent = myAgents?.[0];
+  const defaultColleagueAssigneeId = myAgent?.id ?? ceoAgent?.id ?? null;
+  const effectiveColleagueAssigneeId = colleagueAssigneeId ?? defaultColleagueAssigneeId;
+  const assignableAgents = useMemo(
+    () => (agents ?? []).map((a) => ({ id: a.id, name: a.name })),
+    [agents],
+  );
   const inviteHistoryQueryKey = queryKeys.access.invites(selectedCompanyId ?? "", "all", 5);
 
   // Build the adapter grid from the UI registry merged with display metadata.
@@ -134,17 +153,22 @@ export function NewAgentDialog() {
   }
 
   /**
-   * The six fields go out as a task for the CEO agent rather than straight to
+   * The six fields go out as a task for an agent rather than straight to
    * POST /agents: setting `assignedUserEmail` is an ownership grant restricted to
    * company owner/admin, and the reporting line has to be derived from the org
    * chart. Handing a structured request to an agent that holds both keeps this
    * button usable by IT without widening who can grant company access.
+   *
+   * It lands on the requester's own agent unless they pick someone else — an
+   * owner/admin/IT user asking their own agent is the common case, and an agent
+   * that cannot finish it escalates up the reporting line on its own.
    */
   function handleColleagueSubmit(_draft: unknown, body: string) {
+    const assigneeAgentId = effectiveColleagueAssigneeId ?? undefined;
     closeNewAgent();
     resetDialogState();
     openNewIssue({
-      assigneeAgentId: ceoAgent?.id,
+      assigneeAgentId,
       title: t("newAgent.askCeoIssueTitle"),
       description: body,
     });
@@ -327,6 +351,9 @@ export function NewAgentDialog() {
               <NewColleagueAgentForm
                 onSubmit={handleColleagueSubmit}
                 onBack={() => setMode("choices")}
+                assignableAgents={assignableAgents}
+                assigneeAgentId={effectiveColleagueAssigneeId}
+                onAssigneeAgentIdChange={setColleagueAssigneeId}
               />
             </>
           ) : mode === "runtime" ? (

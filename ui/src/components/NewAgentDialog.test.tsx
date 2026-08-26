@@ -10,6 +10,7 @@ import { NewAgentDialog } from "./NewAgentDialog";
 const createCompanyInviteMock = vi.hoisted(() => vi.fn());
 const getInviteOnboardingMock = vi.hoisted(() => vi.fn());
 const listAgentsMock = vi.hoisted(() => vi.fn());
+const myAgentsMock = vi.hoisted(() => vi.fn());
 const listAdaptersMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
 const closeNewAgentMock = vi.hoisted(() => vi.fn());
@@ -50,6 +51,7 @@ vi.mock("../api/access", () => ({
 vi.mock("../api/agents", () => ({
   agentsApi: {
     list: (companyId: string) => listAgentsMock(companyId),
+    mine: (companyId: string) => myAgentsMock(companyId),
   },
 }));
 
@@ -97,8 +99,10 @@ describe("NewAgentDialog", () => {
     document.body.appendChild(container);
 
     listAgentsMock.mockResolvedValue([
-      { id: "agent-ceo", role: "ceo" },
+      { id: "agent-ceo", role: "ceo", name: "CEO" },
+      { id: "agent-mine", role: "member", name: "My Agent" },
     ]);
+    myAgentsMock.mockResolvedValue([{ id: "agent-mine", role: "member", name: "My Agent" }]);
     listAdaptersMock.mockResolvedValue([]);
     createCompanyInviteMock.mockResolvedValue({
       id: "invite-1",
@@ -202,6 +206,64 @@ describe("NewAgentDialog", () => {
 
     expect(container.textContent).toContain("Optional message for the agent");
     expect(container.textContent).toContain("Generate onboarding prompt");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+  // Creating an agent is work like any other: it goes to the requester's own
+  // agent, not the CEO, so an owner/admin/IT user is not queued behind one
+  // shared inbox. Regression guard for the old hardcoded ceoAgent assignee.
+  it("hands the colleague-agent request to the requester's own agent by default", async () => {
+    const root = createRoot(container);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <NewAgentDialog />
+        </QueryClientProvider>,
+      );
+    });
+    await flushReact();
+
+    const colleagueButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("新增同仁代理人"),
+    );
+    await act(async () => {
+      colleagueButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushReact();
+
+    const inputs = Array.from(container.querySelectorAll("input"));
+    const setValue = (input: HTMLInputElement, value: string) => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      setter?.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+
+    await act(async () => {
+      setValue(inputs[0] as HTMLInputElement, "王小明");
+      setValue(inputs[2] as HTMLInputElement, "ming@seasonart.org");
+    });
+    await flushReact();
+
+    const submitButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "建立代理人請求",
+    );
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushReact();
+
+    expect(openNewIssueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ assigneeAgentId: "agent-mine" }),
+    );
 
     await act(async () => {
       root.unmount();
