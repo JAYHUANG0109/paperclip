@@ -14,6 +14,7 @@ import {
   resolveOdooTarget,
   type ProbeResult,
 } from "./agent-odoo.js";
+import { syncAgentAdapterEnvBindings } from "./agent-secret-bindings.js";
 import { logger } from "../middleware/logger.js";
 
 /**
@@ -124,10 +125,31 @@ export async function storeAsanaTokenForAgent(
     : {};
   const env: Record<string, unknown> = ac.env && typeof ac.env === "object" ? { ...(ac.env as Record<string, unknown>) } : {};
   env.ASANA_TOKEN_PATH = { type: "plain", value: tokenPath };
+  // Wire the secret as well as the file, so the agent can read BOTH. The file
+  // is a snapshot frozen at the moment it was written; this binding resolves the
+  // responsible user's ASANA_TOKEN at run time, so a token rotated in 我的密鑰
+  // reaches the agent on its next run instead of silently going nowhere. Not
+  // required: an agent whose owner has no token yet must still run.
+  env.ASANA_TOKEN = {
+    type: "user_secret_ref",
+    key: ASANA_USER_SECRET_KEY,
+    version: "latest",
+    required: false,
+    allowMissingOverride: true,
+  };
   ac.env = env;
   await db.update(agents).set({ adapterConfig: ac, updatedAt: new Date() }).where(eq(agents.id, agentId));
-  // Mirror into the user's per-user secret so it's UI-managed + the single
-  // source the run-env injection reads (see heartbeat run-config assembly).
+  // The raw update above bypasses the agent-PATCH path, so declare the binding
+  // explicitly — without a user_secret_declarations row the runtime has nothing
+  // to resolve and the env var never appears.
+  await syncAgentAdapterEnvBindings({
+    secretsSvc: secretService(db),
+    companyId,
+    agentId,
+    adapterConfig: ac,
+  });
+  // Mirror into the user's per-user secret so it's UI-managed and the binding
+  // above has something to resolve.
   await mirrorToUserSecret(db, companyId, agentId, ASANA_SECRET_DEF, trimmed);
   return { ok: true, path: tokenPath };
 }
