@@ -18,10 +18,29 @@ export const SCOPED_TEAM_SEPARATOR = "／";
 // CAMPUS_TEAMS (ui/src/lib/agent-teams.ts).
 export const CANONICAL_CAMPUSES = ["仁美", "市政", "西屯", "黎明", "北屯", "總管理處"] as const;
 
-// Non-campus values legitimately allowed as `teams[0]`: leadership roots
-// (創辦人 / 園長 etc.) and infrastructure/system agents. These are the only
-// top-team values that don't require a campus or a manager.
-export const ALLOWED_NON_CAMPUS_TOP_TEAMS = ["領導團隊", "系統自動化"] as const;
+// The leadership root, and its three sub-teams. The founder's model is
+// 總園長 → 園長 → 主任 → 組長 → 組員 for the campuses and 處長 → 主管 → 組員 for
+// HQ, so the root's second level is the rank itself: 哈曉如 and 吳家秀 sit in
+// 總園長, every other 園長/副園長 in 園長, and 張廖心淑 in 處長.
+export const LEADERSHIP_TEAM = "園長團隊";
+export const LEADERSHIP_SUBTEAMS = ["總園長", "園長", "處長"] as const;
+
+// Renamed from 領導團隊 on 2026-09-01. Old tokens survive in skill/folder
+// sharing lists and in anything typed before the rename, so they are normalized
+// forward rather than rejected — dropping them would silently revoke access.
+const LEGACY_TOP_TEAM_ALIASES: Readonly<Record<string, string>> = {
+  "領導團隊": LEADERSHIP_TEAM,
+};
+
+/** The current name for a team, following any rename. Unknown names pass through. */
+export function canonicalTeamName(name: string): string {
+  return LEGACY_TOP_TEAM_ALIASES[name] ?? name;
+}
+
+// Non-campus values legitimately allowed as `teams[0]`: the leadership root and
+// infrastructure/system agents. These are the only top-team values that don't
+// require a campus or a manager.
+export const ALLOWED_NON_CAMPUS_TOP_TEAMS = [LEADERSHIP_TEAM, "系統自動化"] as const;
 
 /**
  * Where an agent belongs when it is nobody's: no team given and no owner email,
@@ -46,6 +65,8 @@ export function isCanonicalCampus(s: string): boolean {
  */
 export function normalizeCampusToken(raw: string): string {
   const t = (raw ?? "").trim();
+  const alias = canonicalTeamName(t);
+  if (alias !== t) return alias;
   if (t.length > 1 && t.endsWith("校")) {
     const base = t.slice(0, -1);
     if (CANONICAL_CAMPUS_SET.has(base)) return base;
@@ -55,7 +76,8 @@ export function normalizeCampusToken(raw: string): string {
 
 /** True if `top` is a valid `teams[0]`: a real campus or an allowed root/infra team. */
 export function isAllowedTopTeam(top: string): boolean {
-  return CANONICAL_CAMPUS_SET.has(top) || (ALLOWED_NON_CAMPUS_TOP_TEAMS as readonly string[]).includes(top);
+  const t = canonicalTeamName(top);
+  return CANONICAL_CAMPUS_SET.has(t) || (ALLOWED_NON_CAMPUS_TOP_TEAMS as readonly string[]).includes(t);
 }
 
 export interface ParsedTeamToken {
@@ -86,10 +108,15 @@ export function makeScopedTeamToken(campus: string, department: string): string 
  * Accepts a Set or array of team names.
  */
 export function teamTokenMatches(token: string, teams: Set<string> | Iterable<string>): boolean {
-  const set = teams instanceof Set ? teams : new Set(teams);
+  // A team set written before the 領導團隊 → 園長團隊 rename must still match a
+  // share written after it, and vice versa, so both sides are compared on the
+  // canonical name rather than the literal one.
+  const set = new Set<string>();
+  for (const t of teams) set.add(canonicalTeamName(t));
+  const has = (name: string) => set.has(canonicalTeamName(name));
   const parsed = parseTeamToken(token);
-  if (!parsed.scoped) return set.has(parsed.campus);
-  return set.has(parsed.campus) && !!parsed.department && set.has(parsed.department);
+  if (!parsed.scoped) return has(parsed.campus);
+  return has(parsed.campus) && !!parsed.department && has(parsed.department);
 }
 
 /** True if ANY of the sharing tokens matches the team set. */

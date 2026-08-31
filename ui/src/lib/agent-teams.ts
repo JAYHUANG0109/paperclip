@@ -25,7 +25,12 @@ export function agentTeams(agent: Pick<Agent, "metadata">): string[] {
 // keys off the raw (Chinese) team name, so this is display-only and safe.
 const TEAM_EN: Record<string, string> = {
   // Cross-campus / legacy top-level groups
-  "領導團隊": "Leadership",
+  "園長團隊": "Principals",
+  "領導團隊": "Principals", // pre-2026-09-01 name; kept so old data still labels
+  // The leadership root's three ranks (doc/sa-org-chart.md).
+  "總園長": "Head Principal",
+  "園長": "Principal",
+  "處長": "Director",
   "系統自動化": "System Automation",
   "教學組": "Teaching",
   "人才發展": "Talent Development",
@@ -192,8 +197,14 @@ export function groupItemsByTeam<T>(
   return result;
 }
 
+/**
+ * The leadership root's second level: a rank, not a department. 哈曉如 and 吳家秀
+ * sit in 總園長, every other 園長／副園長 in 園長, and 張廖心淑 in 處長.
+ */
+export const LEADERSHIP_SUBTEAMS = ["總園長", "園長", "處長"];
+
 // Cross-campus groups — not scoped to any campus. Shown in the picker's 跨校/全部 section.
-export const CROSS_CAMPUS_GROUPS = ["領導團隊", "系統自動化"];
+export const CROSS_CAMPUS_GROUPS = ["園長團隊", "系統自動化"];
 
 // The distinct department names across all campuses — for the "this dept in every
 // campus" (plain department token) options in the 跨校/全部 section.
@@ -236,6 +247,7 @@ const DEPARTMENT_ROOM: Record<string, string> = {
   "人才發展": "人才發展部",
   "人才發展部": "人才發展部",
   "品牌發展部": "品牌發展部",
+  "園長團隊": "領導團隊",
   "領導團隊": "領導團隊",
   "系統自動化": "系統自動化",
 };

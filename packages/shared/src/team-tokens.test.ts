@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anyTeamTokenMatches,
+  canonicalTeamName,
   isAllowedTopTeam,
   isCanonicalCampus,
   makeScopedTeamToken,
@@ -82,5 +83,33 @@ describe("team tokens", () => {
 
   it("accepts an array of team names too", () => {
     expect(teamTokenMatches("北屯／幼教學組", ["北屯", "幼教學組"])).toBe(true);
+  });
+});
+
+describe("領導團隊 → 園長團隊 rename", () => {
+  // 37 skills and 15 folders named 領導團隊 when the rename landed. Dropping the
+  // old name would have silently revoked access rather than failing loudly, so
+  // both spellings must resolve to the same people in both directions.
+  it("matches an old share against a new team set", () => {
+    expect(teamTokenMatches("領導團隊", ["園長團隊", "總園長", "仁美"])).toBe(true);
+  });
+
+  it("matches a new share against an old team set", () => {
+    expect(teamTokenMatches("園長團隊", ["領導團隊", "仁美"])).toBe(true);
+  });
+
+  it("accepts either spelling as teams[0]", () => {
+    expect(isAllowedTopTeam("園長團隊")).toBe(true);
+    expect(isAllowedTopTeam("領導團隊")).toBe(true);
+  });
+
+  it("normalizes the old name forward", () => {
+    expect(normalizeCampusToken("領導團隊")).toBe("園長團隊");
+    expect(canonicalTeamName("領導團隊")).toBe("園長團隊");
+  });
+
+  it("does not make unrelated teams match each other", () => {
+    expect(teamTokenMatches("園長團隊", ["系統自動化"])).toBe(false);
+    expect(teamTokenMatches("總園長", ["園長"])).toBe(false);
   });
 });

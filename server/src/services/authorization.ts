@@ -581,10 +581,12 @@ function projectVisibilityEnabled(): boolean {
 // head oversees the private projects of their own campus/dept, without exposing
 // them to regular peers (who lack the leadership token). team-match on ordinary
 // members still only grants `team`-visibility projects, never `private`.
-// Configurable per deployment; defaults to this instance's "領導團隊".
+// Configurable per deployment; defaults to this instance's 園長團隊 (renamed from
+// 領導團隊 on 2026-09-01 — both are listed so a team set or share that still
+// carries the old name keeps its access).
 function leadershipTeamTokens(): Set<string> {
   const raw = process.env.PAPERCLIP_LEADERSHIP_TEAM_TOKENS?.trim();
-  const list = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : ["領導團隊"];
+  const list = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : ["園長團隊", "領導團隊"];
   return new Set(list);
 }
 

@@ -41,7 +41,15 @@ export const HQ_DEPARTMENTS = [
   "餐飲部",
 ] as const;
 
-/** L2/L4/L5 職稱. */
+/**
+ * L2/L4/L5 職稱.
+ *
+ * The 總管理處 block was missing entirely — 人發 (talent development), 行銷
+ * (marketing), 視覺 (visual design) and 採購 (procurement) had no selectable
+ * position, so an HQ hire could only be filed under a campus-shaped role. The
+ * names and their ladders come from 五B of the sa-agent-onboarding skill and
+ * doc/sa-org-chart.md.
+ */
 export const POSITIONS = [
   // L2
   "統籌總園長",
@@ -65,6 +73,25 @@ export const POSITIONS = [
   "ESL組員",
   "註冊組員",
   "行政組員",
+  // 總管理處 — 人發／行銷／視覺／採購／財務／基金會／秘書, each 副理→主任→組長→專員
+  "人發副理",
+  "人發主任",
+  "人發組長",
+  "人發專員",
+  "行銷主任",
+  "行銷組長",
+  "行銷專員",
+  "視覺設計組長",
+  "視覺設計專員",
+  "採購主任",
+  "採購組長",
+  "採購專員",
+  "修繕組長",
+  "財務組長",
+  "財務副組長",
+  "財務專員",
+  "基金會專員",
+  "創辦人秘書",
 ] as const;
 
 /** Groups selectable for a campus: 總管理處 gets departments, schools get 組. */
