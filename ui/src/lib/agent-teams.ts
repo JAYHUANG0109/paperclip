@@ -61,10 +61,8 @@ const TEAM_EN: Record<string, string> = {
   "園務": "School Leadership",
   "處長室": "Director's Office",
   "秘書室": "Secretariat",
-  "人發": "Talent Development",
-  "行銷": "Marketing",
-  "視覺": "Visual Design",
-  "採購": "Procurement",
+  "行銷部": "Marketing",
+  "視覺部": "Visual Design",
   "數位資訊部": "Digital IT",
   "人才發展部": "Talent Development",
   "品牌發展部": "Brand Development",
@@ -94,7 +92,7 @@ export function formatTeamToken(token: string, lang: string | null | undefined):
  * Every team, whether or not anyone is in it yet.
  *
  * Derived-from-agents alone means a team only exists once somebody is filed
- * into it, so a newly declared group (人發／行銷／視覺／採購) would be invisible
+ * into it, so a newly declared group (行銷部／視覺部) would be invisible
  * until its first hire — and you cannot file the first hire into a team you
  * cannot see. The declared campuses and departments are unioned in so an empty
  * team still appears, with a count of zero.
@@ -123,7 +121,7 @@ export const CAMPUS_DEPARTMENTS: Record<string, string[]> = {
   "西屯": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
   "黎明": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
   "北屯": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "總管理處": ["人發", "行銷", "視覺", "採購", "處長室", "秘書室", "數位資訊部", "人才發展部", "品牌發展部", "基金會", "採購工程部", "財務部", "餐飲部"],
+  "總管理處": ["行銷部", "視覺部", "處長室", "秘書室", "數位資訊部", "人才發展部", "品牌發展部", "基金會", "採購工程部", "財務部", "餐飲部"],
 };
 
 // Ordered campus list for the picker.

@@ -152,5 +152,9 @@ flowchart TD
 ## 待補：總管理處職位（2026-09-01）
 
 Paperclip 先前沒有 **人發／行銷／視覺／採購** 的職位選項，HQ 進用只能借用校區職稱。
-現已補進 `ui/src/lib/org-chart-options.ts` 的 `POSITIONS`，各職務的職掌／三段見
+現已補進 `ui/src/lib/org-chart-options.ts` 的 `POSITIONS`。
+
+**組別／部門**只新增兩個：**行銷部**、**視覺部**（皆屬品牌發展部）。
+`人發` 與 `採購` 不另立——它們就是既有的 **人才發展部** 與 **採購工程部** 的簡稱，
+兩種寫法並存只會把同一個 team 拆成兩半（校區 token 已經吃過這個虧），各職務的職掌／三段見
 `skills/sa-agent-onboarding/references/roles/`（每個職位一個檔）與同技能 SKILL.md 五B。

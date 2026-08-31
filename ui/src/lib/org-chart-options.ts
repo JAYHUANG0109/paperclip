@@ -33,16 +33,14 @@ export const SCHOOL_GROUPS = [
 /**
  * L3 部門 — 總管理處 only.
  *
- * 人發／行銷／視覺／採購 are the four the founder called out as missing: they are
- * the working groups people actually sit in, one level below the department they
- * belong to (人發 ⊂ 人才發展部, 行銷 and 視覺 ⊂ 品牌發展部, 採購 ⊂ 採購工程部).
- * Both levels are offered because an agent may be filed at either.
+ * Of the four the founder called out as missing, only two are new groups:
+ * 行銷部 and 視覺部, both under 品牌發展部. 人發 and 採購 are not — they are just
+ * the short names for 人才發展部 and 採購工程部, which already existed, and
+ * listing both spellings would fragment the same team in two.
  */
 export const HQ_DEPARTMENTS = [
-  "人發",
-  "行銷",
-  "視覺",
-  "採購",
+  "行銷部",
+  "視覺部",
   "數位資訊部",
   "人才發展部",
   "品牌發展部",
