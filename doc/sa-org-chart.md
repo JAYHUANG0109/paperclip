@@ -108,11 +108,14 @@
 
 ### 一、總部（總管理處）
 
+> ⚠️ 圖中 **人才發展部 副理** 掛在處長下，但回報線例外：**人發直屬創辦人**（2026-09-01 唐老師確認）。
+> 圖畫的是「部門歸屬」，`reportsTo` 以本文件的 reportsTo 規則為準。
+
 ```mermaid
 flowchart TD
   D[總部 處長]
   D --> SEC[秘書]
-  D --> HRM[人才發展部 副理]
+  D -.->|部門屬總管理處，但回報線直屬創辦人| HRM[人才發展部 副理]
   D --> ITM[數位資訊部 副理]
   D --> BRD[品牌發展部 主任]
   D --> PUR[採購工程部 主任]
@@ -150,4 +153,4 @@ flowchart TD
 
 Paperclip 先前沒有 **人發／行銷／視覺／採購** 的職位選項，HQ 進用只能借用校區職稱。
 現已補進 `ui/src/lib/org-chart-options.ts` 的 `POSITIONS`，各職務的職掌／三段見
-`doc/roles/`（每個職位一個檔）與 `skills/sa-agent-onboarding/SKILL.md` 五B。
+`skills/sa-agent-onboarding/references/roles/`（每個職位一個檔）與同技能 SKILL.md 五B。

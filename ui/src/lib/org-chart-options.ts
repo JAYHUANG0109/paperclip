@@ -30,8 +30,19 @@ export const SCHOOL_GROUPS = [
   "跨校巡輔",
 ] as const;
 
-/** L3 部門 — 總管理處 only. */
+/**
+ * L3 部門 — 總管理處 only.
+ *
+ * 人發／行銷／視覺／採購 are the four the founder called out as missing: they are
+ * the working groups people actually sit in, one level below the department they
+ * belong to (人發 ⊂ 人才發展部, 行銷 and 視覺 ⊂ 品牌發展部, 採購 ⊂ 採購工程部).
+ * Both levels are offered because an agent may be filed at either.
+ */
 export const HQ_DEPARTMENTS = [
+  "人發",
+  "行銷",
+  "視覺",
+  "採購",
   "數位資訊部",
   "人才發展部",
   "品牌發展部",
