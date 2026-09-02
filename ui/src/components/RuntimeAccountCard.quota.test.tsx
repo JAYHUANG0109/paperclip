@@ -95,6 +95,14 @@ describe("RuntimeAccountCard usage bars", () => {
     expect(text).not.toContain("0%");
   });
 
+  it("says usage is unavailable, so an unread account is not mistaken for an unused one", () => {
+    // Unknown is now common and expected: an idle account's access token stays
+    // expired until it next runs, and a dir no longer borrows another account's
+    // credentials to fill the gap.
+    const text = render([entry({ quotaWindows: null })]);
+    expect(text).toContain("Usage unavailable until this account next runs");
+  });
+
   it("skips windows the provider reported without a percentage", () => {
     const text = render([
       entry({

@@ -96,6 +96,7 @@ import {
   claudeAccountRotationApplies,
   isBedrockAuth,
   markClaudeAccountCoolingDown,
+  markClaudeAccountNeedsLogin,
   parseClaudeAccountConfigDirs,
   resolveClaudeBillingType,
   resolveClaudeQuotaSwitchThreshold,
@@ -1401,6 +1402,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           transientRetryNotBefore ? transientRetryNotBefore.getTime() : Date.now() + CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS,
         );
       }
+      // A pooled account whose credentials are dead needs the same treatment:
+      // step past it so the pool keeps working until someone re-logs it in.
+      if (loginMeta.requiresLogin && runClaudeConfigDir) {
+        markClaudeAccountNeedsLogin(runClaudeConfigDir);
+      }
       const errorCode = loginMeta.requiresLogin
         ? "claude_auth_required"
         : isClaudeModelNotFoundError({
@@ -1539,6 +1545,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         runClaudeConfigDir,
         transientRetryNotBefore ? transientRetryNotBefore.getTime() : Date.now() + CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS,
       );
+    }
+    if (loginMeta.requiresLogin && runClaudeConfigDir) {
+      markClaudeAccountNeedsLogin(runClaudeConfigDir);
     }
     const resolvedErrorCode = loginMeta.requiresLogin
       ? "claude_auth_required"

@@ -1,4 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import crypto from "node:crypto";
+import os from "node:os";
+import path from "node:path";
 
 /**
  * Per-account usage reads.
@@ -36,6 +39,10 @@ const creds = (over: Record<string, unknown> = {}) =>
       ...over,
     },
   });
+
+/** The keychain service a config dir owns — mirrors the production derivation. */
+const ownService = (dir: string) =>
+  `Claude Code-credentials-${crypto.createHash("sha256").update(dir).digest("hex").slice(0, 8)}`;
 
 const usageBody = {
   five_hour: { utilization: 81, resets_at: "2026-08-04T09:30:00.000Z" },
@@ -124,5 +131,77 @@ describe("fetchClaudeQuotaForConfigDir", () => {
     await quota.fetchClaudeQuotaForConfigDir("/tmp/still-logged-out");
 
     expect(execFileMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The legacy unsuffixed `Claude Code-credentials` item belongs to whichever
+ * account was signed in before Claude Code namespaced credentials per config
+ * dir — NOT necessarily to whoever owns ~/.claude today. Offering it to a dir
+ * that has its own item is how one account's usage got reported under another
+ * account's name: ~/.claude (bot_14) had merely an expired token, fell through,
+ * and rendered bot_13's percentages.
+ */
+describe("legacy unsuffixed keychain item", () => {
+  const hostDefaultDir = path.join(os.homedir(), ".claude");
+  const LEGACY_SERVICE = "Claude Code-credentials";
+
+  /** Per-service keychain: a payload, or `notFound` for errSecItemNotFound (exit 44). */
+  function keychainByService(items: Record<string, string | "notFound">) {
+    execFileMock.mockImplementation((_file: string, args: string[], _opts: unknown, cb: unknown) => {
+      const done = cb as (e: Error | null, r?: { stdout: string; stderr: string }) => void;
+      const entry = items[args[2] ?? ""] ?? "notFound";
+      if (entry === "notFound") done(Object.assign(new Error("could not be found"), { code: 44 }));
+      else done(null, { stdout: entry, stderr: "" });
+      return {} as never;
+    });
+  }
+
+  const servicesTried = () => execFileMock.mock.calls.map((c) => (c[1] as string[])[2]);
+
+  it("is not consulted when the dir has its own item, even an expired one", async () => {
+    keychainByService({
+      [ownService(hostDefaultDir)]: creds({ expiresAt: Date.now() - 1_000 }),
+      [LEGACY_SERVICE]: creds(),
+    });
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    // "No data" is the honest answer. Another account's numbers are not.
+    expect(await quota.fetchClaudeQuotaForConfigDir(hostDefaultDir)).toBeNull();
+    expect(servicesTried()).not.toContain(LEGACY_SERVICE);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("is not consulted when the dir's own item is unreadable", async () => {
+    execFileMock.mockImplementation((_file: string, args: string[], _opts: unknown, cb: unknown) => {
+      const done = cb as (e: Error | null, r?: { stdout: string; stderr: string }) => void;
+      // Exit 51 (authorization denied), not 44 — the item exists, we just cannot read it.
+      if (args[2] === ownService(hostDefaultDir)) done(Object.assign(new Error("denied"), { code: 51 }));
+      else done(null, { stdout: creds(), stderr: "" });
+      return {} as never;
+    });
+    vi.stubGlobal("fetch", vi.fn());
+
+    expect(await quota.fetchClaudeQuotaForConfigDir(hostDefaultDir)).toBeNull();
+    expect(servicesTried()).not.toContain(LEGACY_SERVICE);
+  });
+
+  it("still covers a genuine legacy install: the host default dir with no item of its own", async () => {
+    keychainByService({ [LEGACY_SERVICE]: creds() });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(usageBody), { status: 200 })));
+
+    const windows = await quota.fetchClaudeQuotaForConfigDir(hostDefaultDir);
+
+    expect(windows?.map((w) => w.usedPercent)).toEqual([81, 54]);
+    expect(servicesTried()).toContain(LEGACY_SERVICE);
+  });
+
+  it("is never offered to a pooled dir, which cannot be the legacy item's owner", async () => {
+    keychainByService({ [LEGACY_SERVICE]: creds() });
+    vi.stubGlobal("fetch", vi.fn());
+
+    expect(await quota.fetchClaudeQuotaForConfigDir("/tmp/pooled-acct")).toBeNull();
+    expect(servicesTried()).not.toContain(LEGACY_SERVICE);
   });
 });

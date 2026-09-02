@@ -7039,7 +7039,8 @@
       "resetsIn": "resets in {{value}}",
       "inDays": "{{days}}d",
       "inHours": "{{hours}}h",
-      "inMinutes": "{{minutes}}m"
+      "inMinutes": "{{minutes}}m",
+      "unavailable": "Usage unavailable until this account next runs"
     }
   },
   "teamPicker": {

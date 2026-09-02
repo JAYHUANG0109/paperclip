@@ -178,29 +178,58 @@ function keychainServiceForConfigDir(configDir: string): string {
   return `Claude Code-credentials-${digest}`;
 }
 
-/** Pull an access token out of a keychain item, or null when unreadable. */
-async function readClaudeTokenFromKeychain(service: string): Promise<string | null> {
+/**
+ * What a keychain lookup found. The distinction the caller actually needs is
+ * "this dir has NO credential item" versus "it has one we cannot use right now":
+ * only the former may fall back to the shared legacy item, because only a dir
+ * that never stored credentials could plausibly be the legacy item's owner.
+ * Collapsing the two is what let one account's usage be reported under another
+ * account's name.
+ */
+export type ClaudeKeychainRead =
+  | { kind: "token"; token: string }
+  | { kind: "expired" }
+  | { kind: "missing" }
+  | { kind: "unreadable" };
+
+/** errSecItemNotFound — `security` exits 44 when no item matches the service. */
+const SECURITY_ITEM_NOT_FOUND_EXIT_CODE = 44;
+
+/** Classify a keychain item: its token, or why there isn't a usable one. */
+async function readClaudeCredentialItem(service: string): Promise<ClaudeKeychainRead> {
+  let stdout: string;
   try {
     // Shelling out to /usr/bin/security is deliberate: the keychain item's ACL is
     // granted to that binary, so this succeeds without a GUI prompt. A native
     // keychain binding would be a different caller and would prompt — which in a
     // launchd service means hanging forever.
-    const { stdout } = await execFileAsync(
+    ({ stdout } = await execFileAsync(
       "/usr/bin/security",
       ["find-generic-password", "-s", service, "-w"],
       { timeout: 8_000, maxBuffer: 1024 * 64 },
-    );
-    const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>;
-    const oauth = parsed["claudeAiOauth"];
-    const holder = (typeof oauth === "object" && oauth !== null ? oauth : parsed) as Record<string, unknown>;
-    const expiresAt = holder["expiresAt"];
-    // An expired token would just earn a 401; report "unknown" instead of noise.
-    if (typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt <= Date.now()) return null;
-    const token = holder["accessToken"];
-    return typeof token === "string" && token.length > 0 ? token : null;
-  } catch {
-    return null;
+    ));
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    return code === SECURITY_ITEM_NOT_FOUND_EXIT_CODE ? { kind: "missing" } : { kind: "unreadable" };
   }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(stdout.trim()) as Record<string, unknown>;
+  } catch {
+    return { kind: "unreadable" };
+  }
+  const oauth = parsed["claudeAiOauth"];
+  const holder = (typeof oauth === "object" && oauth !== null ? oauth : parsed) as Record<string, unknown>;
+  const expiresAt = holder["expiresAt"];
+  // Access tokens are short-lived and the CLI only refreshes them when it runs,
+  // so "expired" is an ordinary steady state for any account that is idle right
+  // now — not a sign the dir is logged out. An expired token would just earn a
+  // 401, so report it as expired and let the caller render "no data".
+  if (typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+    return { kind: "expired" };
+  }
+  const token = holder["accessToken"];
+  return typeof token === "string" && token.length > 0 ? { kind: "token", token } : { kind: "unreadable" };
 }
 
 /**
@@ -214,15 +243,22 @@ export async function readClaudeTokenForConfigDir(configDir: string): Promise<st
     const token = await readClaudeTokenFromFile(path.join(configDir, filename));
     if (token) return token;
   }
-  const fromKeychain = await readClaudeTokenFromKeychain(keychainServiceForConfigDir(configDir));
-  if (fromKeychain) return fromKeychain;
+  const own = await readClaudeCredentialItem(keychainServiceForConfigDir(configDir));
+  if (own.kind === "token") return own.token;
   // Legacy single-account installs kept an unsuffixed item; only the host default
   // dir could plausibly own it, so do not offer it to pooled dirs. Compare against
   // the HOST DEFAULT, not claudeConfigDir(): the latter honours CLAUDE_CONFIG_DIR,
   // which made this test true for every pooled dir and leaked the host's shared
   // credential to any caller that set the env var.
-  if (path.resolve(configDir) === path.resolve(hostDefaultClaudeConfigDir())) {
-    return readClaudeTokenFromKeychain("Claude Code-credentials");
+  //
+  // `missing` is the whole gate: a dir that HAS its own item is authoritative
+  // about which account it holds, even when that item is expired or unreadable.
+  // Falling back then reports whichever account the legacy item belongs to —
+  // observed on this host as ~/.claude (bot_14) showing bot_13's usage, because
+  // ~/.claude's own token had simply expired.
+  if (own.kind === "missing" && path.resolve(configDir) === path.resolve(hostDefaultClaudeConfigDir())) {
+    const legacy = await readClaudeCredentialItem("Claude Code-credentials");
+    return legacy.kind === "token" ? legacy.token : null;
   }
   return null;
 }

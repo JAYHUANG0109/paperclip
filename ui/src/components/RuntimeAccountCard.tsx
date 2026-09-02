@@ -29,7 +29,19 @@ function resetsAtText(resetsAt: string, t: TFunction): string | null {
  */
 function QuotaBars({ windows, t }: { windows: QuotaWindow[] | null; t: TFunction }) {
   const usable = (windows ?? []).filter((w) => typeof w.usedPercent === "number");
-  if (usable.length === 0) return null;
+  // Say so, rather than rendering an empty row that reads as "nothing used".
+  // An idle account's access token expires until a run refreshes it, so this is
+  // an ordinary state — and it is the honest one now that a dir no longer
+  // borrows another account's credentials when its own are unreadable.
+  if (usable.length === 0) {
+    return (
+      <div className="mt-2.5 border-t border-border pt-2.5 text-xs text-muted-foreground">
+        {t("runtimeAccount.quota.unavailable", {
+          defaultValue: "Usage unavailable until this account next runs",
+        })}
+      </div>
+    );
+  }
   return (
     <div className="mt-2.5 space-y-1.5 border-t border-border pt-2.5">
       {usable.map((w) => {

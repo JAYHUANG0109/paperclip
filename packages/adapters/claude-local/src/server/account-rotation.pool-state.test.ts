@@ -1,7 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+// Selection reads live usage per dir; these cases are about pool STATE, so keep
+// them hermetic (no keychain, no network). Unreadable usage is also the honest
+// default for fake dirs like /acct/a. Usage-driven selection is covered in
+// account-rotation.proactive.test.ts.
+vi.mock("./quota.js", () => ({ fetchClaudeQuotaForConfigDir: vi.fn(async () => null) }));
+
 import {
   chooseClaudeAccountDirForRun,
   describeClaudeAccountPool,

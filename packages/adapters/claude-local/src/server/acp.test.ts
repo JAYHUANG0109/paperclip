@@ -1,9 +1,18 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdapterExecutionContext, AdapterInvocationMeta } from "@paperclipai/adapter-utils";
 import { runChildProcess } from "@paperclipai/adapter-utils/server-utils";
+
+// Account selection reads live usage per dir, which would shell out to the
+// Keychain for fake dirs like /acct/a. Unreadable is both hermetic and the
+// truthful answer for them; usage-driven choices are covered in
+// account-rotation.proactive.test.ts.
+vi.mock("./quota.js", async () => {
+  const actual = await vi.importActual<typeof import("./quota.js")>("./quota.js");
+  return { ...actual, fetchClaudeQuotaForConfigDir: vi.fn(async () => null) };
+});
 import {
   buildClaudeAcpConfig,
   createClaudeAcpExecutor,
@@ -1017,6 +1026,28 @@ describe("claude_local ACP lane account rotation", () => {
     const next = await runOnce();
     expect(next.configDir).toBe(path.resolve("/acct/b"));
     expect(next.logs).toContain("Rotated Claude account to");
+  });
+
+  it("steps past an account whose credentials are dead, instead of parking on it", async () => {
+    // An auth failure is not a quota error, so it earns no quota cooldown. Without
+    // its own mark the sticky pointer stays on the broken account and every later
+    // heartbeat fails there too — which is what a pooled account that was never
+    // re-authenticated actually does to a company.
+    const dead = await runOnce({
+      events: [{
+        type: "text_delta",
+        text: "Invalid API key · Please run /login",
+        stream: "output",
+        tag: "agent_message_chunk",
+      }],
+      terminal: { status: "failed", stopReason: "refusal" },
+    });
+    expect(dead.configDir).toBe(path.resolve("/acct/a"));
+    expect(dead.result.errorCode).toBe("claude_auth_required");
+    expect(dead.logs).toContain("claude auth login");
+
+    const next = await runOnce();
+    expect(next.configDir).toBe(path.resolve("/acct/b"));
   });
 
   it("stays on the same account across runs while it is healthy", async () => {

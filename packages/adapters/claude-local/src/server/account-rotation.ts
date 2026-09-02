@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { asBoolean, asNumber } from "@paperclipai/adapter-utils/server-utils";
+import { fetchClaudeQuotaForConfigDir } from "./quota.js";
 
 /**
  * Quota-aware Claude account rotation, shared by BOTH execution lanes.
@@ -20,18 +21,35 @@ import { asBoolean, asNumber } from "@paperclipai/adapter-utils/server-utils";
 // the whole pool every heartbeat.
 let activeClaudeAccountDir: string | null = null;
 
-// Reactive quota tracking. On macOS hosts Claude credentials live in the
-// Keychain (no per-dir token file) and there is no non-interactive `claude
-// usage` command, so the proactive CLI `/usage` scrape is unreliable (it hangs /
-// times out) — it cannot tell whether an account is over quota. Instead we learn
-// each account's state from the GROUND TRUTH: when a real run returns a
-// provider-quota / rate-limit error we mark that credential dir as cooling down
-// until its quota window resets, and rotation skips cooling accounts. Map value
-// is the epoch-ms the dir becomes usable again.
+// Reactive quota tracking, the load-bearing signal. There is no non-interactive
+// `claude usage` command, so the CLI `/usage` scrape is unreliable (it hangs /
+// times out) and cannot be trusted to say whether an account is over quota.
+// Instead we learn each account's state from the GROUND TRUTH: when a real run
+// returns a provider-quota / rate-limit error we mark that credential dir as
+// cooling down until its quota window resets, and rotation skips cooling
+// accounts. Map value is the epoch-ms the dir becomes usable again.
+//
+// Selection ALSO reads each dir's usage directly from the provider when it can
+// (see `probeClaudeAccountUsedPercent`) so a full account can be skipped before
+// a run is spent on it. That read is opportunistic — it needs an unexpired
+// access token, which an idle account usually does not have — so it narrows the
+// reactive window rather than replacing this map.
 const claudeAccountCooldownUntil = new Map<string, number>();
 
 /** Fallback cooldown when the provider gave us no reset time. */
 export const CLAUDE_ACCOUNT_DEFAULT_COOLDOWN_MS = 60 * 60 * 1000;
+
+/**
+ * How long a credential dir that failed with "please log in" is skipped.
+ *
+ * Shorter than the quota cooldown because the fix is an operator running
+ * `claude auth login` for that dir, and we want the account back in service soon
+ * after they do. Without this mark a dead account is a black hole: it never
+ * earns a quota cooldown (an auth failure is not a quota error), so the sticky
+ * pointer parks on it and every later run fails there even after the other
+ * accounts' windows reset.
+ */
+export const CLAUDE_ACCOUNT_LOGIN_REQUIRED_COOLDOWN_MS = 15 * 60 * 1000;
 
 export function claudeAccountIsCoolingDown(dir: string, now: number): boolean {
   const until = claudeAccountCooldownUntil.get(dir);
@@ -48,6 +66,14 @@ export function markClaudeAccountCoolingDown(dir: string, until: number): void {
   const existing = claudeAccountCooldownUntil.get(dir);
   // Keep the latest (furthest-out) reset we know about.
   if (existing == null || until > existing) claudeAccountCooldownUntil.set(dir, until);
+}
+
+/**
+ * Mark a credential dir as needing `claude auth login`, so rotation walks past
+ * it instead of parking on an account that cannot authenticate at all.
+ */
+export function markClaudeAccountNeedsLogin(dir: string, now = Date.now()): void {
+  markClaudeAccountCoolingDown(dir, now + CLAUDE_ACCOUNT_LOGIN_REQUIRED_COOLDOWN_MS);
 }
 
 /**
@@ -171,18 +197,56 @@ export function claudeAccountRotationApplies(input: {
   );
 }
 
+/** Highest used percentage across an account's quota windows, or null if none are readable. */
+function maxUsedPercent(windows: Array<{ usedPercent?: number | null }>): number | null {
+  let max: number | null = null;
+  for (const window of windows) {
+    const used = window.usedPercent;
+    if (typeof used !== "number" || !Number.isFinite(used)) continue;
+    max = max == null ? used : Math.max(max, used);
+  }
+  return max;
+}
+
+/**
+ * How used an account is right now: 100 while it is cooling down, otherwise its
+ * real usage from the provider, or null when that cannot be read.
+ *
+ * The reads come from `fetchClaudeQuotaForConfigDir` — the per-dir OAuth usage
+ * call, cached for a minute — NOT the old interactive `/usage` scrape that this
+ * module's header warns about. It is best-effort by design: a dir whose access
+ * token has expired (the ordinary state for an idle account, since only a run
+ * refreshes it) reads as null, and the selection treats null as "unknown" and
+ * falls back to the reactive cooldown marks, which is exactly the previous
+ * behavior. When the read DOES succeed we get what the old code could not: an
+ * account is skipped BEFORE a run burns a heartbeat discovering it is full.
+ */
+async function probeClaudeAccountUsedPercent(dir: string, now: number): Promise<number | null> {
+  if (claudeAccountIsCoolingDown(dir, now)) return 100;
+  try {
+    const windows = await fetchClaudeQuotaForConfigDir(dir);
+    return windows ? maxUsedPercent(windows) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Choose this run's credential dir from the pool and advance the sticky
  * pointer. Callers must have checked `claudeAccountRotationApplies` first.
  *
- * Reactive, not proactive: a dir counts as "over threshold" only while it is
- * cooling down from a real provider-quota error (see
- * `markClaudeAccountCoolingDown`). This avoids the unreliable interactive
- * `/usage` scrape entirely.
+ * A dir counts as "over threshold" on either of two signals: it is cooling down
+ * from a real provider-quota error (see `markClaudeAccountCoolingDown`), or its
+ * usage reads at/over the threshold right now. The first is always available;
+ * the second only when the dir's access token happens to be fresh, so it is a
+ * best-effort improvement on top of the reactive path rather than a replacement
+ * for it — and it is NOT the old interactive `/usage` scrape.
  */
 export async function chooseClaudeAccountDirForRun(input: {
   config: Record<string, unknown>;
   now?: number;
+  /** Test seam; production uses the cached provider usage read. */
+  probeUsedPercent?: (dir: string) => Promise<number | null>;
 }): Promise<{ selection: ClaudeAccountSelection; pool: string[]; thresholdPercent: number } | null> {
   const pool = parseClaudeAccountConfigDirs(input.config.claudeAccountConfigDirs);
   if (pool.length === 0) return null;
@@ -194,12 +258,29 @@ export async function chooseClaudeAccountDirForRun(input: {
   // because the walk restarts at the pin every run it is picked back up the
   // moment its window resets. A pin naming a dir outside the pool is ignored.
   const pinned = getPinnedClaudeAccountDir();
-  const startDir = pinned && pool.includes(pinned) ? pinned : activeClaudeAccountDir;
+  // Falling back to the pool head (not null) matters now that an unreadable
+  // START account means "stay put": on a fresh process the head is the account
+  // the operator ordered first, and it must not lose its place to a later
+  // account merely because its own usage happened to be readable. The walk
+  // order is unchanged — selectHealthyClaudeAccountDir already starts at index 0
+  // when there is no active dir.
+  const startDir = pinned && pool.includes(pinned) ? pinned : (activeClaudeAccountDir ?? pool[0] ?? null);
   const selection = await selectHealthyClaudeAccountDir({
     pool,
     thresholdPercent,
     activeDir: startDir,
-    probeUsedPercent: async (dir) => (claudeAccountIsCoolingDown(dir, nowMs) ? 100 : 0),
+    probeUsedPercent:
+      input.probeUsedPercent
+      ?? (async (dir) => {
+        const used = await probeClaudeAccountUsedPercent(dir, nowMs);
+        // An unreadable CURRENT account must not trigger a rotation. Access
+        // tokens expire constantly, and "I can't read your usage" is not
+        // evidence you are full — treating it as a reason to move would flap
+        // agents between accounts (and drop their warm sessions) for no gain.
+        // Rotation still happens on the two things that ARE evidence: a quota
+        // cooldown, or a usage read at/over the threshold.
+        return used == null && dir === startDir ? 0 : used;
+      }),
   });
   if (!selection) return null;
   activeClaudeAccountDir = selection.dir;

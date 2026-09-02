@@ -44,9 +44,14 @@ import {
   chooseClaudeAccountDirForRun,
   claudeAccountRotationApplies,
   markClaudeAccountCoolingDown,
+  markClaudeAccountNeedsLogin,
   resolveClaudeBillingType,
 } from "./account-rotation.js";
-import { extractClaudeRetryNotBefore, isClaudeProviderQuotaError } from "./parse.js";
+import {
+  detectClaudeLoginRequired,
+  extractClaudeRetryNotBefore,
+  isClaudeProviderQuotaError,
+} from "./parse.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRootDir = path.resolve(moduleDir, "../..");
@@ -405,6 +410,25 @@ export function createClaudeAcpExecutor(options: ClaudeAcpExecutorOptions = {}):
             ? { retryNotBefore: retryNotBefore.toISOString() }
             : {}),
         };
+      }
+      // Same reasoning as the quota mark, for the other way a pooled account
+      // stops working: dead credentials. An auth failure earns no quota
+      // cooldown, so without this the sticky pointer parks on the broken
+      // account and every later heartbeat fails there too.
+      const loginMeta = detectClaudeLoginRequired({
+        parsed: null,
+        stdout: logTail,
+        stderr: result.errorMessage ?? "",
+      });
+      if (loginMeta.requiresLogin) {
+        markClaudeAccountNeedsLogin(runClaudeConfigDir);
+        await ctx.onLog(
+          "stderr",
+          `[paperclip] Claude account ${runClaudeConfigDir} needs a new login; skipping it for now so the next heartbeat rotates to another pooled account. Re-authenticate it with: CLAUDE_CONFIG_DIR=${runClaudeConfigDir} claude auth login\n`,
+        );
+        // errorCode only: `claude_auth_required` is not one of the retry
+        // families, and it is the same code the CLI lane reports.
+        return { ...result, errorCode: "claude_auth_required" };
       }
     }
     return result;

@@ -32,7 +32,8 @@
       "resetsIn": "{{value}}後重設",
       "inDays": "{{days}} 天",
       "inHours": "{{hours}} 小時",
-      "inMinutes": "{{minutes}} 分鐘"
+      "inMinutes": "{{minutes}} 分鐘",
+      "unavailable": "此帳號下次執行前無法讀取用量"
     }
   },
   "audit": {
