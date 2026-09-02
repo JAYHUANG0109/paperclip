@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@/lib/router";
-import { CalendarDays, ChevronLeft, ChevronRight, AlertTriangle, Search, Diamond, Stamp } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, AlertTriangle, Search } from "lucide-react";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { dashboardApi } from "../api/dashboard";
@@ -12,22 +11,21 @@ import { useTranslation } from "@/i18n";
 import { queryKeys } from "../lib/queryKeys";
 import {
   IssueCalendar,
+  eventTimeLabel,
   type AsanaCalendarEvent,
   type GoogleCalendarEvent,
 } from "../components/IssueCalendar";
+import {
+  CalendarDayDetail,
+  CalendarEntryChip,
+  type CalendarDayEntry,
+} from "../components/CalendarDayDetail";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "../lib/utils";
 import { createIssueDetailPath } from "../lib/issueDetailBreadcrumb";
 import type { Issue } from "@paperclipai/shared";
 
 const CALENDAR_ISSUE_LIMIT = 1000;
-
-const PRIORITY_DOT: Record<string, string> = {
-  critical: "bg-red-500",
-  high: "bg-orange-500",
-  medium: "bg-yellow-500",
-  low: "bg-neutral-400",
-};
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const WEEKDAY_FALLBACK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -47,51 +45,30 @@ type CalIssue = Pick<Issue, "id" | "title" | "status" | "priority" | "dueDate"> 
   googleUrl?: string | null;
   /** Asana item type (default_task | milestone | approval) → chip glyph. */
   resourceSubtype?: string | null;
+  /** RFC3339 start for a timed Google event; drives the chip's time label. */
+  startsAt?: string | null;
+  allDay?: boolean;
 };
 
-/* ---------- Issue chip (shared by week + list) ---------- */
-function IssueChip({ issue }: { issue: CalIssue }) {
-  const done = issue.status === "done" || issue.status === "cancelled";
-  const className = cn(
-    // min-w-0 + flex-1 lets the title truncate instead of overflowing its row
-    // (the list view's long meeting titles were spilling past the container).
-    "flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-1 text-xs no-underline transition-colors hover:bg-accent",
-    done ? "text-muted-foreground line-through" : "text-foreground",
-  );
-  // Asana milestone/approval rows get a type glyph in place of the priority dot,
-  // so the item type reads at a glance on the calendar just like in the task list.
-  const dot =
-    issue.resourceSubtype === "milestone" ? (
-      <Diamond className="h-3 w-3 shrink-0 text-sky-500" />
-    ) : issue.resourceSubtype === "approval" ? (
-      <Stamp className="h-3 w-3 shrink-0 text-sky-500" />
-    ) : (
-      <span
-        className={cn(
-          "h-1.5 w-1.5 shrink-0 rounded-full",
-          issue.googleUrl
-            ? "bg-emerald-500"
-            : issue.asanaUrl
-              ? "bg-sky-500"
-              : PRIORITY_DOT[issue.priority] ?? "bg-neutral-400",
-        )}
-      />
-    );
-  // Asana tasks + Google events deep-link out; native issues go to the detail page.
-  if (issue.googleUrl || issue.asanaUrl) {
-    return (
-      <a href={issue.googleUrl ?? issue.asanaUrl ?? "#"} target="_blank" rel="noreferrer" title={issue.title} className={className}>
-        {dot}
-        <span className="truncate">{issue.title}</span>
-      </a>
-    );
-  }
-  return (
-    <Link to={createIssueDetailPath(issue.identifier ?? issue.id)} title={issue.title} className={className}>
-      {dot}
-      <span className="truncate">{issue.title}</span>
-    </Link>
-  );
+/** One CalIssue as the calendar's shared entry shape. */
+function toDayEntry(issue: CalIssue): CalendarDayEntry {
+  const kind: CalendarDayEntry["kind"] = issue.googleUrl
+    ? "google"
+    : issue.asanaUrl
+      ? "asana"
+      : "issue";
+  return {
+    id: issue.id,
+    kind,
+    title: issue.title,
+    href: issue.googleUrl ?? issue.asanaUrl ?? null,
+    to: kind === "issue" ? createIssueDetailPath(issue.identifier ?? issue.id) : null,
+    done: issue.status === "done" || issue.status === "cancelled",
+    priority: issue.priority,
+    resourceSubtype: issue.resourceSubtype,
+    timeLabel: eventTimeLabel(issue.startsAt, issue.allDay),
+    meta: kind === "issue" ? issue.status : null,
+  };
 }
 
 /* ---------- Week view ---------- */
@@ -103,13 +80,14 @@ function WeekView({ issues }: { issues: CalIssue[] }) {
     s.setDate(s.getDate() - s.getDay()); // Sunday
     return s;
   });
+  const [openDay, setOpenDay] = useState<string | null>(null);
 
   const byDay = useMemo(() => {
-    const m = new Map<string, CalIssue[]>();
+    const m = new Map<string, CalendarDayEntry[]>();
     for (const i of issues) {
       if (!i.dueDate) continue;
       const k = i.dueDate.slice(0, 10);
-      (m.get(k) ?? m.set(k, []).get(k)!).push(i);
+      (m.get(k) ?? m.set(k, []).get(k)!).push(toDayEntry(i));
     }
     return m;
   }, [issues]);
@@ -158,29 +136,53 @@ function WeekView({ issues }: { issues: CalIssue[] }) {
       {/* On phones 7 columns squeeze to ~50px each; scroll horizontally at a
           readable width instead of clipping every event. */}
       <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-      <div className="grid min-w-[640px] grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border sm:min-w-0">
+      <div className="grid min-w-[720px] grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border sm:min-w-0">
         {days.map((day, idx) => {
           const key = ymd(day);
           const isToday = key === todayKey;
-          const dayIssues = byDay.get(key) ?? [];
+          const dayEntries = byDay.get(key) ?? [];
           return (
-            <div key={key} className="min-h-[260px] bg-background">
-              <div className={cn("border-b border-border px-2 py-1.5 text-center", isToday && "bg-primary/10")}>
-                <div className="text-[11px] text-muted-foreground">
-                  {t(`calendar.weekday.${WEEKDAY_KEYS[idx]}`, { defaultValue: WEEKDAY_FALLBACK[idx] })}
+            <div
+              key={key}
+              className="relative min-h-[320px] bg-background transition-colors hover:bg-accent/20 xl:min-h-[420px] 2xl:min-h-[520px]"
+            >
+              {/* Same contract as the month grid: the box opens the day, the
+                  chips keep their own links. */}
+              <button
+                type="button"
+                onClick={() => setOpenDay(key)}
+                className="absolute inset-0 z-0 h-full w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <span className="sr-only">
+                  {t("calendar.day.open", { defaultValue: "Open {{date}}", date: key })}
+                </span>
+              </button>
+              <div className="pointer-events-none relative z-10">
+                <div className={cn("border-b border-border px-2 py-2 text-center", isToday && "bg-primary/10")}>
+                  <div className="text-xs text-muted-foreground">
+                    {t(`calendar.weekday.${WEEKDAY_KEYS[idx]}`, { defaultValue: WEEKDAY_FALLBACK[idx] })}
+                  </div>
+                  <div className={cn("text-base tabular-nums", isToday ? "font-semibold text-primary" : "text-foreground")}>
+                    {day.getDate()}
+                  </div>
                 </div>
-                <div className={cn("text-sm tabular-nums", isToday ? "font-semibold text-primary" : "text-foreground")}>
-                  {day.getDate()}
+                <div className="space-y-1 p-1.5">
+                  {dayEntries.map((entry) => (
+                    <CalendarEntryChip key={entry.id} entry={entry} />
+                  ))}
                 </div>
-              </div>
-              <div className="space-y-0.5 p-1">
-                {dayIssues.map((issue) => <IssueChip key={issue.id} issue={issue} />)}
               </div>
             </div>
           );
         })}
       </div>
       </div>
+
+      <CalendarDayDetail
+        dateKey={openDay}
+        entries={openDay ? byDay.get(openDay) ?? [] : []}
+        onOpenChange={(open) => { if (!open) setOpenDay(null); }}
+      />
     </div>
   );
 }
@@ -216,7 +218,7 @@ function AgendaList({ issues }: { issues: CalIssue[] }) {
           <div className="rounded-lg border border-red-500/30">
             {overdue.map((issue) => (
               <div key={issue.id} className="flex min-w-0 items-center justify-between gap-2 border-b border-border/50 px-2 py-1.5 last:border-0">
-                <IssueChip issue={issue} />
+                <CalendarEntryChip entry={toDayEntry(issue)} className="min-w-0 flex-1" />
                 <span className="shrink-0 text-[11px] tabular-nums text-red-600 dark:text-red-400">{issue.dueDate}</span>
               </div>
             ))}
@@ -232,7 +234,7 @@ function AgendaList({ issues }: { issues: CalIssue[] }) {
           <div className="rounded-lg border border-border">
             {dayIssues.map((issue) => (
               <div key={issue.id} className="flex min-w-0 items-center justify-between gap-2 border-b border-border/50 px-2 py-1.5 last:border-0">
-                <IssueChip issue={issue} />
+                <CalendarEntryChip entry={toDayEntry(issue)} className="min-w-0 flex-1" />
                 <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{issue.status}</span>
               </div>
             ))}
@@ -356,6 +358,7 @@ export function MyCalendar() {
         htmlLink: ev.htmlLink,
         allDay: ev.allDay,
         calendarName: ev.calendarName,
+        start: ev.start,
       })),
     [google],
   );
@@ -368,6 +371,8 @@ export function MyCalendar() {
         priority: "medium",
         dueDate: ev.date,
         googleUrl: ev.htmlLink ?? null,
+        startsAt: ev.start ?? null,
+        allDay: ev.allDay,
       })),
     [googleEvents],
   );
@@ -400,7 +405,11 @@ export function MyCalendar() {
   const hasAnything = datedWithAsana.length > 0 || filteredProjectEvents.length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4 p-4 sm:p-6">
+    // The grid is the point of this page, so it gets the whole window rather
+    // than the app's usual reading-width column — a month on a 27" display was
+    // rendering at the same 1024px as on a laptop. The cap only keeps an
+    // ultra-wide monitor from stretching each day into a billboard.
+    <div className="mx-auto w-full max-w-[1920px] space-y-4 p-4 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">

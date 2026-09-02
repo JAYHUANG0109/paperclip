@@ -5768,6 +5768,11 @@
     "google": {
       "connectHint": "Connect Google Calendar to see your events here.",
       "connect": "Connect Google Calendar"
+    },
+    "day": {
+      "count": "{{count}} item(s) on this day",
+      "empty": "Nothing scheduled on this day.",
+      "open": "Open {{date}}"
     }
   },
   "projectStatus": {

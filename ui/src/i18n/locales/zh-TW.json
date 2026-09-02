@@ -5874,6 +5874,11 @@
     "google": {
       "connectHint": "連結 Google 日曆即可在此看到你的行程。",
       "connect": "連結 Google 日曆"
+    },
+    "day": {
+      "count": "這天有 {{count}} 個項目",
+      "empty": "這天沒有任何安排。",
+      "open": "開啟 {{date}}"
     }
   },
   "projectStatus": {

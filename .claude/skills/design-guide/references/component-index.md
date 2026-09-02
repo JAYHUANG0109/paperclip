@@ -252,6 +252,11 @@ Use in property rows, comment headers, assignee displays, and anywhere a user/ag
 **File:** `OnboardingWizard.tsx`
 **Usage:** Multi-step onboarding flow for new users/companies.
 
+### CalendarDayDetail
+
+**File:** `CalendarDayDetail.tsx`
+**Usage:** Everything scheduled on one day, untruncated. Opened by clicking a day box in the month or week grid — the grids can only preview a day, so this is where it is read. Exports `CalendarDayEntry` (the normalised shape every calendar source maps to: issue, project, Asana task, Google event) plus `CalendarEntryChip` / `CalendarEntryGlyph`, which render that shape in a grid cell. Build the entries once per day and pass the same array to both the chips and the dialog.
+
 ---
 
 ## Property Panel Components

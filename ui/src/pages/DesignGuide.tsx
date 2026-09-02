@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { InlineBanner } from "@/components/InlineBanner";
+import { CalendarEntryChip } from "@/components/CalendarDayDetail";
 import { BuiltInLifecycleChip } from "@/components/BuiltInAgentBadges";
 import { RoutineVisibilityBadge } from "@/components/RoutineSharing";
 import { Input } from "@/components/ui/input";
@@ -2090,6 +2091,37 @@ export function DesignGuide() {
             <ConnectionRow name="Asana" connected={false} detail="Checking…" loading>
               {() => null}
             </ConnectionRow>
+          </div>
+        </SubSection>
+      </Section>
+
+      <Section title="Calendar Entries">
+        <p className="text-sm text-muted-foreground">
+          Every calendar source — issues, project target dates, Asana tasks, Google events — is
+          normalised to one <span className="font-mono">CalendarDayEntry</span> so the month grid, the
+          week grid, and the day dialog always agree about what is on a date.{" "}
+          <span className="font-mono">&lt;CalendarEntryChip&gt;</span> is the grid form (two-line clamp,
+          optional time, colour by source);{" "}
+          <span className="font-mono">&lt;CalendarDayDetail&gt;</span> is the dialog form, opened by
+          clicking the day box rather than an item.
+        </p>
+        <SubSection title="Chip by source">
+          <div className="max-w-xs space-y-1">
+            <CalendarEntryChip
+              entry={{ id: "d1", kind: "issue", title: "Ship the onboarding fix", priority: "high" }}
+            />
+            <CalendarEntryChip
+              entry={{ id: "d2", kind: "project", title: "Q3 launch", }}
+            />
+            <CalendarEntryChip
+              entry={{ id: "d3", kind: "asana", title: "Sign off vendor quote", resourceSubtype: "milestone" }}
+            />
+            <CalendarEntryChip
+              entry={{ id: "d4", kind: "google", title: "[ZOOM2] Platform rollout briefing", timeLabel: "14:30" }}
+            />
+            <CalendarEntryChip
+              entry={{ id: "d5", kind: "issue", title: "Completed task", priority: "low", done: true }}
+            />
           </div>
         </SubSection>
       </Section>
