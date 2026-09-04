@@ -20,6 +20,10 @@ const mockInstanceSettingsApi = vi.hoisted(() => ({
   getExperimental: vi.fn(),
 }));
 
+const mockAccessApi = vi.hoisted(() => ({
+  getCurrentBoardAccess: vi.fn(),
+}));
+
 vi.mock("@/lib/router", () => ({
   NavLink: ({ to, children, className, ...props }: {
     to: string;
@@ -79,6 +83,10 @@ vi.mock("../api/attention", () => ({
 
 vi.mock("../api/instanceSettings", () => ({
   instanceSettingsApi: mockInstanceSettingsApi,
+}));
+
+vi.mock("../api/access", () => ({
+  accessApi: mockAccessApi,
 }));
 
 vi.mock("../hooks/useInboxBadge", () => ({
@@ -152,6 +160,17 @@ describe("Sidebar", () => {
     document.body.appendChild(container);
     mockHeartbeatsApi.liveRunsForCompany.mockResolvedValue([]);
     mockAttentionApi.list.mockResolvedValue({ items: [] });
+    // Default viewer is a company admin: the Company section is admin-gated, and
+    // most cases here assert on its contents.
+    mockAccessApi.getCurrentBoardAccess.mockResolvedValue({
+      user: { id: "u1", email: "admin@example.com", name: "Admin", image: null },
+      userId: "u1",
+      isInstanceAdmin: false,
+      companyIds: ["company-1"],
+      memberships: [{ companyId: "company-1", membershipRole: "admin", status: "active" }],
+      source: "session",
+      keyId: null,
+    });
     mockSidebar.isMobile = false;
     mockSidebar.collapsed = false;
     mockSidebar.peeking = false;
@@ -421,6 +440,69 @@ describe("Sidebar", () => {
 
     const timelineLink = [...container.querySelectorAll("a")].find((anchor) => anchor.textContent === "Timeline");
     expect(timelineLink?.getAttribute("href")).toBe("/timeline");
+
+    flushSync(() => {
+      root.unmount();
+    });
+  });
+
+  it("hides the whole Company section from operators and viewers", async () => {
+    mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: false });
+    mockAccessApi.getCurrentBoardAccess.mockResolvedValue({
+      user: { id: "u2", email: "operator@example.com", name: "Operator", image: null },
+      userId: "u2",
+      isInstanceAdmin: false,
+      companyIds: ["company-1"],
+      memberships: [{ companyId: "company-1", membershipRole: "operator", status: "active" }],
+      source: "session",
+      keyId: null,
+    });
+    const root = await renderSidebar();
+
+    const sections = [...container.querySelectorAll("nav > div")];
+    expect(sections.find((section) => section.textContent?.startsWith("Company"))).toBeUndefined();
+    const navLabels = [...container.querySelectorAll("nav a")].map((a) => a.textContent?.trim());
+    expect(navLabels).not.toContain("Costs");
+    expect(navLabels).not.toContain("Settings");
+    expect(navLabels).not.toContain("Org");
+    // Work is untouched — this trims company administration, not day-to-day nav.
+    expect(navLabels).toContain("Tasks");
+
+    flushSync(() => {
+      root.unmount();
+    });
+  });
+
+  it("shows the Company section to an owner and to an instance admin with no membership row", async () => {
+    mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: false });
+    mockAccessApi.getCurrentBoardAccess.mockResolvedValue({
+      user: { id: "u3", email: "owner@example.com", name: "Owner", image: null },
+      userId: "u3",
+      isInstanceAdmin: false,
+      companyIds: ["company-1"],
+      memberships: [{ companyId: "company-1", membershipRole: "owner", status: "active" }],
+      source: "session",
+      keyId: null,
+    });
+    let root = await renderSidebar();
+    let sections = [...container.querySelectorAll("nav > div")];
+    expect(sections.find((section) => section.textContent?.startsWith("Company"))).toBeDefined();
+    flushSync(() => {
+      root.unmount();
+    });
+
+    mockAccessApi.getCurrentBoardAccess.mockResolvedValue({
+      user: { id: "u4", email: "instance@example.com", name: "Instance", image: null },
+      userId: "u4",
+      isInstanceAdmin: true,
+      companyIds: ["company-1"],
+      memberships: [],
+      source: "session",
+      keyId: null,
+    });
+    root = await renderSidebar();
+    sections = [...container.querySelectorAll("nav > div")];
+    expect(sections.find((section) => section.textContent?.startsWith("Company"))).toBeDefined();
 
     flushSync(() => {
       root.unmount();

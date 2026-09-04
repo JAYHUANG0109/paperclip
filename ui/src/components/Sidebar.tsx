@@ -169,6 +169,22 @@ export function Sidebar() {
   const viewerEmail = (boardAccess?.user?.email ?? "").trim().toLowerCase();
   const isAdminViewer = NAV_ADMIN_EMAILS.has(viewerEmail);
 
+  // The Company section (Org, Apps, Timeline, Costs, Activity, Settings) is
+  // company administration, not day-to-day work: Costs exposes spend and the
+  // provider account emails, Settings is configuration. Restrict the whole
+  // section to instance admins and company owners/admins — operators/viewers
+  // never see it. Same role read as SidebarChat, deliberately by ROLE rather
+  // than the NAV_ADMIN_EMAILS allowlist above, so it tracks membership instead
+  // of a hardcoded three-person list. While boardAccess is loading the role is
+  // undefined and the section stays hidden, so a non-admin never sees it flash.
+  const viewerCompanyRole = boardAccess?.memberships?.find(
+    (m) => m.companyId === selectedCompanyId,
+  )?.membershipRole;
+  const canSeeCompanySection =
+    Boolean(boardAccess?.isInstanceAdmin)
+    || viewerCompanyRole === "owner"
+    || viewerCompanyRole === "admin";
+
   const pluginContext = {
     companyId: selectedCompanyId,
     companyPrefix: selectedCompany?.issuePrefix ?? null,
@@ -379,20 +395,22 @@ export function Sidebar() {
 
         <SidebarAgents streamlined={streamlined} />
 
-        <SidebarSection label={t("nav.company", { defaultValue: "Company" })}>
-          <SidebarNavItem to="/org" label={t("nav.org", { defaultValue: "Org" })} icon={Network} />
-          {showApps && (
-            <SidebarNavItem to="/apps" label={t("nav.apps", { defaultValue: "Apps" })} icon={AppWindow} />
-          )}
-          <SidebarNavItem to="/timeline" label={t("nav.timeline", { defaultValue: "Timeline" })} icon={GanttChartSquare} />
-          <SidebarNavItem to="/costs" label={t("nav.costs", { defaultValue: "Costs" })} icon={DollarSign} />
-          <SidebarNavItem to="/activity" label={t("nav.activity", { defaultValue: "Activity" })} icon={History} />
-          {/* Audit used to be its own nav item. It is now a tier of the Activity
-              page, so two entries pointing at one page read as two destinations
-              and the second one lands you on a tab you can reach in a click.
-              Dropped; /audit still redirects for bookmarks and old links. */}
-          <SidebarNavItem to="/company/settings" label={t("nav.settings", { defaultValue: "Settings" })} icon={Settings} />
-        </SidebarSection>
+        {canSeeCompanySection ? (
+          <SidebarSection label={t("nav.company", { defaultValue: "Company" })}>
+            <SidebarNavItem to="/org" label={t("nav.org", { defaultValue: "Org" })} icon={Network} />
+            {showApps && (
+              <SidebarNavItem to="/apps" label={t("nav.apps", { defaultValue: "Apps" })} icon={AppWindow} />
+            )}
+            <SidebarNavItem to="/timeline" label={t("nav.timeline", { defaultValue: "Timeline" })} icon={GanttChartSquare} />
+            <SidebarNavItem to="/costs" label={t("nav.costs", { defaultValue: "Costs" })} icon={DollarSign} />
+            <SidebarNavItem to="/activity" label={t("nav.activity", { defaultValue: "Activity" })} icon={History} />
+            {/* Audit used to be its own nav item. It is now a tier of the Activity
+                page, so two entries pointing at one page read as two destinations
+                and the second one lands you on a tab you can reach in a click.
+                Dropped; /audit still redirects for bookmarks and old links. */}
+            <SidebarNavItem to="/company/settings" label={t("nav.settings", { defaultValue: "Settings" })} icon={Settings} />
+          </SidebarSection>
+        ) : null}
 
         {/* "View as" lives here, beside the other account-level controls, and
             renders only for the accounts the server permits. It used to be a
