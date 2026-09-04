@@ -24,6 +24,17 @@ describe("detectClaudeLoginRequired", () => {
     ).toEqual({ requiresLogin: true, loginUrl: null });
   });
 
+  it("classifies the ACP lane's expired-OAuth failure as auth required", () => {
+    expect(
+      detectClaudeLoginRequired({
+        parsed: null,
+        stdout:
+          '{"type":"acpx.error","message":"Internal error: Failed to authenticate: OAuth session expired and could not be refreshed"}',
+        stderr: "",
+      }).requiresLogin,
+    ).toBe(true);
+  });
+
   it("does not classify a bare invalid API key as the Claude login flow", () => {
     expect(
       detectClaudeLoginRequired({
