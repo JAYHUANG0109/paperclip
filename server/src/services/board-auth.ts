@@ -11,6 +11,18 @@ import {
 } from "@paperclipai/db";
 import { conflict, forbidden, notFound } from "../errors.js";
 
+/**
+ * Optional TTL for a personal (board) API key, for callers that explicitly want
+ * one. It is NOT the default any more.
+ *
+ * A 30-day expiry was the default until 2026-09-05, when it locked the founder
+ * out mid-week: `findBoardApiKeyByToken` filters expired rows out of the lookup,
+ * so an aged-out key is indistinguishable from a forged one and every request —
+ * GETs included — comes back as a bare 401 with no hint that expiry is the
+ * cause. Nothing warned beforehand and nothing rotated afterwards, so the TTL
+ * bought no hygiene and cost real outages. Revocation is the control that
+ * actually works: it is immediate, visible in the key list, and audited.
+ */
 export const BOARD_API_KEY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const CLI_AUTH_CHALLENGE_TTL_MS = 10 * 60 * 1000;
 
@@ -36,6 +48,19 @@ export function createCliAuthSecret() {
 
 export function boardApiKeyExpiresAt(nowMs: number = Date.now()) {
   return new Date(nowMs + BOARD_API_KEY_TTL_MS);
+}
+
+/**
+ * The expiry a new personal (board) API key gets: whatever the caller asked
+ * for, otherwise none.
+ *
+ * Both creation paths (the named-key API and the CLI browser-approval flow) go
+ * through this so the policy cannot drift apart between them, and so the
+ * "no expiry by default" decision is pinned by a test rather than living in two
+ * inline expressions.
+ */
+export function resolveBoardApiKeyExpiry(requested?: Date | null): Date | null {
+  return requested ?? null;
 }
 
 export function cliAuthChallengeExpiresAt(nowMs: number = Date.now()) {
@@ -172,7 +197,8 @@ export function boardAuthService(db: Db) {
         userId: input.userId,
         name: input.name.trim(),
         keyHash: hashBearerToken(token),
-        expiresAt: input.expiresAt === undefined ? boardApiKeyExpiresAt() : input.expiresAt,
+        // Default is no expiry; pass an explicit date to opt into a TTL.
+        expiresAt: resolveBoardApiKeyExpiry(input.expiresAt),
       })
       .returning()
       .then((rows) => rows[0]);
@@ -359,7 +385,9 @@ export function boardAuthService(db: Db) {
             userId,
             name: challenge.pendingKeyName,
             keyHash: challenge.pendingKeyHash,
-            expiresAt: boardApiKeyExpiresAt(),
+            // No expiry, same as the named-key path — a CLI login that silently
+            // stops working a month later is the exact failure this removed.
+            expiresAt: resolveBoardApiKeyExpiry(),
           })
           .returning()
           .then((rows) => rows[0]);

@@ -1291,7 +1291,9 @@
       "lastUsed": "Last used {{date}}",
       "neverUsed": "Never used",
       "revoke": "Revoke",
-      "revokeFailed": "Could not revoke the key."
+      "revokeFailed": "Could not revoke the key.",
+      "expired": "Expired",
+      "expiresOn": "expires {{date}}"
     }
   },
   "common": {

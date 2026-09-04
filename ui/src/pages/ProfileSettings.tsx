@@ -395,6 +395,25 @@ function PersonalApiKeys() {
                   ? t("settings.apiKeys.lastUsed", { defaultValue: "最近使用 {{date}}", date: new Date(k.lastUsedAt).toLocaleDateString() })
                   : t("settings.apiKeys.neverUsed", { defaultValue: "尚未使用" })}
               </span>
+              {/* Keys created from 2026-09-05 on never expire, so this renders
+                  only for the older TTL keys (and any created with an explicit
+                  expiry). Before this, an expiry was invisible here — and an
+                  aged-out key dropped out of the list entirely — so the first
+                  sign of trouble was a bare 401. */}
+              {k.expiresAt ? (
+                <span
+                  className={`shrink-0 text-[11px] ${
+                    new Date(k.expiresAt).getTime() <= Date.now() ? "text-destructive" : "text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {new Date(k.expiresAt).getTime() <= Date.now()
+                    ? t("settings.apiKeys.expired", { defaultValue: "已過期" })
+                    : t("settings.apiKeys.expiresOn", {
+                        defaultValue: "{{date}} 到期",
+                        date: new Date(k.expiresAt).toLocaleDateString(),
+                      })}
+                </span>
+              ) : null}
               <Button
                 type="button"
                 size="sm"

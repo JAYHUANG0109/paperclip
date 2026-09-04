@@ -1397,7 +1397,9 @@
       "lastUsed": "最近使用 {{date}}",
       "neverUsed": "尚未使用",
       "revoke": "撤銷",
-      "revokeFailed": "無法撤銷金鑰。"
+      "revokeFailed": "無法撤銷金鑰。",
+      "expired": "已過期",
+      "expiresOn": "{{date}} 到期"
     }
   },
   "common": {
