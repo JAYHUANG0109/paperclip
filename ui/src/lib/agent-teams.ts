@@ -34,7 +34,6 @@ const TEAM_EN: Record<string, string> = {
   "系統自動化": "System Automation",
   "教學組": "Teaching",
   "人才發展": "Talent Development",
-  "資訊部": "IT",
   // Campuses (top level) — romanized district names
   "仁美": "Renmei",
   "市政": "Shizheng",
@@ -43,12 +42,13 @@ const TEAM_EN: Record<string, string> = {
   "北屯": "Beitun",
   "總管理處": "General Administration",
   // Departments / teams (second level)
-  "幼教學組": "Preschool Teaching",
-  // The org writes the preschool group as 幼教教學組 (not 幼教學組) and splits it
-  // into teaching and admin, and does the same for ESL. Without these five the
-  // sidebar and the team chips render raw Chinese to English users — which is
-  // how 幼教教學組 sat untranslated next to a translated "ESL Teaching".
+  // 幼教教學組 is the preschool group the org actually files people under, split
+  // into 幼教教學 / 幼教行政 (and the same shape for ESL). 幼教學組 was a
+  // code-only spelling with no live members — consolidated onto 幼教教學組 on
+  // 2026-09-04 — and stays listed purely so terminated agents and any old
+  // scope string still translate instead of rendering raw Chinese.
   "幼教教學組": "Preschool Teaching",
+  "幼教學組": "Preschool Teaching",
   "幼教教學": "Preschool Instruction",
   "幼教行政": "Preschool Administration",
   "ESL教學": "ESL Instruction",
@@ -63,7 +63,13 @@ const TEAM_EN: Record<string, string> = {
   "秘書室": "Secretariat",
   "行銷部": "Marketing",
   "視覺部": "Visual Design",
-  "數位資訊部": "Digital IT",
+  // 資訊部 / 人發部 are the canonical names (renamed 2026-09-03, owner's call).
+  // The long spellings stay listed because existing agents and team-scoped
+  // skills still carry them, and an unmapped name renders raw Chinese to
+  // English users.
+  "資訊部": "IT",
+  "數位資訊部": "IT",
+  "人發部": "Talent Development",
   "人才發展部": "Talent Development",
   "品牌發展部": "Brand Development",
   "基金會": "Foundation",
@@ -114,14 +120,14 @@ export const CAMPUS_TEAMS = new Set(["仁美", "市政", "西屯", "黎明", "�
 
 // Campus → its departments (from doc/sa-campus-roster.md). Drives the cascading
 // team-scope picker so you can target a specific campus's department (e.g.
-// 北屯／幼教學組) even before that team has any agent. Keep in sync with the roster.
+// 北屯／幼教教學組) even before that team has any agent. Keep in sync with the roster.
 export const CAMPUS_DEPARTMENTS: Record<string, string[]> = {
-  "仁美": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組", "跨校巡輔"],
-  "市政": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "西屯": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "黎明": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "北屯": ["幼教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "總管理處": ["行銷部", "視覺部", "處長室", "秘書室", "數位資訊部", "人才發展部", "品牌發展部", "基金會", "採購工程部", "財務部", "餐飲部"],
+  "仁美": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組", "跨校巡輔"],
+  "市政": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "西屯": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "黎明": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "北屯": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "總管理處": ["行銷部", "視覺部", "處長室", "秘書室", "資訊部", "人發部", "品牌發展部", "基金會", "採購工程部", "財務部", "餐飲部"],
 };
 
 // Ordered campus list for the picker.
@@ -240,17 +246,22 @@ export function listDepartments(agents: Pick<Agent, "metadata">[]): string[] {
 export const OFFICE_UNGROUPED_KEY = "__ungrouped__";
 
 // The Virtual Office floor has a fixed set of baked rooms keyed by the original
-// department names. The org restructure renamed/expanded departments (資訊部 →
-// 數位資訊部, 教學組 → 幼教學組/…), so map each current department onto the room
+// department names. The org has renamed/expanded departments repeatedly
+// (數位資訊部 → 資訊部, 人才發展部 → 人發部, 幼教學組 → 幼教教學組/…), so map every
+// spelling, current and historical, onto the room
 // that represents it. Unmapped departments fall through to the floor's spare
 // room. Keep the right-hand values in sync with the room `team` keys in
 // LivingOfficeFloor / office-rooms.
 const DEPARTMENT_ROOM: Record<string, string> = {
-  // IT
-  "資訊部": "數位資訊部",
-  "數位資訊部": "數位資訊部",
-  // Teaching room absorbs 幼教學組 + 跨校巡輔 (and legacy/roomless teaching depts)
+  // IT — 資訊部 is the current name; 數位資訊部 is the pre-rename spelling
+  "資訊部": "資訊部",
+  "數位資訊部": "資訊部",
+  // Teaching room absorbs the preschool group + 跨校巡輔 (and legacy/roomless
+  // teaching depts). 幼教學組 is the pre-2026-09-04 spelling.
   "教學組": "教學組",
+  "幼教教學組": "教學組",
+  "幼教教學": "教學組",
+  "幼教行政": "教學組",
   "幼教學組": "教學組",
   "跨校巡輔": "教學組",
   "外師教學組": "教學組",
@@ -258,8 +269,10 @@ const DEPARTMENT_ROOM: Record<string, string> = {
   // Own rooms
   "ESL教學組": "ESL教學組",
   "總務管理組": "總務管理組",
-  "人才發展": "人才發展部",
-  "人才發展部": "人才發展部",
+  // 人發部 is the current name; the two long spellings are pre-rename
+  "人發部": "人發部",
+  "人才發展": "人發部",
+  "人才發展部": "人發部",
   "品牌發展部": "品牌發展部",
   "園長團隊": "領導團隊",
   "領導團隊": "領導團隊",

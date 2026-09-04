@@ -15,9 +15,9 @@ import { cn } from "../lib/utils";
 /**
  * Cascading 校區 › 部門 team-scope picker. Emits sharing tokens:
  *  - whole campus            → "北屯"
- *  - a campus's department    → "北屯／幼教學組"   (scoped, AND-matched)
+ *  - a campus's department    → "北屯／幼教教學組"   (scoped, AND-matched)
  *  - a cross-campus group      → "領導團隊"
- *  - a department, all campuses → "幼教學組"
+ *  - a department, all campuses → "幼教教學組"
  *
  * `availableTeams` is the set of teams the user may share to; when
  * `canShareToAll` is true the full catalog is offered (so you can pre-share to a

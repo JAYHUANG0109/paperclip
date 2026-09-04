@@ -8,8 +8,8 @@ describe("groupItemsByTeam", () => {
   it("groups by campus (teams[0]) with departments nested under (teams[1])", () => {
     const groups = groupItemsByTeam(
       [
-        item("a", ["西屯", "幼教學組"]),
-        item("b", ["西屯", "幼教學組"]),
+        item("a", ["西屯", "幼教教學組"]),
+        item("b", ["西屯", "幼教教學組"]),
         item("c", ["西屯", "外師教學組"]),
         item("d", ["西屯"]), // campus, no department
       ],
@@ -20,7 +20,7 @@ describe("groupItemsByTeam", () => {
     expect(xitun.team).toBe("西屯");
     expect(xitun.items.map((i) => i.id).sort()).toEqual(["a", "b", "c", "d"]);
     expect(xitun.directItems.map((i) => i.id)).toEqual(["d"]);
-    expect(xitun.subGroups.map((s) => s.team)).toEqual(["幼教學組", "外師教學組"]);
+    expect(xitun.subGroups.map((s) => s.team)).toEqual(["幼教教學組", "外師教學組"]);
     expect(xitun.subGroups[0]!.items.map((i) => i.id)).toEqual(["a", "b"]);
   });
 
@@ -30,14 +30,14 @@ describe("groupItemsByTeam", () => {
     // campus from bleeding a partial state into another.
     const groups = groupItemsByTeam(
       [
-        item("x", ["西屯", "幼教學組"]),
-        item("y", ["仁美", "幼教學組"]),
+        item("x", ["西屯", "幼教教學組"]),
+        item("y", ["仁美", "幼教教學組"]),
       ],
       (i) => i.teams,
     );
     const ids = groups.flatMap((g) => g.items.map((i) => i.id));
     expect(ids.sort()).toEqual(["x", "y"]);
-    // Each campus is its own top with its own 幼教學組 subgroup.
+    // Each campus is its own top with its own 幼教教學組 subgroup.
     expect(groups.map((g) => g.team).sort()).toEqual(["仁美", "西屯"]);
     for (const g of groups) expect(g.items).toHaveLength(1);
   });

@@ -22,7 +22,7 @@ export const CAMPUSES = [
 
 /** L3 組 — schools. 跨校巡輔 exists only at 仁美. */
 export const SCHOOL_GROUPS = [
-  "幼教學組",
+  "幼教教學組",
   "外師教學組",
   "ESL教學組",
   "註冊組",
@@ -34,15 +34,17 @@ export const SCHOOL_GROUPS = [
  * L3 部門 — 總管理處 only.
  *
  * Of the four the founder called out as missing, only two are new groups:
- * 行銷部 and 視覺部, both under 品牌發展部. 人發 and 採購 are not — they are just
- * the short names for 人才發展部 and 採購工程部, which already existed, and
- * listing both spellings would fragment the same team in two.
+ * 行銷部 and 視覺部, both under 品牌發展部. 人發 and 採購 were not — they are the
+ * short names of teams that already existed, and listing both spellings would
+ * fragment one team in two. As of 2026-09-03 the owner renamed two of these to
+ * their short names, so 人發部 and 資訊部 ARE the canonical entries here; the long
+ * spellings survive only as translation/room aliases in agent-teams.ts.
  */
 export const HQ_DEPARTMENTS = [
   "行銷部",
   "視覺部",
-  "數位資訊部",
-  "人才發展部",
+  "資訊部",
+  "人發部",
   "品牌發展部",
   "基金會",
   "採購工程部",

@@ -20,10 +20,10 @@ export interface OfficeRoom {
 export const OFFICE_ROOMS: OfficeRoom[] = [
   { id: "founder", name: "創辦人辦公室", team: null, soloAgent: "創辦人" },
   { id: "teaching", name: "教學組", team: "教學組" },
-  { id: "it", name: "數位資訊部", team: "數位資訊部" },
+  { id: "it", name: "資訊部", team: "資訊部" },
   { id: "esl", name: "ESL教學組", team: "ESL教學組" },
   { id: "lead", name: "園長團隊", team: "領導團隊" },
-  { id: "talent", name: "人才發展部", team: "人才發展部" },
+  { id: "talent", name: "人發部", team: "人發部" },
   { id: "ga", name: "總務管理組", team: "總務管理組" },
   { id: "brand", name: "品牌發展部", team: "品牌發展部" },
   { id: "auto", name: "系統自動化", team: "系統自動化" },

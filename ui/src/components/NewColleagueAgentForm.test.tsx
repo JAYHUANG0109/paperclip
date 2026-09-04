@@ -4,10 +4,10 @@ import { groupsForCampuses } from "@/lib/org-chart-options";
 
 describe("groupsForCampuses", () => {
   it("offers 部門 for 總管理處 and 組 for schools", () => {
-    expect(groupsForCampuses(["總管理處"])).toContain("數位資訊部");
-    expect(groupsForCampuses(["總管理處"])).not.toContain("幼教學組");
-    expect(groupsForCampuses(["市政"])).toContain("幼教學組");
-    expect(groupsForCampuses(["市政"])).not.toContain("數位資訊部");
+    expect(groupsForCampuses(["總管理處"])).toContain("資訊部");
+    expect(groupsForCampuses(["總管理處"])).not.toContain("幼教教學組");
+    expect(groupsForCampuses(["市政"])).toContain("幼教教學組");
+    expect(groupsForCampuses(["市政"])).not.toContain("資訊部");
   });
 
   // 跨校巡輔 exists only at 仁美 per doc/sa-org-chart.md; offering it elsewhere
@@ -20,7 +20,7 @@ describe("groupsForCampuses", () => {
   it("merges options when a cross-campus person spans both", () => {
     const g = groupsForCampuses(["仁美", "總管理處"]);
     expect(g).toContain("跨校巡輔");
-    expect(g).toContain("數位資訊部");
+    expect(g).toContain("資訊部");
   });
 });
 
