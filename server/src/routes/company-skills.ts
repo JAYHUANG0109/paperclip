@@ -134,6 +134,52 @@ export function companySkillRoutes(db: Db) {
     }
   }
 
+  /** The agents a user owns (joined memberships) — the equip target for a person. */
+  async function agentIdsOwnedByUser(companyId: string, userId: string): Promise<string[]> {
+    const rows = await db
+      .select({ agentId: agentMemberships.agentId })
+      .from(agentMemberships)
+      .where(and(
+        eq(agentMemberships.companyId, companyId),
+        eq(agentMemberships.userId, userId),
+        eq(agentMemberships.state, "joined"),
+      ));
+    return rows.map((r) => r.agentId);
+  }
+
+  /**
+   * Equip everyone a skill is shared with — "shared = equipped".
+   *
+   * Sharing only ever controlled VISIBILITY; what an agent actually loads is its
+   * own desiredSkills list, written by /skills/sync or /skills/distribute. The
+   * gap was invisible and silent: between 2026-09-02 and 2026-09-11 the founder
+   * created 30+ team-shared skills that reached zero agents, because she creates
+   * them over MCP and never called distribute. Sharing now equips the audience.
+   *
+   * Authority: the caller has already passed assertSharingTeamsAllowed, which is
+   * the real boundary ("you can only share to your own teams" unless privileged),
+   * so anyone who may share to an audience may equip it. Best-effort and
+   * idempotent per agent — it never fails the write that triggered it.
+   */
+  async function equipSharingAudience(
+    companyId: string,
+    skill: { key: string; sharingScope?: string | null; sharingTeams?: string[] | null },
+    actor: { actorType: string; actorId: string | null; agentId: string | null },
+  ): Promise<void> {
+    try {
+      const targets = await resolveEquipTargets(
+        companyId,
+        skill.sharingScope ?? "company",
+        skill.sharingTeams ?? [],
+        actor.actorType === "user" ? actor.actorId : null,
+        actor.agentId ?? null,
+      );
+      await equipSkillToAgents(companyId, skill.key, targets, actor.agentId ?? null);
+    } catch (err) {
+      console.warn(`[skills] auto-equip for sharing audience failed for ${skill.key}:`, err);
+    }
+  }
+
   function agentTeamNames(metadata: unknown): string[] {
     const md = metadata as Record<string, unknown> | null;
     if (!md) return [];
@@ -567,7 +613,22 @@ export function companySkillRoutes(db: Db) {
       res.status(400).json({ error: "principalId is required" });
       return;
     }
-    res.status(201).json(await svc.addSkillAccessMember(companyId, skillId, principalId));
+    const member = await svc.addSkillAccessMember(companyId, skillId, principalId);
+    // Sharing a skill WITH A PERSON equips that person's agents, for the same
+    // reason team sharing does. Best-effort; never fails the share.
+    try {
+      const skill = await svc.getById(companyId, skillId);
+      if (skill) {
+        const actor = getActorInfo(req);
+        const owned = await agentIdsOwnedByUser(companyId, principalId);
+        if (owned.length > 0) {
+          await equipSkillToAgents(companyId, skill.key, owned, actor.agentId ?? null);
+        }
+      }
+    } catch (err) {
+      console.warn(`[skills] auto-equip on access-member add failed for skill ${skillId}:`, err);
+    }
+    res.status(201).json(member);
   });
 
   router.delete("/companies/:companyId/skills/:skillId/members/:principalId", async (req, res) => {
@@ -1230,20 +1291,15 @@ export function companySkillRoutes(db: Db) {
       // Equip logic (best-effort; never fails the create). Two triggers:
       //  1. An AGENT authoring a skill always auto-equips ITSELF, closing the
       //     "propose → solve → skillify → equipped" loop.
-      //  2. equipOnCreate (from the UI checkbox) equips every agent in the
-      //     skill's sharing scope (company / team / private).
+      //  2. The sharing audience is equipped by DEFAULT — shared = equipped.
+      //     equipOnCreate is now an opt-OUT (pass false to share without
+      //     equipping); it used to be an opt-in the UI checkbox set, which meant
+      //     every skill created over the API reached nobody.
       if (actor.actorType === "agent" && actor.agentId) {
         await equipSkillToAgents(companyId, result.key, [actor.agentId], actor.agentId);
       }
-      if (req.body.equipOnCreate) {
-        const targets = await resolveEquipTargets(
-          companyId,
-          result.sharingScope ?? "company",
-          result.sharingTeams ?? [],
-          actor.actorType === "user" ? actor.actorId : null,
-          actor.agentId ?? null,
-        );
-        await equipSkillToAgents(companyId, result.key, targets, actor.agentId ?? null);
+      if (req.body.equipOnCreate !== false) {
+        await equipSharingAudience(companyId, result, actor);
       }
       // Explicitly-picked agents to share with (the private "share with these agents"
       // dropdown). Equip them, and for a private skill also add their owner user(s)
@@ -1329,6 +1385,15 @@ export function companySkillRoutes(db: Db) {
           sharingScope: result.sharingScope,
         },
       });
+
+      // Widening a share equips the new audience, same as creating with one.
+      // Only when the request actually touched sharing, so an unrelated edit
+      // (rename, recategorize) does not re-equip people who unequipped it.
+      // Add-only: narrowing a share does NOT unequip, because nothing here can
+      // tell an auto-equip apart from a deliberate one.
+      if (req.body.sharingScope !== undefined || req.body.sharingTeams !== undefined) {
+        await equipSharingAudience(companyId, result, actor);
+      }
 
       res.json(result);
     },

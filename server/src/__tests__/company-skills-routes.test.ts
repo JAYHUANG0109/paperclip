@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockAgentService = vi.hoisted(() => ({
   getById: vi.fn(),
+  // Auto-equip on share walks the roster and writes each target's adapterConfig.
+  list: vi.fn(),
+  update: vi.fn(),
 }));
 
 const mockAccessService = vi.hoisted(() => ({
@@ -31,6 +34,9 @@ const mockCompanySkillService = vi.hoisted(() => ({
   installFromCatalog: vi.fn(),
   createLocalSkill: vi.fn(),
   updateSkill: vi.fn(),
+  getShareableTeams: vi.fn(),
+  addSkillAccessMember: vi.fn(),
+  listSkillAccessMembers: vi.fn(),
   updateFile: vi.fn(),
   deleteFile: vi.fn(),
   scanProjectWorkspaces: vi.fn(),
@@ -2240,5 +2246,110 @@ describe("company skill mutation permissions", () => {
     // which is what makes the in-use check above fire.
     expect(mockCompanySkillService.deleteSkill).toHaveBeenCalledWith("company-1", "skill-1", { force: false });
     expect(mockLogActivity).not.toHaveBeenCalled();
+  });
+});
+
+describe("shared = equipped", () => {
+  // Sharing used to control visibility only: what an agent loads is its own
+  // desiredSkills list. Between 2026-09-02 and 2026-09-11 the founder created
+  // 30+ team-shared skills over MCP that reached ZERO agents because nothing
+  // called distribute. Sharing now equips the audience.
+  const ROSTER = [
+    { id: "a-preschool", companyId: "company-1", metadata: { teams: ["幼教主管", "幼教教學", "西屯"] } },
+    { id: "a-esl", companyId: "company-1", metadata: { teams: ["ESL主管", "ESL行政", "市政"] } },
+    { id: "a-it", companyId: "company-1", metadata: { teams: ["總管理處", "資訊部"] } },
+  ];
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doUnmock("@paperclipai/shared/telemetry");
+    vi.doUnmock("../telemetry.js");
+    vi.doUnmock("../services/access.js");
+    vi.doUnmock("../services/activity-log.js");
+    vi.doUnmock("../services/agents.js");
+    vi.clearAllMocks();
+    mockAccessService.canUser.mockResolvedValue(true);
+    mockAccessService.hasPermission.mockResolvedValue(true);
+    mockAccessService.decide.mockResolvedValue({ allowed: true });
+    mockCompanySkillService.getShareableTeams.mockResolvedValue({ teams: new Set<string>(), canShareToAll: true });
+    mockAgentService.list.mockResolvedValue(ROSTER);
+    mockAgentService.getById.mockImplementation(async (id: string) =>
+      ROSTER.find((a) => a.id === id) ?? null);
+    mockAgentService.update.mockResolvedValue({ id: "x", companyId: "company-1" });
+  });
+
+  function equippedAgentIds(): string[] {
+    return mockAgentService.update.mock.calls.map((call) => call[0] as string);
+  }
+
+  it("equips the team audience on create without being asked to", async () => {
+    mockCompanySkillService.createLocalSkill.mockResolvedValue({
+      id: "skill-team", key: "company/company-1/team-skill", slug: "team-skill",
+      name: "Team Skill", sharingScope: "team", sharingTeams: ["幼教主管"],
+    });
+
+    const res = await request(await createApp({
+      type: "board", userId: "u-owner", companyIds: ["company-1"],
+      source: "board_key", isInstanceAdmin: true,
+    }))
+      .post("/api/companies/company-1/skills")
+      // No equipOnCreate: this is the MCP-shaped payload that used to reach nobody.
+      .send({ name: "Team Skill", slug: "team-skill", markdown: "# S", sharingScope: "team", sharingTeams: ["幼教主管"] });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(equippedAgentIds()).toEqual(["a-preschool"]);
+  });
+
+  it("still honours equipOnCreate:false as an explicit opt-out", async () => {
+    mockCompanySkillService.createLocalSkill.mockResolvedValue({
+      id: "skill-quiet", key: "company/company-1/quiet", slug: "quiet",
+      name: "Quiet", sharingScope: "company", sharingTeams: [],
+    });
+
+    const res = await request(await createApp({
+      type: "board", userId: "u-owner", companyIds: ["company-1"],
+      source: "board_key", isInstanceAdmin: true,
+    }))
+      .post("/api/companies/company-1/skills")
+      .send({ name: "Quiet", slug: "quiet", markdown: "# S", sharingScope: "company", equipOnCreate: false });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(equippedAgentIds()).toEqual([]);
+  });
+
+  it("equips the new audience when a share is widened later", async () => {
+    mockCompanySkillService.updateSkill.mockResolvedValue({
+      id: "skill-1", key: "company/company-1/late-share", slug: "late-share",
+      name: "Late", categories: [], sharingScope: "team", sharingTeams: ["ESL主管"],
+    });
+
+    const res = await request(await createApp({
+      type: "board", userId: "u-owner", companyIds: ["company-1"],
+      source: "board_key", isInstanceAdmin: true,
+    }))
+      .patch("/api/companies/company-1/skills/skill-1")
+      .send({ sharingScope: "team", sharingTeams: ["ESL主管"] });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(equippedAgentIds()).toEqual(["a-esl"]);
+  });
+
+  it("does not re-equip on an edit that leaves sharing alone", async () => {
+    mockCompanySkillService.updateSkill.mockResolvedValue({
+      id: "skill-1", key: "company/company-1/renamed", slug: "renamed",
+      name: "Renamed", categories: [], sharingScope: "company", sharingTeams: [],
+    });
+
+    const res = await request(await createApp({
+      type: "board", userId: "u-owner", companyIds: ["company-1"],
+      source: "board_key", isInstanceAdmin: true,
+    }))
+      .patch("/api/companies/company-1/skills/skill-1")
+      .send({ name: "Renamed" });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    // Someone who deliberately unequipped a company-wide skill must not have it
+    // pushed back by an unrelated rename.
+    expect(equippedAgentIds()).toEqual([]);
   });
 });

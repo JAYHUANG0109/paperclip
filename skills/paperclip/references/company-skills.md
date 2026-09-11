@@ -49,9 +49,17 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/skills"
   equipped with it (no `equipOnCreate` needed for yourself), so you can use it
   immediately.
 - The result is a `company_skills` row: it shows 檢視 in the dashboard, carries
-  versions, and stays private until you (or a manager) explicitly hand it out
-  with `/skills/distribute` (below) — which is what changes its scope and equips
-  other agents.
+  versions, and stays private until you (or a manager) share it.
+- **Sharing equips (since 2026-09-11).** Creating or updating a skill with
+  `sharingScope: "team"` + `sharingTeams`, or `"company"`, now equips every
+  agent in that audience automatically — and adding someone as an access member
+  on a private skill equips that person's agents. Before this, sharing only made
+  a skill VISIBLE and it reached nobody until someone called `/skills/distribute`
+  by hand; 30+ skills sat shared-but-installed-nowhere for a week that way.
+  Pass `equipOnCreate: false` to share WITHOUT equipping. Narrowing a share does
+  not unequip anyone — use the unequip UI or `/skills/sync` for that.
+- `/skills/distribute` (below) is still the tool for handing a skill to an
+  explicit list of agents that is not a sharing audience.
 
 If a skill already exists only as an unmanaged local file, re-create it managed
 with the same steps (its `markdown` is the local `SKILL.md`'s content).
