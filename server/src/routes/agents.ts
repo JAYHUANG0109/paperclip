@@ -30,6 +30,7 @@ import {
   supportedEnvironmentDriversForAdapter,
   LOW_TRUST_REVIEW_PRESET,
   CANONICAL_CAMPUSES,
+  LEADERSHIP_TEAMS,
   isAllowedTopTeam,
   isCanonicalCampus,
   normalizeCampusToken,
@@ -1143,7 +1144,7 @@ export function agentRoutes(
 
     if (!isAllowedTopTeam(top)) {
       throw unprocessable(
-        `metadata.teams[0]（校區）「${teams[0]}」無效。請使用有效校區（${CANONICAL_CAMPUSES.join("、")}）或 園長團隊／系統自動化。`,
+        `metadata.teams[0]（校區）「${teams[0]}」無效。請使用有效校區（${CANONICAL_CAMPUSES.join("、")}）或 ${LEADERSHIP_TEAMS.join("／")}／系統自動化。`,
         { code: "invalid_campus", field: "metadata.teams[0]", value: teams[0] },
       );
     }

@@ -25,7 +25,7 @@ import type {
   SkillTestAgentKeyScope,
   TaskBridgeAgentKeyScope,
 } from "@paperclipai/shared";
-import { LOW_TRUST_REVIEW_PRESET, extractAgentMentionIds, anyTeamTokenMatches, type LowTrustBoundary } from "@paperclipai/shared";
+import { LOW_TRUST_REVIEW_PRESET, extractAgentMentionIds, anyTeamTokenMatches, LEADERSHIP_TEAMS, LEGACY_LEADERSHIP_TEAMS, type LowTrustBoundary } from "@paperclipai/shared";
 import {
   LOW_TRUST_ISSUE_ANCESTRY_MAX_DEPTH,
   isIssueWithinLowTrustBoundary,
@@ -581,12 +581,17 @@ function projectVisibilityEnabled(): boolean {
 // head oversees the private projects of their own campus/dept, without exposing
 // them to regular peers (who lack the leadership token). team-match on ordinary
 // members still only grants `team`-visibility projects, never `private`.
-// Configurable per deployment; defaults to this instance's 園長團隊 (renamed from
-// 領導團隊 on 2026-09-01 — both are listed so a team set or share that still
-// carries the old name keeps its access).
+// Configurable per deployment; defaults to this instance's three leadership
+// groups. 園長團隊 was disbanded on 2026-09-11 into 創辦人 / 總園長 / 園長 & 處長,
+// so all three are listed — dropping to any one of them would quietly strip
+// private-project visibility from the other two. The disbanded name and its own
+// predecessor stay listed so a team set or share that still carries an old name
+// keeps its access.
 function leadershipTeamTokens(): Set<string> {
   const raw = process.env.PAPERCLIP_LEADERSHIP_TEAM_TOKENS?.trim();
-  const list = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : ["園長團隊", "領導團隊"];
+  const list = raw
+    ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+    : [...LEADERSHIP_TEAMS, ...LEGACY_LEADERSHIP_TEAMS];
   return new Set(list);
 }
 

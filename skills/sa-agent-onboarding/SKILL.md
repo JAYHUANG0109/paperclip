@@ -49,9 +49,9 @@ description: 四季藝術建立任何一支 AI 代理人的唯一標準流程。
 
    > 統籌分工：哈哈＝市政・西屯・黎明（三校）；家秀＝仁美・北屯。校首長的 reportsTo ＝ 其校區統籌總園長。
    > 家秀生產期間（115.07 中起）仁美・北屯日常由副園長雅雅代理：北屯園長 reportsTo 暫掛雅雅，家秀回任後回復。
-   > **跨校輔導可見度**：授權採「team 任一相符」，故統籌/輔導者的 `metadata.teams` 要含其負責的每個校區——哈哈 teams＝西屯＋市政＋黎明；家秀・雅雅 teams＝園長團隊＋總園長/園長＋仁美＋北屯（第一個 team 仍為主分群）。
+   > **跨校輔導可見度**：授權採「team 任一相符」，故統籌/輔導者的 `metadata.teams` 要含其負責的每個校區——哈哈 teams＝西屯＋市政＋黎明；家秀 teams＝總園長＋仁美＋北屯、雅雅 teams＝「園長 & 處長」＋仁美＋北屯（第一個 team 仍為主分群）。
 4. **team**：`metadata.teams` = **[校區, 組]**（校區為第一元素，供虛擬辦公室依校區分群）。
-   例：`["仁美","幼教學組"]`、`["市政","ESL教學組"]`、`["總管理處","數位資訊部"]`、`["仁美","跨校巡輔"]`。
+   例：`["幼教主管","幼教教學","仁美"]`、`["ESL主管","ESL行政","市政"]`、`["總管理處","資訊部"]`、`["仁美","跨校巡輔"]`。
    校區取值：仁美/市政/西屯/黎明/北屯/總管理處。
 5. **adapterConfig**：`assignedUserEmail = <Email>`；`assignedUserRole = "operator"`
    （園長級以上仍為 operator，唯創辦人為 owner）。
@@ -118,7 +118,7 @@ description: 四季藝術建立任何一支 AI 代理人的唯一標準流程。
 name:  粘紋綺_幼教行政主任
 title: 幼教行政主任
 adapterConfig: { assignedUserEmail: "cherryn@seasonart.org", assignedUserRole: "operator" }
-metadata: { teams: ["仁美","幼教學組"], employeeId: "52930801", nickname: "Cherry" }
+metadata: { teams: ["幼教主管","幼教行政","仁美"], employeeId: "52930801", nickname: "Cherry" }
 reportsTo: 王姿雅（仁美 副園長）
 
 instructions:

@@ -5,8 +5,8 @@ import { groupsForCampuses } from "@/lib/org-chart-options";
 describe("groupsForCampuses", () => {
   it("offers 部門 for 總管理處 and 組 for schools", () => {
     expect(groupsForCampuses(["總管理處"])).toContain("資訊部");
-    expect(groupsForCampuses(["總管理處"])).not.toContain("幼教教學組");
-    expect(groupsForCampuses(["市政"])).toContain("幼教教學組");
+    expect(groupsForCampuses(["總管理處"])).not.toContain("幼教主管");
+    expect(groupsForCampuses(["市政"])).toContain("幼教主管");
     expect(groupsForCampuses(["市政"])).not.toContain("資訊部");
   });
 

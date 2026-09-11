@@ -113,3 +113,46 @@ describe("領導團隊 → 園長團隊 rename", () => {
     expect(teamTokenMatches("總園長", ["園長"])).toBe(false);
   });
 });
+
+describe("2026-09-11 org restructure", () => {
+  // 幼教教學組 → 幼教主管 and ESL教學組 → ESL主管: straight renames of the
+  // supervisor layer. 34 skills named 幼教教學組 and 10 named ESL教學組, so both
+  // spellings must resolve to the same people in both directions.
+  it("matches the renamed supervisor groups either way round", () => {
+    expect(teamTokenMatches("幼教教學組", ["幼教主管", "幼教教學", "西屯"])).toBe(true);
+    expect(teamTokenMatches("幼教主管", ["幼教教學組", "幼教行政", "仁美"])).toBe(true);
+    expect(teamTokenMatches("ESL教學組", ["ESL主管", "ESL行政", "市政"])).toBe(true);
+    expect(teamTokenMatches("ESL主管", ["ESL教學組", "ESL教學"])).toBe(true);
+  });
+
+  it("leaves the sub-teams alone", () => {
+    expect(canonicalTeamName("幼教教學")).toBe("幼教教學");
+    expect(canonicalTeamName("幼教行政")).toBe("幼教行政");
+    expect(canonicalTeamName("ESL教學")).toBe("ESL教學");
+    expect(canonicalTeamName("ESL行政")).toBe("ESL行政");
+    // A scoped 校區／部門 share still needs BOTH halves, renamed or not.
+    expect(teamTokenMatches("西屯／幼教主管", ["幼教教學組", "幼教教學", "西屯"])).toBe(true);
+    expect(teamTokenMatches("西屯／幼教主管", ["幼教主管", "幼教教學", "仁美"])).toBe(false);
+  });
+
+  it("accepts the three leadership groups as teams[0]", () => {
+    expect(isAllowedTopTeam("創辦人")).toBe(true);
+    expect(isAllowedTopTeam("總園長")).toBe(true);
+    expect(isAllowedTopTeam("園長 & 處長")).toBe(true);
+  });
+
+  it("does not alias the disbanded 園長團隊 onto any one successor", () => {
+    // It was one group becoming three, so resolving it to a single successor
+    // would be wrong for two thirds of the people. Sharing lists that named it
+    // were expanded to all three by the migration instead.
+    expect(canonicalTeamName("園長團隊")).toBe("園長團隊");
+    expect(teamTokenMatches("園長團隊", ["總園長", "仁美"])).toBe(false);
+    expect(teamTokenMatches("園長團隊", ["園長 & 處長", "北屯"])).toBe(false);
+  });
+
+  it("keeps the merged 園長 & 處長 group distinct from the old rank tokens", () => {
+    expect(teamTokenMatches("園長 & 處長", ["園長"])).toBe(false);
+    expect(teamTokenMatches("園長 & 處長", ["處長"])).toBe(false);
+    expect(teamTokenMatches("園長 & 處長", ["園長 & 處長", "總管理處"])).toBe(true);
+  });
+});

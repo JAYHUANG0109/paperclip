@@ -24,11 +24,14 @@ export function agentTeams(agent: Pick<Agent, "metadata">): string[] {
 // original name. Only the DISPLAY label is localized — grouping/filtering still
 // keys off the raw (Chinese) team name, so this is display-only and safe.
 const TEAM_EN: Record<string, string> = {
-  // Cross-campus / legacy top-level groups
+  // Leadership groups. 園長團隊 was disbanded on 2026-09-11 and its ranks became
+  // independent top-level groups (doc/sa-org-chart.md); the two disbanded names
+  // stay listed so terminated agents and old shares still label in English.
+  "創辦人": "Founder",
+  "總園長": "Head Principal",
+  "園長 & 處長": "Principals & Directors",
   "園長團隊": "Principals",
   "領導團隊": "Principals", // pre-2026-09-01 name; kept so old data still labels
-  // The leadership root's three ranks (doc/sa-org-chart.md).
-  "總園長": "Head Principal",
   "園長": "Principal",
   "處長": "Director",
   "系統自動化": "System Automation",
@@ -42,19 +45,22 @@ const TEAM_EN: Record<string, string> = {
   "北屯": "Beitun",
   "總管理處": "General Administration",
   // Departments / teams (second level)
-  // 幼教教學組 is the preschool group the org actually files people under, split
-  // into 幼教教學 / 幼教行政 (and the same shape for ESL). 幼教學組 was a
-  // code-only spelling with no live members — consolidated onto 幼教教學組 on
-  // 2026-09-04 — and stays listed purely so terminated agents and any old
+  // The preschool group's own history: 幼教學組 (code-only, no live members) was
+  // consolidated onto 幼教教學組 on 2026-09-04, which was then renamed 幼教主管 on
+  // 2026-09-11. Both old spellings stay listed so terminated agents and any old
   // scope string still translate instead of rendering raw Chinese.
-  "幼教教學組": "Preschool Teaching",
-  "幼教學組": "Preschool Teaching",
+  // Renamed 2026-09-11: the top-level group is the supervisor layer, its
+  // sub-teams (幼教教學／幼教行政) are unchanged. Old names kept as aliases.
+  "幼教主管": "Preschool Leads",
+  "幼教教學組": "Preschool Leads",
+  "幼教學組": "Preschool Leads",
   "幼教教學": "Preschool Instruction",
   "幼教行政": "Preschool Administration",
   "ESL教學": "ESL Instruction",
   "ESL行政": "ESL Administration",
   "外師教學組": "Foreign Teachers",
-  "ESL教學組": "ESL Teaching",
+  "ESL主管": "ESL Leads",
+  "ESL教學組": "ESL Leads",
   "註冊組": "Registration",
   "總務管理組": "General Affairs",
   "跨校巡輔": "Cross-Campus Support",
@@ -120,13 +126,13 @@ export const CAMPUS_TEAMS = new Set(["仁美", "市政", "西屯", "黎明", "�
 
 // Campus → its departments (from doc/sa-campus-roster.md). Drives the cascading
 // team-scope picker so you can target a specific campus's department (e.g.
-// 北屯／幼教教學組) even before that team has any agent. Keep in sync with the roster.
+// 北屯／幼教主管) even before that team has any agent. Keep in sync with the roster.
 export const CAMPUS_DEPARTMENTS: Record<string, string[]> = {
-  "仁美": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組", "跨校巡輔"],
-  "市政": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "西屯": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "黎明": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
-  "北屯": ["幼教教學組", "外師教學組", "ESL教學組", "註冊組", "總務管理組"],
+  "仁美": ["幼教主管", "外師教學組", "ESL主管", "註冊組", "總務管理組", "跨校巡輔"],
+  "市政": ["幼教主管", "外師教學組", "ESL主管", "註冊組", "總務管理組"],
+  "西屯": ["幼教主管", "外師教學組", "ESL主管", "註冊組", "總務管理組"],
+  "黎明": ["幼教主管", "外師教學組", "ESL主管", "註冊組", "總務管理組"],
+  "北屯": ["幼教主管", "外師教學組", "ESL主管", "註冊組", "總務管理組"],
   "總管理處": ["行銷部", "視覺部", "處長室", "秘書室", "資訊部", "人發部", "品牌發展部", "基金會", "採購工程部", "財務部", "餐飲部"],
 };
 
@@ -218,13 +224,16 @@ export function groupItemsByTeam<T>(
 }
 
 /**
- * The leadership root's second level: a rank, not a department. 哈曉如 and 吳家秀
- * sit in 總園長, every other 園長／副園長 in 園長, and 張廖心淑 in 處長.
+ * The leadership ranks. Until 2026-09-11 these were the second level under a
+ * 園長團隊 root; that group was disbanded and they are top-level groups now, so
+ * this list survives only for labelling data written before the split.
  */
 export const LEADERSHIP_SUBTEAMS = ["總園長", "園長", "處長"];
 
-// Cross-campus groups — not scoped to any campus. Shown in the picker's 跨校/全部 section.
-export const CROSS_CAMPUS_GROUPS = ["園長團隊", "系統自動化"];
+// Cross-campus groups — not scoped to any campus. Shown in the picker's 跨校/全部
+// section. The three leadership groups are cross-campus by nature: a principal
+// belongs to a rank, and their campuses ride along as trailing tokens.
+export const CROSS_CAMPUS_GROUPS = ["創辦人", "總園長", "園長 & 處長", "系統自動化"];
 
 // The distinct department names across all campuses — for the "this dept in every
 // campus" (plain department token) options in the 跨校/全部 section.
@@ -247,7 +256,7 @@ export const OFFICE_UNGROUPED_KEY = "__ungrouped__";
 
 // The Virtual Office floor has a fixed set of baked rooms keyed by the original
 // department names. The org has renamed/expanded departments repeatedly
-// (數位資訊部 → 資訊部, 人才發展部 → 人發部, 幼教學組 → 幼教教學組/…), so map every
+// (數位資訊部 → 資訊部, 人發部, 幼教教學組 → 幼教主管, ESL教學組 → ESL主管/…), so map every
 // spelling, current and historical, onto the room
 // that represents it. Unmapped departments fall through to the floor's spare
 // room. Keep the right-hand values in sync with the room `team` keys in
@@ -259,6 +268,7 @@ const DEPARTMENT_ROOM: Record<string, string> = {
   // Teaching room absorbs the preschool group + 跨校巡輔 (and legacy/roomless
   // teaching depts). 幼教學組 is the pre-2026-09-04 spelling.
   "教學組": "教學組",
+  "幼教主管": "教學組",
   "幼教教學組": "教學組",
   "幼教教學": "教學組",
   "幼教行政": "教學組",
@@ -267,6 +277,7 @@ const DEPARTMENT_ROOM: Record<string, string> = {
   "外師教學組": "教學組",
   "註冊組": "教學組",
   // Own rooms
+  "ESL主管": "ESL教學組",
   "ESL教學組": "ESL教學組",
   "總務管理組": "總務管理組",
   // 人發部 is the current name; the two long spellings are pre-rename
@@ -274,6 +285,10 @@ const DEPARTMENT_ROOM: Record<string, string> = {
   "人才發展": "人發部",
   "人才發展部": "人發部",
   "品牌發展部": "品牌發展部",
+  // All three leadership groups share the one baked leadership room.
+  "創辦人": "領導團隊",
+  "總園長": "領導團隊",
+  "園長 & 處長": "領導團隊",
   "園長團隊": "領導團隊",
   "領導團隊": "領導團隊",
   "系統自動化": "系統自動化",

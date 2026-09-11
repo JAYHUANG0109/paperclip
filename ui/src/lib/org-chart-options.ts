@@ -22,9 +22,9 @@ export const CAMPUSES = [
 
 /** L3 組 — schools. 跨校巡輔 exists only at 仁美. */
 export const SCHOOL_GROUPS = [
-  "幼教教學組",
+  "幼教主管",
   "外師教學組",
-  "ESL教學組",
+  "ESL主管",
   "註冊組",
   "總務管理組",
   "跨校巡輔",

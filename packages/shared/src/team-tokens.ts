@@ -18,18 +18,43 @@ export const SCOPED_TEAM_SEPARATOR = "／";
 // CAMPUS_TEAMS (ui/src/lib/agent-teams.ts).
 export const CANONICAL_CAMPUSES = ["仁美", "市政", "西屯", "黎明", "北屯", "總管理處"] as const;
 
-// The leadership root, and its three sub-teams. The founder's model is
-// 總園長 → 園長 → 主任 → 組長 → 組員 for the campuses and 處長 → 主管 → 組員 for
-// HQ, so the root's second level is the rank itself: 哈曉如 and 吳家秀 sit in
-// 總園長, every other 園長/副園長 in 園長, and 張廖心淑 in 處長.
-export const LEADERSHIP_TEAM = "園長團隊";
-export const LEADERSHIP_SUBTEAMS = ["總園長", "園長", "處長"] as const;
+// The leadership groups. 園長團隊 was disbanded on 2026-09-11 (owner's call) and
+// its ranks became independent TOP-level groups, level with 幼教主管／ESL主管:
+// the founder alone in 創辦人, 哈曉如 and 吳家秀 in 總園長, and every other
+// 園長／副園長 plus 張廖心淑 (處長) merged into 園長 & 處長.
+export const FOUNDER_TEAM = "創辦人";
+export const HEAD_PRINCIPAL_TEAM = "總園長";
+export const PRINCIPAL_TEAM = "園長 & 處長";
 
-// Renamed from 領導團隊 on 2026-09-01. Old tokens survive in skill/folder
-// sharing lists and in anything typed before the rename, so they are normalized
-// forward rather than rejected — dropping them would silently revoke access.
+/**
+ * Every group that counts as leadership, for the permission checks that used to
+ * key off the single 園長團隊 token.
+ *
+ * The disbanded name is NOT aliased forward: it was one group becoming three, so
+ * any single successor would be wrong for two thirds of the people. Sharing
+ * lists that named it were expanded to all three by
+ * scripts/migrate-org-groups-2026-09.ts instead.
+ */
+export const LEADERSHIP_TEAMS = [FOUNDER_TEAM, HEAD_PRINCIPAL_TEAM, PRINCIPAL_TEAM] as const;
+
+/** @deprecated The group is disbanded; kept so old data still reads as leadership. */
+export const LEGACY_LEADERSHIP_TEAMS = ["園長團隊", "領導團隊"] as const;
+
+// Renames. Old tokens survive in skill/folder sharing lists and in anything
+// typed before a rename, so they are normalized forward rather than rejected —
+// dropping them would silently revoke access.
+//   領導團隊  → 園長團隊 on 2026-09-01 (that group is now disbanded, see above)
+//   幼教教學組 → 幼教主管 and ESL教學組 → ESL主管 on 2026-09-11: the top-level
+//   group is the supervisor layer; the 幼教教學／幼教行政／ESL教學／ESL行政
+//   sub-teams under it are unchanged.
 const LEGACY_TOP_TEAM_ALIASES: Readonly<Record<string, string>> = {
-  "領導團隊": LEADERSHIP_TEAM,
+  // Both disbanded leadership names collapse onto the later of the two, so a
+  // stale token has ONE spelling everywhere. Neither resolves to a successor
+  // group: that was a 1→3 split (see LEADERSHIP_TEAMS), and picking one would
+  // be wrong for two thirds of the people.
+  "領導團隊": "園長團隊",
+  "幼教教學組": "幼教主管",
+  "ESL教學組": "ESL主管",
 };
 
 /** The current name for a team, following any rename. Unknown names pass through. */
@@ -37,10 +62,15 @@ export function canonicalTeamName(name: string): string {
   return LEGACY_TOP_TEAM_ALIASES[name] ?? name;
 }
 
-// Non-campus values legitimately allowed as `teams[0]`: the leadership root and
-// infrastructure/system agents. These are the only top-team values that don't
-// require a campus or a manager.
-export const ALLOWED_NON_CAMPUS_TOP_TEAMS = [LEADERSHIP_TEAM, "系統自動化"] as const;
+// Non-campus values legitimately allowed as `teams[0]`: the three leadership
+// groups and infrastructure/system agents. These are the only top-team values
+// that don't require a campus or a manager. The disbanded 園長團隊 stays listed
+// so a stale payload is normalized rather than rejected outright.
+export const ALLOWED_NON_CAMPUS_TOP_TEAMS = [
+  ...LEADERSHIP_TEAMS,
+  ...LEGACY_LEADERSHIP_TEAMS,
+  "系統自動化",
+] as const;
 
 /**
  * Where an agent belongs when it is nobody's: no team given and no owner email,
